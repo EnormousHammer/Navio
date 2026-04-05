@@ -50,6 +50,7 @@ function createMainWindow() {
     minHeight: 600,
     frame: false,
     titleBarStyle: 'hidden',
+    show: false,
     backgroundColor: isDark ? '#08080e' : '#f4f5f7',
     icon: path.join(__dirname, '..', 'src', 'assets', 'icon.png'),
     webPreferences: {
@@ -59,6 +60,11 @@ function createMainWindow() {
       webviewTag: true,
       sandbox: false
     }
+  });
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.maximize();
+    mainWindow.show();
   });
 
   mainWindow.loadFile(path.join(__dirname, '..', 'src', 'index.html'));
