@@ -3,11 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data: https:; connect-src *;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data: https:; media-src 'self' file: blob: data:; connect-src *;">
   <title>Navio</title>
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body data-theme="dark">
+
+  <!-- Full-window launch intro (public/intro_video/intro_final.mp4) -->
+  <div id="launch-intro" class="launch-intro" aria-hidden="true">
+    <video id="launch-intro-video" class="launch-intro-video" playsinline preload="metadata"></video>
+    <button type="button" id="launch-intro-skip" class="launch-intro-skip">Skip</button>
+  </div>
 
   <!-- Title Bar (drag region only — no brand to save vertical space) -->
   <div id="titlebar">
@@ -660,6 +666,7 @@
   </div>
 
   <script src="js/onboarding.js"></script>
+  <script src="js/launch-intro.js"></script>
   <script src="js/app.js"></script>
   <script src="js/tabs.js"></script>
   <script src="js/assistant.js"></script>

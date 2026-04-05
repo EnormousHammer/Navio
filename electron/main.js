@@ -1,6 +1,9 @@
 const { app, BrowserWindow, ipcMain, session, dialog, Menu, globalShortcut, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
+
+const INTRO_VIDEO_PATH = path.join(__dirname, '..', 'public', 'intro_video', 'intro_final.mp4');
 
 let mainWindow = null;
 const CONFIG_PATH = path.join(app.getPath('userData'), 'navio-config.json');
@@ -92,6 +95,15 @@ ipcMain.handle('save-config', (event, config) => {
     nativeTheme.themeSource = config.theme === 'light' ? 'light' : 'dark';
   }
   return true;
+});
+
+ipcMain.handle('get-intro-video-url', () => {
+  try {
+    if (!fs.existsSync(INTRO_VIDEO_PATH)) return null;
+    return pathToFileURL(INTRO_VIDEO_PATH).href;
+  } catch (e) {
+    return null;
+  }
 });
 
 ipcMain.handle('clear-browsing-data', async () => {

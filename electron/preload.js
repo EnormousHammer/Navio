@@ -34,5 +34,7 @@ contextBridge.exposeInMainWorld('navio', {
   // Downloads
   getDownloadsPath: () => ipcRenderer.invoke('get-downloads-path'),
 
-  clearBrowsingData: () => ipcRenderer.invoke('clear-browsing-data')
+  clearBrowsingData: () => ipcRenderer.invoke('clear-browsing-data'),
+
+  getIntroVideoUrl: () => ipcRenderer.invoke('get-intro-video-url')
 });

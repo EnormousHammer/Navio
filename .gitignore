@@ -5,3 +5,8 @@ out/
 *.log
 .DS_Store
 Thumbs.db
+
+# Launch intro: track only the file the app loads (others stay local)
+public/intro_video/*
+!public/intro_video/.gitkeep
+!public/intro_video/intro_final.mp4
