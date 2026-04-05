@@ -1,0 +1,15 @@
+{
+  "name": "navio-browser",
+  "version": "1.0.0",
+  "description": "Navio - Futuristic AI-powered browser with built-in intelligence",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "author": "Navio",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^35.0.0"
+  }
+}
