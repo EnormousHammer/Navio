@@ -76,7 +76,7 @@ class SettingsManagerClass {
   populateFields() {
     this.elements.provider.value = this.config.aiProvider || 'openai';
     this.elements.apiKey.value = this.config.apiKey || '';
-    this.elements.model.value = this.config.aiModel || 'gpt-4o';
+    this.elements.model.value = this.config.aiModel || 'gpt-5.4';
     this.elements.endpoint.value = this.config.customEndpoint || '';
     this.elements.searchEngine.value = this.config.searchEngine || 'https://www.google.com/search?q=';
     this.elements.homepage.value = this.config.homepage || 'https://www.google.com';

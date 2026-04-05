@@ -14,7 +14,7 @@ function loadConfig() {
   return {
     apiKey: '',
     aiProvider: 'openai',
-    aiModel: 'gpt-4o',
+    aiModel: 'gpt-5.4',
     customEndpoint: '',
     theme: 'dark',
     searchEngine: 'https://www.google.com/search?q=',
@@ -103,7 +103,7 @@ ipcMain.handle('ai-request', async (event, { provider, apiKey, model, messages, 
         'Authorization': `Bearer ${apiKey}`
       };
       body = JSON.stringify({
-        model: model || 'gpt-4o',
+        model: model || 'gpt-5.4',
         messages,
         max_tokens: 4096,
         stream: false
@@ -118,13 +118,13 @@ ipcMain.handle('ai-request', async (event, { provider, apiKey, model, messages, 
         'anthropic-version': '2023-06-01'
       };
       body = JSON.stringify({
-        model: model || 'claude-sonnet-4-20250514',
+        model: model || 'claude-opus-4.6',
         max_tokens: 4096,
         system: systemMsg?.content || '',
         messages: chatMsgs
       });
     } else if (provider === 'google') {
-      url = `https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemini-2.0-flash'}:generateContent?key=${apiKey}`;
+      url = `https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemini-3.1-pro'}:generateContent?key=${apiKey}`;
       headers = { 'Content-Type': 'application/json' };
       const contents = messages
         .filter(m => m.role !== 'system')
@@ -272,6 +272,69 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params }
   }
 });
 
+// Browser detection and bookmark import
+ipcMain.handle('detect-browsers', async () => {
+  const browsers = [];
+  const localAppData = process.env.LOCALAPPDATA || '';
+  const appData = process.env.APPDATA || '';
+
+  const candidates = [
+    { id: 'chrome', name: 'Google Chrome', bookmarks: path.join(localAppData, 'Google', 'Chrome', 'User Data', 'Default', 'Bookmarks') },
+    { id: 'edge', name: 'Microsoft Edge', bookmarks: path.join(localAppData, 'Microsoft', 'Edge', 'User Data', 'Default', 'Bookmarks') },
+    { id: 'brave', name: 'Brave', bookmarks: path.join(localAppData, 'BraveSoftware', 'Brave-Browser', 'User Data', 'Default', 'Bookmarks') },
+    { id: 'opera', name: 'Opera', bookmarks: path.join(appData, 'Opera Software', 'Opera Stable', 'Bookmarks') },
+    { id: 'vivaldi', name: 'Vivaldi', bookmarks: path.join(localAppData, 'Vivaldi', 'User Data', 'Default', 'Bookmarks') }
+  ];
+
+  for (const b of candidates) {
+    try {
+      if (fs.existsSync(b.bookmarks)) {
+        const data = JSON.parse(fs.readFileSync(b.bookmarks, 'utf-8'));
+        const count = countBookmarks(data.roots);
+        browsers.push({ id: b.id, name: b.name, path: b.bookmarks, bookmarkCount: count });
+      }
+    } catch (e) { /* skip */ }
+  }
+  return browsers;
+});
+
+function countBookmarks(roots) {
+  let count = 0;
+  function walk(node) {
+    if (!node) return;
+    if (node.type === 'url') { count++; return; }
+    if (node.children) node.children.forEach(walk);
+    if (typeof node === 'object' && !node.type && !node.children) {
+      Object.values(node).forEach(v => { if (v && typeof v === 'object') walk(v); });
+    }
+  }
+  walk(roots);
+  return count;
+}
+
+ipcMain.handle('import-bookmarks', async (event, browserPath) => {
+  try {
+    const data = JSON.parse(fs.readFileSync(browserPath, 'utf-8'));
+    const bookmarks = [];
+    function extract(node, folder) {
+      if (!node) return;
+      if (node.type === 'url') {
+        bookmarks.push({ title: node.name, url: node.url, folder });
+        return;
+      }
+      const folderName = node.name || folder;
+      if (node.children) node.children.forEach(c => extract(c, folderName));
+      if (typeof node === 'object' && !node.type && !node.children) {
+        Object.values(node).forEach(v => { if (v && typeof v === 'object') extract(v, folder); });
+      }
+    }
+    extract(data.roots, 'root');
+    return { bookmarks };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
 // Downloads
 ipcMain.handle('get-downloads-path', () => app.getPath('downloads'));
 
@@ -300,9 +363,6 @@ app.whenReady().then(() => {
   });
   globalShortcut.register('CommandOrControl+Shift+A', () => {
     mainWindow?.webContents.send('shortcut', 'toggle-assistant');
-  });
-  globalShortcut.register('CommandOrControl+Shift+S', () => {
-    mainWindow?.webContents.send('shortcut', 'toggle-sidebar');
   });
   globalShortcut.register('CommandOrControl+Shift+C', () => {
     mainWindow?.webContents.send('shortcut', 'toggle-connectors');

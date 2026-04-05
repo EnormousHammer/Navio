@@ -125,7 +125,8 @@ class ConnectorsManagerClass {
   }
 
   bindEvents() {
-    document.getElementById('btn-connectors').addEventListener('click', () => this.toggleHub());
+    const btnMini = document.getElementById('btn-connectors');
+    if (btnMini) btnMini.addEventListener('click', () => this.toggleHub());
     document.getElementById('btn-connectors-full').addEventListener('click', () => this.toggleHub());
     document.getElementById('connectors-hub-close').addEventListener('click', () => this.hideHub());
 

@@ -44,7 +44,6 @@ PERSONALITY:
   bindEvents() {
     // Toggle buttons
     document.getElementById('btn-toggle-assistant').addEventListener('click', () => this.toggle());
-    document.getElementById('btn-ai-navbar').addEventListener('click', () => this.toggle());
     document.getElementById('btn-close-assistant').addEventListener('click', () => this.close());
     document.getElementById('btn-clear-chat').addEventListener('click', () => this.clearChat());
 

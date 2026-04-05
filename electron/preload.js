@@ -27,6 +27,10 @@ contextBridge.exposeInMainWorld('navio', {
   // Browser automation
   browserAction: (params) => ipcRenderer.invoke('browser-action', params),
 
+  // Browser import
+  detectBrowsers: () => ipcRenderer.invoke('detect-browsers'),
+  importBookmarks: (browserPath) => ipcRenderer.invoke('import-bookmarks', browserPath),
+
   // Downloads
   getDownloadsPath: () => ipcRenderer.invoke('get-downloads-path')
 });

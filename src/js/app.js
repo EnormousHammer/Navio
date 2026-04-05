@@ -6,7 +6,6 @@
 class NavioApp {
   constructor() {
     this.config = {};
-    this.sidebarCollapsed = false;
     this.tabStripHidden = false;
     this.init();
   }
@@ -19,11 +18,25 @@ class NavioApp {
     this.bindWindowControls();
     this.bindNavigation();
     this.bindShortcuts();
-    this.bindSidebar();
     this.bindTabStrip();
     this.bindNewTabPage();
 
-    // Create initial tab
+    const isFirstRun = await Onboarding.checkFirstRun();
+    if (!isFirstRun) {
+      this.startBrowser();
+    }
+  }
+
+  onOnboardingComplete() {
+    this.config = {};
+    window.navio.getConfig().then(c => {
+      this.config = c;
+      this.applyTheme(this.config.theme || 'dark');
+    });
+    this.startBrowser();
+  }
+
+  startBrowser() {
     setTimeout(() => {
       if (typeof TabManager !== 'undefined') {
         TabManager.createTab();
@@ -136,9 +149,6 @@ class NavioApp {
         case 'toggle-assistant':
           AssistantManager.toggle();
           break;
-        case 'toggle-sidebar':
-          this.toggleSidebar();
-          break;
         case 'toggle-connectors':
           if (typeof ConnectorsManager !== 'undefined') {
             ConnectorsManager.toggleHub();
@@ -161,18 +171,6 @@ class NavioApp {
         document.getElementById('url-input').focus();
       }
     });
-  }
-
-  bindSidebar() {
-    document.getElementById('btn-sidebar-toggle').addEventListener('click', () => {
-      this.toggleSidebar();
-    });
-  }
-
-  toggleSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    this.sidebarCollapsed = !this.sidebarCollapsed;
-    sidebar.classList.toggle('collapsed', this.sidebarCollapsed);
   }
 
   bindTabStrip() {
