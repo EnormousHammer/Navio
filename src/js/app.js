@@ -14,6 +14,7 @@ class NavioApp {
     this.config = await window.navio.getConfig();
 
     this.applyTheme(this.config.theme || 'dark');
+    this.applyLayoutFromConfig(this.config);
     this.bindThemeToggle();
     this.bindWindowControls();
     this.bindNavigation();
@@ -32,13 +33,20 @@ class NavioApp {
     window.navio.getConfig().then(c => {
       this.config = c;
       this.applyTheme(this.config.theme || 'dark');
+      this.applyLayoutFromConfig(this.config);
     });
     this.startBrowser();
   }
 
   startBrowser() {
     setTimeout(() => {
-      if (typeof TabManager !== 'undefined') {
+      if (typeof TabManager === 'undefined') return;
+      const mode = this.config.startupMode || 'new-tab';
+      if (mode === 'homepage') {
+        const hp = (this.config.homepage || 'https://www.google.com').trim() || 'https://www.google.com';
+        const url = this.resolveNavigationInput(hp) || hp;
+        TabManager.createTab(url);
+      } else {
         TabManager.createTab();
       }
     }, 100);
@@ -47,6 +55,13 @@ class NavioApp {
   applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     document.body.setAttribute('data-theme', theme);
+  }
+
+  applyLayoutFromConfig(config) {
+    const raw = config && config.assistantWidth;
+    const n = typeof raw === 'number' ? raw : parseInt(raw, 10);
+    const w = Number.isFinite(n) ? Math.min(560, Math.max(300, n)) : 420;
+    document.documentElement.style.setProperty('--assistant-width', `${w}px`);
   }
 
   bindThemeToggle() {
@@ -114,24 +129,41 @@ class NavioApp {
     });
   }
 
-  navigateTo(input) {
-    if (!input) return;
+  resolveNavigationInput(raw) {
+    const input = (raw || '').trim();
+    if (!input) return null;
 
-    let url;
-    if (input.match(/^https?:\/\//)) {
-      url = input;
-    } else if (input.match(/^[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}/)) {
-      url = 'https://' + input;
-    } else {
-      const searchEngine = this.config.searchEngine || 'https://www.google.com/search?q=';
-      url = searchEngine + encodeURIComponent(input);
+    if (/^https?:\/\//i.test(input)) return input;
+
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(input)) return input;
+
+    if (/^(localhost|127\.0\.0\.1)(:\d+)?(\/.*)?$/i.test(input)) {
+      return 'http://' + input.replace(/^\/*/, '');
     }
+
+    if (/^(\d{1,3}\.){3}\d{1,3}(:\d+)?(\/.*)?$/.test(input)) {
+      return 'http://' + input;
+    }
+
+    if (/^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?)+(:\d+)?(\/.*)?$/.test(input)) {
+      return 'https://' + input;
+    }
+
+    const searchEngine = this.config.searchEngine || 'https://www.google.com/search?q=';
+    return searchEngine + encodeURIComponent(input);
+  }
+
+  navigateTo(input) {
+    const url = this.resolveNavigationInput(input);
+    if (!url || typeof TabManager === 'undefined') return;
 
     const wv = TabManager.getActiveWebview();
-    if (wv) {
-      wv.loadURL(url);
-      TabManager.hideNewTabPage();
+    if (!wv) {
+      TabManager.createTab(url);
+      return;
     }
+
+    TabManager.navigateActive(url);
   }
 
   bindShortcuts() {
@@ -198,8 +230,7 @@ class NavioApp {
     });
 
     document.querySelectorAll('.ntp-shortcut').forEach((shortcut) => {
-      shortcut.addEventListener('click', (e) => {
-        e.preventDefault();
+      shortcut.addEventListener('click', () => {
         const url = shortcut.getAttribute('data-url');
         if (url) this.navigateTo(url);
       });

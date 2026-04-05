@@ -20,7 +20,10 @@ function loadConfig() {
     searchEngine: 'https://www.google.com/search?q=',
     homepage: 'https://www.google.com',
     sidebarWidth: 240,
-    assistantWidth: 400
+    assistantWidth: 420,
+    startupMode: 'new-tab',
+    defaultZoom: 1,
+    aiIncludePageContext: true
   };
 }
 
@@ -89,6 +92,18 @@ ipcMain.handle('save-config', (event, config) => {
     nativeTheme.themeSource = config.theme === 'light' ? 'light' : 'dark';
   }
   return true;
+});
+
+ipcMain.handle('clear-browsing-data', async () => {
+  try {
+    const ses = session.fromPartition('persist:navio');
+    await ses.clearStorageData({
+      storages: ['cookies', 'filesystem', 'indexdb', 'localstorage', 'shadercache', 'websql', 'serviceworkers', 'cachestorage']
+    });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 });
 
 // AI API proxy - routes through main process for security

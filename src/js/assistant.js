@@ -150,7 +150,7 @@ PERSONALITY:
     const messages = [{ role: 'system', content: this.systemPrompt }];
 
     // Add page context if available and not already in the quick action prompt
-    if (!isQuickAction) {
+    if (!isQuickAction && config.aiIncludePageContext !== false) {
       const pageContent = await TabManager.getActivePageContent();
       if (pageContent && !pageContent.error && pageContent.url) {
         const contextMsg = `[Current page context]\nTitle: ${pageContent.title}\nURL: ${pageContent.url}\nDescription: ${pageContent.description || 'N/A'}\n\nPage headings: ${pageContent.headings?.map(h => `${h.level}: ${h.text}`).join(', ') || 'None'}\n\nPage content (first 6000 chars):\n${pageContent.text?.substring(0, 6000) || 'Unable to extract'}`;

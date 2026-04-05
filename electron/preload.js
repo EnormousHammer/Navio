@@ -32,5 +32,7 @@ contextBridge.exposeInMainWorld('navio', {
   importBookmarks: (browserPath) => ipcRenderer.invoke('import-bookmarks', browserPath),
 
   // Downloads
-  getDownloadsPath: () => ipcRenderer.invoke('get-downloads-path')
+  getDownloadsPath: () => ipcRenderer.invoke('get-downloads-path'),
+
+  clearBrowsingData: () => ipcRenderer.invoke('clear-browsing-data')
 });

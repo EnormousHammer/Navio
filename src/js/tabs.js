@@ -128,6 +128,38 @@ class TabManagerClass {
       this.updateTabUI(tab);
       App.showLoading(false);
     });
+
+    wv.addEventListener('did-finish-load', () => {
+      this.applyZoomToWebview(wv);
+    });
+  }
+
+  applyZoomToWebview(wv) {
+    if (!wv) return;
+    const z = typeof App !== 'undefined' && App.config ? App.config.defaultZoom : 1;
+    const n = typeof z === 'number' ? z : parseFloat(z);
+    const factor = Number.isFinite(n) ? Math.min(3, Math.max(0.25, n)) : 1;
+    try {
+      wv.setZoomFactor(factor);
+    } catch (e) { /* webview may not be ready */ }
+  }
+
+  applyZoomFromConfig() {
+    this.tabs.forEach((t) => this.applyZoomToWebview(t.webview));
+  }
+
+  /** Hide new-tab overlay, set URL on tab, and load (fixes NTP + address bar navigation). */
+  navigateActive(resolvedUrl) {
+    const tab = this.getActiveTab();
+    if (!tab || !tab.webview) return false;
+    tab.url = resolvedUrl;
+    this.hideNewTabPage();
+    try {
+      tab.webview.loadURL(resolvedUrl);
+    } catch (err) {
+      console.error('navigateActive:', err);
+    }
+    return true;
   }
 
   switchToTab(id) {

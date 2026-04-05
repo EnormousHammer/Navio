@@ -9,25 +9,9 @@
 </head>
 <body data-theme="dark">
 
-  <!-- Title Bar -->
+  <!-- Title Bar (drag region only — no brand to save vertical space) -->
   <div id="titlebar">
-    <div class="titlebar-drag">
-      <div class="titlebar-brand">
-        <div class="navio-mark">
-          <svg viewBox="0 0 32 32" width="20" height="20">
-            <defs>
-              <linearGradient id="mark-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" style="stop-color:#00d4ff"/>
-                <stop offset="50%" style="stop-color:#7c3aed"/>
-                <stop offset="100%" style="stop-color:#f472b6"/>
-              </linearGradient>
-            </defs>
-            <path d="M16 2L4 28h6l6-16 6 16h6L16 2z" fill="url(#mark-grad)"/>
-          </svg>
-        </div>
-        <span class="brand-text">Navio</span>
-      </div>
-    </div>
+    <div class="titlebar-drag" aria-hidden="true"></div>
     <div class="titlebar-controls">
       <button class="theme-toggle-btn" id="btn-theme-toggle" title="Toggle theme">
         <svg class="icon-sun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -128,30 +112,30 @@
               <input type="text" id="ntp-search-input" placeholder="Search the web or ask Navio AI..." spellcheck="false" autocomplete="off">
             </div>
             <div class="ntp-shortcuts" id="ntp-shortcuts">
-              <a class="ntp-shortcut" data-url="https://www.google.com">
+              <button type="button" class="ntp-shortcut" data-url="https://www.google.com">
                 <div class="shortcut-icon si-google">G</div>
                 <span>Google</span>
-              </a>
-              <a class="ntp-shortcut" data-url="https://www.youtube.com">
+              </button>
+              <button type="button" class="ntp-shortcut" data-url="https://www.youtube.com">
                 <div class="shortcut-icon si-youtube">Y</div>
                 <span>YouTube</span>
-              </a>
-              <a class="ntp-shortcut" data-url="https://github.com">
+              </button>
+              <button type="button" class="ntp-shortcut" data-url="https://github.com">
                 <div class="shortcut-icon si-github">GH</div>
                 <span>GitHub</span>
-              </a>
-              <a class="ntp-shortcut" data-url="https://twitter.com">
+              </button>
+              <button type="button" class="ntp-shortcut" data-url="https://twitter.com">
                 <div class="shortcut-icon si-x">X</div>
                 <span>Twitter/X</span>
-              </a>
-              <a class="ntp-shortcut" data-url="https://reddit.com">
+              </button>
+              <button type="button" class="ntp-shortcut" data-url="https://reddit.com">
                 <div class="shortcut-icon si-reddit">R</div>
                 <span>Reddit</span>
-              </a>
-              <a class="ntp-shortcut" data-url="https://chat.openai.com">
+              </button>
+              <button type="button" class="ntp-shortcut" data-url="https://chat.openai.com">
                 <div class="shortcut-icon si-ai">AI</div>
                 <span>ChatGPT</span>
-              </a>
+              </button>
             </div>
             <div class="ntp-tip">
               <div class="tip-glow"></div>
@@ -277,118 +261,232 @@
 
   <!-- Settings Modal -->
   <div id="settings-modal" class="modal-overlay">
-    <div class="modal">
+    <div class="modal modal-settings">
       <div class="modal-header">
         <h2>Settings</h2>
-        <button class="icon-btn" id="btn-close-settings">
+        <button type="button" class="icon-btn" id="btn-close-settings" aria-label="Close settings">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
-      <div class="modal-body">
-        <div class="settings-section">
-          <h3>AI Configuration</h3>
-          <div class="setting-row">
-            <label for="setting-provider">Provider</label>
-            <select id="setting-provider">
-              <option value="openai">OpenAI (GPT)</option>
-              <option value="anthropic">Anthropic (Claude)</option>
-              <option value="google">Google (Gemini)</option>
-              <option value="custom">Custom Endpoint</option>
-            </select>
-          </div>
-          <div class="setting-row">
-            <label for="setting-api-key">API Key</label>
-            <div class="input-with-toggle">
-              <input type="password" id="setting-api-key" placeholder="Enter your API key...">
-              <button class="icon-btn toggle-visibility" id="btn-toggle-key">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              </button>
+      <div class="modal-body settings-modal-body">
+        <nav class="settings-nav" id="settings-nav" aria-label="Settings sections">
+          <button type="button" class="settings-nav-item active" data-panel="general" aria-current="page">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            <span>General</span>
+          </button>
+          <button type="button" class="settings-nav-item" data-panel="ai">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 1 7 7v1a7 7 0 0 1-14 0V9a7 7 0 0 1 7-7z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/></svg>
+            <span>AI</span>
+          </button>
+          <button type="button" class="settings-nav-item" data-panel="appearance">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+            <span>Appearance</span>
+          </button>
+          <button type="button" class="settings-nav-item" data-panel="browser">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            <span>Browser</span>
+          </button>
+          <button type="button" class="settings-nav-item" data-panel="privacy">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span>Privacy</span>
+          </button>
+          <button type="button" class="settings-nav-item" data-panel="about">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span>About</span>
+          </button>
+        </nav>
+        <div class="settings-panels">
+          <div class="settings-panel active" id="settings-panel-general" role="tabpanel">
+            <div class="settings-section">
+              <h3>Startup</h3>
+              <div class="setting-row">
+                <label for="setting-startup-mode">When the browser opens</label>
+                <select id="setting-startup-mode">
+                  <option value="new-tab">New tab page</option>
+                  <option value="homepage">Homepage (from Browser settings)</option>
+                </select>
+              </div>
+            </div>
+            <div class="settings-section">
+              <h3>Display</h3>
+              <div class="setting-row">
+                <label for="setting-default-zoom">Default page zoom</label>
+                <select id="setting-default-zoom">
+                  <option value="0.75">75%</option>
+                  <option value="0.9">90%</option>
+                  <option value="1">100%</option>
+                  <option value="1.1">110%</option>
+                  <option value="1.25">125%</option>
+                </select>
+              </div>
+              <p class="settings-inline-hint">Applies to web pages in tabs after you save. Current tabs reload or navigate to pick up the change.</p>
+            </div>
+            <div class="settings-section">
+              <h3>AI assistant</h3>
+              <label class="setting-toggle-row">
+                <input type="checkbox" id="setting-ai-page-context" checked>
+                <span>Include current page title and content in chat requests</span>
+              </label>
+              <p class="settings-inline-hint">Turn off if you want the model to answer only from your message, without automatic page context (quick actions still use the page).</p>
             </div>
           </div>
-          <div class="setting-row">
-            <label for="setting-model">Model</label>
-            <select id="setting-model">
-              <optgroup label="OpenAI">
-                <option value="gpt-5.4">GPT-5.4</option>
-                <option value="gpt-5.4-mini">GPT-5.4 Mini</option>
-                <option value="gpt-5.4-nano">GPT-5.4 Nano</option>
-              </optgroup>
-              <optgroup label="Anthropic">
-                <option value="claude-opus-4.6">Claude Opus 4.6</option>
-                <option value="claude-sonnet-4.6">Claude Sonnet 4.6</option>
-                <option value="claude-haiku-4.5">Claude Haiku 4.5</option>
-              </optgroup>
-              <optgroup label="Google">
-                <option value="gemini-3.1-pro">Gemini 3.1 Pro</option>
-                <option value="gemini-3-flash">Gemini 3 Flash</option>
-                <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite</option>
-              </optgroup>
-            </select>
-          </div>
-          <div class="setting-row" id="custom-endpoint-row" style="display:none">
-            <label for="setting-endpoint">Custom Endpoint</label>
-            <input type="text" id="setting-endpoint" placeholder="https://your-endpoint.com/v1/chat/completions">
-          </div>
-        </div>
 
-        <div class="settings-section">
-          <h3>Appearance</h3>
-          <div class="setting-row">
-            <label>Theme</label>
-            <div class="theme-option-group" id="theme-options">
-              <button class="theme-option" data-theme="dark">
-                <div class="theme-preview theme-preview-dark"></div>
-                <span>Dark</span>
-              </button>
-              <button class="theme-option" data-theme="light">
-                <div class="theme-preview theme-preview-light"></div>
-                <span>Light</span>
-              </button>
+          <div class="settings-panel" id="settings-panel-ai" role="tabpanel">
+            <div class="settings-section">
+              <h3>Model &amp; provider</h3>
+              <div class="setting-row">
+                <label for="setting-provider">Provider</label>
+                <select id="setting-provider">
+                  <option value="openai">OpenAI (GPT)</option>
+                  <option value="anthropic">Anthropic (Claude)</option>
+                  <option value="google">Google (Gemini)</option>
+                  <option value="custom">Custom Endpoint</option>
+                </select>
+              </div>
+              <p class="settings-inline-hint" id="setting-provider-hint"></p>
+              <div class="setting-row">
+                <label for="setting-api-key">API Key</label>
+                <div class="input-with-toggle">
+                  <input type="password" id="setting-api-key" placeholder="Enter your API key..." autocomplete="off" spellcheck="false">
+                  <button type="button" class="icon-btn toggle-visibility" id="btn-toggle-key" title="Show or hide key" aria-label="Show or hide key">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="setting-row">
+                <label for="setting-model">Model</label>
+                <select id="setting-model">
+                  <optgroup label="OpenAI">
+                    <option value="gpt-5.4">GPT-5.4</option>
+                    <option value="gpt-5.4-mini">GPT-5.4 Mini</option>
+                    <option value="gpt-5.4-nano">GPT-5.4 Nano</option>
+                  </optgroup>
+                  <optgroup label="Anthropic">
+                    <option value="claude-opus-4.6">Claude Opus 4.6</option>
+                    <option value="claude-sonnet-4.6">Claude Sonnet 4.6</option>
+                    <option value="claude-haiku-4.5">Claude Haiku 4.5</option>
+                  </optgroup>
+                  <optgroup label="Google">
+                    <option value="gemini-3.1-pro">Gemini 3.1 Pro</option>
+                    <option value="gemini-3-flash">Gemini 3 Flash</option>
+                    <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite</option>
+                  </optgroup>
+                </select>
+              </div>
+              <div class="setting-row" id="custom-endpoint-row" style="display:none">
+                <label for="setting-endpoint">Custom Endpoint</label>
+                <input type="text" id="setting-endpoint" placeholder="https://your-endpoint.com/v1/chat/completions" spellcheck="false" autocomplete="off">
+              </div>
             </div>
           </div>
-        </div>
 
-        <div class="settings-section">
-          <h3>Browser</h3>
-          <div class="setting-row">
-            <label for="setting-search-engine">Search Engine</label>
-            <select id="setting-search-engine">
-              <option value="https://www.google.com/search?q=">Google</option>
-              <option value="https://duckduckgo.com/?q=">DuckDuckGo</option>
-              <option value="https://www.bing.com/search?q=">Bing</option>
-              <option value="https://search.brave.com/search?q=">Brave Search</option>
-            </select>
-          </div>
-          <div class="setting-row">
-            <label for="setting-homepage">Homepage</label>
-            <input type="text" id="setting-homepage" placeholder="https://www.google.com">
-          </div>
-        </div>
-
-        <div class="settings-section about-section">
-          <h3>About</h3>
-          <div class="about-card">
-            <div class="about-logo">
-              <svg viewBox="0 0 32 32" width="28" height="28">
-                <defs>
-                  <linearGradient id="about-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" style="stop-color:#00d4ff"/>
-                    <stop offset="100%" style="stop-color:#7c3aed"/>
-                  </linearGradient>
-                </defs>
-                <path d="M16 2L4 28h6l6-16 6 16h6L16 2z" fill="url(#about-grad)"/>
-              </svg>
+          <div class="settings-panel" id="settings-panel-appearance" role="tabpanel">
+            <div class="settings-section">
+              <h3>Theme</h3>
+              <div class="setting-row">
+                <label>Color mode</label>
+                <div class="theme-option-group" id="theme-options">
+                  <button type="button" class="theme-option" data-theme="dark">
+                    <div class="theme-preview theme-preview-dark"></div>
+                    <span>Dark</span>
+                  </button>
+                  <button type="button" class="theme-option" data-theme="light">
+                    <div class="theme-preview theme-preview-light"></div>
+                    <span>Light</span>
+                  </button>
+                </div>
+              </div>
             </div>
-            <div>
-              <strong>Navio</strong> v1.0.0<br>
-              <span class="text-muted">Futuristic AI-powered browser</span>
+            <div class="settings-section">
+              <h3>Layout</h3>
+              <div class="setting-row setting-row-range">
+                <div class="setting-range-header">
+                  <label for="setting-assistant-width">AI assistant panel width</label>
+                  <span class="setting-range-value" id="setting-assistant-width-value">420</span>
+                </div>
+                <input type="range" id="setting-assistant-width" min="300" max="560" step="20" value="420" aria-valuetext="">
+              </div>
+              <p class="settings-inline-hint">Applied when you save. The panel uses this width while open.</p>
+            </div>
+          </div>
+
+          <div class="settings-panel" id="settings-panel-browser" role="tabpanel">
+            <div class="settings-section">
+              <h3>Navigation</h3>
+              <div class="setting-row">
+                <label for="setting-search-engine">Default search engine</label>
+                <select id="setting-search-engine">
+                  <option value="https://www.google.com/search?q=">Google</option>
+                  <option value="https://duckduckgo.com/?q=">DuckDuckGo</option>
+                  <option value="https://www.bing.com/search?q=">Bing</option>
+                  <option value="https://search.brave.com/search?q=">Brave Search</option>
+                </select>
+              </div>
+              <div class="setting-row">
+                <label for="setting-homepage">Homepage</label>
+                <input type="text" id="setting-homepage" placeholder="https://www.google.com" spellcheck="false" autocomplete="off">
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-panel" id="settings-panel-privacy" role="tabpanel">
+            <div class="settings-section">
+              <h3>Your data</h3>
+              <div class="settings-info-box">
+                <p><strong>API key.</strong> Stored only in your local profile file on this device (via the app’s main process). It is not sent to Navio’s servers—this app does not operate cloud accounts for keys.</p>
+                <p><strong>AI requests.</strong> When you chat with the assistant, messages and optional page context are sent from this app to the provider you selected (OpenAI, Anthropic, Google, or your custom endpoint), subject to that provider’s terms and privacy policy.</p>
+                <p><strong>Config file.</strong> Preferences are saved as JSON in the application user data folder.</p>
+              </div>
+              <div class="setting-row setting-row-actions">
+                <button type="button" class="btn btn-secondary" id="btn-clear-api-key">Clear API key field</button>
+                <p class="settings-inline-hint">Clears the key in this form and switches to the AI tab. Click <strong>Save</strong> to remove it from your local config file.</p>
+              </div>
+              <div class="settings-section privacy-site-data">
+                <h3>Site data</h3>
+                <p class="settings-inline-hint" style="margin-bottom:12px">Clears cookies, cache, and local storage for sites opened in this browser. Signed-in sessions will be logged out.</p>
+                <button type="button" class="btn btn-secondary" id="btn-clear-site-data">Clear browsing data</button>
+                <p class="settings-inline-hint" id="clear-site-data-status" style="margin-top:10px;margin-bottom:0"></p>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-panel" id="settings-panel-about" role="tabpanel">
+            <div class="settings-section about-section">
+              <h3>Navio</h3>
+              <div class="about-card">
+                <div class="about-logo">
+                  <svg viewBox="0 0 32 32" width="28" height="28">
+                    <defs>
+                      <linearGradient id="about-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#00d4ff"/>
+                        <stop offset="100%" style="stop-color:#7c3aed"/>
+                      </linearGradient>
+                    </defs>
+                    <path d="M16 2L4 28h6l6-16 6 16h6L16 2z" fill="url(#about-grad)"/>
+                  </svg>
+                </div>
+                <div>
+                  <strong>Navio</strong> v1.0.0<br>
+                  <span class="text-muted">Futuristic AI-powered browser</span>
+                </div>
+              </div>
+            </div>
+            <div class="settings-section">
+              <h3>Keyboard shortcuts</h3>
+              <ul class="settings-kbd-list">
+                <li><kbd>Ctrl</kbd>+<kbd>T</kbd> New tab</li>
+                <li><kbd>Ctrl</kbd>+<kbd>W</kbd> Close tab</li>
+                <li><kbd>Ctrl</kbd>+<kbd>L</kbd> Focus address bar</li>
+                <li><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd> Toggle AI assistant</li>
+                <li><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> Connectors hub</li>
+              </ul>
             </div>
           </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" id="btn-cancel-settings">Cancel</button>
-        <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
+        <button type="button" class="btn btn-secondary" id="btn-cancel-settings">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btn-save-settings">Save</button>
       </div>
     </div>
   </div>
