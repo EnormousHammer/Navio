@@ -16,7 +16,8 @@ class SettingsManagerClass {
       endpointRow: document.getElementById('custom-endpoint-row'),
       searchEngine: document.getElementById('setting-search-engine'),
       homepage: document.getElementById('setting-homepage'),
-      toggleKey: document.getElementById('btn-toggle-key')
+      toggleKey: document.getElementById('btn-toggle-key'),
+      themeOptions: document.getElementById('theme-options')
     };
 
     this.bindEvents();
@@ -47,6 +48,18 @@ class SettingsManagerClass {
       input.type = input.type === 'password' ? 'text' : 'password';
     });
 
+    // Theme option buttons
+    this.elements.themeOptions.querySelectorAll('.theme-option').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.elements.themeOptions.querySelectorAll('.theme-option').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.selectedTheme = btn.dataset.theme;
+        if (typeof App !== 'undefined') {
+          App.applyTheme(this.selectedTheme);
+        }
+      });
+    });
+
     // ESC to close
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.modal.classList.contains('visible')) {
@@ -70,6 +83,11 @@ class SettingsManagerClass {
 
     this.elements.endpointRow.style.display =
       this.config.aiProvider === 'custom' ? 'block' : 'none';
+
+    this.selectedTheme = this.config.theme || 'dark';
+    this.elements.themeOptions.querySelectorAll('.theme-option').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.theme === this.selectedTheme);
+    });
 
     this.updateModelOptions();
   }
@@ -121,15 +139,16 @@ class SettingsManagerClass {
       aiModel: this.elements.model.value,
       customEndpoint: this.elements.endpoint.value.trim(),
       searchEngine: this.elements.searchEngine.value,
-      homepage: this.elements.homepage.value.trim() || 'https://www.google.com'
+      homepage: this.elements.homepage.value.trim() || 'https://www.google.com',
+      theme: this.selectedTheme || 'dark'
     };
 
     await window.navio.saveConfig(newConfig);
     this.config = newConfig;
 
-    // Update app config reference
     if (typeof App !== 'undefined') {
       App.config = newConfig;
+      App.applyTheme(newConfig.theme);
     }
 
     this.close();

@@ -14,6 +14,13 @@ class TabManagerClass {
     this.newTabPage = document.getElementById('new-tab-page');
 
     document.getElementById('btn-new-tab').addEventListener('click', () => this.createTab());
+
+    this.tabListEl.addEventListener('wheel', (e) => {
+      if (e.deltaY !== 0) {
+        e.preventDefault();
+        this.tabListEl.scrollLeft += e.deltaY;
+      }
+    }, { passive: false });
   }
 
   createTab(url = null) {
@@ -212,11 +219,11 @@ class TabManagerClass {
 
     el.innerHTML = `
       <div class="tab-favicon">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>
       </div>
       <span class="tab-title">${this.escapeHtml(tab.title)}</span>
       <button class="tab-close" title="Close tab">
-        <svg width="10" height="10" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.2"/></svg>
+        <svg width="9" height="9" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.5"/></svg>
       </button>
     `;
 
@@ -232,6 +239,10 @@ class TabManagerClass {
     });
 
     this.tabListEl.appendChild(el);
+
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    });
   }
 
   updateTabUI(tab) {
@@ -250,7 +261,7 @@ class TabManagerClass {
     if (tab.loading) {
       faviconEl.innerHTML = '';
     } else if (!tab.favicon) {
-      faviconEl.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>`;
+      faviconEl.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>`;
     }
   }
 

@@ -33,7 +33,9 @@ function saveConfig(config) {
 }
 
 function createMainWindow() {
-  nativeTheme.themeSource = 'dark';
+  const config = loadConfig();
+  const isDark = config.theme !== 'light';
+  nativeTheme.themeSource = isDark ? 'dark' : 'light';
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -42,7 +44,7 @@ function createMainWindow() {
     minHeight: 600,
     frame: false,
     titleBarStyle: 'hidden',
-    backgroundColor: '#0a0a0f',
+    backgroundColor: isDark ? '#08080e' : '#f4f5f7',
     icon: path.join(__dirname, '..', 'src', 'assets', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -83,6 +85,9 @@ ipcMain.on('window-close', () => mainWindow?.close());
 ipcMain.handle('get-config', () => loadConfig());
 ipcMain.handle('save-config', (event, config) => {
   saveConfig(config);
+  if (config.theme) {
+    nativeTheme.themeSource = config.theme === 'light' ? 'light' : 'dark';
+  }
   return true;
 });
 
@@ -298,6 +303,9 @@ app.whenReady().then(() => {
   });
   globalShortcut.register('CommandOrControl+Shift+S', () => {
     mainWindow?.webContents.send('shortcut', 'toggle-sidebar');
+  });
+  globalShortcut.register('CommandOrControl+Shift+C', () => {
+    mainWindow?.webContents.send('shortcut', 'toggle-connectors');
   });
 });
 

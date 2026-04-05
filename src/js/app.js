@@ -7,22 +7,21 @@ class NavioApp {
   constructor() {
     this.config = {};
     this.sidebarCollapsed = false;
+    this.tabStripHidden = false;
     this.init();
   }
 
   async init() {
     this.config = await window.navio.getConfig();
 
+    this.applyTheme(this.config.theme || 'dark');
+    this.bindThemeToggle();
     this.bindWindowControls();
     this.bindNavigation();
     this.bindShortcuts();
     this.bindSidebar();
+    this.bindTabStrip();
     this.bindNewTabPage();
-
-    // Initialize sub-modules (they're loaded via separate script tags)
-    window.addEventListener('DOMContentLoaded', () => {
-      // Tabs, Assistant, and Settings modules self-initialize
-    });
 
     // Create initial tab
     setTimeout(() => {
@@ -30,6 +29,25 @@ class NavioApp {
         TabManager.createTab();
       }
     }, 100);
+  }
+
+  applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    document.body.setAttribute('data-theme', theme);
+  }
+
+  bindThemeToggle() {
+    document.getElementById('btn-theme-toggle').addEventListener('click', () => {
+      this.toggleTheme();
+    });
+  }
+
+  async toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme') || 'dark';
+    const next = current === 'dark' ? 'light' : 'dark';
+    this.applyTheme(next);
+    this.config.theme = next;
+    await window.navio.saveConfig(this.config);
   }
 
   bindWindowControls() {
@@ -121,6 +139,11 @@ class NavioApp {
         case 'toggle-sidebar':
           this.toggleSidebar();
           break;
+        case 'toggle-connectors':
+          if (typeof ConnectorsManager !== 'undefined') {
+            ConnectorsManager.toggleHub();
+          }
+          break;
       }
     });
 
@@ -150,6 +173,20 @@ class NavioApp {
     const sidebar = document.getElementById('sidebar');
     this.sidebarCollapsed = !this.sidebarCollapsed;
     sidebar.classList.toggle('collapsed', this.sidebarCollapsed);
+  }
+
+  bindTabStrip() {
+    document.getElementById('btn-tabstrip-toggle').addEventListener('click', () => {
+      this.toggleTabStrip();
+    });
+    document.getElementById('btn-tabstrip-show').addEventListener('click', () => {
+      this.toggleTabStrip();
+    });
+  }
+
+  toggleTabStrip() {
+    this.tabStripHidden = !this.tabStripHidden;
+    document.body.classList.toggle('tabstrip-hidden', this.tabStripHidden);
   }
 
   bindNewTabPage() {
