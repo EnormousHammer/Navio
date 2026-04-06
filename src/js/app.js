@@ -46,6 +46,7 @@ class NavioApp {
   startBrowser() {
     setTimeout(() => {
       if (typeof TabManager === 'undefined') return;
+      this._maybeProactiveTip();
       const mode = this.config.startupMode || 'new-tab';
       if (mode === 'homepage') {
         const hp = (this.config.homepage || 'https://www.google.com').trim() || 'https://www.google.com';
@@ -102,7 +103,18 @@ class NavioApp {
     urlInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        this.navigateTo(urlInput.value.trim());
+        const raw = urlInput.value.trim();
+        if (raw.startsWith('?')) {
+          const q = raw.slice(1).trim();
+          AssistantManager.open();
+          if (q) {
+            AssistantManager.inputEl.value = q;
+            AssistantManager.sendMessage();
+          }
+          urlInput.blur();
+          return;
+        }
+        this.navigateTo(raw);
         urlInput.blur();
       }
       if (e.key === 'Escape') {
@@ -189,6 +201,11 @@ class NavioApp {
         case 'toggle-connectors':
           if (typeof ConnectorsManager !== 'undefined') {
             ConnectorsManager.toggleHub();
+          }
+          break;
+        case 'command-palette':
+          if (typeof CommandPalette !== 'undefined') {
+            CommandPalette.toggle();
           }
           break;
       }
@@ -280,6 +297,19 @@ class NavioApp {
 
   showLoading(show) {
     document.getElementById('loading-indicator').classList.toggle('visible', show);
+  }
+
+  async _maybeProactiveTip() {
+    try {
+      const cfg = this.config || (await window.navio.getConfig());
+      if (cfg.aiProactivity === 'off') return;
+      const r = await window.navio.proactiveTick({});
+      if (r.suggestion && r.suggestion.text && typeof AssistantManager !== 'undefined') {
+        AssistantManager.setReceipt(r.suggestion.text);
+      }
+    } catch {
+      /* ignore */
+    }
   }
 }
 

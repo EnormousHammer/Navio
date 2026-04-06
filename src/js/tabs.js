@@ -300,7 +300,11 @@ class TabManagerClass {
   updateContextTitle(tab) {
     const contextEl = document.getElementById('context-page-title');
     if (contextEl) {
-      contextEl.textContent = tab.url ? `${tab.title} - ${tab.url}` : 'New Tab';
+      let line = tab.url ? `${tab.title} - ${tab.url}` : 'New Tab';
+      if (typeof EmailAssistant !== 'undefined' && tab.url && EmailAssistant.isMailUrl(tab.url)) {
+        line += ' · Mail';
+      }
+      contextEl.textContent = line;
     }
   }
 
@@ -321,6 +325,21 @@ class TabManagerClass {
       console.error('Failed to extract page content:', err);
       return null;
     }
+  }
+
+  async runBrowserActionWithConfirm(action, params = {}) {
+    const wv = this.getActiveWebview();
+    if (!wv) return { error: 'No active tab' };
+    const summary = `${action} ${JSON.stringify(params)}`;
+    if (!window.confirm(`Allow browser action?\n\n${summary}`)) {
+      return { cancelled: true };
+    }
+    return window.navio.browserAction({
+      webContentsId: wv.getWebContentsId(),
+      action,
+      params,
+      userConfirmed: true
+    });
   }
 }
 

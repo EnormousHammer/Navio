@@ -72,11 +72,23 @@
         <div class="url-bar-container">
           <div class="url-bar">
             <svg class="url-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" id="url-input" placeholder="Search or enter URL..." spellcheck="false" autocomplete="off">
+            <input type="text" id="url-input" placeholder="Search, URL, or ?question for AI…" spellcheck="false" autocomplete="off">
             <div class="url-ssl" id="url-ssl" title="Connection info"></div>
           </div>
         </div>
         <div class="nav-actions">
+          <button class="nav-btn" id="btn-workspace" title="Workspace (projects &amp; tasks)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+          </button>
+          <button class="nav-btn" id="btn-reading-mode" title="Reading mode">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          </button>
+          <button class="nav-btn" id="btn-screenshot" title="Screenshot active tab">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          </button>
+          <button class="nav-btn" id="btn-devtools" title="Open DevTools (active tab)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </button>
           <button class="nav-btn" id="btn-connectors-full" title="Connectors Hub">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           </button>
@@ -97,6 +109,7 @@
 
       <!-- Browser Views Container -->
       <div id="browser-container">
+        <div id="reading-mode-pane" class="reading-mode-pane" aria-hidden="true"></div>
         <div id="new-tab-page" class="new-tab-page">
           <div class="ntp-content">
             <!-- Futuristic orb -->
@@ -179,6 +192,18 @@
       <div class="assistant-context" id="assistant-context">
         <div class="context-dot"></div>
         <span id="context-page-title">No page loaded</span>
+      </div>
+
+      <div class="assistant-toolbar">
+        <label class="sr-only" for="assistant-data-scope">AI data scope</label>
+        <select id="assistant-data-scope" title="What the assistant may send about the current page">
+          <option value="none">Context: none</option>
+          <option value="selection">Context: selection</option>
+          <option value="excerpt">Context: excerpt</option>
+          <option value="full">Context: extended</option>
+        </select>
+        <button type="button" class="btn btn-secondary" id="btn-pin-tab" style="font-size:11px;padding:4px 10px">Pin tab</button>
+        <span class="assistant-context-receipt" id="assistant-context-receipt"></span>
       </div>
 
       <div class="assistant-quick-actions">
@@ -265,6 +290,52 @@
     </div>
   </div>
 
+  <!-- Command palette (Ctrl+K) -->
+  <div id="command-palette-overlay" class="command-palette-overlay" aria-hidden="true">
+    <div class="command-palette" role="dialog" aria-label="Command palette">
+      <div class="command-palette-input-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="command-palette-input" class="command-palette-input" placeholder="Commands, tabs, or ? to ask AI…" autocomplete="off" spellcheck="false">
+      </div>
+      <div id="command-palette-list" class="command-palette-list"></div>
+      <div class="command-palette-hint"><kbd>↑</kbd><kbd>↓</kbd> navigate · <kbd>Enter</kbd> run · <kbd>Esc</kbd> close</div>
+    </div>
+  </div>
+
+  <!-- Workspace -->
+  <div id="workspace-overlay" class="workspace-overlay" aria-hidden="true">
+    <div class="workspace-panel">
+      <div class="workspace-header">
+        <h3 style="font-size:16px;margin:0">Workspace</h3>
+        <button type="button" class="icon-btn" id="workspace-close" title="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <div class="workspace-body" id="workspace-body">
+        <div class="workspace-section">
+          <h4>Quick capture</h4>
+          <textarea id="workspace-quick-note" rows="3" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-deep);color:inherit;font-family:inherit;font-size:13px" placeholder="Note tied to this tab…"></textarea>
+          <button type="button" class="btn btn-primary" id="workspace-save-note" style="margin-top:8px">Save note</button>
+        </div>
+        <div class="workspace-section">
+          <h4>Tasks</h4>
+          <div style="display:flex;gap:8px;margin-bottom:10px">
+            <input type="text" id="workspace-task-input" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg-deep);color:inherit" placeholder="New task">
+            <button type="button" class="btn btn-secondary" id="workspace-add-task">Add</button>
+          </div>
+          <button type="button" class="btn btn-secondary" id="workspace-draft-tasks" style="margin-bottom:12px;font-size:12px">Draft tasks from page (AI)</button>
+          <div id="workspace-task-list"></div>
+        </div>
+        <div class="workspace-section">
+          <h4>Projects</h4>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="workspace-project-input" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg-deep);color:inherit" placeholder="Project name">
+            <button type="button" class="btn btn-secondary" id="workspace-add-project">Add</button>
+          </div>
+          <div id="workspace-project-list" style="margin-top:10px;font-size:13px;color:var(--text-secondary)"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Settings Modal -->
   <div id="settings-modal" class="modal-overlay">
     <div class="modal modal-settings">
@@ -295,6 +366,10 @@
           <button type="button" class="settings-nav-item" data-panel="privacy">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             <span>Privacy</span>
+          </button>
+          <button type="button" class="settings-nav-item" data-panel="integrations">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+            <span>Integrations</span>
           </button>
           <button type="button" class="settings-nav-item" data-panel="about">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
@@ -384,6 +459,38 @@
                 <input type="text" id="setting-endpoint" placeholder="https://your-endpoint.com/v1/chat/completions" spellcheck="false" autocomplete="off">
               </div>
             </div>
+            <div class="settings-section">
+              <h3>Policy</h3>
+              <label class="setting-toggle-row">
+                <input type="checkbox" id="setting-ai-kill-switch">
+                <span>Turn off all AI requests (kill switch)</span>
+              </label>
+              <div class="setting-row">
+                <label for="setting-ai-data-scope">Default page context scope</label>
+                <select id="setting-ai-data-scope">
+                  <option value="none">None</option>
+                  <option value="selection">Selection only</option>
+                  <option value="excerpt">Excerpt (recommended)</option>
+                  <option value="full">Extended body text</option>
+                </select>
+              </div>
+              <label class="setting-toggle-row">
+                <input type="checkbox" id="setting-ai-redact" checked>
+                <span>Redact likely SSN / card patterns in context</span>
+              </label>
+              <label class="setting-toggle-row">
+                <input type="checkbox" id="setting-ai-stream" checked>
+                <span>Stream responses (OpenAI-compatible providers)</span>
+              </label>
+              <div class="setting-row">
+                <label for="setting-ai-proactivity">Proactive tips</label>
+                <select id="setting-ai-proactivity">
+                  <option value="off">Off</option>
+                  <option value="subtle">Subtle</option>
+                  <option value="active">Active</option>
+                </select>
+              </div>
+            </div>
           </div>
 
           <div class="settings-panel" id="settings-panel-appearance" role="tabpanel">
@@ -433,13 +540,19 @@
                 <input type="text" id="setting-homepage" placeholder="https://www.google.com" spellcheck="false" autocomplete="off">
               </div>
             </div>
+            <div class="settings-section">
+              <h3>Import (migration)</h3>
+              <p class="settings-inline-hint">Detect Chromium-based profiles and import bookmarks JSON-side (same as onboarding). Full extension migration is not available yet — see docs/EXTENSIONS.md.</p>
+              <button type="button" class="btn btn-secondary" id="btn-settings-import-scan">Scan browsers for import</button>
+              <p class="settings-inline-hint" id="settings-import-scan-status" style="margin-top:8px;margin-bottom:0"></p>
+            </div>
           </div>
 
           <div class="settings-panel" id="settings-panel-privacy" role="tabpanel">
             <div class="settings-section">
               <h3>Your data</h3>
               <div class="settings-info-box">
-                <p><strong>API key.</strong> Stored only in your local profile file on this device (via the app’s main process). It is not sent to Navio’s servers—this app does not operate cloud accounts for keys.</p>
+                <p><strong>API key.</strong> Stored on this device using OS-level encryption when available (Electron safeStorage), or a separate local file otherwise. It is not sent to Navio’s servers.</p>
                 <p><strong>AI requests.</strong> When you chat with the assistant, messages and optional page context are sent from this app to the provider you selected (OpenAI, Anthropic, Google, or your custom endpoint), subject to that provider’s terms and privacy policy.</p>
                 <p><strong>Config file.</strong> Preferences are saved as JSON in the application user data folder.</p>
               </div>
@@ -453,6 +566,46 @@
                 <button type="button" class="btn btn-secondary" id="btn-clear-site-data">Clear browsing data</button>
                 <p class="settings-inline-hint" id="clear-site-data-status" style="margin-top:10px;margin-bottom:0"></p>
               </div>
+              <div class="settings-section">
+                <h3>Diagnostics</h3>
+                <p class="settings-inline-hint" id="setting-memory-info" style="margin-bottom:10px"></p>
+                <button type="button" class="btn btn-secondary" id="btn-export-ledger">Export action ledger</button>
+                <p class="settings-inline-hint" id="ledger-export-status" style="margin-top:8px;margin-bottom:0"></p>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-panel" id="settings-panel-integrations" role="tabpanel">
+            <div class="settings-section">
+              <h3>Model Context Protocol (MCP)</h3>
+              <p class="settings-inline-hint">Stub host: enable to surface tool placeholders and ledger entries. Full MCP SDK wiring is a future release.</p>
+              <label class="setting-toggle-row">
+                <input type="checkbox" id="setting-mcp-enabled">
+                <span>Enable MCP integration (experimental)</span>
+              </label>
+              <p class="settings-inline-hint" id="setting-mcp-tools-hint" style="margin-top:8px"></p>
+            </div>
+            <div class="settings-section">
+              <h3>Sync</h3>
+              <label class="setting-toggle-row">
+                <input type="checkbox" id="setting-sync-enabled">
+                <span>Enable encrypted sync (placeholder — not connected)</span>
+              </label>
+            </div>
+            <div class="settings-section">
+              <h3>Extensions &amp; AI</h3>
+              <label class="setting-toggle-row">
+                <input type="checkbox" id="setting-extensions-ai">
+                <span>Allow extensions to use AI context (future; default off)</span>
+              </label>
+              <p class="settings-inline-hint">See docs/EXTENSIONS.md for the planned capability model.</p>
+            </div>
+            <div class="settings-section">
+              <h3>Forms</h3>
+              <label class="setting-toggle-row">
+                <input type="checkbox" id="setting-form-autofill" checked>
+                <span>Show form field hints from extracted page metadata in assistant</span>
+              </label>
             </div>
           </div>
 
@@ -485,6 +638,7 @@
                 <li><kbd>Ctrl</kbd>+<kbd>L</kbd> Focus address bar</li>
                 <li><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd> Toggle AI assistant</li>
                 <li><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> Connectors hub</li>
+                <li><kbd>Ctrl</kbd>+<kbd>K</kbd> Command palette</li>
               </ul>
             </div>
           </div>
@@ -667,9 +821,14 @@
 
   <script src="js/onboarding.js"></script>
   <script src="js/launch-intro.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/email-assistant.js"></script>
   <script src="js/tabs.js"></script>
   <script src="js/assistant.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/command-palette.js"></script>
+  <script src="js/workspace.js"></script>
+  <script src="js/reading-mode.js"></script>
+  <script src="js/screenshot-tool.js"></script>
   <script src="js/settings.js"></script>
   <script src="js/connectors.js"></script>
 </body>

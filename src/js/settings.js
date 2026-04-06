@@ -1,6 +1,5 @@
 /**
  * Navio Browser - Settings Manager
- * Category-based settings (major-browser style) + AI/privacy transparency
  */
 
 const PROVIDER_KEY_LINKS = {
@@ -35,10 +34,25 @@ class SettingsManagerClass {
       nav: document.getElementById('settings-nav'),
       clearApiKey: document.getElementById('btn-clear-api-key'),
       clearSiteData: document.getElementById('btn-clear-site-data'),
-      clearSiteDataStatus: document.getElementById('clear-site-data-status')
+      clearSiteDataStatus: document.getElementById('clear-site-data-status'),
+      aiKillSwitch: document.getElementById('setting-ai-kill-switch'),
+      aiDataScope: document.getElementById('setting-ai-data-scope'),
+      aiRedact: document.getElementById('setting-ai-redact'),
+      aiStream: document.getElementById('setting-ai-stream'),
+      aiProactivity: document.getElementById('setting-ai-proactivity'),
+      mcpEnabled: document.getElementById('setting-mcp-enabled'),
+      mcpToolsHint: document.getElementById('setting-mcp-tools-hint'),
+      syncEnabled: document.getElementById('setting-sync-enabled'),
+      extensionsAI: document.getElementById('setting-extensions-ai'),
+      formAutofill: document.getElementById('setting-form-autofill'),
+      memoryInfo: document.getElementById('setting-memory-info'),
+      exportLedger: document.getElementById('btn-export-ledger'),
+      ledgerStatus: document.getElementById('ledger-export-status'),
+      importScan: document.getElementById('btn-settings-import-scan'),
+      importScanStatus: document.getElementById('settings-import-scan-status')
     };
 
-    this.panelIds = ['general', 'ai', 'appearance', 'browser', 'privacy', 'about'];
+    this.panelIds = ['general', 'ai', 'appearance', 'browser', 'privacy', 'integrations', 'about'];
 
     this.bindEvents();
     this.loadConfig();
@@ -99,6 +113,38 @@ class SettingsManagerClass {
       }
     });
 
+    this.elements.importScan?.addEventListener('click', async () => {
+      const st = this.elements.importScanStatus;
+      if (st) st.textContent = 'Scanning…';
+      try {
+        const browsers = await window.navio.detectBrowsers();
+        if (!browsers.length) {
+          if (st) st.textContent = 'No supported browser bookmark files found.';
+          return;
+        }
+        const lines = browsers.map((b) => `${b.name}: ${b.bookmarkCount} bookmarks`).join('\n');
+        if (st) st.textContent = `Found:\n${lines}\nUse onboarding import or add bookmarks manually.`;
+      } catch (e) {
+        if (st) st.textContent = e.message || 'Scan failed.';
+      }
+    });
+
+    this.elements.exportLedger?.addEventListener('click', async () => {
+      const st = this.elements.ledgerStatus;
+      if (st) st.textContent = '';
+      try {
+        const text = await window.navio.ledgerExport();
+        if (!text) {
+          if (st) st.textContent = 'Ledger empty or unavailable.';
+          return;
+        }
+        await navigator.clipboard.writeText(text);
+        if (st) st.textContent = 'Ledger copied to clipboard.';
+      } catch (e) {
+        if (st) st.textContent = e.message || 'Export failed.';
+      }
+    });
+
     this.elements.nav.querySelectorAll('.settings-nav-item').forEach((btn) => {
       btn.addEventListener('click', () => this.showPanel(btn.dataset.panel));
     });
@@ -132,7 +178,7 @@ class SettingsManagerClass {
     const link = PROVIDER_KEY_LINKS[prov];
     if (!link) {
       el.innerHTML =
-        'Use an OpenAI-compatible <code>chat/completions</code> URL. Keys are stored only on this device.';
+        'Use an OpenAI-compatible <code>chat/completions</code> URL. Keys are stored with OS encryption when available.';
       return;
     }
     el.innerHTML = `<a href="#" data-external-href="${link.href}">${link.label}</a> — opens in a new tab.`;
@@ -159,7 +205,7 @@ class SettingsManagerClass {
     this.populateFields();
   }
 
-  populateFields() {
+  async populateFields() {
     this.elements.startupMode.value =
       this.config.startupMode === 'homepage' ? 'homepage' : 'new-tab';
 
@@ -168,10 +214,29 @@ class SettingsManagerClass {
     const allowed = ['0.75', '0.9', '1', '1.1', '1.25'];
     this.elements.defaultZoom.value = allowed.includes(zVal) ? zVal : '1';
 
-    this.elements.aiPageContext.checked = this.config.aiIncludePageContext !== false;
+    const scope = this.config.aiDataScope || (this.config.aiIncludePageContext === false ? 'none' : 'excerpt');
+    this.elements.aiPageContext.checked = scope !== 'none';
+    if (this.elements.aiDataScope) {
+      this.elements.aiDataScope.value = ['none', 'selection', 'excerpt', 'full'].includes(scope) ? scope : 'excerpt';
+    }
+    if (this.elements.aiKillSwitch) this.elements.aiKillSwitch.checked = !!this.config.aiKillSwitch;
+    if (this.elements.aiRedact) this.elements.aiRedact.checked = this.config.aiRedactPII !== false;
+    if (this.elements.aiStream) this.elements.aiStream.checked = this.config.aiStreamResponses !== false;
+    if (this.elements.aiProactivity) {
+      this.elements.aiProactivity.value = this.config.aiProactivity || 'off';
+    }
+    if (this.elements.mcpEnabled) this.elements.mcpEnabled.checked = !!this.config.mcpEnabled;
+    if (this.elements.syncEnabled) this.elements.syncEnabled.checked = !!this.config.syncEnabled;
+    if (this.elements.extensionsAI) this.elements.extensionsAI.checked = !!this.config.extensionsAllowAI;
+    if (this.elements.formAutofill) this.elements.formAutofill.checked = this.config.formAutofillAssist !== false;
 
     this.elements.provider.value = this.config.aiProvider || 'openai';
-    this.elements.apiKey.value = this.config.apiKey || '';
+    try {
+      const k = await window.navio.getApiKeyForSettings();
+      this.elements.apiKey.value = k || '';
+    } catch {
+      this.elements.apiKey.value = '';
+    }
     this.elements.model.value = this.config.aiModel || 'gpt-5.4';
     this.elements.endpoint.value = this.config.customEndpoint || '';
     this.elements.searchEngine.value = this.config.searchEngine || 'https://www.google.com/search?q=';
@@ -192,6 +257,36 @@ class SettingsManagerClass {
 
     this.updateModelOptions();
     this.updateProviderHint();
+    this.refreshMcpHint();
+    this.refreshMemoryInfo();
+  }
+
+  async refreshMemoryInfo() {
+    const el = this.elements.memoryInfo;
+    if (!el) return;
+    try {
+      const m = await window.navio.getMemoryInfo();
+      if (!m) {
+        el.textContent = '';
+        return;
+      }
+      const mb = (n) => (n / (1024 * 1024)).toFixed(1);
+      el.textContent = `Process memory (approx.): RSS ${mb(m.rss)} MB · Heap used ${mb(m.heapUsed)} MB`;
+    } catch {
+      el.textContent = '';
+    }
+  }
+
+  async refreshMcpHint() {
+    const el = this.elements.mcpToolsHint;
+    if (!el) return;
+    try {
+      const r = await window.navio.mcpConfig({ op: 'list-tools-stub' });
+      const n = (r.tools || []).length;
+      el.textContent = n ? `Stub tools visible: ${n}` : 'Enable MCP to list stub tools.';
+    } catch {
+      el.textContent = '';
+    }
   }
 
   updateModelOptions() {
@@ -225,6 +320,7 @@ class SettingsManagerClass {
     await this.loadConfig();
     this._openedConfig = JSON.parse(JSON.stringify(this.config));
     if (this.elements.clearSiteDataStatus) this.elements.clearSiteDataStatus.textContent = '';
+    if (this.elements.ledgerStatus) this.elements.ledgerStatus.textContent = '';
     this.showPanel('general');
     this.modal.classList.add('visible');
   }
@@ -253,11 +349,25 @@ class SettingsManagerClass {
     const zoomParsed = parseFloat(this.elements.defaultZoom.value);
     const defaultZoom = Number.isFinite(zoomParsed) ? zoomParsed : 1;
 
+    let aiDataScope = this.elements.aiDataScope ? this.elements.aiDataScope.value : (this.config.aiDataScope || 'excerpt');
+    if (!this.elements.aiPageContext.checked) aiDataScope = 'none';
+    else if (aiDataScope === 'none') aiDataScope = 'excerpt';
+
     const newConfig = {
       ...this.config,
       startupMode: this.elements.startupMode.value === 'homepage' ? 'homepage' : 'new-tab',
       defaultZoom,
-      aiIncludePageContext: this.elements.aiPageContext.checked,
+      aiIncludePageContext: aiDataScope !== 'none',
+      aiDataScope,
+      mcpServers: Array.isArray(this.config.mcpServers) ? this.config.mcpServers : [],
+      aiKillSwitch: !!(this.elements.aiKillSwitch && this.elements.aiKillSwitch.checked),
+      aiRedactPII: !!(this.elements.aiRedact && this.elements.aiRedact.checked),
+      aiStreamResponses: !!(this.elements.aiStream && this.elements.aiStream.checked),
+      aiProactivity: this.elements.aiProactivity ? this.elements.aiProactivity.value : 'off',
+      mcpEnabled: !!(this.elements.mcpEnabled && this.elements.mcpEnabled.checked),
+      syncEnabled: !!(this.elements.syncEnabled && this.elements.syncEnabled.checked),
+      extensionsAllowAI: !!(this.elements.extensionsAI && this.elements.extensionsAI.checked),
+      formAutofillAssist: !!(this.elements.formAutofill && this.elements.formAutofill.checked),
       aiProvider: this.elements.provider.value,
       apiKey: this.elements.apiKey.value.trim(),
       aiModel: this.elements.model.value,
@@ -269,16 +379,21 @@ class SettingsManagerClass {
     };
 
     await window.navio.saveConfig(newConfig);
-    this.config = newConfig;
+
+    this.config = { ...(await window.navio.getConfig()) };
 
     if (typeof App !== 'undefined') {
-      App.config = newConfig;
+      App.config = this.config;
       App.applyTheme(newConfig.theme);
       App.applyLayoutFromConfig(newConfig);
     }
 
     if (typeof TabManager !== 'undefined') {
       TabManager.applyZoomFromConfig();
+    }
+
+    if (typeof AssistantManager !== 'undefined') {
+      AssistantManager.syncScopeFromConfig();
     }
 
     this.close(false);
