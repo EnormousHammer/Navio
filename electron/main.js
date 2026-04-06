@@ -153,6 +153,7 @@ function createMainWindow() {
     mainWindow.show();
   });
 
+
   mainWindow.loadFile(path.join(__dirname, '..', 'src', 'index.html'));
 
   mainWindow.on('closed', () => {

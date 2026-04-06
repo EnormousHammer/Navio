@@ -22,9 +22,8 @@ class TabManagerClass {
       }
     }, { passive: false });
 
-    // Explicitly sync webview pixel dimensions whenever the container resizes.
-    // CSS percentage heights on <webview> elements are unreliable in Electron;
-    // explicit pixel values always work correctly.
+    // Belt-and-suspenders: explicitly set pixel dimensions on resize as well,
+    // since some Electron builds ignore CSS-only sizing on <webview>.
     this._containerObserver = new ResizeObserver(() => this._syncWebviewSizes());
     this._containerObserver.observe(this.browserContainer);
   }
@@ -73,6 +72,14 @@ class TabManagerClass {
     tab.webview = webview;
     this.browserContainer.appendChild(webview);
 
+    // Size the new webview immediately and synchronously so Electron has the
+    // correct viewport dimensions before dom-ready / loadURL fires.
+    const { width, height } = this.browserContainer.getBoundingClientRect();
+    if (width && height) {
+      webview.style.width  = width  + 'px';
+      webview.style.height = height + 'px';
+    }
+
     this.bindWebviewEvents(tab);
 
     this.tabs.push(tab);
@@ -93,9 +100,15 @@ class TabManagerClass {
   bindWebviewEvents(tab) {
     const wv = tab.webview;
 
-    // Mark webview ready and flush any pending navigation
+    // Sync size synchronously so Electron uses the correct viewport dimensions
+    // before the first loadURL call; the page must load into the right viewport.
     wv.addEventListener('dom-ready', () => {
       wv._domReady = true;
+      const { width, height } = this.browserContainer.getBoundingClientRect();
+      if (width && height) {
+        wv.style.width  = width  + 'px';
+        wv.style.height = height + 'px';
+      }
       if (wv._pendingUrl) {
         const url = wv._pendingUrl;
         wv._pendingUrl = null;
@@ -261,6 +274,10 @@ class TabManagerClass {
       const tabEl = document.getElementById(`tabitem-${tab.id}`);
       if (tabEl) tabEl.classList.toggle('active', isActive);
     });
+
+    // Re-sync sizes after toggling display on the active webview so it always
+    // fills the container flush to all four edges.
+    this._syncWebviewSizes();
 
     const activeTab = this.getActiveTab();
     if (activeTab) {

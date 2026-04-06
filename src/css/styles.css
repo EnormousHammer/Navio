@@ -733,12 +733,19 @@ body.tabstrip-hidden .tab-strip-show {
   position: absolute;
   top: 0;
   left: 0;
-  display: none;
-  /* width/height are set explicitly by JS (_syncWebviewSizes) because
-     CSS percentage heights on <webview> are unreliable in Electron */
+  right: 0;
+  bottom: 0;
+  /* visibility:hidden keeps the layout box intact so Electron always knows the
+     correct viewport size. display:none collapses the box to 0x0, which causes
+     pages to load at a zero-size viewport and never reflow to fill the screen. */
+  visibility: hidden;
+  pointer-events: none;
 }
 
-#browser-container webview.active { display: block; }
+#browser-container webview.active {
+  visibility: visible;
+  pointer-events: auto;
+}
 
 /* ============================================
    New Tab Page
@@ -753,6 +760,9 @@ body.tabstrip-hidden .tab-strip-show {
   justify-content: center;
   background: var(--bg-void);
   overflow: hidden;
+  /* Must sit above always-visible webviews (webviews appear later in DOM but
+     have no explicit z-index; giving NTP z-index:2 ensures it covers them). */
+  z-index: 2;
 }
 
 .new-tab-page.active { display: flex; }
