@@ -607,6 +607,7 @@ body.tabstrip-hidden .tab-strip-show {
 
 #navbar {
   height: var(--navbar-height);
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -716,22 +717,28 @@ body.tabstrip-hidden .tab-strip-show {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 #browser-container {
-  flex: 1;
+  flex: 1 1 0;
   position: relative;
   background: var(--bg-void);
+  min-height: 0;
+  overflow: hidden;
 }
 
 #browser-container webview {
   position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
+  top: 0;
+  left: 0;
   display: none;
+  /* width/height are set explicitly by JS (_syncWebviewSizes) because
+     CSS percentage heights on <webview> are unreliable in Electron */
 }
 
-#browser-container webview.active { display: flex; }
+#browser-container webview.active { display: block; }
 
 /* ============================================
    New Tab Page
@@ -2955,10 +2962,6 @@ body.onboarding-active #app {
   color: var(--text-tertiary);
   flex: 1 1 100%;
   line-height: 1.35;
-}
-
-#browser-container {
-  position: relative;
 }
 
 .reading-mode-pane {

@@ -52,6 +52,14 @@ contextBridge.exposeInMainWorld('navio', {
 
   getDownloadsPath: () => ipcRenderer.invoke('get-downloads-path'),
 
+  showWebviewContextMenu: (params) => ipcRenderer.invoke('show-webview-context-menu', params),
+
+  onOpenUrlInNewTab: (callback) => {
+    const handler = (_, url) => callback(url);
+    ipcRenderer.on('open-url-in-new-tab', handler);
+    return () => ipcRenderer.removeListener('open-url-in-new-tab', handler);
+  },
+
   clearBrowsingData: () => ipcRenderer.invoke('clear-browsing-data'),
 
   getIntroVideoUrl: () => ipcRenderer.invoke('get-intro-video-url')

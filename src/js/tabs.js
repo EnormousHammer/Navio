@@ -21,6 +21,23 @@ class TabManagerClass {
         this.tabListEl.scrollLeft += e.deltaY;
       }
     }, { passive: false });
+
+    // Explicitly sync webview pixel dimensions whenever the container resizes.
+    // CSS percentage heights on <webview> elements are unreliable in Electron;
+    // explicit pixel values always work correctly.
+    this._containerObserver = new ResizeObserver(() => this._syncWebviewSizes());
+    this._containerObserver.observe(this.browserContainer);
+  }
+
+  _syncWebviewSizes() {
+    const { width, height } = this.browserContainer.getBoundingClientRect();
+    if (!width || !height) return;
+    this.tabs.forEach(tab => {
+      if (tab.webview) {
+        tab.webview.style.width  = width  + 'px';
+        tab.webview.style.height = height + 'px';
+      }
+    });
   }
 
   createTab(url = null) {
@@ -34,16 +51,24 @@ class TabManagerClass {
       webview: null
     };
 
+    // Build a clean user-agent that doesn't expose Electron
+    const cleanUA = navigator.userAgent
+      .replace(/Electron\/\S+\s?/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
     // Create webview element
     const webview = document.createElement('webview');
     webview.setAttribute('id', `wv-${id}`);
     webview.setAttribute('allowpopups', '');
     webview.setAttribute('partition', 'persist:navio');
-    webview.setAttribute('useragent', navigator.userAgent.replace(/Electron\/\S+\s/, ''));
-
-    if (url) {
-      webview.setAttribute('src', url);
-    }
+    webview.setAttribute('useragent', cleanUA);
+    // Always set src="about:blank" so Electron starts the guest renderer
+    // immediately and fires dom-ready. Without this, dom-ready never fires
+    // and any pending URL gets stuck in the queue forever (deadlock).
+    webview.setAttribute('src', 'about:blank');
+    webview._domReady = false;
+    webview._pendingUrl = url || null;
 
     tab.webview = webview;
     this.browserContainer.appendChild(webview);
@@ -67,6 +92,16 @@ class TabManagerClass {
 
   bindWebviewEvents(tab) {
     const wv = tab.webview;
+
+    // Mark webview ready and flush any pending navigation
+    wv.addEventListener('dom-ready', () => {
+      wv._domReady = true;
+      if (wv._pendingUrl) {
+        const url = wv._pendingUrl;
+        wv._pendingUrl = null;
+        wv.loadURL(url).catch(err => console.warn('Pending loadURL failed:', err));
+      }
+    });
 
     wv.addEventListener('did-start-loading', () => {
       tab.loading = true;
@@ -101,9 +136,12 @@ class TabManagerClass {
     });
 
     wv.addEventListener('did-navigate', (e) => {
-      tab.url = e.url;
+      // Don't overwrite state for internal error pages loaded as data: URLs
+      if (!e.url.startsWith('data:')) {
+        tab.url = e.url;
+      }
       if (tab.id === this.activeTabId) {
-        App.updateUrlBar(e.url);
+        App.updateUrlBar(tab.url);
         App.updateNavigationButtons(wv);
         this.updateContextTitle(tab);
       }
@@ -123,15 +161,60 @@ class TabManagerClass {
     });
 
     wv.addEventListener('did-fail-load', (e) => {
-      if (e.errorCode === -3) return; // Aborted, ignore
+      if (e.errorCode === -3) return; // Aborted/cancelled, ignore
       tab.loading = false;
+      tab.title = 'Error';
       this.updateTabUI(tab);
       App.showLoading(false);
+      // Show an inline error page inside the webview
+      if (tab.id === this.activeTabId) {
+        const errHtml = this._buildErrorPage(e.errorDescription || 'Failed to load', tab.url);
+        wv.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errHtml)}`).catch(() => {});
+      }
     });
 
     wv.addEventListener('did-finish-load', () => {
       this.applyZoomToWebview(wv);
     });
+
+    wv.addEventListener('context-menu', (e) => {
+      e.preventDefault();
+      try {
+        const wcId = wv.getWebContentsId();
+        window.navio.showWebviewContextMenu({
+          webContentsId: wcId,
+          x: e.x,
+          y: e.y,
+          params: e.params || {}
+        });
+      } catch {/* ignore */}
+    });
+  }
+
+  _buildErrorPage(description, url) {
+    const safeUrl = url ? url.replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+    const safeDesc = (description || 'Unknown error').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+  body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;
+    background:#13131f;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#a3a3bc;}
+  .box{text-align:center;max-width:480px;padding:40px 24px;}
+  .icon{font-size:48px;margin-bottom:16px;opacity:.6;}
+  h1{font-size:22px;font-weight:700;color:#ececf4;margin:0 0 8px;}
+  p{font-size:14px;line-height:1.6;margin:0 0 24px;opacity:.7;}
+  .url{font-size:12px;word-break:break-all;padding:8px 12px;background:rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.08);border-radius:6px;margin-bottom:24px;opacity:.5;}
+  button{padding:10px 24px;background:linear-gradient(135deg,#00b4ff,#6366f1);border:none;
+    border-radius:8px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;}
+  button:hover{opacity:.9;}
+</style></head><body>
+<div class="box">
+  <div class="icon">⚠️</div>
+  <h1>Page couldn't load</h1>
+  <p>${safeDesc}</p>
+  ${safeUrl ? `<div class="url">${safeUrl}</div>` : ''}
+  <button onclick="history.back()">Go back</button>
+</div></body></html>`;
   }
 
   applyZoomToWebview(wv) {
@@ -153,11 +236,16 @@ class TabManagerClass {
     const tab = this.getActiveTab();
     if (!tab || !tab.webview) return false;
     tab.url = resolvedUrl;
+    tab.favicon = null;
+    tab.title = 'Loading…';
+    this.updateTabUI(tab);
     this.hideNewTabPage();
-    try {
-      tab.webview.loadURL(resolvedUrl);
-    } catch (err) {
-      console.error('navigateActive:', err);
+    const wv = tab.webview;
+    if (wv._domReady) {
+      wv.loadURL(resolvedUrl).catch(err => console.warn('navigateActive loadURL failed:', err));
+    } else {
+      // dom-ready hasn't fired yet (very fast user action); queue it
+      wv._pendingUrl = resolvedUrl;
     }
     return true;
   }

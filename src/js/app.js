@@ -28,7 +28,9 @@ class NavioApp {
     this.bindNewTabPage();
 
     const isFirstRun = await Onboarding.checkFirstRun();
-    if (!isFirstRun) {
+    // Only call startBrowser here if dismiss() hasn't already triggered it
+    // (dismiss() calls App.onOnboardingComplete() which calls startBrowser())
+    if (!isFirstRun && !Onboarding.ready) {
       this.startBrowser();
     }
   }
@@ -184,6 +186,13 @@ class NavioApp {
   }
 
   bindShortcuts() {
+    // Handle "open in new tab" requests from the context menu
+    window.navio.onOpenUrlInNewTab((url) => {
+      if (url && typeof TabManager !== 'undefined') {
+        TabManager.createTab(url);
+      }
+    });
+
     window.navio.onShortcut((action) => {
       switch (action) {
         case 'new-tab':

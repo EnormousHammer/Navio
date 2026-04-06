@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, dialog, Menu, globalShortcut, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, session, dialog, Menu, MenuItem, globalShortcut, nativeTheme, clipboard, webContents: electronWebContents } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -224,7 +224,7 @@ ipcMain.handle('get-memory-info', () => {
 
 ipcMain.handle('open-devtools-active', (event, webContentsId) => {
   try {
-    const wc = require('electron').webContents.fromId(webContentsId);
+    const wc = electronWebContents.fromId(webContentsId);
     if (wc) {
       wc.openDevTools({ mode: 'detach' });
       return { ok: true };
@@ -432,7 +432,7 @@ ipcMain.handle('ai-request-stream', async (event, { messages }) => {
 
 ipcMain.handle('extract-page-content', async (event, webContentsId) => {
   try {
-    const wc = require('electron').webContents.fromId(webContentsId);
+    const wc = electronWebContents.fromId(webContentsId);
     if (!wc) return { error: 'WebContents not found' };
 
     const result = await wc.executeJavaScript(`
@@ -478,7 +478,7 @@ ipcMain.handle('extract-page-content', async (event, webContentsId) => {
 
 ipcMain.handle('extract-page-selection', async (event, webContentsId) => {
   try {
-    const wc = require('electron').webContents.fromId(webContentsId);
+    const wc = electronWebContents.fromId(webContentsId);
     if (!wc) return { error: 'WebContents not found' };
     const text = await wc.executeJavaScript(
       `(() => { try { return window.getSelection().toString() || ''; } catch (e) { return ''; } })()`
@@ -494,7 +494,7 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
     if (RISKY_BROWSER_ACTIONS.has(action) && !userConfirmed) {
       return { error: 'This action requires user confirmation in the UI.' };
     }
-    const wc = require('electron').webContents.fromId(webContentsId);
+    const wc = electronWebContents.fromId(webContentsId);
     if (!wc) return { error: 'WebContents not found' };
 
     if (store) {
@@ -793,21 +793,89 @@ ipcMain.handle('import-bookmarks', async (event, browserPath) => {
 
 ipcMain.handle('get-downloads-path', () => app.getPath('downloads'));
 
+ipcMain.handle('show-webview-context-menu', (event, { webContentsId, x, y, params }) => {
+  try {
+    const wc = electronWebContents.fromId(webContentsId);
+    if (!wc) return;
+
+    const menu = new Menu();
+
+    if (params.selectionText) {
+      menu.append(new MenuItem({ label: 'Copy', role: 'copy', click: () => wc.copy() }));
+      menu.append(new MenuItem({ type: 'separator' }));
+    }
+    if (params.isEditable) {
+      menu.append(new MenuItem({ label: 'Cut', role: 'cut', click: () => wc.cut() }));
+      menu.append(new MenuItem({ label: 'Copy', role: 'copy', click: () => wc.copy() }));
+      menu.append(new MenuItem({ label: 'Paste', role: 'paste', click: () => wc.paste() }));
+      menu.append(new MenuItem({ label: 'Select All', role: 'selectAll', click: () => wc.selectAll() }));
+      menu.append(new MenuItem({ type: 'separator' }));
+    }
+    if (params.linkURL) {
+      menu.append(new MenuItem({
+        label: 'Open Link in New Tab',
+        click: () => mainWindow?.webContents.send('open-url-in-new-tab', params.linkURL)
+      }));
+      menu.append(new MenuItem({
+        label: 'Copy Link Address',
+        click: () => clipboard.writeText(params.linkURL)
+      }));
+      menu.append(new MenuItem({ type: 'separator' }));
+    }
+    if (params.mediaType === 'image' && params.srcURL) {
+      menu.append(new MenuItem({
+        label: 'Open Image in New Tab',
+        click: () => mainWindow?.webContents.send('open-url-in-new-tab', params.srcURL)
+      }));
+      menu.append(new MenuItem({ type: 'separator' }));
+    }
+
+    menu.append(new MenuItem({ label: 'Back', click: () => { if (wc.canGoBack()) wc.goBack(); }, enabled: wc.canGoBack() }));
+    menu.append(new MenuItem({ label: 'Forward', click: () => { if (wc.canGoForward()) wc.goForward(); }, enabled: wc.canGoForward() }));
+    menu.append(new MenuItem({ label: 'Reload', click: () => wc.reload() }));
+    menu.append(new MenuItem({ type: 'separator' }));
+    menu.append(new MenuItem({ label: 'Inspect Element', click: () => wc.openDevTools({ mode: 'detach' }) }));
+
+    menu.popup({ window: mainWindow });
+  } catch (e) {
+    console.error('context-menu error:', e.message);
+  }
+});
+
 app.whenReady().then(() => {
   store = createStore(app.getPath('userData'));
 
   createMainWindow();
 
-  session.defaultSession.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
-    const adPatterns = [
-      'doubleclick.net',
-      'googlesyndication.com',
-      'adservice.google',
-      'facebook.com/tr',
-      'analytics.facebook.com'
-    ];
+  // Set up the persist:navio session used by all webview tabs
+  const navioSession = session.fromPartition('persist:navio');
+
+  // Allow all permission requests from web content (camera, mic, notifications, etc.)
+  navioSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback(true);
+  });
+
+  // Allow all permission checks (Electron 15+)
+  if (typeof navioSession.setPermissionCheckHandler === 'function') {
+    navioSession.setPermissionCheckHandler(() => true);
+  }
+
+  // Apply ad-blocker to the navio session (where webview traffic actually flows)
+  const adPatterns = [
+    'doubleclick.net',
+    'googlesyndication.com',
+    'adservice.google',
+    'facebook.com/tr',
+    'analytics.facebook.com'
+  ];
+
+  navioSession.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
     const shouldBlock = adPatterns.some((pattern) => details.url.includes(pattern));
     callback({ cancel: shouldBlock });
+  });
+
+  globalShortcut.register('F12', () => {
+    mainWindow?.webContents.openDevTools({ mode: 'detach' });
   });
 
   globalShortcut.register('CommandOrControl+T', () => {
