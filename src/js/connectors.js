@@ -1,10 +1,10 @@
 /**
  * Navio Browser - Connectors Hub
  *
- * Two-tier system inspired by Claude/Perplexity:
- *  1. "Connections" tab  — API-authenticated integrations the AI assistant can
- *     actually query (GitHub, Notion, Perplexity search, Linear).
- *     Connect once → AI uses them during conversations.
+ * Session-based integrations — no tokens, no OAuth, no setup:
+ *  1. "Connections" tab  — the user opens a service in a tab and logs in
+ *     normally. Navio reads from that open tab. "Connected" = tab is open.
+ *     The AI can then read, search, summarise, and draft from that service.
  *  2. "Quick Launch" tab — curated URL shortcuts (original behaviour).
  */
 
@@ -28,16 +28,17 @@ class ConnectorsManagerClass {
       dropbox: 'dropbox', slack: 'slack', github: 'github', notion: 'notion'
     };
 
-    // ── Real API connectors — grouped by category ───────────────────────────
-    // Each service has a token/key the user provides once.
-    // The AI assistant can then query these services during conversations.
+    // ── Session-based connectors ─────────────────────────────────────────────
+    // No tokens, no OAuth, no API keys.
+    // The user just logs into the service in a Navio tab — exactly like opening
+    // any website. Once they're logged in, Navio can read from that open tab.
+    // "Connected" = a tab with that service is currently open.
     this.integrationCategories = [
       { id: 'email',        name: 'Email',          icon: '✉' },
-      { id: 'cloud',        name: 'Cloud Storage',  icon: '☁' },
+      { id: 'cloud',        name: 'Cloud & Files',  icon: '☁' },
       { id: 'communication',name: 'Communication',  icon: '💬' },
       { id: 'productivity', name: 'Productivity',   icon: '📋' },
       { id: 'development',  name: 'Development',    icon: '</>' },
-      { id: 'ai-search',    name: 'AI & Search',    icon: '✦'  },
     ];
 
     this.integrations = [
@@ -45,58 +46,50 @@ class ConnectorsManagerClass {
       {
         id: 'gmail',
         name: 'Gmail',
-        tagline: 'Search and read your emails',
-        description: 'Connect Gmail so the AI can search your inbox. Ask "find emails from John about the contract" or "show unread messages from this week."',
+        tagline: 'Read, search & draft email replies',
+        description: 'Open Gmail and log in — Navio reads your inbox from the open tab. Ask the AI to find emails, summarise your inbox, or draft replies.',
         icon: 'M',
         gradient: 'linear-gradient(135deg, #ea4335, #fbbc04)',
-        keyLabel: 'Google Access Token',
-        keyPlaceholder: 'ya29.a0...',
-        keyHint: 'Get a token from developers.google.com/oauthplayground — select Gmail API (gmail.readonly scope)',
-        keyLink: 'https://developers.google.com/oauthplayground/',
-        capabilities: ['Search emails by sender, subject, or keyword', 'Find attachments', 'Read email threads'],
+        openUrl: 'https://mail.google.com',
+        urlFragment: 'mail.google.com',
+        capabilities: ['Search emails by sender, subject, or keyword', 'Summarise your inbox', 'Draft & save replies'],
         category: 'email'
       },
       {
         id: 'outlook',
         name: 'Outlook',
-        tagline: 'Search your Outlook inbox',
-        description: 'Connect your Microsoft Outlook/Exchange inbox. Ask "find emails about the Q4 budget" or "show messages from last week."',
+        tagline: 'Read, search & draft email replies',
+        description: 'Open Outlook and log in — Navio reads your inbox from the open tab. Ask the AI to find emails or draft replies.',
         icon: 'O',
         gradient: 'linear-gradient(135deg, #0078d4, #00bcf2)',
-        keyLabel: 'Microsoft Graph Access Token',
-        keyPlaceholder: 'eyJ0eXAi...',
-        keyHint: 'Get a token from developer.microsoft.com/en-us/graph/graph-explorer — sign in and copy the token',
-        keyLink: 'https://developer.microsoft.com/en-us/graph/graph-explorer',
-        capabilities: ['Search emails by keyword', 'Find messages by sender', 'Read email previews'],
+        openUrl: 'https://outlook.live.com',
+        urlFragment: 'outlook.live.com',
+        capabilities: ['Search emails by keyword', 'Find messages by sender', 'Draft & save replies'],
         category: 'email'
       },
 
-      // ── Cloud Storage ────────────────────────────────────────────────────
+      // ── Cloud & Files ────────────────────────────────────────────────────
       {
         id: 'gdrive',
         name: 'Google Drive',
-        tagline: 'Search files and documents',
-        description: 'Connect Google Drive so the AI can find your files and documents. Ask "find the Q3 report" or "show recent spreadsheets."',
+        tagline: 'Search and open files',
+        description: 'Open Google Drive and log in — Navio reads file names and recent activity from the open tab.',
         icon: 'GD',
         gradient: 'linear-gradient(135deg, #4285f4, #34a853)',
-        keyLabel: 'Google Access Token',
-        keyPlaceholder: 'ya29.a0...',
-        keyHint: 'Get a token from developers.google.com/oauthplayground — select Drive API (drive.readonly scope)',
-        keyLink: 'https://developers.google.com/oauthplayground/',
-        capabilities: ['Search files by name or content', 'Find Docs, Sheets, Slides', 'Locate recent files'],
+        openUrl: 'https://drive.google.com',
+        urlFragment: 'drive.google.com',
+        capabilities: ['Search files by name', 'Find recent documents', 'Open files directly'],
         category: 'cloud'
       },
       {
         id: 'dropbox',
         name: 'Dropbox',
         tagline: 'Search files in your Dropbox',
-        description: 'Connect Dropbox so the AI can search through your stored files and folders. Ask "find the presentation from last month" or "search for invoices."',
+        description: 'Open Dropbox and log in — Navio reads your file list from the open tab.',
         icon: 'D',
         gradient: 'linear-gradient(135deg, #0061fe, #0090ff)',
-        keyLabel: 'Access Token',
-        keyPlaceholder: 'sl.u.A...',
-        keyHint: 'Create an app at dropbox.com/developers/apps → generate an access token under "OAuth 2"',
-        keyLink: 'https://www.dropbox.com/developers/apps',
+        openUrl: 'https://www.dropbox.com/home',
+        urlFragment: 'dropbox.com',
         capabilities: ['Search files by name', 'Find documents and media', 'Browse folder structure'],
         category: 'cloud'
       },
@@ -104,13 +97,11 @@ class ConnectorsManagerClass {
         id: 'onedrive',
         name: 'OneDrive',
         tagline: 'Search files in OneDrive',
-        description: 'Connect OneDrive so the AI can search your Microsoft files and documents. Pairs well with Outlook for full Microsoft 365 coverage.',
+        description: 'Open OneDrive and log in — Navio reads your file list from the open tab.',
         icon: 'OD',
         gradient: 'linear-gradient(135deg, #0078d4, #28a8ea)',
-        keyLabel: 'Microsoft Graph Access Token',
-        keyPlaceholder: 'eyJ0eXAi...',
-        keyHint: 'Get a token from developer.microsoft.com/en-us/graph/graph-explorer — sign in and copy the token',
-        keyLink: 'https://developer.microsoft.com/en-us/graph/graph-explorer',
+        openUrl: 'https://onedrive.live.com',
+        urlFragment: 'onedrive.live.com',
         capabilities: ['Search files and folders', 'Find Office documents', 'Locate recent files'],
         category: 'cloud'
       },
@@ -119,15 +110,13 @@ class ConnectorsManagerClass {
       {
         id: 'slack',
         name: 'Slack',
-        tagline: 'Search messages across your workspace',
-        description: 'Connect Slack so the AI can search your messages and channels. Ask "find conversations about the launch" or "search for messages from the design team."',
+        tagline: 'Read and search messages',
+        description: 'Open Slack and log in — Navio reads your messages from the open tab.',
         icon: 'S',
         gradient: 'linear-gradient(135deg, #4a154b, #e01e5a)',
-        keyLabel: 'User OAuth Token',
-        keyPlaceholder: 'xoxp-...',
-        keyHint: 'Create a Slack app at api.slack.com/apps → OAuth & Permissions → install and copy the User Token (xoxp-)',
-        keyLink: 'https://api.slack.com/apps',
-        capabilities: ['Search messages across all channels', 'Find conversations by topic', 'Search by user or channel'],
+        openUrl: 'https://app.slack.com',
+        urlFragment: 'app.slack.com',
+        capabilities: ['Read messages from visible channels', 'Summarise recent activity', 'Find conversations by topic'],
         category: 'communication'
       },
 
@@ -135,43 +124,25 @@ class ConnectorsManagerClass {
       {
         id: 'gcalendar',
         name: 'Google Calendar',
-        tagline: 'Find events and upcoming meetings',
-        description: 'Connect Google Calendar so the AI knows your schedule. Ask "what meetings do I have this week?" or "find events about the product review."',
+        tagline: 'See your schedule',
+        description: 'Open Google Calendar and log in — Navio reads your upcoming events from the open tab.',
         icon: 'GC',
         gradient: 'linear-gradient(135deg, #4285f4, #7baaf7)',
-        keyLabel: 'Google Access Token',
-        keyPlaceholder: 'ya29.a0...',
-        keyHint: 'Get a token from developers.google.com/oauthplayground — select Calendar API (calendar.readonly scope)',
-        keyLink: 'https://developers.google.com/oauthplayground/',
-        capabilities: ['Search upcoming events', 'Find meetings by title or attendee', 'View next 30 days of schedule'],
+        openUrl: 'https://calendar.google.com',
+        urlFragment: 'calendar.google.com',
+        capabilities: ['Read upcoming events', 'Find meetings by title', 'See today\'s schedule'],
         category: 'productivity'
       },
       {
         id: 'notion',
         name: 'Notion',
-        tagline: 'Search across your pages and databases',
-        description: 'Connect your Notion workspace so the AI can search your pages, databases, and notes. Ask "find the Q3 roadmap" or "what did we decide about the API design?"',
+        tagline: 'Search pages and notes',
+        description: 'Open Notion and log in — Navio reads your pages from the open tab.',
         icon: 'N',
         gradient: 'linear-gradient(135deg, #2f2f2f, #4a4a4a)',
-        keyLabel: 'Integration Token',
-        keyPlaceholder: 'secret_...',
-        keyHint: 'Create an integration at notion.so/my-integrations → copy the token → share pages with the integration',
-        keyLink: 'https://www.notion.so/my-integrations',
-        capabilities: ['Search pages & databases', 'Find notes and docs', 'Retrieve meeting notes'],
-        category: 'productivity'
-      },
-      {
-        id: 'linear',
-        name: 'Linear',
-        tagline: 'Search issues and project updates',
-        description: 'Connect Linear so the AI can search your issues and projects. Ask "what high-priority bugs are open?" or "show issues assigned to me."',
-        icon: 'Li',
-        gradient: 'linear-gradient(135deg, #5e6ad2, #8b95e8)',
-        keyLabel: 'API Key',
-        keyPlaceholder: 'lin_api_...',
-        keyHint: 'Go to linear.app/settings/api → Personal API keys → create and copy',
-        keyLink: 'https://linear.app/settings/api',
-        capabilities: ['Search issues by keyword', 'Filter by team / state', 'Track priorities'],
+        openUrl: 'https://www.notion.so',
+        urlFragment: 'notion.so',
+        capabilities: ['Read open pages and databases', 'Summarise notes', 'Find content on screen'],
         category: 'productivity'
       },
 
@@ -179,33 +150,15 @@ class ConnectorsManagerClass {
       {
         id: 'github',
         name: 'GitHub',
-        tagline: 'Search issues, PRs, and repositories',
-        description: 'Connect GitHub so the AI can search across your repositories. Ask "find open authentication bugs" or "show PRs waiting for review."',
+        tagline: 'Browse issues, PRs and code',
+        description: 'Open GitHub and log in — Navio reads issues, PRs, and code from the open tab.',
         icon: 'GH',
         gradient: 'linear-gradient(135deg, #24292f, #444d56)',
-        keyLabel: 'Personal Access Token',
-        keyPlaceholder: 'ghp_... or github_pat_...',
-        keyHint: 'Go to github.com/settings/tokens → generate a classic or fine-grained token with repo + read:org scopes',
-        keyLink: 'https://github.com/settings/tokens',
-        capabilities: ['Search issues & pull requests', 'Search code', 'Find repositories'],
+        openUrl: 'https://github.com',
+        urlFragment: 'github.com',
+        capabilities: ['Read open issues & PRs', 'Summarise repository activity', 'Search code on screen'],
         category: 'development'
       },
-
-      // ── AI & Search ──────────────────────────────────────────────────────
-      {
-        id: 'perplexity',
-        name: 'Perplexity',
-        tagline: 'Live web search with cited answers',
-        description: 'Connect Perplexity\'s Sonar API to give the AI real-time web search. Ask about current events, news, or anything that needs up-to-date information.',
-        icon: 'Px',
-        gradient: 'linear-gradient(135deg, #1a9688, #20b8a2)',
-        keyLabel: 'API Key',
-        keyPlaceholder: 'pplx-...',
-        keyHint: 'Go to perplexity.ai/settings/api → generate an API key',
-        keyLink: 'https://www.perplexity.ai/settings/api',
-        capabilities: ['Real-time web search', 'Answers with source citations', 'Current events & news'],
-        category: 'ai-search'
-      }
     ];
 
     // Services that support the Live Connector system
@@ -328,36 +281,34 @@ class ConnectorsManagerClass {
       this.favorites = ['gmail', 'gdrive', 'dropbox', 'slack', 'notion', 'github', 'chatgpt'];
     }
 
-    // Load OAuth status and provider configs (for "Sign in with Google" buttons)
-    try {
-      const [oauthSt, oauthProv] = await Promise.all([
-        window.navio.oauthStatus(),
-        window.navio.oauthProvidersConfig()
-      ]);
-      this.oauthStatus = oauthSt || {};
-      this.oauthProviders = oauthProv || [];
-    } catch {}
-
-    try {
-      const keys = await window.navio.connectorGetKeys();
-      this.connectedIds = new Set(Object.keys(keys).filter((k) => keys[k]));
-    } catch (e) {
-      this.connectedIds = new Set();
-    }
+    // "Connected" is determined by open tabs, not stored keys
+    this._refreshConnectedFromTabs();
 
     this.renderSidebarPins();
     this.bindEvents();
+
+    // Re-check connected state whenever tabs change
+    if (typeof TabManager !== 'undefined') {
+      document.addEventListener('navio-tabs-changed', () => {
+        this._refreshConnectedFromTabs();
+        if (this.hubVisible && this.activeTab === 'connections') {
+          this.renderConnectionsTab();
+        }
+      });
+    }
   }
 
-  async _refreshOAuthState() {
-    try {
-      const [oauthSt, keys] = await Promise.all([
-        window.navio.oauthStatus(),
-        window.navio.connectorGetKeys()
-      ]);
-      this.oauthStatus = oauthSt || {};
-      this.connectedIds = new Set(Object.keys(keys).filter((k) => keys[k]));
-    } catch {}
+  _refreshConnectedFromTabs() {
+    if (typeof TabManager === 'undefined') return;
+    this.connectedIds = new Set();
+    for (const intg of this.integrations) {
+      if (!intg.urlFragment) continue;
+      const isOpen = TabManager.tabs.some((t) => {
+        const url = t.webview?.src || t.url || '';
+        return url.includes(intg.urlFragment);
+      });
+      if (isOpen) this.connectedIds.add(intg.id);
+    }
   }
 
   bindEvents() {
@@ -521,39 +472,12 @@ class ConnectorsManagerClass {
     this._bindConnectionCards(container);
   }
 
-  _oauthProviderFor(serviceId) {
-    const pid = this.serviceToOAuth[serviceId];
-    if (!pid) return null;
-    return this.oauthProviders.find((p) => p.id === pid) || null;
-  }
-
   _integrationCardHTML(intg, isConnected) {
     const capsHTML = intg.capabilities
       .map((c) => `<span class="conn-cap-pill">${c}</span>`)
       .join('');
 
-    const oauthProvider = this._oauthProviderFor(intg.id);
-    const oauthEntry = oauthProvider ? this.oauthStatus[oauthProvider.id] : null;
-    const isOAuth = !!oauthProvider;
-
     if (isConnected) {
-      // For OAuth services, show which account is connected
-      let accountBadge = '';
-      if (isOAuth && oauthEntry?.email) {
-        const avatarHtml = oauthEntry.avatar
-          ? `<img class="conn-oauth-avatar" src="${oauthEntry.avatar}" alt="">`
-          : `<span class="conn-oauth-avatar-initials">${(oauthEntry.name || oauthEntry.email)[0].toUpperCase()}</span>`;
-        accountBadge = `
-          <div class="conn-oauth-account">
-            ${avatarHtml}
-            <span class="conn-oauth-email">${oauthEntry.email}</span>
-          </div>`;
-      }
-
-      // Disconnect target: provider for OAuth services, service for API-key services
-      const disconnectTarget = isOAuth ? oauthProvider.id : intg.id;
-      const disconnectType = isOAuth ? 'oauth' : 'key';
-
       return `
         <div class="conn-integration-card conn-integration-card--connected" data-id="${intg.id}">
           <div class="conn-intg-icon" style="background: ${intg.gradient}">
@@ -564,52 +488,19 @@ class ConnectorsManagerClass {
               <span class="conn-intg-name">${intg.name}</span>
               <span class="conn-connected-badge">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                Connected
+                Tab open
               </span>
             </div>
-            ${accountBadge}
             <p class="conn-intg-tagline">${intg.tagline}</p>
             <div class="conn-caps">${capsHTML}</div>
           </div>
-          <button class="conn-disconnect-btn" data-id="${disconnectTarget}" data-type="${disconnectType}" title="Disconnect">
-            Disconnect
+          <button class="conn-jump-btn" data-id="${intg.id}" title="Switch to this tab">
+            Switch to tab
           </button>
         </div>
       `;
     }
 
-    // Not connected — show the right connect button
-    if (isOAuth) {
-      const p = oauthProvider;
-      const hasClientId = p.hasClientId;
-      const btnStyle = `background:${p.buttonColor};color:${p.buttonTextColor};${p.buttonBorder ? `border:${p.buttonBorder};` : 'border:none;'}`;
-
-      return `
-        <div class="conn-integration-card" data-id="${intg.id}">
-          <div class="conn-intg-icon" style="background: ${intg.gradient}">
-            <span>${intg.icon}</span>
-          </div>
-          <div class="conn-intg-body">
-            <div class="conn-intg-top">
-              <span class="conn-intg-name">${intg.name}</span>
-            </div>
-            <p class="conn-intg-tagline">${intg.tagline}</p>
-            <p class="conn-intg-desc">${intg.description}</p>
-            <div class="conn-caps">${capsHTML}</div>
-          </div>
-          ${hasClientId
-            ? `<button class="conn-oauth-btn" data-provider="${p.id}" data-service="${intg.id}" style="${btnStyle}">
-                 ${p.buttonLabel}
-               </button>`
-            : `<button class="conn-setup-btn" data-provider="${p.id}" title="Client ID not configured — click to set up">
-                 ⚙ Setup required
-               </button>`
-          }
-        </div>
-      `;
-    }
-
-    // API-key service (Perplexity, Linear, etc.)
     return `
       <div class="conn-integration-card" data-id="${intg.id}">
         <div class="conn-intg-icon" style="background: ${intg.gradient}">
@@ -623,104 +514,44 @@ class ConnectorsManagerClass {
           <p class="conn-intg-desc">${intg.description}</p>
           <div class="conn-caps">${capsHTML}</div>
         </div>
-        <button class="conn-connect-btn" data-id="${intg.id}">Connect</button>
+        <button class="conn-open-tab-btn" data-id="${intg.id}" data-url="${intg.openUrl || ''}">
+          Open ${intg.name}
+        </button>
       </div>
     `;
   }
 
   _bindConnectionCards(container) {
-    // OAuth "Sign in with X" buttons
-    container.querySelectorAll('.conn-oauth-btn').forEach((btn) => {
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        await this._handleOAuthConnect(btn.dataset.provider, btn.dataset.service, btn);
-      });
-    });
-
-    // "Setup required" button → open Settings → Connected Apps
-    container.querySelectorAll('.conn-setup-btn').forEach((btn) => {
+    // "Open [Service]" — opens the service in a new tab, user logs in normally
+    container.querySelectorAll('.conn-open-tab-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.hideHub();
-        this._openConnectedAppsSettings(btn.dataset.provider);
-      });
-    });
-
-    // Legacy API-key connect button (Perplexity, Linear, etc.)
-    container.querySelectorAll('.conn-connect-btn').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.openConnectModal(btn.dataset.id);
-      });
-    });
-
-    container.querySelectorAll('.conn-disconnect-btn').forEach((btn) => {
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const { id, type } = btn.dataset;
-        await this.disconnectService(id, type);
-      });
-    });
-  }
-
-  async _handleOAuthConnect(providerId, serviceId, btn) {
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = 'Connecting…';
-    }
-    try {
-      const result = await window.navio.oauthConnect(providerId);
-      if (result?.needsClientId) {
-        this._openConnectedAppsSettings(providerId);
-        return;
-      }
-      if (result?.error) {
-        // Don't alert on user-cancelled (they closed the window)
-        if (!result.error.includes('closed by user')) {
-          this._showConnectError(serviceId, result.error);
+        const url = btn.dataset.url;
+        if (url && typeof TabManager !== 'undefined') {
+          TabManager.createTab(url);
+          this.hideHub();
+          // After a short delay, re-check which tabs are open
+          setTimeout(() => {
+            this._refreshConnectedFromTabs();
+            this.renderSidebarPins();
+          }, 1500);
         }
-        return;
-      }
-      // Success — refresh state and re-render
-      await this._refreshOAuthState();
-      this.renderConnectionsTab();
-      this.renderSidebarPins();
-    } catch (e) {
-      this._showConnectError(serviceId, e.message);
-    } finally {
-      if (btn && !btn.closest('.conn-integration-card--connected')) {
-        btn.disabled = false;
-        // Re-render will have replaced btn so no need to reset text
-      }
-    }
-  }
+      });
+    });
 
-  _showConnectError(serviceId, message) {
-    const card = document.querySelector(`.conn-integration-card[data-id="${serviceId}"]`);
-    if (!card) return;
-    let err = card.querySelector('.conn-card-error');
-    if (!err) {
-      err = document.createElement('div');
-      err.className = 'conn-card-error';
-      card.appendChild(err);
-    }
-    err.textContent = message;
-    setTimeout(() => err?.remove(), 6000);
-  }
-
-  _openConnectedAppsSettings(providerId) {
-    // Open the Settings panel and navigate to "Connected Apps" section
-    const settingsBtn = document.getElementById('btn-settings') || document.querySelector('[data-action="settings"]');
-    if (settingsBtn) settingsBtn.click();
-    setTimeout(() => {
-      const section = document.getElementById('settings-connected-apps');
-      if (section) {
-        section.scrollIntoView({ behavior: 'smooth' });
-        // Flash highlight
-        section.classList.add('settings-highlight');
-        setTimeout(() => section.classList.remove('settings-highlight'), 2000);
-      }
-    }, 300);
+    // "Switch to tab" — brings the existing tab into focus
+    container.querySelectorAll('.conn-jump-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        const intg = this.integrations.find((i) => i.id === id);
+        if (!intg?.urlFragment || typeof TabManager === 'undefined') return;
+        const tab = TabManager.tabs.find((t) =>
+          (t.webview?.src || t.url || '').includes(intg.urlFragment)
+        );
+        if (tab) { TabManager.switchToTab(tab.id); this.hideHub(); }
+      });
+    });
   }
 
   // ── Connect Modal ─────────────────────────────────────────────────────────
@@ -874,21 +705,18 @@ class ConnectorsManagerClass {
     }
   }
 
-  async disconnectService(id, type) {
-    try {
-      if (type === 'oauth') {
-        // Disconnect the OAuth provider (removes all services under it)
-        await window.navio.oauthDisconnect(id);
-      } else {
-        // Legacy API-key removal
-        await window.navio.connectorRemoveKey(id);
-      }
-      await this._refreshOAuthState();
-      this.renderConnectionsTab();
-      this.renderSidebarPins();
-    } catch (e) {
-      console.error('Failed to disconnect service:', e);
+  async disconnectService(id) {
+    // "Disconnect" simply means closing the tab for that service
+    const intg = this.integrations.find((i) => i.id === id);
+    if (intg?.urlFragment && typeof TabManager !== 'undefined') {
+      const tab = TabManager.tabs.find((t) =>
+        (t.webview?.src || t.url || '').includes(intg.urlFragment)
+      );
+      if (tab) TabManager.closeTab(tab.id);
     }
+    this._refreshConnectedFromTabs();
+    this.renderConnectionsTab();
+    this.renderSidebarPins();
   }
 
   // ── Quick Launch Tab (original behaviour) ────────────────────────────────
