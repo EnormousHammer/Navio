@@ -7475,15 +7475,31 @@ body.onboarding-active #app {
 
 .bac-param:hover {
   background: rgba(0, 216, 255, 0.16);
-  border-color: rgba(0, 216, 255, 0.35);
+  border-color: rgba(0, 216, 255, 0.45);
   text-decoration: underline;
   text-decoration-style: dashed;
   text-underline-offset: 2px;
 }
 
+.bac-param::after {
+  content: ' ✎';
+  font-size: 9px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.bac-param:hover::after {
+  opacity: 0.6;
+}
+
 .browser-action-card.bac-editing {
   border-left-color: var(--accent);
   background: rgba(0, 216, 255, 0.04);
+}
+
+/* Hide the pencil icon button — clicking the chip is the way to edit */
+.bac-edit {
+  display: none;
 }
 
 /* ── Done state: green accent ── */
