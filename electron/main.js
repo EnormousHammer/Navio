@@ -518,7 +518,15 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
 
     switch (action) {
       case 'navigate':
-        await wc.loadURL(params.url);
+        try {
+          await wc.loadURL(params.url);
+        } catch (navErr) {
+          // ERR_ABORTED (-3) happens when the page redirects mid-load (e.g. YouTube
+          // themeRefresh). The navigation still succeeded, so treat it as success.
+          if (!navErr.message?.includes('ERR_ABORTED') && !navErr.message?.includes('-3')) {
+            throw navErr;
+          }
+        }
         return { success: true };
 
       case 'click':
