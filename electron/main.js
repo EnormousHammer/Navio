@@ -2215,21 +2215,30 @@ ipcMain.handle('imap-connect', async (event, { serviceId, email, password }) => 
     const raw = (e.message || e.responseText || e.response || '').toLowerCase();
     const code = (e.responseCode || '').toLowerCase();
 
-    if (code === 'authenticationfailed' || raw.includes('authentication') || raw.includes('invalid credentials') || raw.includes('bad credentials') || raw.includes('login failed') || raw.includes('command failed') || raw.includes('invalid login')) {
+    if (code === 'authenticationfailed' || raw.includes('authentication') || raw.includes('invalid credentials') || raw.includes('bad credentials') || raw.includes('login failed') || raw.includes('command failed') || raw.includes('invalid login') || raw.includes('login failed') || raw.includes('[authenticationfailed]')) {
       if (serviceId === 'gmail') {
-        return { error: 'Authentication failed. Gmail requires an App Password — your regular Gmail password will NOT work here.\n\n1. Go to myaccount.google.com/apppasswords\n2. Create an app password for "Mail"\n3. Use the 16-character password here (spaces are optional)' };
+        return { error: 'Wrong password or App Password.\n\nGmail does NOT accept your regular Google password for IMAP. You must use an App Password:\n\n① Enable IMAP in Gmail → Settings → Forwarding and POP/IMAP → Enable IMAP → Save\n② Enable 2-Step Verification at myaccount.google.com/signinoptions/two-step-verification\n③ Create App Password at myaccount.google.com/apppasswords\n   App name: "NavioBrowser" → copy the 16-character password\n\nPaste that App Password into the password field above.' };
       }
-      return { error: 'Authentication failed. Check your email and password. For Outlook, use your full email address and account password.' };
+      if (serviceId === 'outlook') {
+        return { error: 'Authentication failed.\n\nMake sure you\'re using your full email (e.g. you@outlook.com) and your Microsoft account password.\n\nIf you have 2-Factor Authentication enabled, you need to create an App Password at account.microsoft.com/security.' };
+      }
+      return { error: 'Authentication failed. Check your email and password.' };
     }
-    if (raw.includes('connect') || raw.includes('econnrefused') || raw.includes('timeout') || raw.includes('network') || raw.includes('enotfound')) {
-      return { error: 'Could not connect to mail server. Check your internet connection.\n\nFor Gmail: make sure IMAP is enabled at Settings → See all settings → Forwarding and POP/IMAP.' };
+    if (raw.includes('connect') || raw.includes('econnrefused') || raw.includes('timeout') || raw.includes('network') || raw.includes('enotfound') || raw.includes('socket')) {
+      if (serviceId === 'gmail') {
+        return { error: 'Could not connect to Gmail.\n\nCheck your internet connection AND make sure IMAP is enabled:\nGmail → Settings (gear icon) → See all settings → Forwarding and POP/IMAP → Enable IMAP → Save Changes.' };
+      }
+      return { error: 'Could not connect to mail server. Check your internet connection.' };
     }
     if (raw.includes('certificate') || raw.includes('ssl') || raw.includes('tls')) {
       return { error: 'TLS/SSL error connecting to mail server. This may be a network or firewall issue.' };
     }
+    if (raw.includes('unavailable') || raw.includes('imap access') || raw.includes('disabled')) {
+      return { error: 'IMAP access is not enabled on this account.\n\nFor Gmail: go to Settings → See all settings → Forwarding and POP/IMAP → Enable IMAP → Save Changes.' };
+    }
 
-    // Fall back to the raw message with a hint
-    return { error: (e.message || 'Connection failed') + '\n\nIf this keeps happening, make sure IMAP is enabled in your email settings and you are using an App Password (not your regular password) for Gmail.' };
+    // Fall back to the raw message
+    return { error: (e.message || 'Connection failed') + (serviceId === 'gmail' ? '\n\nMake sure:\n• IMAP is enabled in Gmail settings\n• You are using an App Password (not your regular password)\n• Follow the 3 steps shown above' : '') };
   }
 });
 

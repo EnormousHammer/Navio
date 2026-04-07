@@ -3507,6 +3507,161 @@ body.tabstrip-hidden .loading-indicator {
   font-size: 12px;
 }
 
+/* IMAP Guided Setup Steps */
+.conn-modal-imap .conn-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.imap-setup-guide {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.imap-setup-guide.imap-setup-guide-collapsed .imap-setup-steps {
+  display: none;
+}
+
+.imap-setup-guide.imap-setup-guide-collapsed .imap-setup-collapse-btn {
+  margin-top: 0;
+}
+
+.imap-setup-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.imap-setup-title svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.imap-setup-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.imap-setup-step {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.imap-step-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent-glow);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.imap-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+
+.imap-step-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.imap-step-desc {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  line-height: 1.4;
+}
+
+.imap-step-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+  width: fit-content;
+}
+
+.imap-step-link:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.imap-step-link-primary {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.imap-step-link-primary:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.imap-setup-collapse-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  user-select: none;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.imap-setup-collapse-btn:hover {
+  color: var(--text-secondary);
+}
+
+.imap-pass-note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.imap-outlook-note {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.imap-trouble-link {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .conn-modal-footer {
   display: flex;
   align-items: center;

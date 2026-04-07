@@ -707,17 +707,100 @@ class ConnectorsManagerClass {
     document.getElementById('conn-modal-overlay')?.remove();
 
     const isGmail = imapServiceId === 'gmail';
+    const isOutlook = imapServiceId === 'outlook';
+
+    // Build the setup guide HTML for Gmail
+    const gmailSetupGuide = `
+      <div class="imap-setup-guide" id="imap-setup-guide">
+        <div class="imap-setup-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          Gmail blocks regular passwords for IMAP — 3 quick steps to set up:
+        </div>
+        <div class="imap-setup-steps">
+          <div class="imap-setup-step">
+            <span class="imap-step-num">1</span>
+            <div class="imap-step-body">
+              <span class="imap-step-label">Enable IMAP in Gmail</span>
+              <span class="imap-step-desc">Settings → See all settings → Forwarding and POP/IMAP → Enable IMAP → Save</span>
+              <a class="imap-step-link conn-modal-key-link" data-href="https://mail.google.com/mail/u/0/#settings/fwdandpop" href="#">
+                Open Gmail IMAP Settings
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+            </div>
+          </div>
+          <div class="imap-setup-step">
+            <span class="imap-step-num">2</span>
+            <div class="imap-step-body">
+              <span class="imap-step-label">Enable 2-Step Verification</span>
+              <span class="imap-step-desc">Required before you can create an App Password. Already enabled? Skip this step.</span>
+              <a class="imap-step-link conn-modal-key-link" data-href="https://myaccount.google.com/signinoptions/two-step-verification" href="#">
+                Enable 2-Step Verification
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+            </div>
+          </div>
+          <div class="imap-setup-step">
+            <span class="imap-step-num">3</span>
+            <div class="imap-step-body">
+              <span class="imap-step-label">Create an App Password</span>
+              <span class="imap-step-desc">App name: "NavioBrowser". Copy the 16-character password and paste it below.</span>
+              <a class="imap-step-link conn-modal-key-link imap-step-link-primary" data-href="https://myaccount.google.com/apppasswords" href="#">
+                Create App Password →
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+            </div>
+          </div>
+        </div>
+        <div class="imap-setup-collapse-btn" id="imap-guide-toggle">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+          Hide setup guide
+        </div>
+      </div>`;
+
+    // Outlook needs App Password only if Microsoft 2FA is on
+    const outlookSetupGuide = `
+      <div class="imap-setup-guide imap-setup-guide-collapsed" id="imap-setup-guide">
+        <div class="imap-setup-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          Getting an "Incorrect Password" error?
+        </div>
+        <div class="imap-setup-steps">
+          <div class="imap-setup-step">
+            <span class="imap-step-num">1</span>
+            <div class="imap-step-body">
+              <span class="imap-step-label">If you have 2-Factor Authentication</span>
+              <span class="imap-step-desc">You need an App Password. Go to your Microsoft account security settings and create one.</span>
+              <a class="imap-step-link conn-modal-key-link imap-step-link-primary" data-href="https://account.microsoft.com/security" href="#">
+                Microsoft Security Settings →
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+            </div>
+          </div>
+          <div class="imap-setup-step">
+            <span class="imap-step-num">2</span>
+            <div class="imap-step-body">
+              <span class="imap-step-label">For work/school Microsoft accounts</span>
+              <span class="imap-step-desc">IMAP may be disabled by your IT admin. Contact your IT department to enable it.</span>
+            </div>
+          </div>
+        </div>
+        <div class="imap-setup-collapse-btn" id="imap-guide-toggle">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+          Hide guide
+        </div>
+      </div>`;
+
     const overlay = document.createElement('div');
     overlay.id = 'conn-modal-overlay';
     overlay.className = 'conn-modal-overlay';
     overlay.innerHTML = `
-      <div class="conn-modal" role="dialog" aria-modal="true">
+      <div class="conn-modal conn-modal-imap" role="dialog" aria-modal="true">
         <div class="conn-modal-header">
           <div class="conn-modal-title-row">
             <div class="conn-modal-icon" style="background: ${intg.gradient}"><span>${intg.icon}</span></div>
             <div>
               <h2 class="conn-modal-title">Connect ${intg.name}</h2>
-              <p class="conn-modal-subtitle">Works without any open tab — reads and drafts in the background</p>
+              <p class="conn-modal-subtitle">Background access — AI reads inbox and creates drafts, even when the tab is closed</p>
             </div>
           </div>
           <button class="conn-modal-close" aria-label="Close">
@@ -725,37 +808,24 @@ class ConnectorsManagerClass {
           </button>
         </div>
         <div class="conn-modal-body">
-          <label class="conn-modal-label" for="imap-email-input">Email address</label>
-          <input type="email" id="imap-email-input" class="conn-modal-input" placeholder="${isGmail ? 'you@gmail.com' : 'you@outlook.com'}" autocomplete="email">
+
+          ${isGmail ? gmailSetupGuide : ''}
+          ${isOutlook ? `<div class="imap-outlook-note">Enter your Microsoft email and password. <span class="imap-trouble-link" id="imap-trouble-link">Having trouble?</span></div>${outlookSetupGuide}` : ''}
+
+          <label class="conn-modal-label" for="imap-email-input">${isGmail ? 'Gmail address' : 'Email address'}</label>
+          <input type="email" id="imap-email-input" class="conn-modal-input" placeholder="${isGmail ? 'you@gmail.com' : 'you@outlook.com or you@hotmail.com'}" autocomplete="email">
 
           <label class="conn-modal-label" style="margin-top:12px" for="imap-pass-input">
-            ${isGmail ? 'App Password' : 'Password'}
+            ${isGmail ? 'App Password (from Step 3 above)' : 'Password'}
           </label>
           <div class="conn-modal-input-wrap">
-            <input type="password" id="imap-pass-input" class="conn-modal-input" placeholder="${isGmail ? '16-character app password' : 'Your account password'}" autocomplete="current-password" spellcheck="false">
+            <input type="password" id="imap-pass-input" class="conn-modal-input" placeholder="${isGmail ? 'Paste your 16-character app password here' : 'Your Microsoft account password'}" autocomplete="current-password" spellcheck="false">
             <button class="conn-modal-toggle-vis" title="Show/hide">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
           </div>
+          ${isGmail ? `<p class="imap-pass-note">Spaces in the App Password are OK — they're stripped automatically.</p>` : ''}
 
-          ${isGmail ? `
-          <div class="conn-modal-hint-row" style="margin-top:8px">
-            <p class="conn-modal-hint">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-              Gmail requires an App Password (not your regular password). Takes 60 seconds to generate.
-            </p>
-            <a class="conn-modal-key-link" data-href="https://myaccount.google.com/apppasswords" href="#">
-              Get App Password
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-            </a>
-          </div>` : ''}
-
-          <div class="conn-modal-caps" style="margin-top:14px">
-            <span class="conn-modal-caps-label">What the AI will be able to do:</span>
-            <ul class="conn-modal-caps-list">
-              ${intg.capabilities.map((c) => `<li><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>${c}</li>`).join('')}
-            </ul>
-          </div>
           <div class="conn-modal-error" id="conn-modal-error" style="display:none"></div>
         </div>
         <div class="conn-modal-footer">
@@ -773,6 +843,7 @@ class ConnectorsManagerClass {
     overlay.querySelector('.conn-modal-cancel').addEventListener('click', close);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 
+    // All "open in tab" links
     overlay.querySelectorAll('.conn-modal-key-link').forEach((a) => {
       a.addEventListener('click', (e) => {
         e.preventDefault();
@@ -780,6 +851,27 @@ class ConnectorsManagerClass {
         if (href && typeof TabManager !== 'undefined') { TabManager.createTab(href); close(); this.hideHub(); }
       });
     });
+
+    // Outlook "Having trouble?" toggle
+    const troubleLink = overlay.querySelector('#imap-trouble-link');
+    const outlookGuide = overlay.querySelector('#imap-setup-guide');
+    if (troubleLink && outlookGuide) {
+      troubleLink.addEventListener('click', () => {
+        outlookGuide.classList.toggle('imap-setup-guide-collapsed');
+      });
+    }
+
+    // Guide collapse/expand toggle
+    const guideToggle = overlay.querySelector('#imap-guide-toggle');
+    const guide = overlay.querySelector('#imap-setup-guide');
+    if (guideToggle && guide) {
+      guideToggle.addEventListener('click', () => {
+        guide.classList.toggle('imap-setup-guide-collapsed');
+        guideToggle.innerHTML = guide.classList.contains('imap-setup-guide-collapsed')
+          ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg> Show setup guide`
+          : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg> Hide setup guide`;
+      });
+    }
 
     const passInput = overlay.querySelector('#imap-pass-input');
     overlay.querySelector('.conn-modal-toggle-vis').addEventListener('click', () => {
@@ -790,9 +882,10 @@ class ConnectorsManagerClass {
     const errorEl = overlay.querySelector('#conn-modal-error');
     connectBtn.addEventListener('click', async () => {
       const email = overlay.querySelector('#imap-email-input').value.trim();
-      const password = passInput.value;
+      // Strip spaces from App Password (Google includes spaces in display but they don't matter)
+      const password = isGmail ? passInput.value.replace(/\s/g, '') : passInput.value;
       if (!email || !password) {
-        errorEl.textContent = 'Please enter your email and password.';
+        errorEl.innerHTML = 'Please enter your email and password.';
         errorEl.style.display = 'flex';
         return;
       }
@@ -807,12 +900,13 @@ class ConnectorsManagerClass {
         this.renderConnectionsTab();
         this.renderSidebarPins();
       } catch (e) {
-        // Show multiline error with line-break support
         const msg = e.message || 'Connection failed. Check your credentials.';
+        // Expand the setup guide on auth failure so users see the steps
+        if (isGmail && guide) guide.classList.remove('imap-setup-guide-collapsed');
         errorEl.innerHTML = msg.replace(/\n/g, '<br>');
         errorEl.style.display = 'flex';
         connectBtn.disabled = false;
-        connectBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/></svg> Connect ${intg.name}`;
+        connectBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/></svg> Try Again`;
       }
     });
 
