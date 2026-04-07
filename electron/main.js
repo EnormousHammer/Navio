@@ -124,6 +124,51 @@ function hashContext(messages) {
 
 const RISKY_BROWSER_ACTIONS = new Set(['navigate', 'click', 'type']);
 
+// ── Email write-action protection ─────────────────────────────────────────────
+// The AI is allowed to READ emails via the connector API (read-only scope tokens)
+// but it must NEVER compose, send, reply to, forward, or delete emails —
+// even when the user has an email tab open. This blocklist is enforced at the
+// IPC level so it holds regardless of system-prompt instructions or auto-execute mode.
+const EMAIL_PROTECTED_DOMAINS = [
+  'mail.google.com',
+  'outlook.live.com',
+  'outlook.office.com',
+  'outlook.office365.com',
+  'mail.yahoo.com',
+  'mail.proton.me',
+  'app.tuta.com',
+  'app.fastmail.com',
+  'mail.zoho.com'
+];
+
+// Keywords in click selectors that indicate a write/destructive action on email
+const EMAIL_WRITE_KEYWORDS = [
+  'compose', 'new message', 'new email', 'write',
+  'send', 'submit',
+  'reply', 'reply all', 'forward',
+  'delete', 'trash', 'discard',
+  'archive', 'mark as',
+  'move to', 'label'
+];
+
+function isEmailProtectedUrl(url) {
+  try {
+    const host = new URL(url).hostname;
+    return EMAIL_PROTECTED_DOMAINS.some((d) => host === d || host.endsWith('.' + d));
+  } catch {
+    return false;
+  }
+}
+
+function isEmailWriteAction(action, params) {
+  if (action === 'type') return true; // never type into email forms
+  if (action === 'click') {
+    const selector = (params?.selector || '').toLowerCase();
+    return EMAIL_WRITE_KEYWORDS.some((kw) => selector.includes(kw));
+  }
+  return false;
+}
+
 // ── Authoritative system prompt (main-process, never cached) ─────────────────
 // The renderer's assistant.js may be stale due to Chromium bytecode cache.
 // We ALWAYS inject this fresh system prompt in main.js, overriding whatever
@@ -166,7 +211,14 @@ navigate:https://www.google.com/search?q=best+laptops
 click:text=1
 </navio-actions>
 
-If no browser actions are needed, just reply with plain text and no <navio-actions> block.`;
+If no browser actions are needed, just reply with plain text and no <navio-actions> block.
+
+STRICT EMAIL RULE — NEVER BREAK THIS:
+You are NOT allowed to compose, send, reply to, forward, or delete emails under ANY circumstances.
+- Never produce actions that click "Compose", "New message", "Reply", "Reply All", "Forward", or "Send" buttons on email services.
+- Never produce actions that type into email compose fields or subject lines.
+- If the user asks you to send or compose an email, you MUST decline and explain you can only search and read emails — never write or send them.
+- Email connectors are READ-ONLY: you can search the inbox and display results, nothing more.`;
 
 // ── <navio-actions> block converter ──────────────────────────────────────────
 // The system prompt asks the model to output a <navio-actions> block at the end
@@ -692,6 +744,17 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
     const wc = electronWebContents.fromId(webContentsId);
     if (!wc) return { error: 'WebContents not found' };
 
+    // ── Email write-action hard block ────────────────────────────────────────
+    // Prevent the AI from composing, sending, replying to, or modifying emails
+    // regardless of user-confirmed or auto-execute mode. The AI can only read
+    // emails via the connector API (read-only tokens).
+    if (isEmailProtectedUrl(wc.getURL?.() || '') && isEmailWriteAction(action, params)) {
+      return {
+        error: 'Blocked: the AI cannot compose, send, or reply to emails. ' +
+               'Email connectors are read-only — use them to search and read your inbox.'
+      };
+    }
+
     if (store) {
       store.appendLedger({
         type: 'browser_action',
@@ -1029,6 +1092,386 @@ ipcMain.handle('ledger-export', () => {
     return '';
   }
 });
+
+// ─── Connector Integrations ─────────────────────────────────────────────────
+// Stores per-service API keys encrypted with safeStorage (or base64 fallback).
+// Keys are never exposed to the renderer — only a boolean "has key" map is returned.
+
+function connectorKeysPath() {
+  return path.join(app.getPath('userData'), 'navio-connector-keys.json');
+}
+
+function loadConnectorKeys() {
+  const p = connectorKeysPath();
+  if (!fs.existsSync(p)) return {};
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf-8'));
+  } catch {
+    return {};
+  }
+}
+
+function saveConnectorKeys(map) {
+  fs.writeFileSync(connectorKeysPath(), JSON.stringify(map, null, 2));
+}
+
+function encryptConnectorKey(val) {
+  const { safeStorage } = require('electron');
+  if (safeStorage.isEncryptionAvailable()) {
+    return safeStorage.encryptString(val).toString('base64');
+  }
+  return Buffer.from(val, 'utf8').toString('base64');
+}
+
+function decryptConnectorKey(b64) {
+  const { safeStorage } = require('electron');
+  const buf = Buffer.from(b64, 'base64');
+  try {
+    if (safeStorage.isEncryptionAvailable()) {
+      return safeStorage.decryptString(buf);
+    }
+    return buf.toString('utf8');
+  } catch {
+    return '';
+  }
+}
+
+ipcMain.handle('connector-save-key', (event, { serviceId, apiKey }) => {
+  try {
+    const map = loadConnectorKeys();
+    if (!apiKey) {
+      delete map[serviceId];
+    } else {
+      map[serviceId] = encryptConnectorKey(apiKey);
+    }
+    saveConnectorKeys(map);
+    return { ok: true };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
+ipcMain.handle('connector-get-keys', () => {
+  try {
+    const map = loadConnectorKeys();
+    const result = {};
+    for (const id of Object.keys(map)) {
+      result[id] = !!map[id];
+    }
+    return result;
+  } catch {
+    return {};
+  }
+});
+
+ipcMain.handle('connector-remove-key', (event, { serviceId }) => {
+  try {
+    const map = loadConnectorKeys();
+    delete map[serviceId];
+    saveConnectorKeys(map);
+    return { ok: true };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
+ipcMain.handle('connector-query', async (event, { serviceId, query, options }) => {
+  try {
+    const map = loadConnectorKeys();
+    if (!map[serviceId]) return { error: 'Service not connected' };
+    const apiKey = decryptConnectorKey(map[serviceId]);
+    if (!apiKey) return { error: 'Could not read stored key' };
+
+    if (serviceId === 'github') return await queryGitHub(apiKey, query, options);
+    if (serviceId === 'notion') return await queryNotion(apiKey, query, options);
+    if (serviceId === 'perplexity') return await queryPerplexity(apiKey, query, options);
+    if (serviceId === 'linear') return await queryLinear(apiKey, query, options);
+    if (serviceId === 'gmail') return await queryGmail(apiKey, query, options);
+    if (serviceId === 'gdrive') return await queryGoogleDrive(apiKey, query, options);
+    if (serviceId === 'gcalendar') return await queryGoogleCalendar(apiKey, query, options);
+    if (serviceId === 'dropbox') return await queryDropbox(apiKey, query, options);
+    if (serviceId === 'onedrive') return await queryOneDrive(apiKey, query, options);
+    if (serviceId === 'slack') return await querySlack(apiKey, query, options);
+    if (serviceId === 'outlook') return await queryOutlook(apiKey, query, options);
+    return { error: `No query handler for service: ${serviceId}` };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
+async function queryGitHub(token, query, options = {}) {
+  const type = options.type || 'issues';
+  const perPage = options.perPage || 5;
+
+  let url;
+  if (type === 'code') {
+    url = `https://api.github.com/search/code?q=${encodeURIComponent(query)}&per_page=${perPage}`;
+  } else if (type === 'repos') {
+    url = `https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&per_page=${perPage}`;
+  } else {
+    url = `https://api.github.com/search/issues?q=${encodeURIComponent(query)}&per_page=${perPage}`;
+  }
+
+  const resp = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28'
+    }
+  });
+  const data = await resp.json();
+  if (!resp.ok) return { error: data.message || 'GitHub API error' };
+
+  const items = (data.items || []).map((item) => ({
+    title: item.title || item.name || item.path,
+    url: item.html_url,
+    body: item.body ? item.body.slice(0, 300) : '',
+    state: item.state,
+    number: item.number,
+    repo: item.repository_url ? item.repository_url.replace('https://api.github.com/repos/', '') : ''
+  }));
+  return { results: items, total: data.total_count || items.length };
+}
+
+async function queryNotion(apiKey, query, options = {}) {
+  const resp = await fetch('https://api.notion.com/v1/search', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'Notion-Version': '2022-06-28'
+    },
+    body: JSON.stringify({
+      query,
+      page_size: options.pageSize || 5
+    })
+  });
+  const data = await resp.json();
+  if (!resp.ok) return { error: data.message || 'Notion API error' };
+
+  const results = (data.results || []).map((item) => {
+    const title =
+      item.properties?.title?.title?.[0]?.plain_text ||
+      item.properties?.Name?.title?.[0]?.plain_text ||
+      item.title?.[0]?.plain_text ||
+      'Untitled';
+    return {
+      title,
+      url: item.url || '',
+      type: item.object,
+      lastEdited: item.last_edited_time
+    };
+  });
+  return { results, total: results.length };
+}
+
+async function queryPerplexity(apiKey, query, options = {}) {
+  const model = options.model || 'sonar';
+  const resp = await fetch('https://api.perplexity.ai/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: query }],
+      return_citations: true,
+      return_related_questions: false
+    })
+  });
+  const data = await resp.json();
+  if (!resp.ok) return { error: data.error?.message || 'Perplexity API error' };
+
+  const content = data.choices?.[0]?.message?.content || '';
+  const citations = data.citations || [];
+  return { answer: content, citations, model };
+}
+
+async function queryLinear(apiKey, query, options = {}) {
+  const gqlQuery = `
+    query SearchIssues($query: String!) {
+      issueSearch(query: $query, first: 5) {
+        nodes {
+          id
+          title
+          description
+          state { name }
+          priority
+          url
+          team { name }
+        }
+      }
+    }
+  `;
+  const resp = await fetch('https://api.linear.app/graphql', {
+    method: 'POST',
+    headers: {
+      Authorization: apiKey,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ query: gqlQuery, variables: { query } })
+  });
+  const data = await resp.json();
+  if (!resp.ok || data.errors) {
+    return { error: data.errors?.[0]?.message || 'Linear API error' };
+  }
+  const items = (data.data?.issueSearch?.nodes || []).map((issue) => ({
+    title: issue.title,
+    url: issue.url,
+    state: issue.state?.name,
+    team: issue.team?.name,
+    description: issue.description ? issue.description.slice(0, 200) : ''
+  }));
+  return { results: items, total: items.length };
+}
+async function queryGmail(token, query, options = {}) {
+  const maxResults = options.maxResults || 5;
+  // Search emails
+  const searchResp = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=${maxResults}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const searchData = await searchResp.json();
+  if (!searchResp.ok) return { error: searchData.error?.message || 'Gmail API error' };
+  if (!searchData.messages?.length) return { results: [], total: 0 };
+
+  // Fetch snippets for each message
+  const msgs = await Promise.all(
+    searchData.messages.slice(0, maxResults).map(async (m) => {
+      try {
+        const r = await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const d = await r.json();
+        const headers = d.payload?.headers || [];
+        const get = (name) => headers.find((h) => h.name === name)?.value || '';
+        return {
+          subject: get('Subject') || '(no subject)',
+          from: get('From'),
+          date: get('Date'),
+          snippet: d.snippet || '',
+          id: m.id
+        };
+      } catch { return null; }
+    })
+  );
+  return { results: msgs.filter(Boolean), total: searchData.resultSizeEstimate || msgs.length };
+}
+
+async function queryGoogleDrive(token, query, options = {}) {
+  const pageSize = options.pageSize || 6;
+  const resp = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(`fullText contains '${query}'`)}&pageSize=${pageSize}&fields=files(id,name,mimeType,modifiedTime,webViewLink)`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const data = await resp.json();
+  if (!resp.ok) return { error: data.error?.message || 'Google Drive API error' };
+  const results = (data.files || []).map((f) => ({
+    name: f.name,
+    type: f.mimeType?.split('.').pop() || f.mimeType,
+    modified: f.modifiedTime,
+    url: f.webViewLink || ''
+  }));
+  return { results, total: results.length };
+}
+
+async function queryGoogleCalendar(token, query, options = {}) {
+  const now = new Date().toISOString();
+  const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const resp = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events?q=${encodeURIComponent(query)}&timeMin=${now}&timeMax=${future}&maxResults=5&singleEvents=true&orderBy=startTime`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const data = await resp.json();
+  if (!resp.ok) return { error: data.error?.message || 'Google Calendar API error' };
+  const results = (data.items || []).map((e) => ({
+    title: e.summary || '(no title)',
+    start: e.start?.dateTime || e.start?.date,
+    end: e.end?.dateTime || e.end?.date,
+    location: e.location || '',
+    description: e.description ? e.description.slice(0, 150) : ''
+  }));
+  return { results, total: results.length };
+}
+
+async function queryDropbox(token, query, options = {}) {
+  const resp = await fetch('https://api.dropboxapi.com/2/files/search_v2', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      query,
+      options: { max_results: options.maxResults || 6, file_status: 'active' }
+    })
+  });
+  const data = await resp.json();
+  if (!resp.ok || data.error_summary) return { error: data.error_summary || 'Dropbox API error' };
+  const results = (data.matches || []).map((m) => {
+    const meta = m.metadata?.metadata || m.metadata;
+    return {
+      name: meta?.name || '',
+      path: meta?.path_display || '',
+      modified: meta?.server_modified || '',
+      type: meta?.['.tag'] || 'file'
+    };
+  });
+  return { results, total: results.length };
+}
+
+async function queryOneDrive(token, query, options = {}) {
+  const resp = await fetch(
+    `https://graph.microsoft.com/v1.0/me/drive/search(q='${encodeURIComponent(query)}')?$top=${options.top || 6}&$select=name,webUrl,lastModifiedDateTime,file,folder`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const data = await resp.json();
+  if (!resp.ok) return { error: data.error?.message || 'OneDrive API error' };
+  const results = (data.value || []).map((f) => ({
+    name: f.name,
+    url: f.webUrl,
+    modified: f.lastModifiedDateTime,
+    type: f.file ? 'file' : 'folder'
+  }));
+  return { results, total: results.length };
+}
+
+async function querySlack(token, query, options = {}) {
+  const resp = await fetch(
+    `https://slack.com/api/search.messages?query=${encodeURIComponent(query)}&count=${options.count || 5}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const data = await resp.json();
+  if (!data.ok) return { error: data.error || 'Slack API error' };
+  const results = (data.messages?.matches || []).map((m) => ({
+    text: m.text ? m.text.slice(0, 200) : '',
+    user: m.username || m.user || '',
+    channel: m.channel?.name || '',
+    ts: m.ts,
+    permalink: m.permalink || ''
+  }));
+  return { results, total: data.messages?.total || results.length };
+}
+
+async function queryOutlook(token, query, options = {}) {
+  const top = options.top || 5;
+  const resp = await fetch(
+    `https://graph.microsoft.com/v1.0/me/messages?$search="${encodeURIComponent(query)}"&$top=${top}&$select=subject,from,receivedDateTime,bodyPreview`,
+    { headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: 'eventual' } }
+  );
+  const data = await resp.json();
+  if (!resp.ok) return { error: data.error?.message || 'Outlook API error' };
+  const results = (data.value || []).map((m) => ({
+    subject: m.subject || '(no subject)',
+    from: m.from?.emailAddress?.address || '',
+    date: m.receivedDateTime,
+    snippet: m.bodyPreview || ''
+  }));
+  return { results, total: results.length };
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 ipcMain.handle('detect-browsers', async () => {
   const browsers = [];

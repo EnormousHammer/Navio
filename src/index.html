@@ -285,22 +285,40 @@
     <div class="connectors-hub">
       <div class="connectors-hub-header">
         <div class="connectors-hub-title">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/>
             <path d="M12 7v5"/><path d="M7.5 17.2L10.5 13"/><path d="M16.5 17.2L13.5 13"/>
             <circle cx="12" cy="12" r="1" fill="currentColor"/>
           </svg>
-          <span>Connectors Hub</span>
+          <span>Connectors</span>
         </div>
-        <div class="connectors-hub-search">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" id="connectors-search" placeholder="Search services..." spellcheck="false" autocomplete="off">
+
+        <!-- Tab switcher -->
+        <div class="connectors-hub-tabs">
+          <button class="connectors-hub-tab active" id="connectors-tab-connections">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            Connections
+          </button>
+          <button class="connectors-hub-tab" id="connectors-tab-launch">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            Quick Launch
+          </button>
         </div>
+
         <button class="icon-btn" id="connectors-hub-close" title="Close">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
-      <div class="connectors-hub-categories">
+
+      <!-- Search row (Quick Launch only) -->
+      <div id="connectors-hub-search-row" class="connectors-hub-search-row" style="display:none">
+        <div class="connectors-hub-search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="connectors-search" placeholder="Search services..." spellcheck="false" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="connectors-hub-categories" style="display:none">
         <button class="connector-cat-btn active" data-category="all">All</button>
         <button class="connector-cat-btn" data-category="email">Email</button>
         <button class="connector-cat-btn" data-category="cloud">Cloud</button>

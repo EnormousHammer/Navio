@@ -65,5 +65,10 @@ contextBridge.exposeInMainWorld('navio', {
 
   getIntroVideoUrl: () => ipcRenderer.invoke('get-intro-video-url'),
 
-  liveConnectorData: (payload) => ipcRenderer.invoke('live-connector-data', payload)
+  liveConnectorData: (payload) => ipcRenderer.invoke('live-connector-data', payload),
+
+  connectorSaveKey: (serviceId, apiKey) => ipcRenderer.invoke('connector-save-key', { serviceId, apiKey }),
+  connectorGetKeys: () => ipcRenderer.invoke('connector-get-keys'),
+  connectorRemoveKey: (serviceId) => ipcRenderer.invoke('connector-remove-key', { serviceId }),
+  connectorQuery: (serviceId, query, options) => ipcRenderer.invoke('connector-query', { serviceId, query, options })
 });

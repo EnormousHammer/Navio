@@ -1,12 +1,201 @@
 /**
  * Navio Browser - Connectors Hub
- * Quick-access service launcher with categories, favorites, and sidebar pins
+ *
+ * Two-tier system inspired by Claude/Perplexity:
+ *  1. "Connections" tab  — API-authenticated integrations the AI assistant can
+ *     actually query (GitHub, Notion, Perplexity search, Linear).
+ *     Connect once → AI uses them during conversations.
+ *  2. "Quick Launch" tab — curated URL shortcuts (original behaviour).
  */
 
 class ConnectorsManagerClass {
   constructor() {
     this.favorites = [];
     this.hubVisible = false;
+    this.activeTab = 'connections'; // 'connections' | 'launch'
+
+    // Which services have stored API keys (populated on init)
+    this.connectedIds = new Set();
+
+    // ── Real API connectors — grouped by category ───────────────────────────
+    // Each service has a token/key the user provides once.
+    // The AI assistant can then query these services during conversations.
+    this.integrationCategories = [
+      { id: 'email',        name: 'Email',          icon: '✉' },
+      { id: 'cloud',        name: 'Cloud Storage',  icon: '☁' },
+      { id: 'communication',name: 'Communication',  icon: '💬' },
+      { id: 'productivity', name: 'Productivity',   icon: '📋' },
+      { id: 'development',  name: 'Development',    icon: '</>' },
+      { id: 'ai-search',    name: 'AI & Search',    icon: '✦'  },
+    ];
+
+    this.integrations = [
+      // ── Email ────────────────────────────────────────────────────────────
+      {
+        id: 'gmail',
+        name: 'Gmail',
+        tagline: 'Search and read your emails',
+        description: 'Connect Gmail so the AI can search your inbox. Ask "find emails from John about the contract" or "show unread messages from this week."',
+        icon: 'M',
+        gradient: 'linear-gradient(135deg, #ea4335, #fbbc04)',
+        keyLabel: 'Google Access Token',
+        keyPlaceholder: 'ya29.a0...',
+        keyHint: 'Get a token from developers.google.com/oauthplayground — select Gmail API (gmail.readonly scope)',
+        keyLink: 'https://developers.google.com/oauthplayground/',
+        capabilities: ['Search emails by sender, subject, or keyword', 'Find attachments', 'Read email threads'],
+        category: 'email'
+      },
+      {
+        id: 'outlook',
+        name: 'Outlook',
+        tagline: 'Search your Outlook inbox',
+        description: 'Connect your Microsoft Outlook/Exchange inbox. Ask "find emails about the Q4 budget" or "show messages from last week."',
+        icon: 'O',
+        gradient: 'linear-gradient(135deg, #0078d4, #00bcf2)',
+        keyLabel: 'Microsoft Graph Access Token',
+        keyPlaceholder: 'eyJ0eXAi...',
+        keyHint: 'Get a token from developer.microsoft.com/en-us/graph/graph-explorer — sign in and copy the token',
+        keyLink: 'https://developer.microsoft.com/en-us/graph/graph-explorer',
+        capabilities: ['Search emails by keyword', 'Find messages by sender', 'Read email previews'],
+        category: 'email'
+      },
+
+      // ── Cloud Storage ────────────────────────────────────────────────────
+      {
+        id: 'gdrive',
+        name: 'Google Drive',
+        tagline: 'Search files and documents',
+        description: 'Connect Google Drive so the AI can find your files and documents. Ask "find the Q3 report" or "show recent spreadsheets."',
+        icon: 'GD',
+        gradient: 'linear-gradient(135deg, #4285f4, #34a853)',
+        keyLabel: 'Google Access Token',
+        keyPlaceholder: 'ya29.a0...',
+        keyHint: 'Get a token from developers.google.com/oauthplayground — select Drive API (drive.readonly scope)',
+        keyLink: 'https://developers.google.com/oauthplayground/',
+        capabilities: ['Search files by name or content', 'Find Docs, Sheets, Slides', 'Locate recent files'],
+        category: 'cloud'
+      },
+      {
+        id: 'dropbox',
+        name: 'Dropbox',
+        tagline: 'Search files in your Dropbox',
+        description: 'Connect Dropbox so the AI can search through your stored files and folders. Ask "find the presentation from last month" or "search for invoices."',
+        icon: 'D',
+        gradient: 'linear-gradient(135deg, #0061fe, #0090ff)',
+        keyLabel: 'Access Token',
+        keyPlaceholder: 'sl.u.A...',
+        keyHint: 'Create an app at dropbox.com/developers/apps → generate an access token under "OAuth 2"',
+        keyLink: 'https://www.dropbox.com/developers/apps',
+        capabilities: ['Search files by name', 'Find documents and media', 'Browse folder structure'],
+        category: 'cloud'
+      },
+      {
+        id: 'onedrive',
+        name: 'OneDrive',
+        tagline: 'Search files in OneDrive',
+        description: 'Connect OneDrive so the AI can search your Microsoft files and documents. Pairs well with Outlook for full Microsoft 365 coverage.',
+        icon: 'OD',
+        gradient: 'linear-gradient(135deg, #0078d4, #28a8ea)',
+        keyLabel: 'Microsoft Graph Access Token',
+        keyPlaceholder: 'eyJ0eXAi...',
+        keyHint: 'Get a token from developer.microsoft.com/en-us/graph/graph-explorer — sign in and copy the token',
+        keyLink: 'https://developer.microsoft.com/en-us/graph/graph-explorer',
+        capabilities: ['Search files and folders', 'Find Office documents', 'Locate recent files'],
+        category: 'cloud'
+      },
+
+      // ── Communication ────────────────────────────────────────────────────
+      {
+        id: 'slack',
+        name: 'Slack',
+        tagline: 'Search messages across your workspace',
+        description: 'Connect Slack so the AI can search your messages and channels. Ask "find conversations about the launch" or "search for messages from the design team."',
+        icon: 'S',
+        gradient: 'linear-gradient(135deg, #4a154b, #e01e5a)',
+        keyLabel: 'User OAuth Token',
+        keyPlaceholder: 'xoxp-...',
+        keyHint: 'Create a Slack app at api.slack.com/apps → OAuth & Permissions → install and copy the User Token (xoxp-)',
+        keyLink: 'https://api.slack.com/apps',
+        capabilities: ['Search messages across all channels', 'Find conversations by topic', 'Search by user or channel'],
+        category: 'communication'
+      },
+
+      // ── Productivity ─────────────────────────────────────────────────────
+      {
+        id: 'gcalendar',
+        name: 'Google Calendar',
+        tagline: 'Find events and upcoming meetings',
+        description: 'Connect Google Calendar so the AI knows your schedule. Ask "what meetings do I have this week?" or "find events about the product review."',
+        icon: 'GC',
+        gradient: 'linear-gradient(135deg, #4285f4, #7baaf7)',
+        keyLabel: 'Google Access Token',
+        keyPlaceholder: 'ya29.a0...',
+        keyHint: 'Get a token from developers.google.com/oauthplayground — select Calendar API (calendar.readonly scope)',
+        keyLink: 'https://developers.google.com/oauthplayground/',
+        capabilities: ['Search upcoming events', 'Find meetings by title or attendee', 'View next 30 days of schedule'],
+        category: 'productivity'
+      },
+      {
+        id: 'notion',
+        name: 'Notion',
+        tagline: 'Search across your pages and databases',
+        description: 'Connect your Notion workspace so the AI can search your pages, databases, and notes. Ask "find the Q3 roadmap" or "what did we decide about the API design?"',
+        icon: 'N',
+        gradient: 'linear-gradient(135deg, #2f2f2f, #4a4a4a)',
+        keyLabel: 'Integration Token',
+        keyPlaceholder: 'secret_...',
+        keyHint: 'Create an integration at notion.so/my-integrations → copy the token → share pages with the integration',
+        keyLink: 'https://www.notion.so/my-integrations',
+        capabilities: ['Search pages & databases', 'Find notes and docs', 'Retrieve meeting notes'],
+        category: 'productivity'
+      },
+      {
+        id: 'linear',
+        name: 'Linear',
+        tagline: 'Search issues and project updates',
+        description: 'Connect Linear so the AI can search your issues and projects. Ask "what high-priority bugs are open?" or "show issues assigned to me."',
+        icon: 'Li',
+        gradient: 'linear-gradient(135deg, #5e6ad2, #8b95e8)',
+        keyLabel: 'API Key',
+        keyPlaceholder: 'lin_api_...',
+        keyHint: 'Go to linear.app/settings/api → Personal API keys → create and copy',
+        keyLink: 'https://linear.app/settings/api',
+        capabilities: ['Search issues by keyword', 'Filter by team / state', 'Track priorities'],
+        category: 'productivity'
+      },
+
+      // ── Development ──────────────────────────────────────────────────────
+      {
+        id: 'github',
+        name: 'GitHub',
+        tagline: 'Search issues, PRs, and repositories',
+        description: 'Connect GitHub so the AI can search across your repositories. Ask "find open authentication bugs" or "show PRs waiting for review."',
+        icon: 'GH',
+        gradient: 'linear-gradient(135deg, #24292f, #444d56)',
+        keyLabel: 'Personal Access Token',
+        keyPlaceholder: 'ghp_... or github_pat_...',
+        keyHint: 'Go to github.com/settings/tokens → generate a classic or fine-grained token with repo + read:org scopes',
+        keyLink: 'https://github.com/settings/tokens',
+        capabilities: ['Search issues & pull requests', 'Search code', 'Find repositories'],
+        category: 'development'
+      },
+
+      // ── AI & Search ──────────────────────────────────────────────────────
+      {
+        id: 'perplexity',
+        name: 'Perplexity',
+        tagline: 'Live web search with cited answers',
+        description: 'Connect Perplexity\'s Sonar API to give the AI real-time web search. Ask about current events, news, or anything that needs up-to-date information.',
+        icon: 'Px',
+        gradient: 'linear-gradient(135deg, #1a9688, #20b8a2)',
+        keyLabel: 'API Key',
+        keyPlaceholder: 'pplx-...',
+        keyHint: 'Go to perplexity.ai/settings/api → generate an API key',
+        keyLink: 'https://www.perplexity.ai/settings/api',
+        capabilities: ['Real-time web search', 'Answers with source citations', 'Current events & news'],
+        category: 'ai-search'
+      }
+    ];
 
     // Services that support the Live Connector system
     this.liveCapableIds = new Set([
@@ -14,6 +203,7 @@ class ConnectorsManagerClass {
       'github', 'google-calendar', 'notion'
     ]);
 
+    // ── Quick Launch service catalog ────────────────────────────────────────
     this.services = [
       // ─── Email ───
       { id: 'gmail', name: 'Gmail', url: 'https://mail.google.com', category: 'email', icon: 'M', color: '#ea4335', gradient: 'linear-gradient(135deg, #ea4335, #fbbc04)' },
@@ -126,6 +316,14 @@ class ConnectorsManagerClass {
     } catch (e) {
       this.favorites = ['gmail', 'gdrive', 'dropbox', 'slack', 'notion', 'github', 'chatgpt'];
     }
+
+    try {
+      const keys = await window.navio.connectorGetKeys();
+      this.connectedIds = new Set(Object.keys(keys).filter((k) => keys[k]));
+    } catch (e) {
+      this.connectedIds = new Set();
+    }
+
     this.renderSidebarPins();
     this.bindEvents();
   }
@@ -162,6 +360,15 @@ class ConnectorsManagerClass {
       }
     });
 
+    // Tab switching
+    document.getElementById('connectors-tab-connections').addEventListener('click', () => {
+      this.switchTab('connections');
+    });
+    document.getElementById('connectors-tab-launch').addEventListener('click', () => {
+      this.switchTab('launch');
+    });
+
+    // Category buttons (for Quick Launch tab)
     document.querySelectorAll('.connector-cat-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.connector-cat-btn').forEach(b => b.classList.remove('active'));
@@ -169,6 +376,26 @@ class ConnectorsManagerClass {
         this.filterByCategory(btn.dataset.category);
       });
     });
+  }
+
+  switchTab(tab) {
+    this.activeTab = tab;
+    document.getElementById('connectors-tab-connections').classList.toggle('active', tab === 'connections');
+    document.getElementById('connectors-tab-launch').classList.toggle('active', tab === 'launch');
+
+    const searchRow = document.getElementById('connectors-hub-search-row');
+    const categories = document.querySelector('.connectors-hub-categories');
+
+    if (tab === 'connections') {
+      if (searchRow) searchRow.style.display = 'none';
+      if (categories) categories.style.display = 'none';
+      this.renderConnectionsTab();
+    } else {
+      if (searchRow) searchRow.style.display = '';
+      if (categories) categories.style.display = '';
+      document.getElementById('connectors-search').value = '';
+      this.renderHubServices();
+    }
   }
 
   toggleHub() {
@@ -183,14 +410,14 @@ class ConnectorsManagerClass {
     this.hubVisible = true;
     const hub = document.getElementById('connectors-hub');
     hub.classList.add('active');
-    this.renderHubServices();
 
-    document.querySelectorAll('.connector-cat-btn').forEach(b => b.classList.remove('active'));
-    const allBtn = document.querySelector('.connector-cat-btn[data-category="all"]');
-    if (allBtn) allBtn.classList.add('active');
+    // Default to Connections tab if no services connected yet; else respect last tab
+    this.switchTab(this.activeTab);
 
     setTimeout(() => {
-      document.getElementById('connectors-search').focus();
+      if (this.activeTab === 'launch') {
+        document.getElementById('connectors-search').focus();
+      }
     }, 200);
   }
 
@@ -199,6 +426,297 @@ class ConnectorsManagerClass {
     document.getElementById('connectors-hub').classList.remove('active');
     document.getElementById('connectors-search').value = '';
   }
+
+  // ── Connections Tab ───────────────────────────────────────────────────────
+
+  renderConnectionsTab() {
+    const container = document.getElementById('connectors-grid');
+    const connected = this.integrations.filter((i) => this.connectedIds.has(i.id));
+    const available = this.integrations.filter((i) => !this.connectedIds.has(i.id));
+
+    let html = '';
+
+    // Active connections first
+    if (connected.length > 0) {
+      html += `
+        <div class="conn-section-header">
+          <span class="conn-section-dot conn-section-dot--active"></span>
+          Active connections
+          <span class="conn-section-count">${connected.length}</span>
+        </div>
+        <div class="conn-integration-list">
+      `;
+      for (const intg of connected) {
+        html += this._integrationCardHTML(intg, true);
+      }
+      html += '</div>';
+    }
+
+    // Available integrations grouped by category
+    if (available.length > 0) {
+      html += `<div class="conn-section-header" style="margin-top: ${connected.length > 0 ? '28px' : '0'}">
+        <span class="conn-section-dot"></span>
+        Available integrations
+        <span class="conn-section-count">${available.length}</span>
+      </div>`;
+
+      for (const cat of this.integrationCategories) {
+        const catItems = available.filter((i) => i.category === cat.id);
+        if (!catItems.length) continue;
+        html += `
+          <div class="conn-category-row">
+            <div class="conn-category-label">
+              <span class="conn-cat-icon">${cat.icon}</span>
+              ${cat.name}
+            </div>
+            <div class="conn-integration-list">
+        `;
+        for (const intg of catItems) {
+          html += this._integrationCardHTML(intg, false);
+        }
+        html += '</div></div>';
+      }
+    }
+
+    html += `
+      <div class="conn-coming-soon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+        More integrations coming soon — Jira, Airtable, HubSpot, and more.
+      </div>
+    `;
+
+    container.innerHTML = html;
+    this._bindConnectionCards(container);
+  }
+
+  _integrationCardHTML(intg, isConnected) {
+    const capsHTML = intg.capabilities
+      .map((c) => `<span class="conn-cap-pill">${c}</span>`)
+      .join('');
+
+    if (isConnected) {
+      return `
+        <div class="conn-integration-card conn-integration-card--connected" data-id="${intg.id}">
+          <div class="conn-intg-icon" style="background: ${intg.gradient}">
+            <span>${intg.icon}</span>
+          </div>
+          <div class="conn-intg-body">
+            <div class="conn-intg-top">
+              <span class="conn-intg-name">${intg.name}</span>
+              <span class="conn-connected-badge">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                Connected
+              </span>
+            </div>
+            <p class="conn-intg-tagline">${intg.tagline}</p>
+            <div class="conn-caps">${capsHTML}</div>
+          </div>
+          <button class="conn-disconnect-btn" data-id="${intg.id}" title="Disconnect ${intg.name}">
+            Disconnect
+          </button>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="conn-integration-card" data-id="${intg.id}">
+        <div class="conn-intg-icon" style="background: ${intg.gradient}">
+          <span>${intg.icon}</span>
+        </div>
+        <div class="conn-intg-body">
+          <div class="conn-intg-top">
+            <span class="conn-intg-name">${intg.name}</span>
+          </div>
+          <p class="conn-intg-tagline">${intg.tagline}</p>
+          <p class="conn-intg-desc">${intg.description}</p>
+          <div class="conn-caps">${capsHTML}</div>
+        </div>
+        <button class="conn-connect-btn" data-id="${intg.id}">Connect</button>
+      </div>
+    `;
+  }
+
+  _bindConnectionCards(container) {
+    container.querySelectorAll('.conn-connect-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        this.openConnectModal(id);
+      });
+    });
+
+    container.querySelectorAll('.conn-disconnect-btn').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        await this.disconnectService(id);
+      });
+    });
+  }
+
+  // ── Connect Modal ─────────────────────────────────────────────────────────
+
+  openConnectModal(serviceId) {
+    const intg = this.integrations.find((i) => i.id === serviceId);
+    if (!intg) return;
+
+    // Remove any existing modal
+    document.getElementById('conn-modal-overlay')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'conn-modal-overlay';
+    overlay.className = 'conn-modal-overlay';
+    overlay.innerHTML = `
+      <div class="conn-modal" role="dialog" aria-modal="true">
+        <div class="conn-modal-header">
+          <div class="conn-modal-title-row">
+            <div class="conn-modal-icon" style="background: ${intg.gradient}">
+              <span>${intg.icon}</span>
+            </div>
+            <div>
+              <h2 class="conn-modal-title">Connect ${intg.name}</h2>
+              <p class="conn-modal-subtitle">${intg.tagline}</p>
+            </div>
+          </div>
+          <button class="conn-modal-close" aria-label="Close">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <div class="conn-modal-body">
+          <p class="conn-modal-desc">${intg.description}</p>
+
+          <label class="conn-modal-label" for="conn-modal-key-input">${intg.keyLabel}</label>
+          <div class="conn-modal-input-wrap">
+            <input
+              type="password"
+              id="conn-modal-key-input"
+              class="conn-modal-input"
+              placeholder="${intg.keyPlaceholder}"
+              autocomplete="off"
+              spellcheck="false"
+            >
+            <button class="conn-modal-toggle-vis" title="Show/hide key" aria-label="Toggle visibility">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <div class="conn-modal-hint-row">
+            <p class="conn-modal-hint">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+              ${intg.keyHint}
+            </p>
+            ${intg.keyLink ? `<a class="conn-modal-key-link" href="${intg.keyLink}" target="_blank" data-href="${intg.keyLink}">
+              Get token
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </a>` : ''}
+          </div>
+
+          <div class="conn-modal-caps">
+            <span class="conn-modal-caps-label">What the AI will be able to do:</span>
+            <ul class="conn-modal-caps-list">
+              ${intg.capabilities.map((c) => `<li><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>${c}</li>`).join('')}
+            </ul>
+          </div>
+
+          <div class="conn-modal-error" id="conn-modal-error" style="display:none"></div>
+        </div>
+
+        <div class="conn-modal-footer">
+          <button class="conn-modal-cancel">Cancel</button>
+          <button class="conn-modal-confirm" data-id="${serviceId}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+            Connect ${intg.name}
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // Bind modal events
+    overlay.querySelector('.conn-modal-close').addEventListener('click', () => overlay.remove());
+    overlay.querySelector('.conn-modal-cancel').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+    // "Get token" link — open in a new tab inside Navio
+    overlay.querySelectorAll('.conn-modal-key-link').forEach((a) => {
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        const href = a.dataset.href;
+        if (href && typeof TabManager !== 'undefined') {
+          TabManager.createTab(href);
+          overlay.remove();
+          this.hideHub();
+        }
+      });
+    });
+
+    const input = overlay.querySelector('#conn-modal-key-input');
+    const toggleVis = overlay.querySelector('.conn-modal-toggle-vis');
+    toggleVis.addEventListener('click', () => {
+      input.type = input.type === 'password' ? 'text' : 'password';
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') overlay.querySelector('.conn-modal-confirm').click();
+      if (e.key === 'Escape') overlay.remove();
+    });
+
+    overlay.querySelector('.conn-modal-confirm').addEventListener('click', async () => {
+      await this.saveConnection(serviceId, input.value.trim(), overlay);
+    });
+
+    setTimeout(() => input.focus(), 100);
+  }
+
+  async saveConnection(serviceId, apiKey, modalEl) {
+    const errorEl = modalEl.querySelector('#conn-modal-error');
+    const confirmBtn = modalEl.querySelector('.conn-modal-confirm');
+
+    if (!apiKey) {
+      errorEl.textContent = 'Please enter an API key or token.';
+      errorEl.style.display = 'flex';
+      return;
+    }
+
+    confirmBtn.disabled = true;
+    confirmBtn.innerHTML = `
+      <svg class="conn-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+      Connecting...
+    `;
+    errorEl.style.display = 'none';
+
+    try {
+      const result = await window.navio.connectorSaveKey(serviceId, apiKey);
+      if (result?.error) throw new Error(result.error);
+
+      this.connectedIds.add(serviceId);
+      modalEl.remove();
+      this.renderConnectionsTab();
+      this.renderSidebarPins();
+    } catch (e) {
+      errorEl.textContent = e.message || 'Failed to save key. Please try again.';
+      errorEl.style.display = 'flex';
+      confirmBtn.disabled = false;
+      confirmBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        Connect ${serviceId}
+      `;
+    }
+  }
+
+  async disconnectService(serviceId) {
+    try {
+      await window.navio.connectorRemoveKey(serviceId);
+      this.connectedIds.delete(serviceId);
+      this.renderConnectionsTab();
+      this.renderSidebarPins();
+    } catch (e) {
+      console.error('Failed to disconnect service:', e);
+    }
+  }
+
+  // ── Quick Launch Tab (original behaviour) ────────────────────────────────
 
   renderHubServices(filteredServices = null) {
     const container = document.getElementById('connectors-grid');
@@ -416,6 +934,20 @@ class ConnectorsManagerClass {
         this.openService(pin.dataset.serviceId);
       });
     });
+  }
+
+  // ── Public API for assistant integration ─────────────────────────────────
+
+  getConnectedIntegrations() {
+    return this.integrations.filter((i) => this.connectedIds.has(i.id));
+  }
+
+  isConnected(serviceId) {
+    return this.connectedIds.has(serviceId);
+  }
+
+  async queryConnector(serviceId, query, options = {}) {
+    return window.navio.connectorQuery(serviceId, query, options);
   }
 }
 

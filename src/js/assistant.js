@@ -56,6 +56,16 @@ FORMATTING:
 - Keep responses concise and scannable.
 - Do NOT output action tokens like [[ACTION:...]] — use the <navio-actions> block only.
 
+STRICT EMAIL RULE — NEVER BREAK THIS:
+You are NOT allowed to compose, send, reply to, forward, or delete emails under ANY circumstances.
+- Never produce actions that click "Compose", "New message", "Reply", "Reply All", "Forward", or "Send" on email services (Gmail, Outlook, Yahoo Mail, ProtonMail, etc.).
+- Never type into email compose fields, subject lines, or recipient fields.
+- If the user asks you to send or compose an email, decline and explain: you can only search and read emails, never write or send them.
+- Email connectors are strictly READ-ONLY: search inbox, display results — nothing more.
+
+CONNECTED INTEGRATIONS:
+When [Connected integrations returned...] context appears in the system messages, use it to answer questions. Always cite which service the information came from (e.g. "According to Gmail…", "In Google Drive…", "Perplexity search found…"). If the context is relevant, prioritize it over general knowledge.
+
 PERSONALITY:
 - Intelligent, modern, concise. Think Perplexity meets a skilled browser agent.
 - Lead with the answer, then context. No filler phrases.`;
@@ -320,6 +330,12 @@ PERSONALITY:
       if (titles) {
         messages.push({ role: 'system', content: `[Pinned tabs in workspace]\n${titles}` });
       }
+    }
+
+    // Inject connected service context when the query seems to target them
+    if (!isQuickAction && typeof ConnectorsManager !== 'undefined') {
+      const connectorCtx = await this._buildConnectorContext(text);
+      if (connectorCtx) messages.push({ role: 'system', content: connectorCtx });
     }
 
     // Inject accessibility snapshot when user is likely requesting browser control
@@ -989,6 +1005,187 @@ PERSONALITY:
     this.setReceipt('');
     this.messagesEl.innerHTML = '';
     this._showGreeting();
+  }
+
+  // ── Connector Context Injection ─────────────────────────────────────────
+  // Detects which connected services are relevant to the user's query,
+  // queries them, and returns a formatted system context block.
+
+  async _buildConnectorContext(text) {
+    try {
+      const connected = ConnectorsManager.getConnectedIntegrations();
+      if (connected.length === 0) return null;
+
+      const results = [];
+      const has = (id) => connected.some((c) => c.id === id);
+
+      // Helper: extract a clean search term from the user query
+      const clean = (pattern) => text.replace(pattern, '').replace(/\b(my|the|search|find|in|from|about|show|list|all|open|get|what|are|is|any)\b/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+
+      // ── Perplexity (real-time web search) ──────────────────────────────
+      const webSearchIntent = /\b(search|look up|find out|what is|who is|latest|news|current|today|recent|web)\b/i.test(text);
+      if (has('perplexity') && webSearchIntent) {
+        try {
+          const res = await ConnectorsManager.queryConnector('perplexity', text);
+          if (res?.answer) {
+            results.push(`[Perplexity Web Search]\n${res.answer.slice(0, 1400)}${res.citations?.length ? `\n\nSources: ${res.citations.slice(0, 4).join(', ')}` : ''}`);
+          }
+        } catch (_) {}
+      }
+
+      // ── Gmail ──────────────────────────────────────────────────────────
+      const gmailIntent = /\b(email|gmail|mail|inbox|message|sent|unread|thread|attachment)\b/i.test(text);
+      if (has('gmail') && gmailIntent) {
+        const q = clean(/\b(email|gmail|mail|inbox|message|sent|unread|thread)\b/gi);
+        if (q.length > 2) {
+          try {
+            const res = await ConnectorsManager.queryConnector('gmail', q, { maxResults: 4 });
+            if (res?.results?.length) {
+              const lines = res.results.map((r) => `- From: ${r.from || '?'} · Subject: ${r.subject}${r.snippet ? `\n  "${r.snippet.slice(0, 100)}"` : ''}`).join('\n');
+              results.push(`[Gmail — ${res.total} result(s) for "${q}"]\n${lines}`);
+            }
+          } catch (_) {}
+        }
+      }
+
+      // ── Outlook ────────────────────────────────────────────────────────
+      const outlookIntent = /\b(outlook|email|mail|inbox|message|exchange)\b/i.test(text);
+      if (has('outlook') && outlookIntent && !has('gmail')) {
+        const q = clean(/\b(outlook|email|mail|inbox|message)\b/gi);
+        if (q.length > 2) {
+          try {
+            const res = await ConnectorsManager.queryConnector('outlook', q, { top: 4 });
+            if (res?.results?.length) {
+              const lines = res.results.map((r) => `- From: ${r.from || '?'} · Subject: ${r.subject}`).join('\n');
+              results.push(`[Outlook — ${res.total} result(s) for "${q}"]\n${lines}`);
+            }
+          } catch (_) {}
+        }
+      }
+
+      // ── Google Drive ───────────────────────────────────────────────────
+      const driveIntent = /\b(drive|file|document|doc|sheet|spreadsheet|slide|presentation|folder|gdrive)\b/i.test(text);
+      if (has('gdrive') && driveIntent) {
+        const q = clean(/\b(drive|gdrive|file|document|doc|sheet|spreadsheet|slide|folder)\b/gi);
+        if (q.length > 2) {
+          try {
+            const res = await ConnectorsManager.queryConnector('gdrive', q, { pageSize: 5 });
+            if (res?.results?.length) {
+              const lines = res.results.map((r) => `- ${r.name}${r.type ? ` [${r.type.replace('application/vnd.google-apps.', '')}]` : ''}`).join('\n');
+              results.push(`[Google Drive — ${res.total} file(s) matching "${q}"]\n${lines}`);
+            }
+          } catch (_) {}
+        }
+      }
+
+      // ── Dropbox ────────────────────────────────────────────────────────
+      const dropboxIntent = /\b(dropbox|file|document|folder)\b/i.test(text);
+      if (has('dropbox') && dropboxIntent && !has('gdrive')) {
+        const q = clean(/\b(dropbox|file|document|folder)\b/gi);
+        if (q.length > 2) {
+          try {
+            const res = await ConnectorsManager.queryConnector('dropbox', q, { maxResults: 5 });
+            if (res?.results?.length) {
+              const lines = res.results.map((r) => `- ${r.name}${r.path ? ` (${r.path})` : ''}`).join('\n');
+              results.push(`[Dropbox — ${res.total} file(s) matching "${q}"]\n${lines}`);
+            }
+          } catch (_) {}
+        }
+      }
+
+      // ── OneDrive ───────────────────────────────────────────────────────
+      const onedriveIntent = /\b(onedrive|file|document|folder|sharepoint)\b/i.test(text);
+      if (has('onedrive') && onedriveIntent) {
+        const q = clean(/\b(onedrive|file|document|folder)\b/gi);
+        if (q.length > 2) {
+          try {
+            const res = await ConnectorsManager.queryConnector('onedrive', q, { top: 5 });
+            if (res?.results?.length) {
+              const lines = res.results.map((r) => `- ${r.name}${r.type ? ` [${r.type}]` : ''}`).join('\n');
+              results.push(`[OneDrive — ${res.total} file(s) matching "${q}"]\n${lines}`);
+            }
+          } catch (_) {}
+        }
+      }
+
+      // ── Slack ──────────────────────────────────────────────────────────
+      const slackIntent = /\b(slack|channel|message|chat|dm|mention|conversation)\b/i.test(text);
+      if (has('slack') && slackIntent) {
+        const q = clean(/\b(slack|channel|message|chat|dm|mention)\b/gi);
+        if (q.length > 2) {
+          try {
+            const res = await ConnectorsManager.queryConnector('slack', q, { count: 4 });
+            if (res?.results?.length) {
+              const lines = res.results.map((r) => `- #${r.channel || '?'} (${r.user || '?'}): "${r.text.slice(0, 120)}"`).join('\n');
+              results.push(`[Slack — ${res.total} message(s) for "${q}"]\n${lines}`);
+            }
+          } catch (_) {}
+        }
+      }
+
+      // ── Google Calendar ────────────────────────────────────────────────
+      const calendarIntent = /\b(calendar|meeting|event|schedule|appointment|agenda|today|this week|upcoming)\b/i.test(text);
+      if (has('gcalendar') && calendarIntent) {
+        const q = clean(/\b(calendar|meeting|event|schedule|appointment|agenda)\b/gi) || 'events';
+        try {
+          const res = await ConnectorsManager.queryConnector('gcalendar', q);
+          if (res?.results?.length) {
+            const lines = res.results.map((r) => `- ${r.title} — ${r.start ? new Date(r.start).toLocaleString() : '?'}${r.location ? ` @ ${r.location}` : ''}`).join('\n');
+            results.push(`[Google Calendar — ${res.total} upcoming event(s)]\n${lines}`);
+          }
+        } catch (_) {}
+      }
+
+      // ── Notion ─────────────────────────────────────────────────────────
+      const notionIntent = /\b(notion|note|page|wiki|knowledge|workspace|doc|document|wrote|saved)\b/i.test(text);
+      if (has('notion') && notionIntent) {
+        const q = clean(/\b(notion|note|page|wiki|knowledge|workspace)\b/gi);
+        if (q.length > 2) {
+          try {
+            const res = await ConnectorsManager.queryConnector('notion', q, { pageSize: 4 });
+            if (res?.results?.length) {
+              const lines = res.results.map((r) => `- ${r.title}${r.type ? ` (${r.type})` : ''}`).join('\n');
+              results.push(`[Notion — ${res.total} result(s) for "${q}"]\n${lines}`);
+            }
+          } catch (_) {}
+        }
+      }
+
+      // ── GitHub ─────────────────────────────────────────────────────────
+      const githubIntent = /\b(github|issue|pr|pull request|bug|fix|repo|repository|commit|branch|code)\b/i.test(text);
+      if (has('github') && githubIntent) {
+        const q = clean(/\b(github|issue|pr|pull request|repo|repository)\b/gi);
+        if (q.length > 2) {
+          try {
+            const res = await ConnectorsManager.queryConnector('github', q, { type: 'issues', perPage: 4 });
+            if (res?.results?.length) {
+              const lines = res.results.map((r) => `- [#${r.number || '?'}] ${r.title} (${r.state || 'unknown'})${r.repo ? ` in ${r.repo}` : ''}`).join('\n');
+              results.push(`[GitHub — ${res.total} result(s) for "${q}"]\n${lines}`);
+            }
+          } catch (_) {}
+        }
+      }
+
+      // ── Linear ─────────────────────────────────────────────────────────
+      const linearIntent = /\b(linear|ticket|task|sprint|backlog|milestone|assigned)\b/i.test(text);
+      if (has('linear') && linearIntent) {
+        const q = clean(/\b(linear|ticket|task|sprint|backlog|milestone)\b/gi);
+        if (q.length > 2) {
+          try {
+            const res = await ConnectorsManager.queryConnector('linear', q);
+            if (res?.results?.length) {
+              const lines = res.results.map((r) => `- ${r.title} [${r.state || 'unknown'}]${r.team ? ` · ${r.team}` : ''}`).join('\n');
+              results.push(`[Linear — ${res.total} result(s) for "${q}"]\n${lines}`);
+            }
+          } catch (_) {}
+        }
+      }
+
+      if (results.length === 0) return null;
+      return `[Connected integrations returned the following context. Cite the source in your answer (e.g. "According to Gmail…", "In Google Drive…")]\n\n${results.join('\n\n')}`;
+    } catch (e) {
+      return null;
+    }
   }
 }
 
