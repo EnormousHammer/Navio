@@ -16,51 +16,45 @@ class AssistantManagerClass {
     this._streamUnsubs = [];
     this._autoFollowCount = 0;
 
-    this.systemPrompt = `You are Navio, an intelligent AI assistant built into the Navio Browser. You help users browse the web efficiently, understand content, and automate tasks.
-
-CAPABILITIES:
-- You receive policy-scoped page context when enabled (see user settings and per-chat scope).
-- You help users understand complex content, summarize pages, extract data.
-- You can control the active browser tab on behalf of the user.
+    this.systemPrompt = `You are Navio, an intelligent AI assistant built into the Navio Browser. You help users browse the web, understand content, and automate tasks.
 
 BROWSER CONTROL:
-Embed action tokens in your response. Each becomes a card the user approves, or auto-runs in takeover mode.
+When the user asks you to do something in the browser, write your explanation first, then end your response with a <navio-actions> block listing every step.
 
-Token format (use DOUBLE SQUARE BRACKETS — never angle brackets):
-- Navigate:  [[ACTION:navigate:https://example.com]]
-- Click:     [[ACTION:click:text=Search]]           ← PREFERRED — finds by visible text
-             [[ACTION:click:aria=Submit]]            ← or by aria-label
-             [[ACTION:click:#id]]                    ← CSS only as last resort
-- Type:      [[ACTION:type:text=Search box:query]]  ← selector:value format
-             [[ACTION:type:aria=Search:query text]]
-- Scroll:    [[ACTION:scroll:down]]  /  [[ACTION:scroll:up]]
-- History:   [[ACTION:goBack:]]  /  [[ACTION:goForward:]]
+Action block format — ONE action per line:
+<navio-actions>
+navigate:https://full-url-here
+click:text=Visible button label
+type:text=Field label:text to type
+scroll:down
+goBack:
+goForward:
+</navio-actions>
 
-SMART NAVIGATION — always prefer a direct URL over UI interaction:
-- YouTube search:   [[ACTION:navigate:https://www.youtube.com/results?search_query=funny+cats]]
-- Google search:    [[ACTION:navigate:https://www.google.com/search?q=your+query]]
-- Reddit search:    [[ACTION:navigate:https://www.reddit.com/search/?q=query]]
-- Wikipedia:        [[ACTION:navigate:https://en.wikipedia.org/wiki/Topic_Name]]
-→ One navigate to the results URL = always more reliable than navigate + type + click.
+SMART NAVIGATION — always use a direct URL, never navigate + search:
+- YouTube search → navigate:https://www.youtube.com/results?search_query=your+query
+- Google search  → navigate:https://www.google.com/search?q=your+query
+- Reddit search  → navigate:https://www.reddit.com/search/?q=query
+- Wikipedia      → navigate:https://en.wikipedia.org/wiki/Topic
 
-CRITICAL RULES:
-1. Prefer direct URL navigation whenever possible — skip UI search interactions.
-2. For click/type, use text= or aria= — CSS selectors break on redesigns.
-3. When a [Page elements] snapshot is provided, use EXACT label text from it.
-4. Emit ALL steps in ONE response. Never pause mid-task.
-5. Keep descriptions concise — one sentence before each token.
+RULES:
+1. Always prefer navigate with a full URL over click-to-search.
+2. For click/type use text= (visible label) or aria= (aria-label) — never CSS selectors.
+3. Put ALL steps in ONE <navio-actions> block at the end. Never split across messages.
+4. Never ask "shall I proceed?" — just do it.
+5. If a [Page elements] snapshot is provided, use the EXACT label text shown.
+
+EXAMPLE — for "go to youtube and play world news":
+I'll navigate straight to the YouTube search results for world news and click the first video.
+<navio-actions>
+navigate:https://www.youtube.com/results?search_query=world+news
+click:text=Watch now
+</navio-actions>
 
 FORMATTING:
-- Use proper markdown for all responses — this renders beautifully in the UI.
-- **Bold** for emphasis, *italic* for secondary info
-- # Heading for major sections, ## for sub-sections
-- \`inline code\` for technical terms, URLs, selectors
-- \`\`\`language blocks for multi-line code
-- > blockquote for tips, notes, or quotes
-- Bullet lists (- item) and numbered lists (1. item)
-- --- for horizontal dividers between sections
-- Keep responses focused, scannable, and visually structured
-- NEVER show raw action tokens as text — they must be embedded, not described
+- Use markdown: **bold**, *italic*, # headings, bullet lists, \`code\`, > blockquotes.
+- Keep responses concise and scannable.
+- Do NOT output action tokens like [[ACTION:...]] — use the <navio-actions> block only.
 
 PERSONALITY:
 - Intelligent, modern, concise. Think Perplexity meets a skilled browser agent.
@@ -291,6 +285,7 @@ PERSONALITY:
     }
 
     this.isProcessing = true;
+    if (!isQuickAction) this._actionFormatRetries = 0;
     this.showTypingIndicator();
 
     const messages = [{ role: 'system', content: this.systemPrompt }];
@@ -351,6 +346,7 @@ PERSONALITY:
           this.addMessage('assistant', result.error, 'error');
         } else {
           this.addMessage('assistant', result.content);
+          this._checkAndShowActionFormatWarning(result.content, this.messagesEl.querySelector('.assistant-message:last-of-type'));
           if (userHistory) {
             this.conversationHistory.push(
               { role: 'user', content: userHistory },
@@ -382,9 +378,51 @@ PERSONALITY:
     this._clearStreamListeners();
     let buffer = '';
     let streamingMsg = null;
+    let finalized = false;
+    let stallTimer = null;
+
+    // Shared finalize: renders buffer with action cards, saves history.
+    // Safe to call from done event, stall timeout, or error handler.
+    const finalize = async () => {
+      if (finalized) return;
+      finalized = true;
+      clearTimeout(stallTimer);
+      this._clearStreamListeners();
+      this.removeTypingIndicator();
+
+      if (!buffer) return;
+
+      if (streamingMsg) {
+        const contentEl = streamingMsg.querySelector('.message-content');
+        if (contentEl) {
+          contentEl.innerHTML = this.formatMessage(buffer, true);
+          await this._wireActions(contentEl);
+          this._checkAndShowActionFormatWarning(buffer, streamingMsg);
+        }
+      }
+      this.conversationHistory.push(
+        { role: 'user', content: userHistory },
+        { role: 'assistant', content: buffer }
+      );
+      this._trimHistory();
+      await window.navio.contextGraph({
+        op: 'addTurn',
+        role: 'assistant',
+        summary: buffer.slice(0, 200),
+        tabId: TabManager.getActiveTab()?.id,
+        url: TabManager.getActiveTab()?.url || ''
+      });
+    };
+
+    // Stall detector: if no new chunk arrives within 25 s, force-finalize.
+    const resetStallTimer = () => {
+      clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => { finalize(); }, 25000);
+    };
 
     const unChunk = window.navio.onAiStreamChunk((chunk) => {
       buffer += chunk;
+      resetStallTimer();
       if (!streamingMsg) {
         this.removeTypingIndicator();
         streamingMsg = document.createElement('div');
@@ -400,37 +438,25 @@ PERSONALITY:
     });
 
     const unDone = window.navio.onAiStreamDone(async () => {
-      this._clearStreamListeners();
-      if (buffer) {
-        // Final render: parse action tokens and wire confirm buttons
-        if (streamingMsg) {
-          const contentEl = streamingMsg.querySelector('.message-content');
-          if (contentEl) {
-            contentEl.innerHTML = this.formatMessage(buffer, true);
-            this._wireActions(contentEl);
-          }
-        }
-        this.conversationHistory.push({ role: 'user', content: userHistory }, { role: 'assistant', content: buffer });
-        this._trimHistory();
-        await window.navio.contextGraph({
-          op: 'addTurn',
-          role: 'assistant',
-          summary: buffer.slice(0, 200),
-          tabId: TabManager.getActiveTab()?.id,
-          url: TabManager.getActiveTab()?.url || ''
-        });
-      }
+      await finalize();
     });
 
     const unErr = window.navio.onAiStreamError(async (msg) => {
+      clearTimeout(stallTimer);
       this._clearStreamListeners();
-      this.removeTypingIndicator();
+      if (finalized) return;
       if (!buffer) {
+        // Nothing received — try a non-streaming fallback
+        this.removeTypingIndicator();
         const fallback = await window.navio.aiRequest({ messages });
         if (fallback.error) {
           this.addMessage('assistant', fallback.error || msg, 'error');
         } else {
           this.addMessage('assistant', fallback.content);
+          this._checkAndShowActionFormatWarning(
+            fallback.content,
+            this.messagesEl.querySelector('.assistant-message:last-of-type')
+          );
           this.conversationHistory.push(
             { role: 'user', content: userHistory },
             { role: 'assistant', content: fallback.content }
@@ -438,14 +464,19 @@ PERSONALITY:
           this._trimHistory();
         }
       } else {
-        this.addMessage('assistant', `\n\n*(Stream ended: ${msg})*`);
+        // Partial content — finalize whatever arrived
+        await finalize();
       }
     });
+
+    // Start the stall timer immediately (catches case where first chunk never arrives)
+    resetStallTimer();
 
     this._streamUnsubs.push(unChunk, unDone, unErr);
 
     const streamResult = await window.navio.aiRequestStream({ messages });
     if (streamResult && streamResult.ok === false && !buffer) {
+      clearTimeout(stallTimer);
       this.removeTypingIndicator();
     }
   }
@@ -475,7 +506,7 @@ PERSONALITY:
         <div class="msg-error-body">${this.formatMessage(clean)}</div>`;
     } else {
       contentEl.innerHTML = this.formatMessage(content, role === 'assistant');
-      if (role === 'assistant') this._wireActions(contentEl);
+      if (role === 'assistant') this._wireActions(contentEl); // async — fire-and-forget is fine here
     }
 
     msgEl.appendChild(contentEl);
@@ -495,7 +526,7 @@ PERSONALITY:
     const extractToken = (_, type, params) => {
       const idx = actionCards.length;
       actionCards.push({ type, params: params || '' });
-      return `\x00ACTION_${idx}\x00`;
+      return `\x00ACT${idx}\x00`;
     };
 
     if (parseActions) {
@@ -620,7 +651,7 @@ PERSONALITY:
             <button class="bac-skip" type="button">Skip</button>
           </div>
         </div>`;
-        html = html.replace(`\x00ACTION_${idx}\x00`, card);
+        html = html.replace(`\x00ACT${idx}\x00`, card);
       });
     }
 
@@ -652,12 +683,20 @@ PERSONALITY:
     this._addContinuePill('Navio stopped. You\'re back in control.');
   }
 
-  _wireActions(contentEl) {
+  async _wireActions(contentEl) {
     const cards = Array.from(contentEl.querySelectorAll('.browser-action-card'));
     if (!cards.length) return;
 
-    if (this._takeoverMode) {
-      // Takeover already active — mark cards queued and execute immediately
+    // Check if auto-execute is enabled in settings
+    let autoExecute = false;
+    try {
+      const cfg = await window.navio.getConfig();
+      autoExecute = !!cfg.aiAutoExecute;
+    } catch { /* ignore — fall back to manual */ }
+
+    if (this._takeoverMode || autoExecute) {
+      // Takeover already active or auto-execute setting is on — run immediately
+      if (!this._takeoverMode) this.enableTakeover();
       cards.forEach((card) => {
         const btns = card.querySelector('.bac-btns');
         if (btns) btns.innerHTML = '<span class="bac-status bac-pending">Queued…</span>';
@@ -848,16 +887,8 @@ PERSONALITY:
     const followUpText = `[Action completed. Current page state follows. Continue task if steps remain, or give a clean summary if done. Use [[ACTION:type:params]] format for any new actions.]\n\n${pageInfo}${snapText}`;
     await this.processMessage(followUpText, true, null);
     document.getElementById('navio-continue-pill')?.remove();
-
-    // In takeover mode, auto-execute any new action cards in the latest response
-    if (this._takeoverMode) {
-      const lastMsg = this.messagesEl.querySelector('.message.assistant-message:last-of-type');
-      const contentEl = lastMsg?.querySelector('.message-content');
-      if (contentEl) {
-        const newCards = contentEl.querySelectorAll('.browser-action-card:not(.bac-done):not(.bac-skipped):not(.bac-error)');
-        if (newCards.length) await this._executeTakeover(contentEl);
-      }
-    }
+    // _wireActions (called inside processMessage → addMessage) now handles auto-execution
+    // in both takeover mode and auto-execute mode, so no extra _executeTakeover call needed here.
   }
 
   async _getPageSnapshotText() {
@@ -871,6 +902,58 @@ PERSONALITY:
     } catch {
       return '';
     }
+  }
+
+  /**
+   * Returns true if the AI used "ACTION0"/"ACTION1" style labels instead of
+   * real [[ACTION:type:params]] tokens.
+   */
+  _hasBrokenActionFormat(text) {
+    if (/\[\[ACTION:\w+:[\s\S]*?\]\]/.test(text)) return false;
+    return /\bACTION[\s_]?\d\b/i.test(text);
+  }
+
+  /**
+   * If the response has broken action labels, automatically retry (up to 2 times)
+   * by sending a corrective system message so the model fixes its own output.
+   * On the third failure shows a manual error banner instead of retrying infinitely.
+   */
+  _checkAndShowActionFormatWarning(responseText, msgEl) {
+    if (!this._hasBrokenActionFormat(responseText)) return false;
+
+    const MAX_AUTO_RETRIES = 2;
+    if ((this._actionFormatRetries || 0) >= MAX_AUTO_RETRIES) {
+      // Give up auto-retrying — show a manual error
+      const warn = document.createElement('div');
+      warn.className = 'navio-action-format-warn';
+      warn.innerHTML = `
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span>The AI model kept using an invalid action format. Try rephrasing your request or switching to a more capable model.</span>`;
+      if (msgEl) msgEl.appendChild(warn);
+      else this.messagesEl.appendChild(warn);
+      this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+      this._actionFormatRetries = 0;
+      return true;
+    }
+
+    this._actionFormatRetries = (this._actionFormatRetries || 0) + 1;
+
+    // Show a small "fixing…" pill then auto-correct
+    const pill = document.createElement('div');
+    pill.className = 'navio-continue-pill';
+    pill.textContent = '↻ Fixing action format automatically…';
+    this.messagesEl.appendChild(pill);
+    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+
+    setTimeout(async () => {
+      pill.remove();
+      const fixPrompt = '[SYSTEM FIX: Your previous response used "ACTION0", "ACTION1" etc. as plain-text labels — those are invalid placeholders that Navio cannot execute. You MUST rewrite your entire response and replace every ACTION placeholder with a real [[ACTION:type:params]] token. Examples: [[ACTION:navigate:https://www.youtube.com/results?search_query=latest+news]] or [[ACTION:click:text=first video]]. Write the full response again now using ONLY [[ACTION:type:params]] tokens for every browser step. Do NOT use ACTION0, ACTION1, numbered labels, or any other placeholder format.]';
+      await this.processMessage(fixPrompt, true, null);
+    }, 600);
+
+    return true;
   }
 
   _addContinuePill(text) {

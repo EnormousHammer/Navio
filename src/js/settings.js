@@ -42,6 +42,7 @@ class SettingsManagerClass {
       aiDataScope: document.getElementById('setting-ai-data-scope'),
       aiRedact: document.getElementById('setting-ai-redact'),
       aiStream: document.getElementById('setting-ai-stream'),
+      aiAutoExecute: document.getElementById('setting-ai-auto-execute'),
       aiProactivity: document.getElementById('setting-ai-proactivity'),
       mcpEnabled: document.getElementById('setting-mcp-enabled'),
       mcpToolsHint: document.getElementById('setting-mcp-tools-hint'),
@@ -243,6 +244,7 @@ class SettingsManagerClass {
     if (this.elements.aiKillSwitch) this.elements.aiKillSwitch.checked = !!this.config.aiKillSwitch;
     if (this.elements.aiRedact) this.elements.aiRedact.checked = this.config.aiRedactPII !== false;
     if (this.elements.aiStream) this.elements.aiStream.checked = this.config.aiStreamResponses !== false;
+    if (this.elements.aiAutoExecute) this.elements.aiAutoExecute.checked = !!this.config.aiAutoExecute;
     if (this.elements.aiProactivity) {
       this.elements.aiProactivity.value = this.config.aiProactivity || 'off';
     }
@@ -398,6 +400,7 @@ class SettingsManagerClass {
       aiKillSwitch: !!(this.elements.aiKillSwitch && this.elements.aiKillSwitch.checked),
       aiRedactPII: !!(this.elements.aiRedact && this.elements.aiRedact.checked),
       aiStreamResponses: !!(this.elements.aiStream && this.elements.aiStream.checked),
+      aiAutoExecute: !!(this.elements.aiAutoExecute && this.elements.aiAutoExecute.checked),
       aiProactivity: this.elements.aiProactivity ? this.elements.aiProactivity.value : 'off',
       mcpEnabled: !!(this.elements.mcpEnabled && this.elements.mcpEnabled.checked),
       syncEnabled: !!(this.elements.syncEnabled && this.elements.syncEnabled.checked),

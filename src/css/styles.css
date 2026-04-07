@@ -3291,6 +3291,47 @@ body.onboarding-active #app {
   box-shadow: 0 6px 22px rgba(0, 216, 255, 0.32);
 }
 
+/* ── Action format warning (model used ACTION0 instead of [[ACTION:...]]) ── */
+.navio-action-format-warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 2px;
+  padding: 9px 13px;
+  border-radius: 8px;
+  background: rgba(255, 165, 0, 0.1);
+  border: 1px solid rgba(255, 165, 0, 0.3);
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+
+.navio-action-format-warn svg {
+  flex-shrink: 0;
+  color: #ffaa33;
+}
+
+.navio-action-format-warn span {
+  flex: 1;
+  min-width: 0;
+}
+
+.nafw-retry {
+  background: rgba(255, 165, 0, 0.18);
+  border: 1px solid rgba(255, 165, 0, 0.4);
+  color: #ffaa33;
+  border-radius: 5px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.nafw-retry:hover {
+  background: rgba(255, 165, 0, 0.3);
+}
+
 /* ── Takeover active banner ── */
 .navio-takeover-banner {
   display: flex;

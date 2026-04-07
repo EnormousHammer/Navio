@@ -124,6 +124,109 @@ function hashContext(messages) {
 
 const RISKY_BROWSER_ACTIONS = new Set(['navigate', 'click', 'type']);
 
+// ── Authoritative system prompt (main-process, never cached) ─────────────────
+// The renderer's assistant.js may be stale due to Chromium bytecode cache.
+// We ALWAYS inject this fresh system prompt in main.js, overriding whatever
+// the renderer sends. This is the single source of truth for the AI's behaviour.
+const NAVIO_SYSTEM_PROMPT = `You are Navio, an intelligent AI assistant built into the Navio Browser. You help users browse the web, understand content, and automate tasks.
+
+BROWSER CONTROL:
+When the user asks you to do something in the browser, write a short explanation first, then end your response with a <navio-actions> block listing every step needed.
+
+Action block format — ONE action per line, no numbering, no bullet points:
+<navio-actions>
+navigate:https://full-url-here
+click:text=Visible button label
+type:text=Field label:text to type
+scroll:down
+goBack:
+goForward:
+</navio-actions>
+
+RULES:
+- ALWAYS end with a <navio-actions> block when browser actions are needed.
+- Each line inside <navio-actions> must be: actionType:params
+- For navigate, use the FULL URL including https://
+- For click, use: click:text=visible text on the element
+- For type, use: type:text=field label:text to type
+- NEVER use ACTION0, ACTION1, ACTION2 or any numbered placeholders.
+- NEVER use [[ACTION:...]] tokens — only use the <navio-actions> block.
+- Do NOT ask "shall I proceed?" — just do it.
+
+EXAMPLE — "go to youtube and search for world news":
+I'll navigate straight to the YouTube search results for world news.
+<navio-actions>
+navigate:https://www.youtube.com/results?search_query=world+news
+</navio-actions>
+
+EXAMPLE — "search google for best laptops and click the first result":
+I'll search Google and open the first result.
+<navio-actions>
+navigate:https://www.google.com/search?q=best+laptops
+click:text=1
+</navio-actions>
+
+If no browser actions are needed, just reply with plain text and no <navio-actions> block.`;
+
+// ── <navio-actions> block converter ──────────────────────────────────────────
+// The system prompt asks the model to output a <navio-actions> block at the end
+// of its response. This function converts that block into [[ACTION:type:params]]
+// tokens that the renderer's formatMessage() can parse and display as cards.
+// This runs in main.js (Node.js, no bytecode cache) so it always uses fresh code.
+
+function convertNavioActionsBlock(text) {
+  if (!text) return text;
+  return text.replace(/<navio-actions>([\s\S]*?)<\/navio-actions>/gi, (_, body) => {
+    const lines = body.split('\n').map(l => l.trim()).filter(Boolean);
+    return lines.map(line => {
+      const colon = line.indexOf(':');
+      if (colon < 0) return '';
+      const type = line.slice(0, colon).trim().toLowerCase();
+      const params = line.slice(colon + 1).trim();
+      const valid = ['navigate', 'click', 'type', 'scroll', 'goback', 'goforward'];
+      const normType = type === 'goback' ? 'goBack' : type === 'goforward' ? 'goForward' : type;
+      if (!valid.includes(type)) return '';
+      return `[[ACTION:${normType}:${params}]]`;
+    }).filter(Boolean).join('\n');
+  });
+}
+
+function aiResponseHasBrokenActions(text) {
+  if (!text) return false;
+  if (/\[\[ACTION:\w+:[\s\S]*?\]\]/.test(text)) return false; // has real tokens — fine
+  if (/<navio-actions>/i.test(text)) return false;             // has our new block format
+  return /\bACTION[\s_]?\d\b/i.test(text);                   // broken numbered labels
+}
+
+// Replaces ONLY the first system message with NAVIO_SYSTEM_PROMPT.
+// Other system messages (page context, selection, tab list, etc.) are preserved.
+// Called in every IPC handler so the cached renderer's stale system prompt is ignored.
+function injectSystemPrompt(messages) {
+  let replaced = false;
+  const result = messages.map((m) => {
+    if (!replaced && m.role === 'system') {
+      replaced = true;
+      return { role: 'system', content: NAVIO_SYSTEM_PROMPT };
+    }
+    return m;
+  });
+  if (!replaced) {
+    result.unshift({ role: 'system', content: NAVIO_SYSTEM_PROMPT });
+  }
+  return result;
+}
+
+function buildActionFixMessages(originalMessages, brokenResponse) {
+  return [
+    ...originalMessages,
+    { role: 'assistant', content: brokenResponse },
+    {
+      role: 'user',
+      content: '[SYSTEM FIX: Your previous response used "ACTION0", "ACTION1" etc. as plain-text placeholders. Use a <navio-actions> block instead. Example:\nI\'ll search YouTube.\n<navio-actions>\nnavigate:https://www.youtube.com/results?search_query=breaking+world+news\nclick:text=first video\n</navio-actions>\nRewrite your complete response now with a proper <navio-actions> block.]'
+    }
+  ];
+}
+
 function createMainWindow() {
   const config = loadConfig();
   const isDark = config.theme !== 'light';
@@ -339,6 +442,7 @@ ipcMain.handle('ai-request', async (event, { messages }) => {
   }
 
   let processed = Array.isArray(messages) ? messages.map((m) => ({ ...m })) : [];
+  processed = injectSystemPrompt(processed);
   if (cfg.aiRedactPII !== false) {
     processed = processed.map((m) =>
       typeof m.content === 'string' ? { ...m, content: redactPII(m.content) } : m
@@ -356,8 +460,23 @@ ipcMain.handle('ai-request', async (event, { messages }) => {
   }
 
   try {
-    const result = await performAiFetch(cfg, apiKey, processed, false);
+    let result = await performAiFetch(cfg, apiKey, processed, false);
     if (result.stream) return { error: 'Internal error: unexpected stream' };
+
+    // Convert <navio-actions> block to [[ACTION:...]] tokens
+    if (!result.error && result.content) {
+      result = { ...result, content: convertNavioActionsBlock(result.content) };
+    }
+
+    // Fallback: if model still wrote ACTION0/ACTION1 placeholders, silently retry once
+    if (!result.error && aiResponseHasBrokenActions(result.content)) {
+      console.log('[navio] ACTION0 pattern detected — auto-retrying with format fix');
+      const fixed = await performAiFetch(cfg, apiKey, buildActionFixMessages(processed, result.content), false);
+      if (!fixed.error && fixed.content) {
+        result = { ...fixed, content: convertNavioActionsBlock(fixed.content) };
+      }
+    }
+
     return result;
   } catch (err) {
     return { error: err.message };
@@ -378,6 +497,7 @@ ipcMain.handle('ai-request-stream', async (event, { messages }) => {
   }
 
   let processed = Array.isArray(messages) ? messages.map((m) => ({ ...m })) : [];
+  processed = injectSystemPrompt(processed);
   if (cfg.aiRedactPII !== false) {
     processed = processed.map((m) =>
       typeof m.content === 'string' ? { ...m, content: redactPII(m.content) } : m
@@ -394,43 +514,65 @@ ipcMain.handle('ai-request-stream', async (event, { messages }) => {
     });
   }
 
-  try {
-    const result = await performAiFetch(cfg, apiKey, processed, true);
-    if (result.error) {
-      sender.send('ai-stream-error', result.error);
-      return { ok: false };
-    }
-    if (!result.stream) {
-      sender.send('ai-stream-error', 'Streaming unavailable for this provider.');
-      return { ok: false };
-    }
-
-    const reader = result.stream.getReader();
+  // Helper: collect an SSE stream from performAiFetch into a plain string
+  const collectStream = async (fetchResult) => {
+    if (fetchResult.error) return { error: fetchResult.error };
+    if (!fetchResult.stream) return { error: 'Streaming unavailable for this provider.' };
+    const reader = fetchResult.stream.getReader();
     const decoder = new TextDecoder();
-    let buffer = '';
-
+    let sseBuffer = '';
+    let fullText = '';
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+      sseBuffer += decoder.decode(value, { stream: true });
+      const lines = sseBuffer.split('\n');
+      sseBuffer = lines.pop() || '';
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed.startsWith('data:')) continue;
         const data = trimmed.slice(5).trim();
-        if (data === '[DONE]') {
-          sender.send('ai-stream-done', {});
-          return { ok: true };
-        }
+        if (data === '[DONE]') break;
         try {
           const json = JSON.parse(data);
           const delta = json.choices?.[0]?.delta?.content;
-          if (delta) sender.send('ai-stream-chunk', delta);
-        } catch {
-          /* ignore parse errors for keep-alive lines */
-        }
+          if (delta) fullText += delta;
+        } catch { /* skip keep-alives */ }
       }
+    }
+    return { content: fullText };
+  };
+
+  try {
+    // Collect the full response before sending to renderer so we can check the format
+    let currentMessages = processed;
+    let finalText = '';
+    const MAX_FORMAT_RETRIES = 2;
+
+    for (let attempt = 0; attempt <= MAX_FORMAT_RETRIES; attempt++) {
+      console.log(`[navio] ai-request-stream attempt ${attempt + 1}, model=${cfg.aiModel}, messages=${currentMessages.length}`);
+      const fetchResult = await performAiFetch(cfg, apiKey, currentMessages, true);
+      const collected = await collectStream(fetchResult);
+
+      if (collected.error) {
+        sender.send('ai-stream-error', collected.error);
+        return { ok: false };
+      }
+
+      finalText = convertNavioActionsBlock(collected.content);
+      console.log(`[navio] raw response (first 200): ${collected.content?.slice(0, 200)}`);
+      console.log(`[navio] converted (first 200): ${finalText?.slice(0, 200)}`);
+
+      if (!aiResponseHasBrokenActions(finalText) || attempt === MAX_FORMAT_RETRIES) break;
+
+      console.log(`[navio] ACTION0 pattern detected (attempt ${attempt + 1}) — retrying with format fix`);
+      currentMessages = buildActionFixMessages(currentMessages, finalText);
+    }
+
+    // Stream the final (possibly corrected) text to the renderer in chunks
+    const CHUNK = 40;
+    for (let i = 0; i < finalText.length; i += CHUNK) {
+      sender.send('ai-stream-chunk', finalText.slice(i, i + CHUNK));
     }
     sender.send('ai-stream-done', {});
     return { ok: true };
@@ -1010,7 +1152,25 @@ ipcMain.handle('show-webview-context-menu', (event, { webContentsId, x, y, param
   }
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  console.log('[navio] ✅ main.js v7 loaded — system prompt is injected from main process');
+  // Clear V8 code caches so every launch picks up the latest renderer JS source files.
+  // We use both the Electron session API (in-memory cache) AND the filesystem folder
+  // (persistent cache) to guarantee a clean slate.
+  try {
+    await session.defaultSession.clearCodeCaches({});
+  } catch (e) {
+    console.warn('[navio] session.clearCodeCaches failed:', e.message);
+  }
+  try {
+    const codeCachePath = path.join(app.getPath('userData'), 'Code Cache');
+    if (fs.existsSync(codeCachePath)) {
+      fs.rmSync(codeCachePath, { recursive: true, force: true });
+    }
+  } catch (e) {
+    console.warn('[navio] Could not clear code cache folder:', e.message);
+  }
+
   store = createStore(app.getPath('userData'));
 
   createMainWindow();
