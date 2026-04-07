@@ -874,44 +874,32 @@ PERSONALITY:
     }
 
     // Manual mode — individual Run / Skip / Edit buttons
-    cards.forEach((card) => {
-      const action = card.dataset.action;
+    // Helper: open inline edit for a card
+    const openEdit = (card, action) => {
+      if (card.classList.contains('bac-done') || card.classList.contains('bac-error') || card.classList.contains('bac-editing')) return;
+      card.classList.add('bac-editing');
+      const currentParams = card.dataset.params;
+      const descEl = card.querySelector('.bac-desc');
+      const btnsEl = card.querySelector('.bac-btns');
+      const oldDescHTML = descEl.innerHTML;
+      const oldBtnsHTML = btnsEl.innerHTML;
 
-      card.querySelector('.bac-run')?.addEventListener('click', () => {
-        this._executeAction(action, card.dataset.params, card, false);
-      });
+      descEl.innerHTML = `<input class="bac-edit-input" type="text" value="${currentParams.replace(/"/g,'&quot;')}" spellcheck="false">`;
+      btnsEl.innerHTML = `<button class="bac-edit-save" type="button">Save</button><button class="bac-edit-cancel" type="button">Cancel</button>`;
+      const input = descEl.querySelector('.bac-edit-input');
+      input.focus();
+      input.select();
 
-      card.querySelector('.bac-skip')?.addEventListener('click', () => {
-        card.classList.add('bac-skipped');
-        card.querySelector('.bac-btns').innerHTML = '<span class="bac-status">Skipped</span>';
-      });
-
-      // Edit button — inline edit of the params
-      card.querySelector('.bac-edit')?.addEventListener('click', () => {
-        const currentParams = card.dataset.params;
-        const descEl = card.querySelector('.bac-desc');
-        const btnsEl = card.querySelector('.bac-btns');
-        // Replace desc with an input
-        const oldDescHTML = descEl.innerHTML;
-        const oldBtnsHTML = btnsEl.innerHTML;
-        descEl.innerHTML = `<input class="bac-edit-input" type="text" value="${currentParams.replace(/"/g,'&quot;')}" spellcheck="false">`;
-        btnsEl.innerHTML = `<button class="bac-edit-save" type="button">Save</button><button class="bac-edit-cancel" type="button">Cancel</button>`;
-        const input = descEl.querySelector('.bac-edit-input');
-        input.focus();
-        input.select();
-        btnsEl.querySelector('.bac-edit-save').addEventListener('click', () => {
+      const closeEdit = (saveNew) => {
+        card.classList.remove('bac-editing');
+        if (saveNew) {
           const newParams = input.value.trim();
           if (newParams) card.dataset.params = newParams;
-          descEl.innerHTML = oldDescHTML;
-          btnsEl.innerHTML = oldBtnsHTML;
-          // Re-wire the new buttons
-          card.querySelector('.bac-run')?.addEventListener('click', () => this._executeAction(action, card.dataset.params, card, false));
-          card.querySelector('.bac-skip')?.addEventListener('click', () => {
-            card.classList.add('bac-skipped');
-            card.querySelector('.bac-btns').innerHTML = '<span class="bac-status">Skipped</span>';
-          });
-          card.querySelector('.bac-edit')?.addEventListener('click', () => card.querySelector('.bac-edit').click());
-          // Update the visible param tag if it exists
+        }
+        descEl.innerHTML = oldDescHTML;
+        btnsEl.innerHTML = oldBtnsHTML;
+        // Update param display tag
+        if (saveNew) {
           const paramTag = card.querySelector('.bac-param');
           if (paramTag) {
             let display = card.dataset.params;
@@ -925,21 +913,45 @@ PERSONALITY:
             paramTag.textContent = display;
             paramTag.title = card.dataset.params;
           }
-        });
-        btnsEl.querySelector('.bac-edit-cancel').addEventListener('click', () => {
-          descEl.innerHTML = oldDescHTML;
-          btnsEl.innerHTML = oldBtnsHTML;
-          card.querySelector('.bac-run')?.addEventListener('click', () => this._executeAction(action, card.dataset.params, card, false));
-          card.querySelector('.bac-skip')?.addEventListener('click', () => {
-            card.classList.add('bac-skipped');
-            card.querySelector('.bac-btns').innerHTML = '<span class="bac-status">Skipped</span>';
-          });
-        });
-        input.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') btnsEl.querySelector('.bac-edit-save').click();
-          if (e.key === 'Escape') btnsEl.querySelector('.bac-edit-cancel').click();
-        });
+        }
+        // Re-wire buttons
+        wireCard(card, action);
+      };
+
+      btnsEl.querySelector('.bac-edit-save').addEventListener('click', () => closeEdit(true));
+      btnsEl.querySelector('.bac-edit-cancel').addEventListener('click', () => closeEdit(false));
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') closeEdit(true);
+        if (e.key === 'Escape') closeEdit(false);
       });
+    };
+
+    const wireCard = (card, action) => {
+      // Remove old listeners by cloning and replacing button nodes
+      const rewire = (sel, fn) => {
+        const el = card.querySelector(sel);
+        if (!el) return;
+        const fresh = el.cloneNode(true);
+        el.replaceWith(fresh);
+        fresh.addEventListener('click', fn);
+      };
+      rewire('.bac-run', () => this._executeAction(action, card.dataset.params, card, false));
+      rewire('.bac-skip', () => {
+        card.classList.add('bac-skipped');
+        card.querySelector('.bac-btns').innerHTML = '<span class="bac-status">Skipped</span>';
+      });
+      rewire('.bac-edit', () => openEdit(card, action));
+      // Clicking the param chip also opens edit
+      const paramTag = card.querySelector('.bac-param');
+      if (paramTag) {
+        const fresh = paramTag.cloneNode(true);
+        paramTag.replaceWith(fresh);
+        fresh.addEventListener('click', () => openEdit(card, action));
+      }
+    };
+
+    cards.forEach((card) => {
+      wireCard(card, card.dataset.action);
     });
 
     // Single "Let Navio handle this" button at the bottom of the message

@@ -7469,6 +7469,21 @@ body.onboarding-active #app {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.bac-param:hover {
+  background: rgba(0, 216, 255, 0.16);
+  border-color: rgba(0, 216, 255, 0.35);
+  text-decoration: underline;
+  text-decoration-style: dashed;
+  text-underline-offset: 2px;
+}
+
+.browser-action-card.bac-editing {
+  border-left-color: var(--accent);
+  background: rgba(0, 216, 255, 0.04);
 }
 
 /* ── Done state: green accent ── */
