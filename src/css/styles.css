@@ -1021,8 +1021,8 @@ body.tabstrip-hidden .tab-strip-show {
 }
 .ntp-clock {
   font-size: clamp(64px, 9vw, 96px);
-  font-weight: 200;
-  letter-spacing: -2px;
+  font-weight: 300;
+  letter-spacing: -3px;
   color: #fff;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -1030,11 +1030,12 @@ body.tabstrip-hidden .tab-strip-show {
   font-family: 'SF Pro Display', 'Helvetica Neue', system-ui, sans-serif;
 }
 .ntp-clock-ampm {
-  font-size: 0.35em;
-  font-weight: 300;
-  letter-spacing: 1px;
-  opacity: 0.55;
-  margin-left: 6px;
+  font-size: 0.28em;
+  font-weight: 500;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  opacity: 0.60;
+  margin-left: 8px;
   vertical-align: super;
 }
 .ntp-clock-sub {
@@ -7037,11 +7038,27 @@ body.onboarding-active #app {
 }
 
 /* Clock */
-[data-theme="light"] .ntp-clock { color: #16172a; text-shadow: none; }
-[data-theme="light"] .ntp-clock-ampm { opacity: 0.45; }
+/* Light mode clock — heavier weight so it reads clearly */
+[data-theme="light"] .ntp-clock {
+  color: #0f1020;
+  text-shadow: none;
+  font-weight: 300;
+}
+[data-theme="light"] .ntp-clock-ampm {
+  opacity: 0.50;
+  color: #0f1020;
+}
 [data-theme="light"] #ntp-greeting,
 [data-theme="light"] .ntp-clock-sep,
 [data-theme="light"] #ntp-date { color: rgba(22,23,42,0.52); }
+
+/* Light mode NAVIO title — gradient must use dark tones, not white */
+[data-theme="light"] .ntp-title {
+  background: linear-gradient(90deg, #1a1f6e 0%, #0078d4 50%, #7c3aed 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
 
 /* Mode tabs */
 [data-theme="light"] .ntp-mode-tabs {
