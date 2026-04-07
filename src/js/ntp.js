@@ -1,17 +1,22 @@
 /**
  * Navio Browser — New Tab Page controller
  *
- * Populates the dashboard new tab page with:
+ * Dashboard features:
  *  • Greeting + live clock + weather (Open-Meteo, no API key)
- *  • Connected services status bar (IMAP email counts, etc.)
- *  • Top news feed (HackerNews API, no API key)
- *  • Inbox widget — unread emails from connected Gmail/Outlook via IMAP
- *  • "Draft All" button — triggers Live Connector batch draft flow
+ *  • Connected services status bar (IMAP email counts)
+ *  • World News (Reddit r/worldnews — free, CORS-enabled JSON API)
+ *  • Stock market ticker (Yahoo Finance via main-process IPC — bypasses CORS)
+ *  • Inbox widget — unread emails from IMAP Gmail/Outlook
+ *  • AI Brief — generates personalized daily brief via AI
+ *  • "Draft All" button — triggers batch email drafting
  */
 
 const NTP = (() => {
   let _mode = 'search'; // 'search' | 'ai' | 'task'
   let _ntpVisible = false;
+  let _weatherData = null; // cached for AI brief
+  let _newsHeadlines = []; // cached for AI brief
+  let _stockData = [];     // cached for AI brief
 
   // ── Init ──────────────────────────────────────────────────────────────────
 
@@ -20,8 +25,8 @@ const NTP = (() => {
     _bindModeTabs();
     _bindSearchInput();
     _bindShortcuts();
+    _bindAIBrief();
 
-    // Only run heavy tasks when new tab page is visible
     const observer = new MutationObserver(() => {
       const isActive = document.getElementById('new-tab-page')?.classList.contains('active');
       if (isActive && !_ntpVisible) {
@@ -33,17 +38,16 @@ const NTP = (() => {
     });
     const ntp = document.getElementById('new-tab-page');
     if (ntp) observer.observe(ntp, { attributes: true, attributeFilter: ['class'] });
-
-    // If already visible on load
     if (ntp?.classList.contains('active')) { _ntpVisible = true; _onShow(); }
   }
 
   function _onShow() {
     _updateGreeting();
     _loadWeather();
-    _loadNews();
+    _loadWorldNews();
     _loadServicesBar();
     _loadInbox();
+    _loadStockTicker();
   }
 
   // ── Clock + Greeting ──────────────────────────────────────────────────────
@@ -54,7 +58,7 @@ const NTP = (() => {
       const dateEl = document.getElementById('ntp-date');
       if (dateEl) {
         dateEl.textContent = now.toLocaleDateString(undefined, {
-          weekday: 'short', month: 'short', day: 'numeric'
+          weekday: 'long', month: 'short', day: 'numeric'
         });
       }
     };
@@ -84,20 +88,256 @@ const NTP = (() => {
       const cw = data.current_weather;
       if (!cw) return;
 
-      const wmoDesc = (code) => {
-        if (code === 0) return '☀ Clear';
-        if (code <= 3) return '⛅ Partly cloudy';
-        if (code <= 48) return '🌫 Foggy';
-        if (code <= 67) return '🌧 Rain';
-        if (code <= 77) return '❄ Snow';
-        if (code <= 99) return '⛈ Thunderstorm';
-        return '🌤';
+      const wmoInfo = (code) => {
+        if (code === 0)  return { icon: '☀', desc: 'Clear' };
+        if (code <= 3)   return { icon: '⛅', desc: 'Partly cloudy' };
+        if (code <= 48)  return { icon: '🌫', desc: 'Foggy' };
+        if (code <= 67)  return { icon: '🌧', desc: 'Rain' };
+        if (code <= 77)  return { icon: '❄', desc: 'Snow' };
+        if (code <= 99)  return { icon: '⛈', desc: 'Thunderstorm' };
+        return { icon: '🌤', desc: 'Cloudy' };
       };
 
-      document.getElementById('ntp-weather-temp').textContent = `${Math.round(cw.temperature)}°C`;
-      document.getElementById('ntp-weather-desc').textContent = wmoDesc(cw.weathercode);
+      const info = wmoInfo(cw.weathercode);
+      _weatherData = { temp: Math.round(cw.temperature), ...info };
+
+      const iconEl = document.getElementById('ntp-weather-icon');
+      const tempEl = document.getElementById('ntp-weather-temp');
+      const descEl = document.getElementById('ntp-weather-desc');
+      if (iconEl) iconEl.textContent = info.icon;
+      if (tempEl) tempEl.textContent = `${Math.round(cw.temperature)}°C`;
+      if (descEl) descEl.textContent = info.desc;
       block.style.display = 'flex';
-    } catch { /* geolocation denied or offline — just hide */ }
+    } catch { /* geolocation denied or offline */ }
+  }
+
+  // ── World News (Reddit r/worldnews — free, CORS-open JSON API) ─────────────
+
+  async function _loadWorldNews() {
+    const list = document.getElementById('ntp-news-list');
+    if (!list) return;
+
+    // Try Reddit worldnews first, fallback to HackerNews
+    try {
+      const r = await fetch('https://www.reddit.com/r/worldnews/hot.json?limit=12', {
+        headers: { 'Accept': 'application/json' }
+      });
+      if (!r.ok) throw new Error(`Reddit ${r.status}`);
+      const data = await r.json();
+      const posts = (data?.data?.children || [])
+        .map(c => c.data)
+        .filter(p => p && p.title && !p.stickied)
+        .slice(0, 10);
+
+      if (posts.length === 0) throw new Error('No posts');
+
+      _newsHeadlines = posts.map(p => p.title);
+
+      // Update source label
+      const src = document.getElementById('ntp-news-source');
+      if (src) src.textContent = 'Reddit · r/worldnews';
+
+      list.innerHTML = posts.map(p => `
+        <div class="ntp-news-item" data-url="${_esc(p.url || `https://reddit.com${p.permalink}`)}">
+          <div class="ntp-news-category">${_esc(p.link_flair_text || 'World')}</div>
+          <div class="ntp-news-title">${_esc(p.title)}</div>
+          <div class="ntp-news-meta">
+            <span>▲ ${(p.score || 0).toLocaleString()}</span>
+            <span>${p.num_comments || 0} comments</span>
+            <span>${_domain(p.url)}</span>
+          </div>
+        </div>
+      `).join('');
+
+      list.querySelectorAll('.ntp-news-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const url = item.dataset.url;
+          if (url && typeof TabManager !== 'undefined') TabManager.createTab(url);
+        });
+      });
+
+    } catch {
+      // Fallback: HackerNews
+      try {
+        const src = document.getElementById('ntp-news-source');
+        if (src) src.textContent = 'HackerNews';
+
+        const ids = await fetch('https://hacker-news.firebaseio.com/v0/topstories.json').then(r => r.json());
+        const stories = await Promise.all(
+          ids.slice(0, 8).map(id =>
+            fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`)
+              .then(r => r.json()).catch(() => null)
+          )
+        );
+        const valid = stories.filter(s => s && s.title);
+        _newsHeadlines = valid.map(s => s.title);
+
+        if (valid.length === 0) {
+          list.innerHTML = '<p class="ntp-widget-empty">Could not load news.</p>';
+          return;
+        }
+
+        list.innerHTML = valid.map(s => `
+          <div class="ntp-news-item" data-url="${s.url || `https://news.ycombinator.com/item?id=${s.id}`}">
+            <div class="ntp-news-category">Tech</div>
+            <div class="ntp-news-title">${_esc(s.title)}</div>
+            <div class="ntp-news-meta">
+              <span>${s.score || 0} pts</span>
+              <span>${s.descendants || 0} comments</span>
+              <span>${_domain(s.url)}</span>
+            </div>
+          </div>
+        `).join('');
+
+        list.querySelectorAll('.ntp-news-item').forEach(item => {
+          item.addEventListener('click', () => {
+            const url = item.dataset.url;
+            if (url && typeof TabManager !== 'undefined') TabManager.createTab(url);
+          });
+        });
+      } catch {
+        list.innerHTML = '<p class="ntp-widget-empty">Could not load news. Check your connection.</p>';
+      }
+    }
+  }
+
+  // ── Stock Market Ticker ────────────────────────────────────────────────────
+
+  async function _loadStockTicker() {
+    const track = document.getElementById('ntp-ticker-track');
+    if (!track) return;
+
+    try {
+      const result = await window.navio.ntpFetchStocks();
+      if (!result || result.error || !Array.isArray(result) || result.length === 0) {
+        track.innerHTML = '<span class="ntp-ticker-loading">Market data unavailable</span>';
+        return;
+      }
+
+      _stockData = result;
+
+      const fmt = (n) => {
+        if (n == null) return '—';
+        return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      };
+
+      const nameMap = {
+        'GSPC': 'S&P 500', 'DJI': 'DOW', 'IXIC': 'NASDAQ',
+        'BTC-USD': 'BTC', 'ETH-USD': 'ETH',
+        'AAPL': 'AAPL', 'GOOGL': 'GOOGL', 'MSFT': 'MSFT',
+        'AMZN': 'AMZN', 'TSLA': 'TSLA', 'META': 'META', 'NVDA': 'NVDA'
+      };
+
+      const html = result.map(s => {
+        const up = (s.change || 0) >= 0;
+        const pctStr = `${up ? '+' : ''}${(s.pct || 0).toFixed(2)}%`;
+        const label = nameMap[s.symbol] || s.symbol;
+        return `
+          <div class="ntp-ticker-item ${up ? 'up' : 'down'}">
+            <span class="ti-symbol">${label}</span>
+            <span class="ti-price">${fmt(s.price)}</span>
+            <span class="ti-change">${up ? '▲' : '▼'} ${pctStr}</span>
+          </div>
+          <div class="ntp-ticker-sep">◆</div>
+        `;
+      }).join('');
+
+      // Duplicate content for seamless loop
+      track.innerHTML = html + html;
+
+    } catch (e) {
+      track.innerHTML = '<span class="ntp-ticker-loading">Market data unavailable</span>';
+    }
+  }
+
+  // ── AI Brief ──────────────────────────────────────────────────────────────
+
+  function _bindAIBrief() {
+    document.getElementById('ntp-brief-gen-btn')?.addEventListener('click', _generateAIBrief);
+  }
+
+  async function _generateAIBrief() {
+    const body = document.getElementById('ntp-brief-body');
+    const btn = document.getElementById('ntp-brief-gen-btn');
+    if (!body || !btn) return;
+
+    try {
+      const config = await window.navio.getConfig();
+      if (!config.hasApiKey) {
+        body.innerHTML = `<div class="ntp-brief-error">No AI API key configured.<br><small>Add one in <strong>Settings → AI</strong></small></div>`;
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = '…';
+      body.innerHTML = `<div class="ntp-brief-generating">
+        <div class="ntp-brief-spinner"></div>
+        <p>Generating your brief…</p>
+      </div>`;
+
+      // Gather context
+      const sections = [];
+      const hour = new Date().getHours();
+      const greet = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
+      sections.push(`${greet} brief for ${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}.`);
+
+      if (_weatherData) {
+        sections.push(`Weather: ${_weatherData.icon} ${_weatherData.temp}°C, ${_weatherData.desc}.`);
+      }
+
+      // Unread emails
+      try {
+        const imapSt = await window.navio.imapStatus();
+        const connected = Object.keys(imapSt || {});
+        if (connected.length > 0) {
+          const unreadResults = await Promise.all(
+            connected.map(svc => window.navio.imapGetUnread(svc, 1).catch(() => null))
+          );
+          const totalUnread = unreadResults.reduce((sum, r) => sum + (r?.unreadCount || 0), 0);
+          if (totalUnread > 0) {
+            sections.push(`Unread emails: ${totalUnread} unread across ${connected.map(s => s === 'gmail' ? 'Gmail' : 'Outlook').join(', ')}.`);
+          } else {
+            sections.push('Inbox: all caught up, no unread emails.');
+          }
+        }
+      } catch {}
+
+      if (_newsHeadlines.length > 0) {
+        sections.push(`Top world news headlines:\n${_newsHeadlines.slice(0, 5).map((h, i) => `${i + 1}. ${h}`).join('\n')}`);
+      }
+
+      if (_stockData.length > 0) {
+        const marketSummary = _stockData
+          .filter(s => ['GSPC', 'DJI', 'IXIC'].includes(s.symbol))
+          .map(s => `${s.symbol === 'GSPC' ? 'S&P 500' : s.symbol === 'DJI' ? 'DOW' : 'NASDAQ'}: ${(s.pct || 0) >= 0 ? '+' : ''}${(s.pct || 0).toFixed(2)}%`)
+          .join(', ');
+        if (marketSummary) sections.push(`Markets: ${marketSummary}.`);
+
+        const btc = _stockData.find(s => s.symbol === 'BTC-USD');
+        if (btc) sections.push(`BTC: $${btc.price?.toLocaleString('en-US', { maximumFractionDigits: 0 })} (${(btc.pct || 0) >= 0 ? '+' : ''}${(btc.pct || 0).toFixed(2)}%).`);
+      }
+
+      const messages = [
+        {
+          role: 'system',
+          content: 'You are a personalized AI briefing assistant. Write a concise, friendly daily brief in 3-5 short paragraphs. Use natural language, no bullet points, no headers. Keep it under 150 words. Make it feel intelligent, warm, and actionable.'
+        },
+        {
+          role: 'user',
+          content: `Here is today's context data:\n\n${sections.join('\n\n')}\n\nWrite my daily brief.`
+        }
+      ];
+
+      const result = await window.navio.aiRequest({ messages });
+      if (result.error) throw new Error(result.error);
+
+      body.innerHTML = `<div class="ntp-brief-content">${_esc(result.content || '').replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>')}</div>`;
+
+    } catch (e) {
+      body.innerHTML = `<div class="ntp-brief-error">Could not generate brief: ${_esc(e.message)}</div>`;
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '↺ Refresh'; }
+    }
   }
 
   // ── Mode tabs (Search / Ask AI / Task) ───────────────────────────────────
@@ -113,7 +353,7 @@ const NTP = (() => {
           const placeholders = {
             search: 'Search the web…',
             ai: 'Ask Navio AI anything…',
-            task: 'Give Navio a task…'
+            task: 'Give Navio a task to complete…'
           };
           input.placeholder = placeholders[_mode] || 'Search…';
           input.focus();
@@ -133,11 +373,10 @@ const NTP = (() => {
       const val = input.value.trim();
       if (!val) return;
       if (_mode === 'ai' || _mode === 'task') {
-        // Open AI assistant with the query
-        const assistantBtn = document.getElementById('btn-assistant') || document.getElementById('toggle-assistant');
+        const assistantBtn = document.getElementById('btn-toggle-assistant');
         if (assistantBtn) assistantBtn.click();
         setTimeout(() => {
-          const aiInput = document.getElementById('assistant-input') || document.querySelector('.assistant-input textarea');
+          const aiInput = document.getElementById('assistant-input');
           if (aiInput) {
             aiInput.value = val;
             aiInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -145,7 +384,6 @@ const NTP = (() => {
           }
         }, 150);
       } else {
-        // Web search
         if (typeof App !== 'undefined') App.handleSearch(val);
       }
       input.value = '';
@@ -164,7 +402,6 @@ const NTP = (() => {
         if (url && typeof TabManager !== 'undefined') {
           const activeTab = TabManager.getActiveTab();
           if (activeTab && !activeTab.url) {
-            // Navigate in current tab (it's a blank new tab)
             if (typeof App !== 'undefined') App.handleSearch(url);
           } else {
             TabManager.createTab(url);
@@ -185,20 +422,16 @@ const NTP = (() => {
       const imapSt = await window.navio.imapStatus();
       const pills = [];
 
-      // IMAP email pills
       for (const [svcId, info] of Object.entries(imapSt || {})) {
         if (!info.connected) continue;
         const label = svcId === 'gmail' ? 'Gmail' : 'Outlook';
         const grad = svcId === 'gmail'
           ? 'linear-gradient(135deg,#ea4335,#fbbc04)'
           : 'linear-gradient(135deg,#0078d4,#00bcf2)';
-        pills.push({ id: svcId, label, email: info.email, gradient: grad, count: null });
+        pills.push({ id: svcId, label, email: info.email, gradient: grad });
       }
 
-      if (pills.length === 0) {
-        bar.style.display = 'none';
-        return;
-      }
+      if (pills.length === 0) { bar.style.display = 'none'; return; }
 
       bar.style.display = 'flex';
       for (const pill of pills) {
@@ -214,7 +447,6 @@ const NTP = (() => {
         bar.appendChild(el);
       }
 
-      // Load unread counts in background
       for (const svcId of Object.keys(imapSt || {})) {
         window.navio.imapGetUnread(svcId, 1).then(r => {
           const countEl = document.getElementById(`ntp-svc-count-${svcId}`);
@@ -225,52 +457,6 @@ const NTP = (() => {
         }).catch(() => {});
       }
     } catch {}
-  }
-
-  // ── News feed (HackerNews — free, no API key) ────────────────────────────
-
-  async function _loadNews() {
-    const list = document.getElementById('ntp-news-list');
-    if (!list) return;
-
-    try {
-      const ids = await fetch('https://hacker-news.firebaseio.com/v0/topstories.json')
-        .then(r => r.json());
-      const top = ids.slice(0, 8);
-      const stories = await Promise.all(
-        top.map(id =>
-          fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`)
-            .then(r => r.json())
-            .catch(() => null)
-        )
-      );
-
-      const valid = stories.filter(s => s && s.title);
-      if (valid.length === 0) {
-        list.innerHTML = '<p class="ntp-widget-empty">Could not load news. Check your connection.</p>';
-        return;
-      }
-
-      list.innerHTML = valid.map(s => `
-        <div class="ntp-news-item" data-url="${s.url || `https://news.ycombinator.com/item?id=${s.id}`}">
-          <div class="ntp-news-title">${_esc(s.title)}</div>
-          <div class="ntp-news-meta">
-            <span>${s.score || 0} pts</span>
-            <span>${s.descendants || 0} comments</span>
-            <span>${_domain(s.url)}</span>
-          </div>
-        </div>
-      `).join('');
-
-      list.querySelectorAll('.ntp-news-item').forEach(item => {
-        item.addEventListener('click', () => {
-          const url = item.dataset.url;
-          if (url && typeof TabManager !== 'undefined') TabManager.createTab(url);
-        });
-      });
-    } catch {
-      list.innerHTML = '<p class="ntp-widget-empty">Could not load news.</p>';
-    }
   }
 
   // ── Inbox widget ──────────────────────────────────────────────────────────
@@ -286,7 +472,6 @@ const NTP = (() => {
       const connectedServices = Object.keys(imapSt || {});
 
       if (connectedServices.length === 0) {
-        // Show connect button
         emailList.innerHTML = `
           <div class="ntp-email-empty">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
@@ -294,14 +479,14 @@ const NTP = (() => {
             <button class="ntp-connect-email-btn" id="ntp-connect-email">Connect email</button>
           </div>`;
         document.getElementById('ntp-connect-email')?.addEventListener('click', () => {
-          document.getElementById('btn-connectors')?.click();
+          document.getElementById('btn-connectors-full')?.click();
         });
         return;
       }
 
       emailList.innerHTML = '<div class="ntp-widget-loading"><span></span><span></span><span></span></div>';
 
-      const svcId = connectedServices[0]; // use first connected service
+      const svcId = connectedServices[0];
       const result = await window.navio.imapGetUnread(svcId, 10);
 
       if (result?.error) {
@@ -312,17 +497,14 @@ const NTP = (() => {
       const messages = result?.messages || [];
       const unreadCount = result?.unreadCount || 0;
 
-      // Update badge
       if (unreadBadge && unreadCount > 0) {
         unreadBadge.textContent = unreadCount;
         unreadBadge.style.display = 'inline-flex';
       }
 
-      // Show "Draft All" button
       if (draftAllBtn && messages.length > 0) {
         draftAllBtn.style.display = 'inline-flex';
         draftAllBtn.addEventListener('click', () => {
-          // Trigger Live Connector batch draft
           if (typeof LiveConnectorManager !== 'undefined') {
             const tab = TabManager?.tabs?.find(t => {
               const url = t.webview?.src || t.url || '';
@@ -331,7 +513,6 @@ const NTP = (() => {
             if (tab) {
               LiveConnectorManager._startBatchDraft(svcId, tab.id);
             } else {
-              // No open email tab — use IMAP-based batch draft
               _imapBatchDraft(svcId, messages);
             }
           }
@@ -354,7 +535,6 @@ const NTP = (() => {
         </div>
       `).join('');
 
-      // "Draft reply" per email
       emailList.querySelectorAll('.ntp-email-draft-btn').forEach(btn => {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
@@ -382,19 +562,17 @@ const NTP = (() => {
         return;
       }
 
-      // Fetch email body via IMAP
       const bodyResult = await window.navio.imapGetEmailBody(svcId, uid);
       const body = bodyResult?.body || '';
 
       const messages = [
-        { role: 'system', content: `You are drafting an email reply on behalf of the user. Write ONLY the reply text — no preamble, no "Here is a draft" prefix. Be professional and concise.` },
+        { role: 'system', content: 'You are drafting an email reply on behalf of the user. Write ONLY the reply text — no preamble, no "Here is a draft" prefix. Be professional and concise.' },
         { role: 'user', content: `Draft a reply to this email:\n\nFrom: ${fromName}\nSubject: ${subject}\n\nBody:\n${body.slice(0, 3000)}` }
       ];
 
       const result = await window.navio.aiRequest({ messages });
       if (result.error) throw new Error(result.error);
 
-      // Show draft in Live Connector modal style
       if (typeof LiveConnectorManager !== 'undefined') {
         LiveConnectorManager._showDraftModal({
           draft: result.content,
@@ -405,7 +583,6 @@ const NTP = (() => {
         });
       }
 
-      // Override the "Send to Gmail" button to use IMAP create-draft instead
       setTimeout(() => {
         const injectBtn = document.getElementById('lm-inject');
         if (injectBtn) {
@@ -413,7 +590,7 @@ const NTP = (() => {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
             Save as Draft
           `;
-          injectBtn.replaceWith(injectBtn.cloneNode(true)); // remove old handler
+          injectBtn.replaceWith(injectBtn.cloneNode(true));
           document.getElementById('lm-inject')?.addEventListener('click', async () => {
             const draftText = document.getElementById('lm-draft-text')?.value || '';
             const draft = await window.navio.imapCreateDraft(svcId, {
@@ -445,17 +622,10 @@ const NTP = (() => {
   async function _imapBatchDraft(svcId, messages) {
     if (typeof LiveConnectorManager === 'undefined') return;
     const def = LiveConnectorManager.LIVE_CAPABLE?.[svcId] || { name: svcId, gradient: '#333', icon: '✉' };
-
     LiveConnectorManager._showBatchDraftModal({
-      phase: 'draft',
-      serviceId: svcId,
-      def,
-      email: messages[0],
-      idx: 0,
-      total: messages.length,
-      draft: '',
-      emails: messages,
-      tabId: null
+      phase: 'draft', serviceId: svcId, def,
+      email: messages[0], idx: 0, total: messages.length,
+      draft: '', emails: messages, tabId: null
     });
   }
 
@@ -466,7 +636,7 @@ const NTP = (() => {
   }
 
   function _domain(url) {
-    if (!url) return 'HN';
+    if (!url) return '';
     try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
   }
 
@@ -482,8 +652,6 @@ const NTP = (() => {
   return { init };
 })();
 
-// Boot after DOM is ready and other managers are initialized
 document.addEventListener('DOMContentLoaded', () => {
-  // Small delay so TabManager and other globals are initialized first
   setTimeout(() => NTP.init(), 500);
 });

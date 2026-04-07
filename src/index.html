@@ -206,14 +206,15 @@
             </button>
           </div>
 
-          <!-- Dashboard widgets: News + Email -->
+          <!-- Dashboard widgets: World News + Email + AI Brief -->
           <div class="ntp-widgets">
-            <!-- News feed -->
+            <!-- World News feed -->
             <div class="ntp-widget" id="ntp-widget-news">
               <div class="ntp-widget-header">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 0-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></svg>
-                Top Stories
-                <span class="ntp-widget-source" id="ntp-news-source">HackerNews</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                World News
+                <span class="ntp-live-badge">LIVE</span>
+                <span class="ntp-widget-source" id="ntp-news-source">Reuters · BBC</span>
               </div>
               <div class="ntp-widget-body" id="ntp-news-list">
                 <div class="ntp-widget-loading">
@@ -236,6 +237,37 @@
                   <p>Connect Gmail or Outlook in the Connectors Hub to see your inbox here.</p>
                   <button class="ntp-connect-email-btn" id="ntp-connect-email">Connect email</button>
                 </div>
+              </div>
+            </div>
+
+            <!-- AI Brief widget -->
+            <div class="ntp-widget ntp-widget-ai" id="ntp-widget-aibrief">
+              <div class="ntp-widget-header">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                AI Brief
+                <button class="ntp-widget-action" id="ntp-brief-gen-btn" title="Generate today's briefing">✦ Generate</button>
+              </div>
+              <div class="ntp-widget-body" id="ntp-brief-body">
+                <div class="ntp-brief-idle">
+                  <div class="ntp-brief-orb"></div>
+                  <p>Click <strong>Generate</strong> for your<br>personalized AI morning brief.</p>
+                  <ul class="ntp-brief-meta">
+                    <li>📧 Email summary</li>
+                    <li>🌍 Top world news</li>
+                    <li>📈 Market snapshot</li>
+                    <li>☀ Weather digest</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stock market ticker (bottom of NTP) -->
+          <div class="ntp-stock-ticker" id="ntp-stock-ticker">
+            <div class="ntp-ticker-label">MARKETS</div>
+            <div class="ntp-ticker-viewport">
+              <div class="ntp-ticker-track" id="ntp-ticker-track">
+                <span class="ntp-ticker-loading">Loading market data…</span>
               </div>
             </div>
           </div>

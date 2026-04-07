@@ -2248,6 +2248,28 @@ ipcMain.handle('imap-get-email-body', async (event, { serviceId, uid }) => {
   }
 });
 
+// ── NTP: Stock market data (fetched from main process — no CORS) ──────────
+ipcMain.handle('ntp-stocks', async () => {
+  const symbols = 'AAPL,GOOGL,MSFT,AMZN,TSLA,META,NVDA,BTC-USD,ETH-USD,%5EGSPC,%5EDJI,%5EIXIC';
+  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}&fields=symbol,shortName,regularMarketPrice,regularMarketChange,regularMarketChangePercent`;
+  try {
+    const r = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+    });
+    if (!r.ok) return { error: `HTTP ${r.status}` };
+    const data = await r.json();
+    return (data.quoteResponse?.result || []).map(q => ({
+      symbol: (q.symbol || '').replace('^', ''),
+      name: q.shortName || q.longName || q.symbol,
+      price: q.regularMarketPrice,
+      change: q.regularMarketChange,
+      pct: q.regularMarketChangePercent
+    }));
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
 // Update connector-get-keys to also include IMAP-connected services
 // (already done above, but also update connector-query to use IMAP)
 

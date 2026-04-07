@@ -88,5 +88,6 @@ contextBridge.exposeInMainWorld('navio', {
   imapGetUnread: (serviceId, limit) => ipcRenderer.invoke('imap-get-unread', { serviceId, limit }),
   imapSearch: (serviceId, query, limit) => ipcRenderer.invoke('imap-search', { serviceId, query, limit }),
   imapCreateDraft: (serviceId, opts) => ipcRenderer.invoke('imap-create-draft', { serviceId, ...opts }),
-  imapGetEmailBody: (serviceId, uid) => ipcRenderer.invoke('imap-get-email-body', { serviceId, uid })
+  imapGetEmailBody: (serviceId, uid) => ipcRenderer.invoke('imap-get-email-body', { serviceId, uid }),
+  ntpFetchStocks: () => ipcRenderer.invoke('ntp-stocks')
 });
