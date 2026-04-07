@@ -210,14 +210,14 @@ class TabManagerClass {
     return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
   body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;
-    background:#13131f;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#a3a3bc;}
+    background:#080c18;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#8892b4;}
   .box{text-align:center;max-width:480px;padding:40px 24px;}
   .icon{font-size:48px;margin-bottom:16px;opacity:.6;}
-  h1{font-size:22px;font-weight:700;color:#ececf4;margin:0 0 8px;}
+  h1{font-size:22px;font-weight:700;color:#e2e8f8;margin:0 0 8px;}
   p{font-size:14px;line-height:1.6;margin:0 0 24px;opacity:.7;}
-  .url{font-size:12px;word-break:break-all;padding:8px 12px;background:rgba(255,255,255,.04);
-    border:1px solid rgba(255,255,255,.08);border-radius:6px;margin-bottom:24px;opacity:.5;}
-  button{padding:10px 24px;background:linear-gradient(135deg,#00b4ff,#6366f1);border:none;
+  .url{font-size:12px;word-break:break-all;padding:8px 12px;background:rgba(80,160,255,.05);
+    border:1px solid rgba(80,160,255,.10);border-radius:6px;margin-bottom:24px;opacity:.6;}
+  button{padding:10px 24px;background:linear-gradient(135deg,#00d8ff,#5468ff);border:none;
     border-radius:8px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;}
   button:hover{opacity:.9;}
 </style></head><body>

@@ -16,6 +16,18 @@ class ReadingModeClass {
     }
     const page = await TabManager.getActivePageContent();
     if (!page || page.error || !page.text) {
+      const reason = (!page || page.error) ? 'This page could not be extracted.' : 'No readable text was found on this page.';
+      this.pane.innerHTML = `
+        <button type="button" class="btn btn-secondary reading-close" id="reading-close">Close</button>
+        <article style="text-align:center;padding:80px 24px">
+          <div style="font-size:40px;margin-bottom:16px;opacity:.4">📄</div>
+          <h1 style="font-size:17px;font-weight:600;margin-bottom:8px">Nothing to read</h1>
+          <p style="font-size:13px;color:var(--text-secondary);max-width:280px;margin:0 auto">${reason} Navigate to an article or web page and try again.</p>
+        </article>
+      `;
+      document.getElementById('reading-close')?.addEventListener('click', () => this.close());
+      this.pane.classList.add('visible');
+      this.pane.setAttribute('aria-hidden', 'false');
       return;
     }
     const cfg = await window.navio.getConfig();

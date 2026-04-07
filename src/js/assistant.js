@@ -96,7 +96,24 @@ PERSONALITY:
     this.isOpen = true;
     this.panel.classList.add('open');
     await this.syncScopeFromConfig();
+    if (this.messagesEl && this.messagesEl.children.length === 0) {
+      await this._showGreeting();
+    }
     setTimeout(() => this.inputEl.focus(), 300);
+  }
+
+  async _showGreeting() {
+    try {
+      const cfg = await window.navio.getConfig();
+      const name = cfg.userName ? ` ${cfg.userName.split(' ')[0]}` : '';
+      const tab = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
+      const pageHint = tab && tab.title && tab.url && !tab.url.startsWith('about:')
+        ? `<p style="font-size:12px;color:var(--text-tertiary);margin-top:6px">On: <span style="color:var(--text-accent)">${tab.title}</span></p>`
+        : '';
+      this.addMessage('assistant', `Hey${name}! I'm Navio — your AI co-pilot.\n\nI can **summarize**, **explain**, **extract data**, or answer any question about the page you're on. Try a quick action below or just ask me anything.${pageHint}`);
+    } catch {
+      this.addMessage('assistant', "Hey! I'm Navio — your AI co-pilot. How can I help?");
+    }
   }
 
   close() {
@@ -246,6 +263,12 @@ PERSONALITY:
 
     const ctxMsg = await this.buildPageContextSystemMessage(config, isQuickAction);
     if (ctxMsg) messages.push(ctxMsg);
+
+    const activeUrl = TabManager.getActiveTab()?.url || '';
+    if (typeof EmailAssistant !== 'undefined' && EmailAssistant.isMailUrl(activeUrl)) {
+      const hint = EmailAssistant.contextHint(activeUrl);
+      if (hint) messages.push({ role: 'system', content: hint });
+    }
 
     if (config.formAutofillAssist !== false && !isQuickAction) {
       const page = await TabManager.getActivePageContent();
@@ -443,13 +466,8 @@ PERSONALITY:
   clearChat() {
     this.conversationHistory = [];
     this.setReceipt('');
-    this.messagesEl.innerHTML = `
-      <div class="message assistant-message">
-        <div class="message-content">
-          <p>Chat cleared. How can I help you?</p>
-        </div>
-      </div>
-    `;
+    this.messagesEl.innerHTML = '';
+    this._showGreeting();
   }
 }
 

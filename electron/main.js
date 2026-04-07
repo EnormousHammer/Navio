@@ -137,7 +137,7 @@ function createMainWindow() {
     frame: false,
     titleBarStyle: 'hidden',
     show: false,
-    backgroundColor: isDark ? '#13131f' : '#f4f5f7',
+    backgroundColor: isDark ? '#080c18' : '#f4f5f7',
     icon: path.join(__dirname, '..', 'src', 'assets', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -695,7 +695,7 @@ ipcMain.handle('mcp-config', (event, payload) => {
 
 ipcMain.handle('proactive-tick', (event, payload) => {
   const cfg = loadConfig();
-  if (cfg.aiProactivity === 'off') {
+  if (cfg.aiProactivity === 'off' || !cfg.hasApiKey) {
     return { suggestion: null };
   }
   const now = Date.now();
@@ -703,13 +703,7 @@ ipcMain.handle('proactive-tick', (event, payload) => {
   const minGap = cfg.aiProactivity === 'active' ? 120000 : 600000;
   if (now - last < minGap) return { suggestion: null };
   saveConfig({ lastProactiveSuggestionAt: now });
-  return {
-    suggestion: {
-      id: `sug-${now}`,
-      text: 'Tip: Pin important tabs from the assistant panel to build context for longer sessions.',
-      level: 'info'
-    }
-  };
+  return { suggestion: { fire: true, id: `sug-${now}` } };
 });
 
 ipcMain.handle('ledger-export', () => {

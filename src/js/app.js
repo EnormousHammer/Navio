@@ -311,10 +311,28 @@ class NavioApp {
   async _maybeProactiveTip() {
     try {
       const cfg = this.config || (await window.navio.getConfig());
-      if (cfg.aiProactivity === 'off') return;
+      if (cfg.aiProactivity === 'off' || !cfg.hasApiKey) return;
       const r = await window.navio.proactiveTick({});
-      if (r.suggestion && r.suggestion.text && typeof AssistantManager !== 'undefined') {
-        AssistantManager.setReceipt(r.suggestion.text);
+      if (!r.suggestion?.fire) return;
+
+      const page = await TabManager.getActivePageContent();
+      if (!page || page.error || !page.text || !page.url) return;
+
+      const result = await window.navio.aiRequest({
+        messages: [
+          {
+            role: 'system',
+            content: 'You are Navio, an AI browser assistant. Give one brief, specific, actionable insight about the current page. Maximum 2 sentences. Do not start with "I" or "Based on". Be direct and helpful.'
+          },
+          {
+            role: 'user',
+            content: `Page title: ${page.title}\nURL: ${page.url}\n\nContent snippet:\n${(page.text || '').slice(0, 2000)}`
+          }
+        ]
+      });
+
+      if (!result.error && result.content && typeof AssistantManager !== 'undefined') {
+        AssistantManager.setReceipt(`💡 ${result.content.slice(0, 180)}`);
       }
     } catch {
       /* ignore */

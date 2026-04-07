@@ -8,6 +8,7 @@ class WorkspaceManagerClass {
     this.body = document.getElementById('workspace-body');
     this.taskList = document.getElementById('workspace-task-list');
     this.projectList = document.getElementById('workspace-project-list');
+    this.notesList = document.getElementById('workspace-notes-list');
 
     const close = document.getElementById('workspace-close');
     if (close) close.addEventListener('click', () => this.close());
@@ -69,7 +70,21 @@ class WorkspaceManagerClass {
     if (this.projectList) {
       this.projectList.innerHTML = (w.projects || [])
         .map((p) => `<div style="padding:6px 0;border-bottom:1px solid var(--border)">${escapeHtml(p.name)}</div>`)
-        .join('') || '<span>No projects yet.</span>';
+        .join('') || '<span style="opacity:.5">No projects yet.</span>';
+    }
+
+    if (this.notesList) {
+      const notes = (w.notes || []).slice().reverse();
+      if (notes.length === 0) {
+        this.notesList.innerHTML = '<span class="workspace-notes-empty">No notes yet.</span>';
+      } else {
+        this.notesList.innerHTML = notes.map((n) => `
+          <div class="workspace-note-row">
+            <div class="workspace-note-body">${escapeHtml(n.body)}</div>
+            ${n.tabUrl ? `<div class="workspace-note-url">${escapeHtml(n.tabUrl)}</div>` : ''}
+            <div class="workspace-note-time">${new Date(n.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+          </div>`).join('');
+      }
     }
   }
 
