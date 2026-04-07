@@ -3194,6 +3194,87 @@ body.onboarding-active #app {
   animation: context-pulse 1.8s infinite;
 }
 
+/* ── "Let Navio handle this" button ── */
+.navio-allow-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 10px 0 2px;
+  padding: 10px 16px;
+  width: 100%;
+  background: var(--gradient-primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: opacity var(--duration) var(--ease), transform var(--duration) var(--ease);
+  box-shadow: 0 4px 16px rgba(0, 216, 255, 0.2);
+  justify-content: center;
+}
+
+.navio-allow-btn:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 22px rgba(0, 216, 255, 0.32);
+}
+
+/* ── Takeover active banner ── */
+.navio-takeover-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(0, 216, 255, 0.08);
+  border-top: 1px solid rgba(0, 216, 255, 0.2);
+  border-bottom: 1px solid rgba(0, 216, 255, 0.2);
+  flex-shrink: 0;
+}
+
+.ntb-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+  flex-shrink: 0;
+  animation: context-pulse 1.4s infinite;
+}
+
+.ntb-label {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.2px;
+}
+
+.ntb-stop {
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid rgba(255, 100, 100, 0.4);
+  border-radius: var(--radius-full);
+  color: #ff8080;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+}
+
+.ntb-stop:hover {
+  background: rgba(255, 100, 100, 0.1);
+  border-color: #ff6b6b;
+  color: #ff6b6b;
+}
+
+.bac-status.bac-pending {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
 /* ── Browser action cards ── */
 .browser-action-card {
   display: flex;

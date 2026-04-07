@@ -535,19 +535,96 @@ PERSONALITY:
     return html;
   }
 
+  // ── Takeover mode ────────────────────────────────────────────────────────
+  enableTakeover() {
+    this._takeoverMode = true;
+    // Banner above the input area
+    if (!document.getElementById('navio-takeover-banner')) {
+      const banner = document.createElement('div');
+      banner.id = 'navio-takeover-banner';
+      banner.className = 'navio-takeover-banner';
+      banner.innerHTML = `
+        <span class="ntb-dot"></span>
+        <span class="ntb-label">Navio is in control</span>
+        <button class="ntb-stop" type="button">Stop</button>`;
+      banner.querySelector('.ntb-stop').addEventListener('click', () => this.disableTakeover());
+      const inputArea = this.panel.querySelector('.assistant-input-area');
+      if (inputArea) this.panel.insertBefore(banner, inputArea);
+    }
+  }
+
+  disableTakeover() {
+    this._takeoverMode = false;
+    this._autoFollowCount = 0;
+    document.getElementById('navio-takeover-banner')?.remove();
+    this._addContinuePill('Navio stopped. You\'re back in control.');
+  }
+
   _wireActions(contentEl) {
-    contentEl.querySelectorAll('.browser-action-card').forEach((card) => {
+    const cards = Array.from(contentEl.querySelectorAll('.browser-action-card'));
+    if (!cards.length) return;
+
+    if (this._takeoverMode) {
+      // Takeover already active — mark cards queued and execute immediately
+      cards.forEach((card) => {
+        const btns = card.querySelector('.bac-btns');
+        if (btns) btns.innerHTML = '<span class="bac-status bac-pending">Queued…</span>';
+      });
+      this._executeTakeover(contentEl);
+      return;
+    }
+
+    // Manual mode — individual Run / Skip buttons
+    cards.forEach((card) => {
       const action = card.dataset.action;
       const params = card.dataset.params;
-      card.querySelector('.bac-run')?.addEventListener('click', () => this._executeAction(action, params, card));
+      card.querySelector('.bac-run')?.addEventListener('click', () => this._executeAction(action, params, card, false));
       card.querySelector('.bac-skip')?.addEventListener('click', () => {
         card.classList.add('bac-skipped');
         card.querySelector('.bac-btns').innerHTML = '<span class="bac-status">Skipped</span>';
       });
     });
+
+    // Single "Let Navio handle this" button at the bottom of the message
+    const allowBtn = document.createElement('button');
+    allowBtn.className = 'navio-allow-btn';
+    allowBtn.type = 'button';
+    allowBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="5 3 19 12 5 21 5 3"/>
+      </svg>
+      Let Navio handle this automatically`;
+    allowBtn.addEventListener('click', () => {
+      allowBtn.remove();
+      // Re-mark all pending cards as queued
+      cards.forEach((card) => {
+        if (!card.classList.contains('bac-done') && !card.classList.contains('bac-skipped') && !card.classList.contains('bac-error')) {
+          const btns = card.querySelector('.bac-btns');
+          if (btns) btns.innerHTML = '<span class="bac-status bac-pending">Queued…</span>';
+        }
+      });
+      this.enableTakeover();
+      this._executeTakeover(contentEl);
+    });
+    contentEl.appendChild(allowBtn);
   }
 
-  async _executeAction(action, paramsStr, card) {
+  async _executeTakeover(contentEl) {
+    const cards = Array.from(
+      contentEl.querySelectorAll('.browser-action-card:not(.bac-done):not(.bac-skipped):not(.bac-error)')
+    );
+    for (const card of cards) {
+      if (!this._takeoverMode) break;
+      await this._executeAction(card.dataset.action, card.dataset.params, card, true);
+      if (this._takeoverMode) await new Promise((r) => setTimeout(r, 700));
+    }
+    // After all cards in this message are done, trigger the agent loop
+    if (this._takeoverMode) {
+      setTimeout(() => this._smartFollowUp(), 1200);
+    }
+  }
+
+  async _executeAction(action, paramsStr, card, fromTakeover = false) {
     const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
     if (!wv) {
       card.classList.add('bac-error');
@@ -574,11 +651,13 @@ PERSONALITY:
       if (result && result.success) {
         card.classList.add('bac-done');
         card.querySelector('.bac-btns').innerHTML = '<span class="bac-status bac-ok">Done ✓</span>';
-        // Only trigger smart follow-up if this is the LAST pending action card in the message
-        const msgEl = card.closest('.message');
-        const pendingCards = msgEl ? msgEl.querySelectorAll('.browser-action-card:not(.bac-done):not(.bac-skipped):not(.bac-error)').length : 0;
-        if (pendingCards === 0) {
-          setTimeout(() => this._smartFollowUp(), 1800);
+        // In manual mode, trigger follow-up only when all cards in this message are done
+        if (!fromTakeover) {
+          const msgEl = card.closest('.message');
+          const pending = msgEl
+            ? msgEl.querySelectorAll('.browser-action-card:not(.bac-done):not(.bac-skipped):not(.bac-error)').length
+            : 0;
+          if (pending === 0) setTimeout(() => this._smartFollowUp(), 1800);
         }
       } else {
         card.classList.add('bac-error');
@@ -591,25 +670,24 @@ PERSONALITY:
   }
 
   async _smartFollowUp() {
-    const MAX_AUTO_STEPS = 8;
+    const MAX_AUTO_STEPS = 10;
     if (this.isProcessing || this._autoFollowCount >= MAX_AUTO_STEPS) {
       if (this._autoFollowCount >= MAX_AUTO_STEPS) {
-        this._addContinuePill('Auto-continue limit reached. Tell me what to do next.');
+        this._addContinuePill('Reached step limit. Tell me what to do next.');
         this._autoFollowCount = 0;
+        if (this._takeoverMode) this.disableTakeover();
       }
       return;
     }
     this._autoFollowCount++;
 
-    // Let the page settle (especially after navigation)
-    await new Promise((r) => setTimeout(r, 600));
+    await new Promise((r) => setTimeout(r, 700));
 
     let pageInfo = '';
     try {
       const page = await TabManager.getActivePageContent();
       if (page && !page.error) {
-        const excerpt = (page.text || '').slice(0, 3000);
-        pageInfo = `Title: ${page.title}\nURL: ${page.url}\n\nPage content (excerpt):\n${excerpt}`;
+        pageInfo = `Title: ${page.title}\nURL: ${page.url}\n\nPage content:\n${(page.text || '').slice(0, 3000)}`;
       }
     } catch { /* ignore */ }
 
@@ -618,12 +696,20 @@ PERSONALITY:
       return;
     }
 
-    const followUpText = `[Action completed. Current page state below — continue the task if more steps are needed, or summarize completion if done.]\n\n${pageInfo}`;
-
     this._addContinuePill('↻ Reading page…');
+    const followUpText = `[Action completed. Current page — continue task if more steps needed, or summarize completion if done.]\n\n${pageInfo}`;
     await this.processMessage(followUpText, true, null);
-    // Remove the "reading" pill once the response is rendered
     document.getElementById('navio-continue-pill')?.remove();
+
+    // In takeover mode, auto-execute any new action cards in the latest response
+    if (this._takeoverMode) {
+      const lastMsg = this.messagesEl.querySelector('.message.assistant-message:last-of-type');
+      const contentEl = lastMsg?.querySelector('.message-content');
+      if (contentEl) {
+        const newCards = contentEl.querySelectorAll('.browser-action-card:not(.bac-done):not(.bac-skipped):not(.bac-error)');
+        if (newCards.length) await this._executeTakeover(contentEl);
+      }
+    }
   }
 
   _addContinuePill(text) {
