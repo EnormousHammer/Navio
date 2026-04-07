@@ -24,35 +24,47 @@ CAPABILITIES:
 - You can control the active browser tab on behalf of the user.
 
 BROWSER CONTROL:
-You can execute actions in the active tab by embedding action tokens in your response.
-Each token becomes a confirmation card — or auto-executes if the user enabled takeover mode.
+Embed action tokens in your response. Each becomes a card the user approves, or auto-runs in takeover mode.
 
-Supported actions:
-- Navigate:   <<ACTION:navigate:https://example.com>>
-- Click:      <<ACTION:click:text=Search>>          ← preferred: find by visible text
-              <<ACTION:click:aria=Submit form>>      ← or by aria-label
-              <<ACTION:click:#some-id>>              ← CSS selector only as last resort
-- Type:       <<ACTION:type:text=Search:query here>> ← find input by placeholder/label text
-              <<ACTION:type:aria=Search input:query>>
-              <<ACTION:type:#id:text>>
-- Scroll:     <<ACTION:scroll:down>>  /  <<ACTION:scroll:up>>
-- Back/Fwd:   <<ACTION:goBack:>>  /  <<ACTION:goForward:>>
+Token format (use DOUBLE SQUARE BRACKETS — never angle brackets):
+- Navigate:  [[ACTION:navigate:https://example.com]]
+- Click:     [[ACTION:click:text=Search]]           ← PREFERRED — finds by visible text
+             [[ACTION:click:aria=Submit]]            ← or by aria-label
+             [[ACTION:click:#id]]                    ← CSS only as last resort
+- Type:      [[ACTION:type:text=Search box:query]]  ← selector:value format
+             [[ACTION:type:aria=Search:query text]]
+- Scroll:    [[ACTION:scroll:down]]  /  [[ACTION:scroll:up]]
+- History:   [[ACTION:goBack:]]  /  [[ACTION:goForward:]]
+
+SMART NAVIGATION — always prefer a direct URL over UI interaction:
+- YouTube search:   [[ACTION:navigate:https://www.youtube.com/results?search_query=funny+cats]]
+- Google search:    [[ACTION:navigate:https://www.google.com/search?q=your+query]]
+- Reddit search:    [[ACTION:navigate:https://www.reddit.com/search/?q=query]]
+- Wikipedia:        [[ACTION:navigate:https://en.wikipedia.org/wiki/Topic_Name]]
+→ One navigate to the results URL = always more reliable than navigate + type + click.
 
 CRITICAL RULES:
-1. ALWAYS use text= or aria= selectors — they survive site redesigns. CSS selectors break.
-   ✓ <<ACTION:click:text=Search>>
-   ✗ <<ACTION:click:#search-icon-legacy>>
-2. When a [Page elements] snapshot is provided, reference EXACT label text from it.
-3. Emit ALL steps for a task in ONE response. Never stop after one action and wait.
-4. Describe each step briefly before its token.
-5. After navigate, remaining actions run on the newly loaded page.
+1. Prefer direct URL navigation whenever possible — skip UI search interactions.
+2. For click/type, use text= or aria= — CSS selectors break on redesigns.
+3. When a [Page elements] snapshot is provided, use EXACT label text from it.
+4. Emit ALL steps in ONE response. Never pause mid-task.
+5. Keep descriptions concise — one sentence before each token.
 
 FORMATTING:
-- Use markdown-like formatting: **bold**, *italic*, \`code\`
-- Keep responses focused and actionable
+- Use proper markdown for all responses — this renders beautifully in the UI.
+- **Bold** for emphasis, *italic* for secondary info
+- # Heading for major sections, ## for sub-sections
+- \`inline code\` for technical terms, URLs, selectors
+- \`\`\`language blocks for multi-line code
+- > blockquote for tips, notes, or quotes
+- Bullet lists (- item) and numbered lists (1. item)
+- --- for horizontal dividers between sections
+- Keep responses focused, scannable, and visually structured
+- NEVER show raw action tokens as text — they must be embedded, not described
 
 PERSONALITY:
-- Professional, friendly, concise`;
+- Intelligent, modern, concise. Think Perplexity meets a skilled browser agent.
+- Lead with the answer, then context. No filler phrases.`;
 
     this.bindEvents();
   }
@@ -474,63 +486,135 @@ PERSONALITY:
   formatMessage(text, parseActions = false) {
     if (!text) return '';
 
-    // Extract action tokens before HTML escaping so we can safely re-inject HTML
+    // ── 1. Extract action tokens BEFORE any HTML processing ──────────────────
+    // Format: [[ACTION:type:params]] — square brackets never appear in plain URLs
+    // Also handle legacy <<ACTION:type:params>> tokens from old sessions
     const actionCards = [];
     let processedText = text;
+
+    const extractToken = (_, type, params) => {
+      const idx = actionCards.length;
+      actionCards.push({ type, params: params || '' });
+      return `\x00ACTION_${idx}\x00`;
+    };
+
     if (parseActions) {
-      processedText = text.replace(/<<ACTION:(\w+):([^>]*)>>/g, (_, type, params) => {
-        const idx = actionCards.length;
-        actionCards.push({ type, params });
-        return `\x00ACTION_${idx}\x00`;
-      });
+      // [[ACTION:type:params]] — non-greedy, stops at first ]]
+      processedText = processedText.replace(/\[\[ACTION:(\w+):([\s\S]*?)\]\]/g, extractToken);
+      // Legacy <<ACTION:type:params>> — keep compatible
+      processedText = processedText.replace(/<<ACTION:(\w+):([\s\S]*?)>>/g, extractToken);
     } else {
-      // During streaming — strip action tokens cleanly
-      processedText = text.replace(/<<ACTION:[^>]*>>/g, '');
+      processedText = processedText.replace(/\[\[ACTION:[\s\S]*?\]\]/g, '');
+      processedText = processedText.replace(/<<ACTION:[\s\S]*?>>/g, '');
     }
 
+    // ── 2. HTML-escape raw text ───────────────────────────────────────────────
     let html = processedText
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
 
+    // ── 3. Fenced code blocks ─────────────────────────────────────────────────
     html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
-      return `<pre><code>${code.trim()}</code></pre>`;
+      const langAttr = lang ? ` class="lang-${lang}"` : '';
+      return `<pre${langAttr}><code>${code.trim()}</code></pre>`;
     });
 
+    // ── 4. Horizontal rule ────────────────────────────────────────────────────
+    html = html.replace(/^---+$/gm, '<hr>');
+
+    // ── 5. Blockquotes ────────────────────────────────────────────────────────
+    html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+    html = html.replace(/(<\/blockquote>\n?<blockquote>)/g, '\n');
+
+    // ── 6. Headings ───────────────────────────────────────────────────────────
+    html = html.replace(/^#### (.+)$/gm, '<h5>$1</h5>');
+    html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+    html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>');
+
+    // ── 7. Inline code ────────────────────────────────────────────────────────
     html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // ── 8. Bold / italic ─────────────────────────────────────────────────────
+    html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-    html = html.replace(/^[-•] (.+)$/gm, '<li>$1</li>');
-    html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
-    html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-    html = html.replace(/\n\n/g, '</p><p>');
-    html = '<p>' + html + '</p>';
-    html = html.replace(/<p>\s*<\/p>/g, '');
-    html = html.replace(/<p>\s*(<ul>)/g, '$1');
-    html = html.replace(/(<\/ul>)\s*<\/p>/g, '$1');
-    html = html.replace(/<p>\s*(<pre>)/g, '$1');
-    html = html.replace(/(<\/pre>)\s*<\/p>/g, '$1');
+    html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+    html = html.replace(/_([^_\s][^_]*)_/g, '<em>$1</em>');
 
-    // Re-inject action cards in place of placeholders
+    // ── 9. Links ──────────────────────────────────────────────────────────────
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+    // ── 10. Unordered lists ───────────────────────────────────────────────────
+    html = html.replace(/^[ \t]*[-•*] (.+)$/gm, '<li>$1</li>');
+    html = html.replace(/(<li>[\s\S]*?<\/li>)(\n(?!<li>)|$)/g, '$1\n');
+    html = html.replace(/((?:<li>[\s\S]*?<\/li>\n?)+)/g, '<ul>$1</ul>');
+
+    // ── 11. Ordered lists ─────────────────────────────────────────────────────
+    html = html.replace(/^\d+[.)]\s+(.+)$/gm, '<oli>$1</oli>');
+    html = html.replace(/((?:<oli>[\s\S]*?<\/oli>\n?)+)/g, (m) =>
+      '<ol>' + m.replace(/<oli>/g, '<li>').replace(/<\/oli>/g, '</li>') + '</ol>'
+    );
+
+    // ── 12. Paragraphs ────────────────────────────────────────────────────────
+    html = html.replace(/\n\n+/g, '\n\n');
+    const BLOCK = /^(<\/?(h[2-5]|ul|ol|li|pre|blockquote|hr)[\s>])/;
+    const lines = html.split('\n');
+    const out = [];
+    let buf = [];
+    const flushBuf = () => {
+      if (buf.length) {
+        const t = buf.join('\n').trim();
+        if (t) out.push(`<p>${t}</p>`);
+        buf = [];
+      }
+    };
+    for (const line of lines) {
+      if (BLOCK.test(line.trim())) {
+        flushBuf();
+        out.push(line);
+      } else if (line === '') {
+        flushBuf();
+      } else {
+        buf.push(line);
+      }
+    }
+    flushBuf();
+    html = out.join('\n');
+    html = html.replace(/<p>\s*<\/p>/g, '');
+
+    // ── 13. Re-inject action cards ───────────────────────────────────────────
     if (actionCards.length) {
       const ACTION_ICONS = {
-        navigate: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
-        click: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-7 1-4 7z"/></svg>`,
-        type: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>`,
-        scroll: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>`,
-        goBack: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
-        goForward: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`
+        navigate: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
+        click:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-7 1-4 7z"/></svg>`,
+        type:     `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>`,
+        scroll:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>`,
+        goBack:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
+        goForward:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`
       };
-      const VERBS = { navigate: 'Navigate to', click: 'Click', type: 'Type into', scroll: 'Scroll', goBack: 'Go back', goForward: 'Go forward' };
+      const VERBS = {
+        navigate: 'Navigate to', click: 'Click', type: 'Type into',
+        scroll: 'Scroll', goBack: 'Go back', goForward: 'Go forward'
+      };
 
       actionCards.forEach(({ type, params }, idx) => {
         const icon = ACTION_ICONS[type] || ACTION_ICONS.navigate;
         const verb = VERBS[type] || type;
         const safeParams = params.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        // For navigate, show a human-readable URL label
+        let paramDisplay = safeParams;
+        if (type === 'navigate') {
+          try {
+            const u = new URL(params);
+            paramDisplay = u.hostname + (u.pathname !== '/' ? u.pathname : '') + (u.search ? '…' : '');
+            paramDisplay = paramDisplay.replace(/^www\./, '');
+          } catch (_) {}
+        }
         const card = `<div class="browser-action-card" data-action="${type}" data-params="${safeParams}">
           <span class="bac-icon">${icon}</span>
-          <span class="bac-desc"><strong>${verb}</strong>${params ? ` <code>${safeParams}</code>` : ''}</span>
+          <span class="bac-desc"><strong>${verb}</strong>${params ? `<span class="bac-param">${paramDisplay}</span>` : ''}</span>
           <div class="bac-btns">
             <button class="bac-run" type="button">Run</button>
             <button class="bac-skip" type="button">Skip</button>
@@ -644,12 +728,62 @@ PERSONALITY:
       return;
     }
     card.querySelector('.bac-btns').innerHTML = '<span class="bac-status bac-running">Running…</span>';
+
+    // ── Navigate: use TabManager.navigateActive() in the renderer ─────────────
+    // This correctly hides the Navio new-tab overlay and updates all tab state.
+    // Going through the main-process IPC only calls wc.loadURL() which bypasses
+    // the overlay-hide logic, leaving the NTP visible on top of the loaded page.
+    if (action === 'navigate') {
+      try {
+        const url = paramsStr;
+        if (!TabManager || typeof TabManager.navigateActive !== 'function') throw new Error('TabManager unavailable');
+        const ok = TabManager.navigateActive(url);
+        if (!ok) throw new Error('Navigation failed to start');
+
+        // Wait for the webview to finish loading (up to 12 s)
+        await new Promise((resolve) => {
+          let settled = false;
+          const settle = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            wv.removeEventListener('did-finish-load', onLoad);
+            wv.removeEventListener('did-fail-load', onFail);
+            resolve();
+          };
+          // Extra paint time after finish-load
+          const onLoad = () => setTimeout(settle, 600);
+          // ERR_ABORTED (-3) is a normal redirect — treat as success
+          const onFail = (e) => {
+            if (e && e.errorCode === -3) setTimeout(settle, 600);
+            else settle();
+          };
+          const timer = setTimeout(settle, 12000);
+          wv.addEventListener('did-finish-load', onLoad);
+          wv.addEventListener('did-fail-load', onFail);
+        });
+
+        card.classList.add('bac-done');
+        card.querySelector('.bac-btns').innerHTML = '<span class="bac-status bac-ok">Done ✓</span>';
+        if (!fromTakeover) {
+          const msgEl = card.closest('.message');
+          const pending = msgEl
+            ? msgEl.querySelectorAll('.browser-action-card:not(.bac-done):not(.bac-skipped):not(.bac-error)').length
+            : 0;
+          if (pending === 0) setTimeout(() => this._smartFollowUp(), 1800);
+        }
+      } catch (err) {
+        card.classList.add('bac-error');
+        card.querySelector('.bac-btns').innerHTML = `<span class="bac-status">${err.message || 'Navigation error'}</span>`;
+      }
+      return;
+    }
+
+    // ── All other actions: go through main-process IPC ────────────────────────
     try {
       const webContentsId = wv.getWebContentsId();
       let params = {};
-      if (action === 'navigate') {
-        params = { url: paramsStr };
-      } else if (action === 'click') {
+      if (action === 'click') {
         params = { selector: paramsStr };
       } else if (action === 'type') {
         const colonIdx = paramsStr.indexOf(':');
@@ -663,7 +797,6 @@ PERSONALITY:
       if (result && result.success) {
         card.classList.add('bac-done');
         card.querySelector('.bac-btns').innerHTML = '<span class="bac-status bac-ok">Done ✓</span>';
-        // In manual mode, trigger follow-up only when all cards in this message are done
         if (!fromTakeover) {
           const msgEl = card.closest('.message');
           const pending = msgEl
