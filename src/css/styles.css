@@ -4371,6 +4371,11 @@ body.onboarding-active #app {
   background: linear-gradient(135deg, #00d8ff 0%, #5468ff 100%);
   color: #fff;
 }
+.live-notif-btn-batch {
+  background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+  color: #0a1a18;
+  font-weight: 600;
+}
 
 /* Auto-dismiss progress bar */
 .live-notif-progress {
@@ -5099,6 +5104,109 @@ body.onboarding-active #app {
   line-height: 1.5;
 }
 .live-howto-list li strong { color: var(--text-accent); }
+
+/* ── Batch Draft Modal ─────────────────────────────────────────────────── */
+.lbdm-panel { min-height: 340px; }
+
+.lbdm-progress {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 20px 0;
+}
+.lbdm-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--glass-border, rgba(255,255,255,0.12));
+  transition: background 0.2s, transform 0.2s;
+  flex-shrink: 0;
+}
+.lbdm-dot.done { background: var(--text-accent, #00d8ff); opacity: 0.5; }
+.lbdm-dot.active { background: var(--text-accent, #00d8ff); transform: scale(1.3); }
+
+.lbdm-email-context {
+  margin: 12px 20px 0;
+  background: var(--bg-surface, rgba(255,255,255,0.04));
+  border: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+.lbdm-from {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 3px;
+}
+.lbdm-from span {
+  font-weight: 600;
+  color: var(--text-accent, #00d8ff);
+  margin-right: 6px;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+.lbdm-subject {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.lbdm-snippet {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  opacity: 0.8;
+}
+
+.lbdm-textarea { min-height: 130px; resize: vertical; }
+
+.lbdm-footer {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.lbdm-save-btn {
+  background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%) !important;
+  color: #061a14 !important;
+}
+.lbdm-save-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none !important; }
+
+.lbdm-empty, .lbdm-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  flex: 1;
+}
+.lbdm-done svg { color: #43e97b; }
+.lbdm-done p { margin: 0; }
+.lbdm-empty p { margin: 0; }
+
+/* "Draft Today's Emails" trigger in settings */
+.live-settings-section--action { text-align: center; }
+.live-batch-draft-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+  color: #061a14;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 9px 20px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s;
+  margin-top: 4px;
+}
+.live-batch-draft-trigger:hover { opacity: 0.88; transform: translateY(-1px); }
+.live-batch-draft-trigger:active { transform: translateY(0); }
+
+/* ── End Batch Draft Modal ─────────────────────────────────────────────── */
 
 .live-settings-footer {
   display: flex;

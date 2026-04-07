@@ -141,14 +141,19 @@ const EMAIL_PROTECTED_DOMAINS = [
   'mail.zoho.com'
 ];
 
-// Keywords in click selectors that indicate a write/destructive action on email
-const EMAIL_WRITE_KEYWORDS = [
-  'compose', 'new message', 'new email', 'write',
-  'send', 'submit',
-  'reply', 'reply all', 'forward',
-  'delete', 'trash', 'discard',
-  'archive', 'mark as',
-  'move to', 'label'
+// Only the final Send action is blocked — the AI IS allowed to open compose,
+// click Reply, type draft body, and save drafts. It must never click Send.
+// Selectors are matched loosely so Gmail/Outlook/Yahoo/etc. are all covered.
+const EMAIL_SEND_SELECTORS = [
+  'text=send',
+  'aria=send',
+  'text=send email',
+  'text=send message',
+  'text=send now',
+  'aria=send email',
+  'aria=send message',
+  // Gmail's exact send button aria-label includes "send" but also "(Ctrl-Enter)"
+  // so we match on the word "send" alone to catch all variants
 ];
 
 function isEmailProtectedUrl(url) {
@@ -161,12 +166,10 @@ function isEmailProtectedUrl(url) {
 }
 
 function isEmailWriteAction(action, params) {
-  if (action === 'type') return true; // never type into email forms
-  if (action === 'click') {
-    const selector = (params?.selector || '').toLowerCase();
-    return EMAIL_WRITE_KEYWORDS.some((kw) => selector.includes(kw));
-  }
-  return false;
+  // Only block clicking the Send button — composing, replying, typing drafts are all allowed
+  if (action !== 'click') return false;
+  const selector = (params?.selector || '').toLowerCase().trim();
+  return EMAIL_SEND_SELECTORS.some((s) => selector === s || selector.startsWith(s + ' '));
 }
 
 // ── Authoritative system prompt (main-process, never cached) ─────────────────
@@ -214,11 +217,10 @@ click:text=1
 If no browser actions are needed, just reply with plain text and no <navio-actions> block.
 
 STRICT EMAIL RULE — NEVER BREAK THIS:
-You are NOT allowed to compose, send, reply to, forward, or delete emails under ANY circumstances.
-- Never produce actions that click "Compose", "New message", "Reply", "Reply All", "Forward", or "Send" buttons on email services.
-- Never produce actions that type into email compose fields or subject lines.
-- If the user asks you to send or compose an email, you MUST decline and explain you can only search and read emails — never write or send them.
-- Email connectors are READ-ONLY: you can search the inbox and display results, nothing more.`;
+You are NOT allowed to click the Send button on any email service under ANY circumstances.
+- You MAY click "Compose", "Reply", "Reply All" and type draft text — this is for saving drafts, NOT sending.
+- You MUST NEVER click the "Send" button or any equivalent that dispatches an email.
+- If the user explicitly asks you to "send" an email, explain that you can only save drafts for their review — then offer to draft it instead.`;
 
 // ── <navio-actions> block converter ──────────────────────────────────────────
 // The system prompt asks the model to output a <navio-actions> block at the end
@@ -910,6 +912,28 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
         wc.goForward();
         return { success: true };
 
+      case 'pressKey': {
+        // Dispatch a keyboard event on the focused element or document.
+        // Used to save Gmail/Outlook drafts (Escape triggers auto-save).
+        const key = params?.key || 'Escape';
+        const code = params?.code || key;
+        await wc.executeJavaScript(`
+          (function() {
+            const target = document.activeElement || document.body;
+            ['keydown', 'keypress', 'keyup'].forEach(type => {
+              target.dispatchEvent(new KeyboardEvent(type, {
+                key: ${JSON.stringify(key)},
+                code: ${JSON.stringify(code)},
+                keyCode: ${JSON.stringify(key === 'Escape' ? 27 : 0)},
+                bubbles: true,
+                cancelable: true
+              }));
+            });
+          })()
+        `);
+        return { success: true };
+      }
+
       case 'screenshot': {
         const image = await wc.capturePage();
         return { screenshot: image.toDataURL() };
@@ -1471,6 +1495,59 @@ async function queryOutlook(token, query, options = {}) {
   }));
   return { results, total: results.length };
 }
+// ── Inbox scanner — reads email list from open tab via JS injection ──────────
+// No tokens or OAuth needed — uses the user's existing logged-in browser session.
+ipcMain.handle('scan-email-inbox', async (event, { webContentsId }) => {
+  try {
+    const wc = electronWebContents.fromId(webContentsId);
+    if (!wc) return { error: 'Tab not found' };
+
+    const url = wc.getURL?.() || '';
+    let script;
+
+    if (url.includes('mail.google.com')) {
+      // Gmail inbox — reads email rows from the thread list
+      script = `(function() {
+        try {
+          const rows = Array.from(document.querySelectorAll('tr.zA, tr[jsaction*="mousedown"]')).slice(0, 20);
+          return rows.map(row => {
+            const senderEl = row.querySelector('[email]');
+            const sender = senderEl?.getAttribute('email') || senderEl?.innerText?.trim() || '';
+            const senderName = senderEl?.getAttribute('name') || senderEl?.innerText?.trim() || '';
+            const subjectEl = row.querySelector('.y6, [data-thread-id] .bog, span.bqe');
+            const subject = subjectEl?.innerText?.trim() || '';
+            const snippetEl = row.querySelector('.y2, .xJNT9');
+            const snippet = snippetEl?.innerText?.trim() || '';
+            const unread = row.classList.contains('zE') || row.querySelector('.zF')?.parentElement?.classList?.contains('zE') || false;
+            const dateEl = row.querySelector('.xW span, .xW');
+            const date = dateEl?.getAttribute('title') || dateEl?.innerText?.trim() || '';
+            return { sender, senderName, subject, snippet, unread, date };
+          }).filter(e => e.subject && e.subject.length > 0);
+        } catch(e) { return []; }
+      })()`;
+    } else if (url.includes('outlook.live.com') || url.includes('outlook.office')) {
+      script = `(function() {
+        try {
+          const items = Array.from(document.querySelectorAll('[role="option"], [data-convid]')).slice(0, 20);
+          return items.map(item => {
+            const sender = item.querySelector('[class*="sender"], [data-testid*="sender"]')?.innerText?.trim() || '';
+            const subject = item.querySelector('[class*="subject"], [data-testid*="subject"]')?.innerText?.trim() || '';
+            const snippet = item.querySelector('[class*="preview"], [data-testid*="preview"]')?.innerText?.trim() || '';
+            const unread = item.getAttribute('aria-label')?.toLowerCase().includes('unread') || false;
+            return { sender, subject, snippet, unread, date: '' };
+          }).filter(e => e.subject && e.subject.length > 0);
+        } catch(e) { return []; }
+      })()`;
+    } else {
+      return { error: 'Unsupported email service — open Gmail or Outlook first' };
+    }
+
+    const emails = await wc.executeJavaScript(script);
+    return { emails: Array.isArray(emails) ? emails : [] };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
 // ─────────────────────────────────────────────────────────────────────────────
 
 ipcMain.handle('detect-browsers', async () => {

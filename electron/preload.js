@@ -70,5 +70,7 @@ contextBridge.exposeInMainWorld('navio', {
   connectorSaveKey: (serviceId, apiKey) => ipcRenderer.invoke('connector-save-key', { serviceId, apiKey }),
   connectorGetKeys: () => ipcRenderer.invoke('connector-get-keys'),
   connectorRemoveKey: (serviceId) => ipcRenderer.invoke('connector-remove-key', { serviceId }),
-  connectorQuery: (serviceId, query, options) => ipcRenderer.invoke('connector-query', { serviceId, query, options })
+  connectorQuery: (serviceId, query, options) => ipcRenderer.invoke('connector-query', { serviceId, query, options }),
+
+  scanEmailInbox: (webContentsId) => ipcRenderer.invoke('scan-email-inbox', { webContentsId })
 });

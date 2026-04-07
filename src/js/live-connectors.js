@@ -343,6 +343,7 @@ class LiveConnectorManagerClass {
         <div class="live-notif-actions">
           <button class="live-notif-btn live-notif-btn-open" data-tid="${tabId}">Open</button>
           ${canDraft ? `<button class="live-notif-btn live-notif-btn-draft" data-tid="${tabId}" data-svc="${serviceId}" data-id="${id}">✦ Draft Reply</button>` : ''}
+          ${canDraft ? `<button class="live-notif-btn live-notif-btn-batch" data-tid="${tabId}" data-svc="${serviceId}" data-id="${id}">✦ Draft All</button>` : ''}
         </div>
         <div class="live-notif-progress"></div>
       </div>`;
@@ -354,6 +355,10 @@ class LiveConnectorManagerClass {
       el.querySelector('.live-notif-btn-draft')?.addEventListener('click', async () => {
         this._dismiss(id);
         await this._triggerDraft(serviceId, tabId, emailInfo);
+      });
+      el.querySelector('.live-notif-btn-batch')?.addEventListener('click', async () => {
+        this._dismiss(id);
+        await this._startBatchDraft(serviceId, tabId);
       });
     });
   }
@@ -425,6 +430,417 @@ class LiveConnectorManagerClass {
     el.classList.remove('live-notif-in');
     el.classList.add('live-notif-out');
     setTimeout(() => el.remove(), 300);
+  }
+
+  // ── Batch Draft — scan inbox and draft all emails one by one ────────────
+
+  /**
+   * Entry point. Reads the email list from the open tab (no tokens needed),
+   * then opens the batch draft modal that lets the user approve/skip each one.
+   */
+  async _startBatchDraft(serviceId, tabId) {
+    const def = this.LIVE_CAPABLE[serviceId] || {};
+    const wv = TabManager.tabs.find(t => t.id === tabId)?.webview;
+    if (!wv) {
+      this._showToast(`Open a ${def.name || 'email'} tab first.`, 'error');
+      return;
+    }
+
+    this._showBatchDraftModal({ phase: 'scanning', serviceId, def });
+
+    let emails = [];
+    try {
+      const wcId = wv.getWebContentsId();
+      const result = await window.navio.scanEmailInbox(wcId);
+      if (result?.error) {
+        this._showBatchDraftModal({ phase: 'error', serviceId, def, error: result.error });
+        return;
+      }
+      emails = (result?.emails || []).filter(e => e.subject);
+    } catch (e) {
+      this._showBatchDraftModal({ phase: 'error', serviceId, def, error: e.message });
+      return;
+    }
+
+    if (emails.length === 0) {
+      this._showBatchDraftModal({ phase: 'empty', serviceId, def });
+      return;
+    }
+
+    // Start drafting from the first email
+    await this._draftEmailAtIndex(serviceId, tabId, def, emails, 0);
+  }
+
+  async _draftEmailAtIndex(serviceId, tabId, def, emails, idx) {
+    if (idx >= emails.length) {
+      this._showBatchDraftModal({ phase: 'done', serviceId, def, total: emails.length });
+      return;
+    }
+
+    const email = emails[idx];
+    this._showBatchDraftModal({ phase: 'generating', serviceId, def, email, idx, total: emails.length });
+
+    let draft = '';
+    try {
+      const config = await window.navio.getConfig();
+      if (config.aiKillSwitch) throw new Error('AI kill switch is on. Disable it in Settings → AI.');
+      if (!config.hasApiKey) throw new Error('No AI API key configured. Add one in Settings → AI.');
+
+      const messages = [
+        { role: 'system', content: this._buildStylePrompt(serviceId) },
+        { role: 'user', content: this._buildEmailPrompt(email) }
+      ];
+      const result = await window.navio.aiRequest({ messages });
+      if (result.error) throw new Error(result.error);
+      draft = result.content || '';
+    } catch (e) {
+      this._showBatchDraftModal({
+        phase: 'draft', serviceId, def, email, idx, total: emails.length,
+        draft: '', error: e.message, emails, tabId
+      });
+      return;
+    }
+
+    this._showBatchDraftModal({
+      phase: 'draft', serviceId, def, email, idx, total: emails.length,
+      draft, emails, tabId
+    });
+  }
+
+  _showBatchDraftModal({ phase, serviceId, def, email, idx, total, draft, error, emails, tabId }) {
+    const modal = document.getElementById('live-draft-modal');
+    if (!modal) return;
+
+    const close = () => modal.classList.remove('active');
+    const progress = (total && total > 0)
+      ? `<div class="lbdm-progress">
+           ${Array.from({ length: total }, (_, i) =>
+             `<span class="lbdm-dot ${i < idx ? 'done' : i === idx ? 'active' : ''}"></span>`
+           ).join('')}
+         </div>`
+      : '';
+
+    if (phase === 'scanning') {
+      modal.innerHTML = `
+        <div class="live-modal-panel lbdm-panel">
+          <div class="live-modal-header">
+            <div class="live-modal-svc-icon" style="background:${def.gradient || '#333'}">${def.icon || '?'}</div>
+            <div class="live-modal-title"><strong>Scanning inbox…</strong></div>
+            <button class="live-modal-close-btn" id="lm-close">×</button>
+          </div>
+          <div class="live-modal-loading">
+            <div class="live-dots"><span></span><span></span><span></span></div>
+            <p>Reading your ${def.name || 'email'} inbox — no login required.</p>
+          </div>
+        </div>`;
+      modal.classList.add('active');
+      modal.querySelector('#lm-close')?.addEventListener('click', close);
+      return;
+    }
+
+    if (phase === 'generating') {
+      modal.innerHTML = `
+        <div class="live-modal-panel lbdm-panel">
+          <div class="live-modal-header">
+            <div class="live-modal-svc-icon" style="background:${def.gradient || '#333'}">${def.icon || '?'}</div>
+            <div class="live-modal-title">
+              <strong>Drafting replies</strong>
+              <span>${idx + 1} of ${total}</span>
+            </div>
+            <button class="live-modal-close-btn" id="lm-close">×</button>
+          </div>
+          ${progress}
+          <div class="lbdm-email-context">
+            ${email.sender ? `<div class="lbdm-from"><span>From</span>${this._esc(email.senderName || email.sender)}</div>` : ''}
+            <div class="lbdm-subject">${this._esc(email.subject || '(no subject)')}</div>
+            ${email.snippet ? `<div class="lbdm-snippet">${this._esc(email.snippet.slice(0, 120))}…</div>` : ''}
+          </div>
+          <div class="live-modal-loading">
+            <div class="live-dots"><span></span><span></span><span></span></div>
+            <p>Writing your reply…</p>
+          </div>
+        </div>`;
+      modal.classList.add('active');
+      modal.querySelector('#lm-close')?.addEventListener('click', close);
+      return;
+    }
+
+    if (phase === 'empty') {
+      modal.innerHTML = `
+        <div class="live-modal-panel lbdm-panel">
+          <div class="live-modal-header">
+            <div class="live-modal-svc-icon" style="background:${def.gradient || '#333'}">${def.icon || '?'}</div>
+            <div class="live-modal-title"><strong>No emails found</strong></div>
+            <button class="live-modal-close-btn" id="lm-close">×</button>
+          </div>
+          <div class="lbdm-empty">
+            <p>No emails could be read from the open ${def.name || 'email'} tab.<br>Make sure the inbox is visible and try again.</p>
+          </div>
+          <div class="live-modal-footer"><button class="live-modal-btn-secondary" id="lm-close2">Close</button></div>
+        </div>`;
+      modal.classList.add('active');
+      modal.querySelector('#lm-close')?.addEventListener('click', close);
+      modal.querySelector('#lm-close2')?.addEventListener('click', close);
+      return;
+    }
+
+    if (phase === 'error') {
+      modal.innerHTML = `
+        <div class="live-modal-panel lbdm-panel">
+          <div class="live-modal-header">
+            <div class="live-modal-svc-icon" style="background:${def.gradient || '#333'}">${def.icon || '?'}</div>
+            <div class="live-modal-title"><strong>Could not read inbox</strong></div>
+            <button class="live-modal-close-btn" id="lm-close">×</button>
+          </div>
+          <div class="live-modal-error">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <p>${this._esc(error || 'Unknown error')}</p>
+          </div>
+          <div class="live-modal-footer"><button class="live-modal-btn-secondary" id="lm-close2">Close</button></div>
+        </div>`;
+      modal.classList.add('active');
+      modal.querySelector('#lm-close')?.addEventListener('click', close);
+      modal.querySelector('#lm-close2')?.addEventListener('click', close);
+      return;
+    }
+
+    if (phase === 'done') {
+      modal.innerHTML = `
+        <div class="live-modal-panel lbdm-panel">
+          <div class="live-modal-header">
+            <div class="live-modal-svc-icon" style="background:${def.gradient || '#333'}">${def.icon || '?'}</div>
+            <div class="live-modal-title"><strong>All done!</strong></div>
+            <button class="live-modal-close-btn" id="lm-close">×</button>
+          </div>
+          <div class="lbdm-done">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            <p>${total} draft${total !== 1 ? 's' : ''} saved.<br>Go to your ${def.name || 'email'} Drafts folder to review and send.</p>
+          </div>
+          <div class="live-modal-footer"><button class="live-modal-btn-primary" id="lm-close2">Done</button></div>
+        </div>`;
+      modal.classList.add('active');
+      modal.querySelector('#lm-close')?.addEventListener('click', close);
+      modal.querySelector('#lm-close2')?.addEventListener('click', close);
+      return;
+    }
+
+    // phase === 'draft' — show the email + editable draft + action buttons
+    const exCount = this.getExamplesCount(serviceId);
+    const styleBadge = exCount > 0
+      ? `<span class="live-style-pill">✦ ${exCount} example${exCount !== 1 ? 's' : ''}</span>`
+      : `<span class="live-style-pill live-style-pill-new">✦ No style examples yet</span>`;
+
+    modal.innerHTML = `
+      <div class="live-modal-panel lbdm-panel">
+        <div class="live-modal-header">
+          <div class="live-modal-svc-icon" style="background:${def.gradient || '#333'}">${def.icon || '?'}</div>
+          <div class="live-modal-title">
+            <strong>Draft ${idx + 1} of ${total}</strong>
+            <div class="live-modal-pills">${styleBadge}</div>
+          </div>
+          <button class="live-modal-close-btn" id="lm-close">×</button>
+        </div>
+
+        ${progress}
+
+        <div class="lbdm-email-context">
+          ${email.sender ? `<div class="lbdm-from"><span>From</span>${this._esc(email.senderName || email.sender)}</div>` : ''}
+          <div class="lbdm-subject">${this._esc(email.subject || '(no subject)')}</div>
+          ${email.snippet ? `<div class="lbdm-snippet">${this._esc(email.snippet.slice(0, 140))}</div>` : ''}
+        </div>
+
+        ${error ? `<div class="live-modal-error" style="margin:8px 0 0;padding:8px 12px;font-size:12px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>${this._esc(error)}</span>
+        </div>` : ''}
+
+        <div class="live-modal-body-wrap">
+          <textarea class="live-modal-textarea lbdm-textarea" id="lm-draft-text" spellcheck="true"
+            placeholder="Edit the AI draft here before saving…">${this._esc(draft || '')}</textarea>
+        </div>
+
+        <div class="live-modal-footer lbdm-footer">
+          <button class="live-modal-btn-primary lbdm-save-btn" id="lm-save-draft" ${!draft ? 'disabled' : ''}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save as Draft
+          </button>
+          <button class="live-modal-btn-secondary" id="lm-regen">↺ Regenerate</button>
+          <button class="live-modal-btn-learn" id="lm-learn">✦ Learn style</button>
+          <button class="live-modal-btn-discard" id="lm-skip">${idx + 1 < total ? 'Skip →' : 'Skip'}</button>
+        </div>
+      </div>`;
+
+    modal.classList.add('active');
+    modal.querySelector('#lm-close')?.addEventListener('click', close);
+
+    modal.querySelector('#lm-skip')?.addEventListener('click', () => {
+      this._draftEmailAtIndex(serviceId, tabId, def, emails, idx + 1);
+    });
+
+    modal.querySelector('#lm-regen')?.addEventListener('click', () => {
+      this._draftEmailAtIndex(serviceId, tabId, def, emails, idx);
+    });
+
+    modal.querySelector('#lm-learn')?.addEventListener('click', async () => {
+      const txt = modal.querySelector('#lm-draft-text')?.value || '';
+      await this.captureExample(serviceId, email, txt);
+      const n = this.getExamplesCount(serviceId);
+      this._showToast(`Style example saved (${n} total).`, 'success');
+    });
+
+    modal.querySelector('#lm-save-draft')?.addEventListener('click', async () => {
+      const txt = modal.querySelector('#lm-draft-text')?.value || '';
+      const btn = modal.querySelector('#lm-save-draft');
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+      const ok = await this._saveDraftToService(serviceId, tabId, email, txt);
+      if (ok) {
+        // Advance to next email automatically
+        await this._draftEmailAtIndex(serviceId, tabId, def, emails, idx + 1);
+      } else {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/></svg> Save as Draft'; }
+      }
+    });
+  }
+
+  /**
+   * Injects a reply draft into Gmail/Outlook using the browser session.
+   * Opens Compose → fills To / Subject / Body → minimizes (saves as draft).
+   * Returns true on success.
+   */
+  async _saveDraftToService(serviceId, tabId, email, draftText) {
+    const wv = TabManager.tabs.find(t => t.id === tabId)?.webview;
+    if (!wv) { this._showToast('Service tab not found.', 'error'); return false; }
+
+    const def = this.LIVE_CAPABLE[serviceId] || {};
+    const wcId = wv.getWebContentsId();
+    this._focusTab(tabId);
+
+    try {
+      if (serviceId === 'gmail') {
+        // Click Compose button
+        await window.navio.browserAction({
+          webContentsId: wcId,
+          action: 'click',
+          params: { selector: 'div[gh="cm"], .T-I.T-I-KE, [aria-label*="Compose"]' },
+          userConfirmed: true
+        });
+        await this._wait(1000);
+
+        // Fill To field
+        if (email.sender) {
+          await window.navio.browserAction({
+            webContentsId: wcId,
+            action: 'type',
+            params: { selector: 'input[aria-label="To"], textarea[name="to"], [name="to"]', text: email.sender },
+            userConfirmed: true
+          });
+          await this._wait(400);
+          // Press Tab to confirm recipient
+          await window.navio.browserAction({ webContentsId: wcId, action: 'pressKey', params: { key: 'Tab', code: 'Tab' }, userConfirmed: true });
+          await this._wait(300);
+        }
+
+        // Fill Subject field
+        const subject = email.subject ? `Re: ${email.subject}` : '';
+        if (subject) {
+          await window.navio.browserAction({
+            webContentsId: wcId,
+            action: 'type',
+            params: { selector: 'input[aria-label="Subject"], input[name="subjectbox"]', text: subject },
+            userConfirmed: true
+          });
+          await this._wait(300);
+        }
+
+        // Fill Body
+        await window.navio.browserAction({
+          webContentsId: wcId,
+          action: 'type',
+          params: {
+            selector: 'div[aria-label="Message Body"], div[g_editable="true"], div[contenteditable="true"][aria-label*="Message Body"]',
+            text: draftText
+          },
+          userConfirmed: true
+        });
+        await this._wait(500);
+
+        // Minimize compose window → Gmail auto-saves as draft
+        await window.navio.browserAction({
+          webContentsId: wcId,
+          action: 'click',
+          params: { selector: '[aria-label*="Minimize"], button[aria-label*="minimise"], .Hm' },
+          userConfirmed: true
+        });
+
+        this._showToast(`Draft saved in Gmail — check your Drafts folder.`, 'success');
+        return true;
+
+      } else if (serviceId === 'outlook') {
+        // Click New Mail / Compose in Outlook
+        await window.navio.browserAction({
+          webContentsId: wcId,
+          action: 'click',
+          params: { selector: 'button[aria-label*="New mail"], button[aria-label*="New email"], [data-testid="compose-button"]' },
+          userConfirmed: true
+        });
+        await this._wait(1200);
+
+        if (email.sender) {
+          await window.navio.browserAction({
+            webContentsId: wcId,
+            action: 'type',
+            params: { selector: 'input[aria-label="To"], [aria-label="To"]', text: email.sender },
+            userConfirmed: true
+          });
+          await this._wait(400);
+          await window.navio.browserAction({ webContentsId: wcId, action: 'pressKey', params: { key: 'Tab', code: 'Tab' }, userConfirmed: true });
+          await this._wait(300);
+        }
+
+        const subject = email.subject ? `Re: ${email.subject}` : '';
+        if (subject) {
+          await window.navio.browserAction({
+            webContentsId: wcId,
+            action: 'type',
+            params: { selector: 'input[aria-label="Add a subject"]', text: subject },
+            userConfirmed: true
+          });
+          await this._wait(300);
+        }
+
+        await window.navio.browserAction({
+          webContentsId: wcId,
+          action: 'type',
+          params: { selector: 'div[contenteditable="true"][aria-label*="Message body"]', text: draftText },
+          userConfirmed: true
+        });
+        await this._wait(500);
+
+        // Save draft via keyboard shortcut (Escape in Outlook or close button)
+        await window.navio.browserAction({
+          webContentsId: wcId,
+          action: 'click',
+          params: { selector: 'button[aria-label*="Discard"], button[title*="Discard"], [aria-label*="Save draft"]' },
+          userConfirmed: true
+        });
+
+        this._showToast('Draft saved in Outlook — check your Drafts folder.', 'success');
+        return true;
+      } else {
+        // Fallback: copy to clipboard
+        await navigator.clipboard.writeText(draftText).catch(() => {});
+        this._showToast('Draft copied to clipboard — paste it as a reply.', 'info');
+        return true;
+      }
+    } catch (e) {
+      this._showToast(`Could not save draft: ${e.message}`, 'error');
+      return false;
+    }
+  }
+
+  _wait(ms) {
+    return new Promise(r => setTimeout(r, ms));
   }
 
   // ── AI Draft Reply ──────────────────────────────────────────────────────
@@ -836,15 +1252,26 @@ class LiveConnectorManagerClass {
             </div>
           ` : ''}
 
+          ${def.supportsDrafting ? `
+            <div class="live-settings-section live-settings-section--action">
+              <div class="live-settings-section-title">Quick actions</div>
+              <p class="live-settings-hint">Have ${this._esc(def.name)} open in a tab? Navio reads your inbox from the page directly — no login or tokens required.</p>
+              <button class="live-batch-draft-trigger" id="ls-batch-draft">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                Draft Today's Emails
+              </button>
+            </div>
+          ` : ''}
+
           <div class="live-settings-section">
             <div class="live-settings-section-title">How it works</div>
             <ul class="live-howto-list">
               <li>Keep a ${this._esc(def.name)} tab open — Navio polls it every ${Math.round(def.pollMs / 1000)}s</li>
               ${def.supportsDrafting ? `
-                <li>When new emails arrive, a notification appears in the bottom-right corner</li>
-                <li>Click <strong>Draft Reply</strong> to generate an AI response in your voice</li>
-                <li>Review and edit the draft, then click <strong>Send to ${this._esc(def.name)}</strong> to inject it</li>
-                <li>Use <strong>Learn this style</strong> to improve future drafts over time</li>
+                <li>When new emails arrive, a notification appears with <strong>Draft Reply</strong> and <strong>Draft All</strong> buttons</li>
+                <li>Click <strong>Draft All</strong> to review AI-written replies for each email one by one</li>
+                <li><strong>Save as Draft</strong> opens Compose, fills in the reply, and saves it to your Drafts folder</li>
+                <li>Use <strong>Learn style</strong> to improve future drafts over time</li>
               ` : `
                 <li>When new activity is detected, an in-app notification appears</li>
                 <li>Click to jump to the correct tab instantly</li>
@@ -878,6 +1305,25 @@ class LiveConnectorManagerClass {
       if (this._data.styleMemory[serviceId]) this._data.styleMemory[serviceId].examples = [];
       await this._save();
       this._renderSettingsModal(serviceId);
+    });
+
+    modal.querySelector('#ls-batch-draft')?.addEventListener('click', async () => {
+      // Find an open tab for this service
+      const agent = this._agents[serviceId];
+      const tab = agent?.tabId
+        ? TabManager.tabs.find(t => t.id === agent.tabId)
+        : TabManager.tabs.find(t => {
+            const url = t.webview?.src || t.url || '';
+            return url.includes(def.urlFragment || '');
+          });
+
+      if (!tab) {
+        this._showToast(`Open a ${def.name} tab first, then try again.`, 'error');
+        return;
+      }
+
+      close();
+      await this._startBatchDraft(serviceId, tab.id);
     });
 
     modal.querySelector('#ls-save')?.addEventListener('click', async () => {
