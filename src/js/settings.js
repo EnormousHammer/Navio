@@ -23,6 +23,7 @@ class SettingsManagerClass {
       providerHint: document.getElementById('setting-provider-hint'),
       apiKey: document.getElementById('setting-api-key'),
       model: document.getElementById('setting-model'),
+      modelSelectRow: document.getElementById('model-select-row'),
       modelCustom: document.getElementById('setting-model-custom'),
       modelCustomRow: document.getElementById('model-custom-row'),
       endpoint: document.getElementById('setting-endpoint'),
@@ -78,9 +79,14 @@ class SettingsManagerClass {
     });
 
     this.elements.model.addEventListener('change', () => {
-      const isCustom = this.elements.model.value === '__custom__';
-      this.elements.modelCustomRow.style.display = isCustom ? '' : 'none';
-      if (isCustom) setTimeout(() => this.elements.modelCustom.focus(), 50);
+      this._syncModelCustomUI();
+    });
+
+    document.getElementById('btn-model-back-presets')?.addEventListener('click', () => {
+      const provider = this.elements.provider.value;
+      const defaults = { openai: 'gpt-4o', anthropic: 'claude-opus-4-5', google: 'gemini-2.0-flash', custom: '__custom__' };
+      this.elements.model.value = defaults[provider] || 'gpt-4o';
+      this._syncModelCustomUI();
     });
 
     this.elements.toggleKey.addEventListener('click', () => {
@@ -180,6 +186,13 @@ class SettingsManagerClass {
     });
   }
 
+  _syncModelCustomUI() {
+    const isCustom = this.elements.model.value === '__custom__';
+    this.elements.modelSelectRow.style.display = isCustom ? 'none' : '';
+    this.elements.modelCustomRow.style.display = isCustom ? '' : 'none';
+    if (isCustom) setTimeout(() => this.elements.modelCustom.focus(), 50);
+  }
+
   updateProviderHint() {
     const el = this.elements.providerHint;
     const prov = this.elements.provider.value;
@@ -245,14 +258,20 @@ class SettingsManagerClass {
     } catch {
       this.elements.apiKey.value = '';
     }
-    const savedModel = this.config.aiModel || 'gpt-4o';
+    // Known-fake legacy model names from old defaults — silently upgrade
+    const LEGACY_FAKE = new Set(['claude-opus-4.6', 'gemini-3.1-pro']);
+    let savedModel = this.config.aiModel || 'gpt-4o';
+    if (LEGACY_FAKE.has(savedModel)) savedModel = 'gpt-4o';
+
     const modelOpts = Array.from(this.elements.model.options).map(o => o.value).filter(v => v !== '__custom__');
     if (modelOpts.includes(savedModel)) {
       this.elements.model.value = savedModel;
+      this.elements.modelSelectRow.style.display = '';
       this.elements.modelCustomRow.style.display = 'none';
     } else {
       this.elements.model.value = '__custom__';
       this.elements.modelCustom.value = savedModel;
+      this.elements.modelSelectRow.style.display = 'none';
       this.elements.modelCustomRow.style.display = '';
     }
     this.elements.endpoint.value = this.config.customEndpoint || '';
@@ -309,7 +328,6 @@ class SettingsManagerClass {
   updateModelOptions() {
     const provider = this.elements.provider.value;
     const modelSelect = this.elements.model;
-    const hintEl = document.getElementById('setting-model-hint');
 
     // Show only the optgroup for the active provider
     modelSelect.querySelectorAll('optgroup').forEach((grp) => {
@@ -317,33 +335,20 @@ class SettingsManagerClass {
       grp.style.display = (grpProvider === provider || provider === 'custom') ? '' : 'none';
     });
 
-    // If current selection belongs to a hidden optgroup, reset to provider default
+    // If current selection belongs to a now-hidden optgroup, reset to provider default
     const defaults = { openai: 'gpt-4o', anthropic: 'claude-opus-4-5', google: 'gemini-2.0-flash', custom: '__custom__' };
     const currentOption = modelSelect.options[modelSelect.selectedIndex];
-    const currentGroup = currentOption?.closest('optgroup');
-    const currentGroupProvider = currentGroup?.getAttribute('data-provider');
+    const currentGroupProvider = currentOption?.closest('optgroup')?.getAttribute('data-provider');
 
     if (!currentGroupProvider || (currentGroupProvider !== provider && provider !== 'custom')) {
       const def = defaults[provider] || 'gpt-4o';
-      // Find and select the matching option in the correct optgroup
       const match = Array.from(modelSelect.options).find(
         o => o.value === def && o.closest('optgroup')?.getAttribute('data-provider') === provider
       );
       if (match) modelSelect.value = def;
     }
 
-    // Show/hide custom input row
-    const isCustom = modelSelect.value === '__custom__';
-    this.elements.modelCustomRow.style.display = isCustom ? '' : 'none';
-
-    // Contextual hint
-    const hints = {
-      openai: 'GPT-4o is recommended for most tasks. Use o3 for complex reasoning.',
-      anthropic: 'Opus is most capable; Sonnet is the best value; Haiku is fastest.',
-      google: 'Gemini 2.0 Flash is recommended — fast and capable.',
-      custom: 'Enter the exact model name your endpoint expects.'
-    };
-    if (hintEl) hintEl.textContent = hints[provider] || '';
+    this._syncModelCustomUI();
   }
 
   async open() {

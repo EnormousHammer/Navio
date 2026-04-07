@@ -20,11 +20,24 @@ class AssistantManagerClass {
 CAPABILITIES:
 - You receive policy-scoped page context when enabled (see user settings and per-chat scope).
 - You help users understand complex content, summarize pages, extract data.
-- You answer questions; when given page content, reference it specifically.
+- You can control the active browser tab on behalf of the user.
 
-BROWSER ACTIONS:
-- Risky actions (navigate, click, type in the page) require explicit user confirmation in the app — describe steps rather than assuming automation ran.
-- To suggest navigation: "I'd suggest going to [URL]"
+BROWSER CONTROL:
+You can execute actions in the active tab by embedding action tokens in your response.
+The user will see a confirmation card for each action and can approve or skip it.
+
+Supported actions:
+- Navigate to a URL:       <<ACTION:navigate:https://example.com>>
+- Click an element:        <<ACTION:click:#css-selector>>
+- Type into a field:       <<ACTION:type:#css-selector:text to type>>
+- Scroll down or up:       <<ACTION:scroll:down>>  /  <<ACTION:scroll:up>>
+- Go back in history:      <<ACTION:goBack:>>
+- Go forward in history:   <<ACTION:goForward:>>
+
+Rules:
+- Always describe what you are about to do BEFORE the action token, e.g. "Let me navigate to the search results page: <<ACTION:navigate:https://google.com>>"
+- Use real, specific selectors when you know them from the page context.
+- For multi-step tasks, emit multiple tokens in order.
 
 FORMATTING:
 - Use markdown-like formatting: **bold**, *italic*, \`code\`
@@ -356,6 +369,14 @@ PERSONALITY:
     const unDone = window.navio.onAiStreamDone(async () => {
       this._clearStreamListeners();
       if (buffer) {
+        // Final render: parse action tokens and wire confirm buttons
+        if (streamingMsg) {
+          const contentEl = streamingMsg.querySelector('.message-content');
+          if (contentEl) {
+            contentEl.innerHTML = this.formatMessage(buffer, true);
+            this._wireActions(contentEl);
+          }
+        }
         this.conversationHistory.push({ role: 'user', content: userHistory }, { role: 'assistant', content: buffer });
         this._trimHistory();
         await window.navio.contextGraph({
@@ -410,7 +431,6 @@ PERSONALITY:
     contentEl.className = 'message-content';
 
     if (type === 'error') {
-      // Clean the raw error text of any markdown bold we added at call sites
       const clean = content.replace(/^\*\*Error:\*\*\s*/i, '').replace(/^\*\*Connection error:\*\*\s*/i, '');
       contentEl.innerHTML = `
         <div class="msg-error-header">
@@ -421,7 +441,8 @@ PERSONALITY:
         </div>
         <div class="msg-error-body">${this.formatMessage(clean)}</div>`;
     } else {
-      contentEl.innerHTML = this.formatMessage(content);
+      contentEl.innerHTML = this.formatMessage(content, role === 'assistant');
+      if (role === 'assistant') this._wireActions(contentEl);
     }
 
     msgEl.appendChild(contentEl);
@@ -429,10 +450,24 @@ PERSONALITY:
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
   }
 
-  formatMessage(text) {
+  formatMessage(text, parseActions = false) {
     if (!text) return '';
 
-    let html = text
+    // Extract action tokens before HTML escaping so we can safely re-inject HTML
+    const actionCards = [];
+    let processedText = text;
+    if (parseActions) {
+      processedText = text.replace(/<<ACTION:(\w+):([^>]*)>>/g, (_, type, params) => {
+        const idx = actionCards.length;
+        actionCards.push({ type, params });
+        return `\x00ACTION_${idx}\x00`;
+      });
+    } else {
+      // During streaming — strip action tokens cleanly
+      processedText = text.replace(/<<ACTION:[^>]*>>/g, '');
+    }
+
+    let html = processedText
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
@@ -456,7 +491,84 @@ PERSONALITY:
     html = html.replace(/<p>\s*(<pre>)/g, '$1');
     html = html.replace(/(<\/pre>)\s*<\/p>/g, '$1');
 
+    // Re-inject action cards in place of placeholders
+    if (actionCards.length) {
+      const ACTION_ICONS = {
+        navigate: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
+        click: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-7 1-4 7z"/></svg>`,
+        type: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>`,
+        scroll: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>`,
+        goBack: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
+        goForward: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`
+      };
+      const VERBS = { navigate: 'Navigate to', click: 'Click', type: 'Type into', scroll: 'Scroll', goBack: 'Go back', goForward: 'Go forward' };
+
+      actionCards.forEach(({ type, params }, idx) => {
+        const icon = ACTION_ICONS[type] || ACTION_ICONS.navigate;
+        const verb = VERBS[type] || type;
+        const safeParams = params.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        const card = `<div class="browser-action-card" data-action="${type}" data-params="${safeParams}">
+          <span class="bac-icon">${icon}</span>
+          <span class="bac-desc"><strong>${verb}</strong>${params ? ` <code>${safeParams}</code>` : ''}</span>
+          <div class="bac-btns">
+            <button class="bac-run" type="button">Run</button>
+            <button class="bac-skip" type="button">Skip</button>
+          </div>
+        </div>`;
+        html = html.replace(`\x00ACTION_${idx}\x00`, card);
+      });
+    }
+
     return html;
+  }
+
+  _wireActions(contentEl) {
+    contentEl.querySelectorAll('.browser-action-card').forEach((card) => {
+      const action = card.dataset.action;
+      const params = card.dataset.params;
+      card.querySelector('.bac-run')?.addEventListener('click', () => this._executeAction(action, params, card));
+      card.querySelector('.bac-skip')?.addEventListener('click', () => {
+        card.classList.add('bac-skipped');
+        card.querySelector('.bac-btns').innerHTML = '<span class="bac-status">Skipped</span>';
+      });
+    });
+  }
+
+  async _executeAction(action, paramsStr, card) {
+    const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
+    if (!wv) {
+      card.classList.add('bac-error');
+      card.querySelector('.bac-btns').innerHTML = '<span class="bac-status">No active tab</span>';
+      return;
+    }
+    card.querySelector('.bac-btns').innerHTML = '<span class="bac-status bac-running">Running…</span>';
+    try {
+      const webContentsId = wv.getWebContentsId();
+      let params = {};
+      if (action === 'navigate') {
+        params = { url: paramsStr };
+      } else if (action === 'click') {
+        params = { selector: paramsStr };
+      } else if (action === 'type') {
+        const colonIdx = paramsStr.indexOf(':');
+        params = colonIdx >= 0
+          ? { selector: paramsStr.slice(0, colonIdx), text: paramsStr.slice(colonIdx + 1) }
+          : { selector: paramsStr, text: '' };
+      } else if (action === 'scroll') {
+        params = { direction: paramsStr || 'down' };
+      }
+      const result = await window.navio.browserAction({ webContentsId, action, params, userConfirmed: true });
+      if (result && result.success) {
+        card.classList.add('bac-done');
+        card.querySelector('.bac-btns').innerHTML = '<span class="bac-status bac-ok">Done ✓</span>';
+      } else {
+        card.classList.add('bac-error');
+        card.querySelector('.bac-btns').innerHTML = `<span class="bac-status">${result?.error || 'Failed'}</span>`;
+      }
+    } catch (err) {
+      card.classList.add('bac-error');
+      card.querySelector('.bac-btns').innerHTML = `<span class="bac-status">${err.message || 'Error'}</span>`;
+    }
   }
 
   showTypingIndicator() {

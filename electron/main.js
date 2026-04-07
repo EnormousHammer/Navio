@@ -251,9 +251,9 @@ async function performAiFetch(cfg, apiKey, messages, useStream) {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`
     };
-    // Reasoning models (o1, o3, o4 series) require max_completion_tokens
-    // and do not accept temperature.
-    const isReasoning = /^o[1-9]/.test(model || '');
+    // o-series and GPT-5+ require max_completion_tokens instead of max_tokens.
+    // GPT-5+ also does not accept a temperature parameter.
+    const isReasoning = /^o[1-9]/.test(model || '') || /^gpt-5/.test(model || '');
     const tokenKey = isReasoning ? 'max_completion_tokens' : 'max_tokens';
     const bodyObj = {
       model: model || 'gpt-4o',
