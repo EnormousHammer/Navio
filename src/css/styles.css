@@ -6438,10 +6438,8 @@ body.onboarding-active #app {
 .tca-skip:hover { background: rgba(255,255,255,0.05); }
 
 /* ─────────────────────────────────────────────────────────────────────────
-   NTP Dark override — forces dark palette inside .new-tab-page
-   regardless of the global app theme (light or dark)
+   NTP — dark mode lock (keeps deep-space aesthetic in dark theme)
    ───────────────────────────────────────────────────────────────────────── */
-[data-theme="light"] .new-tab-page,
 [data-theme="dark"] .new-tab-page {
   --text-primary: #e2e8f8;
   --text-secondary: rgba(226,232,248,0.65);
@@ -6837,3 +6835,173 @@ body.onboarding-active #app {
   border-color: rgba(0,120,220,0.38);
   box-shadow: 0 0 0 3px rgba(0,120,220,0.09);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NTP — LIGHT MODE
+   Cool daylight design; all overrides scoped to [data-theme="light"]
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Base NTP surface + CSS variable reset for light mode */
+[data-theme="light"] .new-tab-page {
+  background: linear-gradient(160deg, #eef2ff 0%, #f4f0ff 45%, #e8f4ff 100%);
+  color: #16172a;
+  --ntp-accent: #0088ee;
+  --ntp-purple: #6d28d9;
+  --ntp-text: #16172a;
+  --ntp-subtext: rgba(22,23,42,0.55);
+  --ntp-border: rgba(50,70,160,0.10);
+  --ntp-glass: rgba(255,255,255,0.55);
+  --ntp-glass-hover: rgba(255,255,255,0.75);
+  /* reset global vars used by child elements */
+  --text-primary: #16172a;
+  --text-secondary: #424466;
+  --text-tertiary: #737594;
+  --text-accent: #0070d8;
+  --bg-surface: rgba(255,255,255,0.60);
+  --bg-elevated: rgba(255,255,255,0.80);
+  --bg-hover: rgba(50,70,160,0.06);
+  --border: rgba(50,70,160,0.10);
+  --border-hover: rgba(50,70,160,0.20);
+  --glass-border: rgba(50,70,160,0.10);
+}
+
+/* Background layer — soft daylight gradient + very faint cool grid */
+[data-theme="light"] .ntp-bg-layer {
+  background:
+    radial-gradient(ellipse 90% 60% at 50% -5%, rgba(100,120,255,0.10) 0%, transparent 55%),
+    radial-gradient(ellipse 55% 35% at 80% 85%, rgba(0,120,220,0.06) 0%, transparent 50%),
+    linear-gradient(160deg, #eef2ff 0%, #f4f0ff 45%, #e8f4ff 100%);
+}
+[data-theme="light"] .ntp-bg-layer::before {
+  background-image:
+    linear-gradient(rgba(80,100,200,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(80,100,200,0.04) 1px, transparent 1px);
+}
+[data-theme="light"] .ntp-bg-layer::after {
+  background: linear-gradient(transparent, rgba(238,242,255,0.70));
+}
+
+/* Clock */
+[data-theme="light"] .ntp-clock { color: #16172a; text-shadow: none; }
+[data-theme="light"] .ntp-clock-ampm { opacity: 0.45; }
+[data-theme="light"] #ntp-greeting,
+[data-theme="light"] .ntp-clock-sep,
+[data-theme="light"] #ntp-date { color: rgba(22,23,42,0.52); }
+
+/* Mode tabs */
+[data-theme="light"] .ntp-mode-tabs {
+  background: rgba(255,255,255,0.55);
+  border-color: rgba(50,70,160,0.12);
+  backdrop-filter: blur(12px);
+}
+[data-theme="light"] .ntp-mode-tab { color: rgba(22,23,42,0.55); }
+[data-theme="light"] .ntp-mode-tab:hover { color: #16172a; }
+[data-theme="light"] .ntp-mode-tab.active {
+  background: rgba(0,120,220,0.12);
+  color: #0070d8;
+  box-shadow: inset 0 0 0 1px rgba(0,120,220,0.22);
+}
+
+/* Search bar */
+[data-theme="light"] .ntp-search {
+  background: rgba(255,255,255,0.70);
+  border-color: rgba(50,70,160,0.14);
+  box-shadow: 0 4px 24px rgba(50,70,160,0.08), inset 0 1px 0 rgba(255,255,255,0.90);
+  backdrop-filter: blur(16px);
+}
+[data-theme="light"] .ntp-search:focus-within {
+  background: rgba(255,255,255,0.90);
+  border-color: rgba(0,120,220,0.35);
+  box-shadow: 0 0 0 3px rgba(0,120,220,0.10), 0 6px 28px rgba(0,120,220,0.10);
+}
+[data-theme="light"] .ntp-search svg { color: rgba(22,23,42,0.35); }
+[data-theme="light"] .ntp-search:focus-within svg { color: #0070d8; }
+[data-theme="light"] .ntp-search input { color: #16172a; }
+[data-theme="light"] .ntp-search input::placeholder { color: rgba(22,23,42,0.35); }
+
+/* Shortcut labels */
+[data-theme="light"] .ntp-shortcut span { color: rgba(22,23,42,0.55); }
+[data-theme="light"] .shortcut-icon {
+  background: rgba(255,255,255,0.70);
+  border-color: rgba(50,70,160,0.12);
+  box-shadow: 0 2px 10px rgba(50,70,160,0.10), inset 0 1px 0 rgba(255,255,255,0.90);
+}
+[data-theme="light"] .ntp-shortcut:hover .shortcut-icon {
+  background: rgba(255,255,255,0.90);
+  border-color: rgba(0,120,220,0.22);
+  box-shadow: 0 8px 22px rgba(50,70,160,0.14), inset 0 1px 0 rgba(255,255,255,1);
+}
+
+/* Widgets */
+[data-theme="light"] .ntp-widget {
+  background: rgba(255,255,255,0.58);
+  border-color: rgba(50,70,160,0.10);
+  box-shadow: 0 2px 16px rgba(50,70,160,0.07);
+  backdrop-filter: blur(16px);
+}
+[data-theme="light"] .ntp-widget:hover {
+  border-color: rgba(0,120,220,0.22);
+  box-shadow: 0 8px 28px rgba(50,70,160,0.12);
+  transform: translateY(-1px);
+}
+[data-theme="light"] .ntp-widget-ai {
+  background: linear-gradient(145deg, rgba(109,40,217,0.06), rgba(0,120,220,0.04));
+  border-color: rgba(109,40,217,0.12);
+}
+[data-theme="light"] .ntp-widget-header {
+  border-bottom-color: rgba(50,70,160,0.08);
+  color: #16172a;
+}
+[data-theme="light"] .ntp-widget-header label { color: #16172a; }
+[data-theme="light"] .ntp-widget-badge {
+  background: rgba(0,120,220,0.10);
+  color: #0070d8;
+}
+
+/* News items */
+[data-theme="light"] .ntp-news-item { border-bottom-color: rgba(50,70,160,0.07); }
+[data-theme="light"] .ntp-news-item:hover { background: rgba(50,70,160,0.04); }
+[data-theme="light"] .ntp-news-title { color: #16172a; }
+[data-theme="light"] .ntp-news-meta { color: rgba(22,23,42,0.45); }
+
+/* NTP results panel */
+[data-theme="light"] .ntp-results {
+  background: rgba(255,255,255,0.80);
+  border-color: rgba(50,70,160,0.12);
+  backdrop-filter: blur(16px);
+}
+[data-theme="light"] .ntp-results-tab { color: rgba(22,23,42,0.50); }
+[data-theme="light"] .ntp-results-tab.active { color: #0070d8; border-bottom-color: #0070d8; }
+[data-theme="light"] .ntp-results-content { color: #16172a; }
+
+/* AI Brief generate button */
+[data-theme="light"] .ntp-gen-btn {
+  background: rgba(0,120,220,0.10);
+  color: #0070d8;
+  border-color: rgba(0,120,220,0.22);
+}
+[data-theme="light"] .ntp-gen-btn:hover {
+  background: rgba(0,120,220,0.16);
+}
+
+/* Email inbox widget */
+[data-theme="light"] .ntp-email-item { border-bottom-color: rgba(50,70,160,0.07); }
+[data-theme="light"] .ntp-email-item:hover { background: rgba(50,70,160,0.04); }
+[data-theme="light"] .ntp-email-subject { color: #16172a; }
+[data-theme="light"] .ntp-email-from,
+[data-theme="light"] .ntp-email-time { color: rgba(22,23,42,0.50); }
+
+/* Orb ring tint in light mode */
+[data-theme="light"] .ntp-orb-ring {
+  border-color: rgba(0,120,220,0.18);
+}
+
+/* Bottom ticker */
+[data-theme="light"] .ntp-ticker-bar {
+  background: rgba(255,255,255,0.70);
+  border-top-color: rgba(50,70,160,0.09);
+}
+[data-theme="light"] .ntp-ticker-label { color: rgba(22,23,42,0.55); }
+[data-theme="light"] .ntp-ticker-item { color: rgba(22,23,42,0.65); }
+[data-theme="light"] .ntp-ticker-item .up { color: #16a34a; }
+[data-theme="light"] .ntp-ticker-item .down { color: #dc2626; }
