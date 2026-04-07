@@ -251,18 +251,18 @@ async function performAiFetch(cfg, apiKey, messages, useStream) {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`
     };
-    // o-series and GPT-5+ require max_completion_tokens instead of max_tokens.
-    // GPT-5+ also does not accept a temperature parameter.
-    const isReasoning = /^o[1-9]/.test(model || '') || /^gpt-5/.test(model || '');
-    const tokenKey = isReasoning ? 'max_completion_tokens' : 'max_tokens';
+    // max_completion_tokens is the correct parameter for all current OpenAI models.
+    // max_tokens is deprecated and rejected by newer models (GPT-5+, o-series).
+    // o-series reasoning models also reject the temperature parameter entirely.
+    const isOSeries = /^o[1-9]/i.test(model || '');
     const bodyObj = {
       model: model || 'gpt-4o',
       messages,
-      [tokenKey]: 4096,
+      max_completion_tokens: 4096,
       stream: !!useStream
     };
-    if (isReasoning) {
-      // Reasoning models fix temperature at 1 internally; passing it causes errors
+    if (isOSeries) {
+      // o-series fixes temperature at 1 internally; sending it causes a 400 error
       delete bodyObj.temperature;
     }
     body = JSON.stringify(bodyObj);
