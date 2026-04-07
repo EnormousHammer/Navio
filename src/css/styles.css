@@ -880,43 +880,62 @@ body.tabstrip-hidden .tab-strip-show {
    ============================================ */
 
 /* ── NTP Base + Cyber Grid Background ────────────────────────────────── */
+/* ════════════════════════════════════════════════════════════════════════
+   NEW TAB PAGE — Futuristic Dark Dashboard (always dark, ignores app theme)
+   ════════════════════════════════════════════════════════════════════════ */
+
 .new-tab-page {
   position: absolute;
   top: 0; left: 0;
   width: 100%; height: 100%;
   display: none;
   flex-direction: column;
-  background: var(--bg-void);
+  background: #05080f;
   overflow-y: auto;
   overflow-x: hidden;
   z-index: 2;
+  color: #e2e8f8;
+  --ntp-accent: #00d8ff;
+  --ntp-purple: #7c3aed;
+  --ntp-text: #e2e8f8;
+  --ntp-subtext: rgba(226,232,248,0.55);
+  --ntp-border: rgba(255,255,255,0.07);
+  --ntp-glass: rgba(255,255,255,0.04);
+  --ntp-glass-hover: rgba(255,255,255,0.07);
 }
-
 .new-tab-page.active { display: flex; }
 
-.new-tab-page::before {
-  content: '';
+/* Full-page animated background */
+.ntp-bg-layer {
   position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 100% 70% at 50% -10%, rgba(124,58,237,0.18) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 80%, rgba(0,212,255,0.06) 0%, transparent 50%),
+    #05080f;
+}
+.ntp-bg-layer::before {
+  content: '';
+  position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(0,212,255,0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,212,255,0.025) 1px, transparent 1px);
-  background-size: 52px 52px;
-  animation: ntp-grid-drift 30s linear infinite;
-  pointer-events: none;
-  z-index: 0;
+    linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+  animation: ntp-grid-drift 40s linear infinite;
 }
-.new-tab-page::after {
+.ntp-bg-layer::after {
   content: '';
-  position: fixed;
-  inset: 0;
-  background: radial-gradient(ellipse 80% 55% at 50% -5%, rgba(124,58,237,0.09) 0%, transparent 70%);
-  pointer-events: none;
-  z-index: 0;
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 200px;
+  background: linear-gradient(transparent, rgba(5,8,15,0.8));
 }
 @keyframes ntp-grid-drift {
-  0%   { background-position: 0 0; }
-  100% { background-position: 48px 48px; }
+  from { background-position: 0 0; }
+  to   { background-position: 60px 60px; }
 }
 
 /* ── NTP Topbar ────────────────────────────────────────────────────────── */
@@ -924,107 +943,126 @@ body.tabstrip-hidden .tab-strip-show {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 32px 0;
+  padding: 14px 28px 0;
   position: relative;
   z-index: 1;
+  flex-shrink: 0;
 }
-.ntp-greeting-block {
+.ntp-topbar-right {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-.ntp-greeting-block span:first-child {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: 0.3px;
-}
-.ntp-date {
-  font-size: 12px;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  align-items: center;
+  gap: 8px;
 }
 .ntp-weather-block {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
-  color: var(--text-secondary);
-  background: var(--bg-surface, rgba(255,255,255,0.04));
-  border: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  font-size: 12.5px;
+  color: var(--ntp-subtext);
+  background: var(--ntp-glass);
+  border: 1px solid var(--ntp-border);
   border-radius: 20px;
-  padding: 5px 14px;
+  padding: 4px 12px;
+  visibility: hidden;
 }
-#ntp-weather-temp { font-weight: 700; color: var(--text-primary); }
+.ntp-weather-block.loaded { visibility: visible; }
+#ntp-weather-temp { font-weight: 700; color: var(--ntp-text); }
 
-/* ── NTP Services Bar ─────────────────────────────────────────────────── */
+/* ── NTP Services Bar (inside topbar) ─────────────────────────────────── */
 .ntp-services-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 32px 0;
+  gap: 6px;
   flex-wrap: wrap;
-  position: relative;
-  z-index: 1;
 }
 .ntp-service-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: var(--bg-surface, rgba(255,255,255,0.04));
-  border: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  gap: 5px;
+  background: var(--ntp-glass);
+  border: 1px solid var(--ntp-border);
   border-radius: 20px;
-  padding: 4px 12px 4px 8px;
-  font-size: 12px;
-  color: var(--text-secondary);
+  padding: 3px 10px 3px 7px;
+  font-size: 11.5px;
+  color: var(--ntp-subtext);
   cursor: default;
 }
-.ntp-svc-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.ntp-svc-label { font-weight: 600; color: var(--text-primary); }
-.ntp-svc-email { opacity: 0.65; font-size: 11px; }
+.ntp-svc-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.ntp-svc-label { font-weight: 600; color: var(--ntp-text); }
+.ntp-svc-email { opacity: 0.6; font-size: 10.5px; }
 .ntp-svc-count {
-  background: var(--text-accent, #00d8ff);
+  background: var(--ntp-accent);
   color: #000;
-  font-size: 10px;
-  font-weight: 700;
+  font-size: 9.5px; font-weight: 700;
   border-radius: 10px;
   padding: 1px 5px;
-  min-width: 16px;
-  text-align: center;
+  min-width: 15px; text-align: center;
 }
 
-/* ── NTP Hero (orb + title + search) ──────────────────────────────────── */
+/* ── NTP Hero ──────────────────────────────────────────────────────────── */
 .ntp-hero {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 20px 20px 2px;
+  padding: 10px 20px 4px;
   position: relative;
   z-index: 1;
+  flex: 0 0 auto;
+}
+
+/* ── Big Clock ─────────────────────────────────────────────────────────── */
+.ntp-clock-block {
+  text-align: center;
+  margin-bottom: 16px;
+}
+.ntp-clock {
+  font-size: clamp(64px, 9vw, 96px);
+  font-weight: 200;
+  letter-spacing: -2px;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-shadow: 0 0 40px rgba(0,212,255,0.25), 0 0 80px rgba(124,58,237,0.15);
+  font-family: 'SF Pro Display', 'Helvetica Neue', system-ui, sans-serif;
+}
+.ntp-clock-sub {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--ntp-subtext);
+  letter-spacing: 0.3px;
+}
+.ntp-clock-sep { opacity: 0.4; }
+.ntp-date { font-size: 13px; color: var(--ntp-subtext); }
+
+/* ── NTP Brand row (orb + title) ───────────────────────────────────────── */
+.ntp-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
 }
 .ntp-title {
-  font-size: 32px !important;
-  font-weight: 900 !important;
-  letter-spacing: 6px !important;
+  font-size: 18px !important;
+  font-weight: 800 !important;
+  letter-spacing: 5px !important;
   text-transform: uppercase;
-  background: linear-gradient(135deg, #fff 30%, rgba(0,212,255,0.85) 70%, #7c3aed);
+  background: linear-gradient(90deg, rgba(255,255,255,0.9) 0%, var(--ntp-accent) 50%, var(--ntp-purple));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  margin: 0 0 12px !important;
+  margin: 0 !important;
   text-shadow: none;
 }
 
 .ntp-content {
   text-align: center;
-  max-width: 580px;
+  max-width: 620px;
   width: 100%;
-  padding: 20px;
+  padding: 0 20px;
   position: relative;
   z-index: 1;
 }
@@ -1032,65 +1070,67 @@ body.tabstrip-hidden .tab-strip-show {
 /* ── NTP Mode Tabs ──────────────────────────────────────────────────────── */
 .ntp-mode-tabs {
   display: flex;
-  gap: 4px;
-  background: var(--bg-surface, rgba(255,255,255,0.04));
-  border: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  gap: 2px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 20px;
   padding: 3px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 .ntp-mode-tab {
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 14px;
+  padding: 5px 16px;
   border-radius: 16px;
   border: none;
   background: transparent;
-  color: var(--text-secondary);
+  color: rgba(226,232,248,0.5);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
   font-family: var(--font-sans);
+  white-space: nowrap;
 }
-.ntp-mode-tab:hover { color: var(--text-primary); }
+.ntp-mode-tab:hover { color: #e2e8f8; }
 .ntp-mode-tab.active {
-  background: var(--text-accent, #00d8ff);
-  color: #000;
+  background: rgba(0,216,255,0.15);
+  color: #00d8ff;
   font-weight: 700;
+  box-shadow: inset 0 0 0 1px rgba(0,216,255,0.25);
 }
 .ntp-mode-tab svg { flex-shrink: 0; }
 
 .ntp-orb {
-  width: 100px;
-  height: 100px;
-  margin: 0 auto 16px;
+  width: 44px;
+  height: 44px;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .orb-core {
-  width: 50px;
-  height: 50px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #00d4ff, #7c3aed, #f472b6);
+  background: linear-gradient(135deg, #00d4ff 0%, #7c3aed 60%, #f472b6 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow:
-    0 0 20px rgba(0,212,255,0.5),
-    0 0 50px rgba(0,212,255,0.2),
-    0 0 80px rgba(124,58,237,0.15);
+    0 0 16px rgba(0,212,255,0.6),
+    0 0 40px rgba(0,212,255,0.25),
+    0 0 70px rgba(124,58,237,0.2);
   position: relative;
   z-index: 2;
   animation: ntp-orb-breathe 3s ease-in-out infinite;
 }
 @keyframes ntp-orb-breathe {
-  0%, 100% { box-shadow: 0 0 20px rgba(0,212,255,0.5), 0 0 50px rgba(0,212,255,0.2), 0 0 80px rgba(124,58,237,0.15); }
-  50% { box-shadow: 0 0 30px rgba(0,212,255,0.7), 0 0 70px rgba(0,212,255,0.3), 0 0 100px rgba(124,58,237,0.25); }
+  0%,100% { box-shadow: 0 0 16px rgba(0,212,255,0.6), 0 0 40px rgba(0,212,255,0.25), 0 0 70px rgba(124,58,237,0.2); }
+  50%     { box-shadow: 0 0 24px rgba(0,212,255,0.9), 0 0 60px rgba(0,212,255,0.4), 0 0 100px rgba(124,58,237,0.35); }
 }
 
 .orb-ring {
@@ -1100,35 +1140,20 @@ body.tabstrip-hidden .tab-strip-show {
   animation-timing-function: linear;
   animation-iteration-count: infinite;
 }
-
 .orb-ring-1 {
-  width: 80px; height: 80px;
-  border-color: rgba(0, 216, 255, 0.22);
+  width: 60px; height: 60px;
+  border-color: rgba(0,216,255,0.2);
   animation: orbit 8s linear infinite;
 }
-
 .orb-ring-2 {
-  width: 100px; height: 100px;
-  border-color: rgba(84, 104, 255, 0.13);
+  width: 76px; height: 76px;
+  border-color: rgba(84,104,255,0.12);
   animation: orbit 12s linear infinite reverse;
 }
-
 .orb-ring-3 {
-  width: 120px; height: 120px;
-  border-color: rgba(159, 111, 255, 0.09);
+  width: 90px; height: 90px;
+  border-color: rgba(159,111,255,0.07);
   animation: orbit 16s linear infinite;
-}
-
-.ntp-title {
-  font-size: 36px;
-  font-weight: 800;
-  letter-spacing: 4px;
-  text-transform: uppercase;
-  margin-bottom: 8px;
-  background: var(--gradient-primary);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 20px rgba(0, 216, 255, 0.18));
 }
 
 .ntp-subtitle {
@@ -1143,61 +1168,67 @@ body.tabstrip-hidden .tab-strip-show {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 22px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  margin-bottom: 36px;
-  transition: all var(--duration) var(--ease);
+  padding: 15px 20px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 50px;
+  margin-bottom: 28px;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
   position: relative;
+  width: 100%;
+  max-width: 640px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .ntp-search-glow {
   position: absolute;
-  inset: -1px;
-  border-radius: var(--radius-full);
-  background: var(--gradient-primary);
+  inset: -2px;
+  border-radius: 50px;
+  background: linear-gradient(90deg, rgba(0,212,255,0.6), rgba(124,58,237,0.6));
   opacity: 0;
-  transition: opacity var(--duration-slow) var(--ease);
+  transition: opacity 0.25s;
   z-index: -1;
-  filter: blur(1px);
+  filter: blur(8px);
 }
 
 .ntp-search:focus-within {
-  border-color: transparent;
-  box-shadow: var(--shadow-glow-strong);
+  border-color: rgba(0,212,255,0.45);
+  background: rgba(255,255,255,0.07);
+  box-shadow: 0 0 0 1px rgba(0,212,255,0.15), 0 8px 32px rgba(0,212,255,0.12);
 }
 
-.ntp-search:focus-within .ntp-search-glow {
-  opacity: 0.45;
-}
+.ntp-search:focus-within .ntp-search-glow { opacity: 0.25; }
 
-.ntp-search svg { color: var(--text-tertiary); flex-shrink: 0; }
+.ntp-search svg { color: rgba(226,232,248,0.4); flex-shrink: 0; }
+.ntp-search:focus-within svg { color: #00d8ff; }
 
 .ntp-search input {
   flex: 1;
   border: none;
   background: transparent;
-  color: var(--text-primary);
-  font-size: 15px;
+  color: #e2e8f8;
+  font-size: 15.5px;
   font-family: var(--font-sans);
   outline: none;
+  letter-spacing: 0.1px;
 }
 
-.ntp-search input::placeholder { color: var(--text-tertiary); }
+.ntp-search input::placeholder { color: rgba(226,232,248,0.3); }
 
 .ntp-search-send {
-  background: var(--text-accent, #00d8ff);
-  color: #000;
+  background: linear-gradient(135deg, #00d8ff, #7c3aed);
+  color: #fff;
   border: none;
   border-radius: 50%;
-  width: 32px; height: 32px;
+  width: 34px; height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
   transition: opacity 0.15s, transform 0.15s;
+  box-shadow: 0 2px 12px rgba(0,212,255,0.3);
 }
 .ntp-search-send:hover { opacity: 0.85; transform: scale(1.05); }
 
@@ -1205,8 +1236,8 @@ body.tabstrip-hidden .tab-strip-show {
 .ntp-widgets {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 14px;
-  padding: 10px 24px 16px;
+  gap: 12px;
+  padding: 8px 22px 20px;
   position: relative;
   z-index: 1;
   max-width: 1400px;
@@ -1223,33 +1254,35 @@ body.tabstrip-hidden .tab-strip-show {
 }
 .ntp-widget {
   background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 18px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   max-height: 320px;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  transition: border-color 0.2s, box-shadow 0.2s;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05);
 }
 .ntp-widget:hover {
-  border-color: rgba(0,212,255,0.2);
-  box-shadow: 0 0 24px rgba(0,212,255,0.05), inset 0 0 0 1px rgba(0,212,255,0.08);
+  border-color: rgba(0,212,255,0.25);
+  box-shadow: 0 8px 32px rgba(0,212,255,0.08), 0 4px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.07);
+  transform: translateY(-1px);
 }
 /* AI Brief widget — gradient neon border */
 .ntp-widget-ai {
   border-color: transparent;
-  background: rgba(124,58,237,0.06);
+  background: linear-gradient(145deg, rgba(124,58,237,0.08), rgba(0,212,255,0.04));
   position: relative;
 }
 .ntp-widget-ai::before {
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: 16px;
+  border-radius: 18px;
   padding: 1px;
-  background: linear-gradient(135deg, rgba(0,212,255,0.35), rgba(124,58,237,0.35));
+  background: linear-gradient(135deg, rgba(0,212,255,0.4), rgba(124,58,237,0.4), rgba(244,114,182,0.3));
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
@@ -1260,45 +1293,49 @@ body.tabstrip-hidden .tab-strip-show {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 12px 16px;
-  font-size: 12px;
+  padding: 11px 15px;
+  font-size: 10.5px;
   font-weight: 700;
-  color: var(--text-secondary);
+  color: rgba(226,232,248,0.5);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid var(--glass-border, rgba(255,255,255,0.06));
+  letter-spacing: 0.7px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
   flex-shrink: 0;
 }
-.ntp-widget-header svg { flex-shrink: 0; }
+.ntp-widget-header svg { flex-shrink: 0; opacity: 0.7; }
 .ntp-widget-source {
   margin-left: auto;
   font-size: 10px;
-  opacity: 0.5;
+  opacity: 0.4;
   font-weight: 400;
   text-transform: none;
 }
 .ntp-widget-badge {
-  background: var(--text-accent, #00d8ff);
-  color: #000;
-  font-size: 10px;
+  background: rgba(0,216,255,0.15);
+  color: #00d8ff;
+  font-size: 9.5px;
   font-weight: 700;
   border-radius: 10px;
   padding: 1px 6px;
+  border: 1px solid rgba(0,216,255,0.2);
 }
 .ntp-widget-action {
   margin-left: auto;
-  background: var(--text-accent, #00d8ff);
-  color: #000;
-  border: none;
+  background: rgba(0,216,255,0.15);
+  color: #00d8ff;
+  border: 1px solid rgba(0,216,255,0.25);
   border-radius: 6px;
   padding: 3px 9px;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 700;
   cursor: pointer;
   font-family: var(--font-sans);
-  transition: opacity 0.15s;
+  transition: background 0.15s, box-shadow 0.15s;
 }
-.ntp-widget-action:hover { opacity: 0.85; }
+.ntp-widget-action:hover {
+  background: rgba(0,216,255,0.25);
+  box-shadow: 0 0 12px rgba(0,212,255,0.2);
+}
 .ntp-widget-body {
   overflow-y: auto;
   flex: 1;
@@ -1642,21 +1679,22 @@ body.tabstrip-hidden .tab-strip-show {
 .ntp-shortcuts {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 12px;
   justify-content: center;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
   position: relative;
   z-index: 1;
+  padding: 0 20px;
 }
 
 .ntp-shortcut {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   text-decoration: none;
   cursor: pointer;
-  transition: all var(--duration) var(--ease-spring);
+  transition: all 0.2s cubic-bezier(0.34,1.56,0.64,1);
   border: none;
   background: transparent;
   padding: 0;
@@ -1676,18 +1714,20 @@ body.tabstrip-hidden .tab-strip-show {
 .ntp-shortcut:hover { transform: translateY(-3px); }
 
 .shortcut-icon {
-  width: 50px;
-  height: 50px;
-  border-radius: var(--radius-md);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 13px;
   font-weight: 800;
   color: white;
-  transition: all var(--duration) var(--ease);
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08);
+  backdrop-filter: blur(8px);
 }
 
 .si-google { background: linear-gradient(135deg, #4285f4, #34a853); }
@@ -1699,13 +1739,13 @@ body.tabstrip-hidden .tab-strip-show {
 .si-reddit { background: linear-gradient(135deg, #ff4500, #ff6a33); }
 .si-ai { background: var(--gradient-primary); }
 
+.ntp-shortcut:hover { transform: translateY(-3px); }
 .ntp-shortcut:hover .shortcut-icon {
-  box-shadow: var(--shadow-md);
-  transform: scale(1.05);
-  border-color: var(--border-hover);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.15);
+  border-color: rgba(255,255,255,0.2);
 }
 
-.ntp-shortcut span { font-size: 11px; color: var(--text-tertiary); }
+.ntp-shortcut span { font-size: 11px; color: rgba(226,232,248,0.45); }
 
 .ntp-tip {
   color: var(--text-tertiary);
@@ -3437,13 +3477,15 @@ body.tabstrip-hidden .loading-indicator {
 
 .conn-modal-error {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   padding: 10px 14px;
   background: rgba(239, 68, 68, 0.08);
   border: 1px solid rgba(239, 68, 68, 0.2);
   border-radius: var(--radius-sm);
   color: var(--danger);
+  line-height: 1.5;
+  white-space: pre-line;
   font-size: 12px;
 }
 
@@ -4922,17 +4964,7 @@ body.onboarding-active #app {
 }
 
 /* ── New Tab Page: subtle dot-grid AI pattern ── */
-[data-theme="dark"] .new-tab-page::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background-image: radial-gradient(circle, rgba(80, 160, 255, 0.07) 1px, transparent 1px);
-  background-size: 28px 28px;
-  mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, transparent 35%, black 85%);
-  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, transparent 35%, black 85%);
-}
+/* Dark NTP background is handled by .ntp-bg-layer — no ::before override needed */
 
 /* ── URL bar: cyan inner-glow on focus ── */
 [data-theme="dark"] #url-input:focus,
@@ -6372,3 +6404,23 @@ body.onboarding-active #app {
 .tca-approve:hover { opacity: 0.85; }
 .tca-skip { padding: 4px 8px; background: transparent; border: 1px solid var(--border); color: var(--text-secondary); border-radius: 5px; font-size: 11px; cursor: pointer; font-family: var(--font-sans); }
 .tca-skip:hover { background: rgba(255,255,255,0.05); }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   NTP Dark override — forces dark palette inside .new-tab-page
+   regardless of the global app theme (light or dark)
+   ───────────────────────────────────────────────────────────────────────── */
+[data-theme="light"] .new-tab-page,
+[data-theme="dark"] .new-tab-page {
+  --text-primary: #e2e8f8;
+  --text-secondary: rgba(226,232,248,0.65);
+  --text-tertiary: rgba(226,232,248,0.35);
+  --text-accent: #00d8ff;
+  --bg-surface: rgba(255,255,255,0.05);
+  --bg-elevated: rgba(255,255,255,0.08);
+  --bg-hover: rgba(255,255,255,0.06);
+  --border: rgba(255,255,255,0.08);
+  --border-hover: rgba(255,255,255,0.14);
+  --glass-border: rgba(255,255,255,0.07);
+  background: #05080f;
+  color: #e2e8f8;
+}

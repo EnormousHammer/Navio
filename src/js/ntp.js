@@ -56,20 +56,33 @@ const NTP = (() => {
   function _startClock() {
     const tick = () => {
       const now = new Date();
+
+      // Big clock
+      const clockEl = document.getElementById('ntp-clock');
+      if (clockEl) {
+        const h = String(now.getHours()).padStart(2, '0');
+        const m = String(now.getMinutes()).padStart(2, '0');
+        clockEl.textContent = `${h}:${m}`;
+      }
+
+      // Date line
       const dateEl = document.getElementById('ntp-date');
       if (dateEl) {
         dateEl.textContent = now.toLocaleDateString(undefined, {
           weekday: 'long', month: 'short', day: 'numeric'
         });
       }
+
+      // Greeting
+      _updateGreeting();
     };
     tick();
-    setInterval(tick, 60000);
+    setInterval(tick, 1000);
   }
 
   function _updateGreeting() {
     const hour = new Date().getHours();
-    const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+    const greet = hour < 5 ? 'Good night' : hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
     const el = document.getElementById('ntp-greeting');
     if (el) el.textContent = greet;
   }
@@ -106,9 +119,9 @@ const NTP = (() => {
       const tempEl = document.getElementById('ntp-weather-temp');
       const descEl = document.getElementById('ntp-weather-desc');
       if (iconEl) iconEl.textContent = info.icon;
-      if (tempEl) tempEl.textContent = `${Math.round(cw.temperature)}°C`;
+      if (tempEl) tempEl.textContent = `${Math.round(cw.temperature)}°`;
       if (descEl) descEl.textContent = info.desc;
-      block.style.display = 'flex';
+      block.style.visibility = 'visible';
     } catch { /* geolocation denied or offline */ }
   }
 

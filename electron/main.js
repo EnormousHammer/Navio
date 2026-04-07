@@ -2181,18 +2181,55 @@ ipcMain.handle('imap-connect', async (event, { serviceId, email, password }) => 
     const { ImapFlow } = require('imapflow');
     const cfg = IMAP_SERVICE_CONFIG[serviceId];
     if (!cfg) return { error: 'Unknown service' };
+
     const client = new ImapFlow({
-      host: cfg.host, port: cfg.port, secure: cfg.secure,
+      host: cfg.host,
+      port: cfg.port,
+      secure: cfg.secure,
       auth: { user: email, pass: password },
       logger: false,
-      tls: { rejectUnauthorized: false }
+      tls: { rejectUnauthorized: false },
+      disableAutoIdle: true,
+      // Longer timeouts for slower connections
+      connectionTimeout: 15000,
+      greetingTimeout: 10000,
+      socketTimeout: 30000
     });
+
     await client.connect();
+
+    // Verify credentials work by opening INBOX (catches wrong-password errors
+    // that only surface after the initial TCP handshake succeeds)
+    try {
+      await client.mailboxOpen('INBOX', { readOnly: true });
+    } catch (innerErr) {
+      await client.logout().catch(() => {});
+      throw innerErr;
+    }
+
     await client.logout();
     storeImapCreds(serviceId, email, password);
     return { ok: true, email };
   } catch (e) {
-    return { error: e.message };
+    // Parse ImapFlow/IMAP error into actionable guidance
+    const raw = (e.message || e.responseText || e.response || '').toLowerCase();
+    const code = (e.responseCode || '').toLowerCase();
+
+    if (code === 'authenticationfailed' || raw.includes('authentication') || raw.includes('invalid credentials') || raw.includes('bad credentials') || raw.includes('login failed') || raw.includes('command failed') || raw.includes('invalid login')) {
+      if (serviceId === 'gmail') {
+        return { error: 'Authentication failed. Gmail requires an App Password — your regular Gmail password will NOT work here.\n\n1. Go to myaccount.google.com/apppasswords\n2. Create an app password for "Mail"\n3. Use the 16-character password here (spaces are optional)' };
+      }
+      return { error: 'Authentication failed. Check your email and password. For Outlook, use your full email address and account password.' };
+    }
+    if (raw.includes('connect') || raw.includes('econnrefused') || raw.includes('timeout') || raw.includes('network') || raw.includes('enotfound')) {
+      return { error: 'Could not connect to mail server. Check your internet connection.\n\nFor Gmail: make sure IMAP is enabled at Settings → See all settings → Forwarding and POP/IMAP.' };
+    }
+    if (raw.includes('certificate') || raw.includes('ssl') || raw.includes('tls')) {
+      return { error: 'TLS/SSL error connecting to mail server. This may be a network or firewall issue.' };
+    }
+
+    // Fall back to the raw message with a hint
+    return { error: (e.message || 'Connection failed') + '\n\nIf this keeps happening, make sure IMAP is enabled in your email settings and you are using an App Password (not your regular password) for Gmail.' };
   }
 });
 

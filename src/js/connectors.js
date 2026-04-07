@@ -807,7 +807,9 @@ class ConnectorsManagerClass {
         this.renderConnectionsTab();
         this.renderSidebarPins();
       } catch (e) {
-        errorEl.textContent = e.message || 'Connection failed. Check your credentials.';
+        // Show multiline error with line-break support
+        const msg = e.message || 'Connection failed. Check your credentials.';
+        errorEl.innerHTML = msg.replace(/\n/g, '<br>');
         errorEl.style.display = 'flex';
         connectBtn.disabled = false;
         connectBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/></svg> Connect ${intg.name}`;

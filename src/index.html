@@ -119,37 +119,47 @@
         <div id="reading-mode-pane" class="reading-mode-pane" aria-hidden="true"></div>
         <div id="new-tab-page" class="new-tab-page">
 
-          <!-- Top bar: greeting, date/time, weather -->
+          <!-- Full-page dark backdrop for NTP (always dark) -->
+          <div class="ntp-bg-layer"></div>
+
+          <!-- Top bar: weather + services -->
           <div class="ntp-topbar">
-            <div class="ntp-greeting-block">
-              <span id="ntp-greeting">Good morning</span>
-              <span class="ntp-date" id="ntp-date"></span>
-            </div>
-            <div class="ntp-weather-block" id="ntp-weather-block" style="display:none">
+            <div class="ntp-weather-block" id="ntp-weather-block" style="visibility:hidden">
               <span id="ntp-weather-icon">☁</span>
               <span id="ntp-weather-temp"></span>
               <span id="ntp-weather-desc"></span>
             </div>
+            <div class="ntp-topbar-right">
+              <div class="ntp-services-bar" id="ntp-services-bar"></div>
+            </div>
           </div>
 
-          <!-- Connected services status bar -->
-          <div class="ntp-services-bar" id="ntp-services-bar">
-            <!-- Populated by ntp.js -->
-          </div>
-
-          <!-- Hero: logo + AI input -->
+          <!-- Hero: big clock + logo + AI input -->
           <div class="ntp-hero">
-            <div class="ntp-orb">
-              <div class="orb-ring orb-ring-1"></div>
-              <div class="orb-ring orb-ring-2"></div>
-              <div class="orb-ring orb-ring-3"></div>
-              <div class="orb-core">
-                <svg viewBox="0 0 32 32" width="28" height="28">
-                  <path d="M16 2L4 28h6l6-16 6 16h6L16 2z" fill="white"/>
-                </svg>
+            <!-- Big live clock -->
+            <div class="ntp-clock-block">
+              <div class="ntp-clock" id="ntp-clock">--:--</div>
+              <div class="ntp-clock-sub">
+                <span id="ntp-greeting">Good morning</span>
+                <span class="ntp-clock-sep">·</span>
+                <span class="ntp-date" id="ntp-date"></span>
               </div>
             </div>
-            <h1 class="ntp-title">Navio</h1>
+
+            <!-- Orb + title -->
+            <div class="ntp-brand">
+              <div class="ntp-orb">
+                <div class="orb-ring orb-ring-1"></div>
+                <div class="orb-ring orb-ring-2"></div>
+                <div class="orb-ring orb-ring-3"></div>
+                <div class="orb-core">
+                  <svg viewBox="0 0 32 32" width="26" height="26">
+                    <path d="M16 2L4 28h6l6-16 6 16h6L16 2z" fill="white"/>
+                  </svg>
+                </div>
+              </div>
+              <h1 class="ntp-title">NAVIO</h1>
+            </div>
 
             <!-- Mode tabs -->
             <div class="ntp-mode-tabs">
