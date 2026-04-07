@@ -360,6 +360,85 @@ class SettingsManagerClass {
     if (this.elements.ledgerStatus) this.elements.ledgerStatus.textContent = '';
     this.showPanel('general');
     this.modal.classList.add('visible');
+    // Render OAuth client ID fields when the integrations panel is first shown
+    this._renderOAuthClientIdFields();
+  }
+
+  async _renderOAuthClientIdFields() {
+    const container = document.getElementById('oauth-client-id-fields');
+    if (!container) return;
+    container.innerHTML = '<div class="oauth-setup-loading">Loading…</div>';
+
+    let providers = [];
+    try {
+      providers = await window.navio.oauthProvidersConfig();
+    } catch {
+      container.innerHTML = '<p class="settings-inline-hint" style="color:var(--text-danger)">Could not load OAuth provider config.</p>';
+      return;
+    }
+
+    let html = '';
+    for (const p of providers) {
+      const cfgKey = p.configKey;
+      const currentVal = this.config[cfgKey] || '';
+      html += `
+        <div class="oauth-provider-row" id="oauth-row-${p.id}">
+          <div class="oauth-provider-label">
+            <strong>${p.name}</strong>
+            <span class="oauth-provider-services">${p.serviceIds.join(', ')}</span>
+          </div>
+          <div class="oauth-provider-input-row">
+            <input
+              type="text"
+              class="oauth-client-id-input"
+              data-key="${cfgKey}"
+              placeholder="${p.name} Client ID"
+              value="${currentVal}"
+              spellcheck="false"
+              autocomplete="off"
+            >
+            <button class="oauth-client-id-save-btn" data-key="${cfgKey}" data-provider="${p.id}">Save</button>
+          </div>
+          <div class="oauth-provider-hint">
+            <a class="oauth-console-link" href="${p.consoleUrl}" target="_blank" data-href="${p.consoleUrl}">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              Get ${p.name} Client ID
+            </a>
+            <span class="oauth-console-hint">${p.consoleHint}</span>
+          </div>
+        </div>
+      `;
+    }
+    container.innerHTML = html;
+
+    // Bind save buttons
+    container.querySelectorAll('.oauth-client-id-save-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const key = btn.dataset.key;
+        const input = container.querySelector(`input[data-key="${key}"]`);
+        const val = (input?.value || '').trim();
+        btn.disabled = true;
+        btn.textContent = 'Saving…';
+        try {
+          await window.navio.saveConfig({ [key]: val });
+          this.config[key] = val;
+          btn.textContent = '✓ Saved';
+          setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
+        } catch {
+          btn.textContent = 'Error';
+          setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
+        }
+      });
+    });
+
+    // Open dev console links in Navio browser
+    container.querySelectorAll('.oauth-console-link').forEach((a) => {
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        const href = a.dataset.href;
+        if (href && typeof TabManager !== 'undefined') TabManager.createTab(href);
+      });
+    });
   }
 
   close(discardChanges) {

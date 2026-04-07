@@ -14,8 +14,19 @@ class ConnectorsManagerClass {
     this.hubVisible = false;
     this.activeTab = 'connections'; // 'connections' | 'launch'
 
-    // Which services have stored API keys (populated on init)
+    // Which services have stored API keys OR OAuth tokens (populated on init)
     this.connectedIds = new Set();
+
+    // OAuth provider status + config (populated on init)
+    this.oauthStatus = {};   // providerId → { connected, email, name, avatar }
+    this.oauthProviders = []; // array of provider config objects from main process
+
+    // Map: serviceId → oauthProviderId
+    this.serviceToOAuth = {
+      gmail: 'google', gdrive: 'google', gcalendar: 'google',
+      outlook: 'microsoft', onedrive: 'microsoft',
+      dropbox: 'dropbox', slack: 'slack', github: 'github', notion: 'notion'
+    };
 
     // ── Real API connectors — grouped by category ───────────────────────────
     // Each service has a token/key the user provides once.
@@ -317,6 +328,16 @@ class ConnectorsManagerClass {
       this.favorites = ['gmail', 'gdrive', 'dropbox', 'slack', 'notion', 'github', 'chatgpt'];
     }
 
+    // Load OAuth status and provider configs (for "Sign in with Google" buttons)
+    try {
+      const [oauthSt, oauthProv] = await Promise.all([
+        window.navio.oauthStatus(),
+        window.navio.oauthProvidersConfig()
+      ]);
+      this.oauthStatus = oauthSt || {};
+      this.oauthProviders = oauthProv || [];
+    } catch {}
+
     try {
       const keys = await window.navio.connectorGetKeys();
       this.connectedIds = new Set(Object.keys(keys).filter((k) => keys[k]));
@@ -326,6 +347,17 @@ class ConnectorsManagerClass {
 
     this.renderSidebarPins();
     this.bindEvents();
+  }
+
+  async _refreshOAuthState() {
+    try {
+      const [oauthSt, keys] = await Promise.all([
+        window.navio.oauthStatus(),
+        window.navio.connectorGetKeys()
+      ]);
+      this.oauthStatus = oauthSt || {};
+      this.connectedIds = new Set(Object.keys(keys).filter((k) => keys[k]));
+    } catch {}
   }
 
   bindEvents() {
@@ -489,12 +521,39 @@ class ConnectorsManagerClass {
     this._bindConnectionCards(container);
   }
 
+  _oauthProviderFor(serviceId) {
+    const pid = this.serviceToOAuth[serviceId];
+    if (!pid) return null;
+    return this.oauthProviders.find((p) => p.id === pid) || null;
+  }
+
   _integrationCardHTML(intg, isConnected) {
     const capsHTML = intg.capabilities
       .map((c) => `<span class="conn-cap-pill">${c}</span>`)
       .join('');
 
+    const oauthProvider = this._oauthProviderFor(intg.id);
+    const oauthEntry = oauthProvider ? this.oauthStatus[oauthProvider.id] : null;
+    const isOAuth = !!oauthProvider;
+
     if (isConnected) {
+      // For OAuth services, show which account is connected
+      let accountBadge = '';
+      if (isOAuth && oauthEntry?.email) {
+        const avatarHtml = oauthEntry.avatar
+          ? `<img class="conn-oauth-avatar" src="${oauthEntry.avatar}" alt="">`
+          : `<span class="conn-oauth-avatar-initials">${(oauthEntry.name || oauthEntry.email)[0].toUpperCase()}</span>`;
+        accountBadge = `
+          <div class="conn-oauth-account">
+            ${avatarHtml}
+            <span class="conn-oauth-email">${oauthEntry.email}</span>
+          </div>`;
+      }
+
+      // Disconnect target: provider for OAuth services, service for API-key services
+      const disconnectTarget = isOAuth ? oauthProvider.id : intg.id;
+      const disconnectType = isOAuth ? 'oauth' : 'key';
+
       return `
         <div class="conn-integration-card conn-integration-card--connected" data-id="${intg.id}">
           <div class="conn-intg-icon" style="background: ${intg.gradient}">
@@ -508,16 +567,49 @@ class ConnectorsManagerClass {
                 Connected
               </span>
             </div>
+            ${accountBadge}
             <p class="conn-intg-tagline">${intg.tagline}</p>
             <div class="conn-caps">${capsHTML}</div>
           </div>
-          <button class="conn-disconnect-btn" data-id="${intg.id}" title="Disconnect ${intg.name}">
+          <button class="conn-disconnect-btn" data-id="${disconnectTarget}" data-type="${disconnectType}" title="Disconnect">
             Disconnect
           </button>
         </div>
       `;
     }
 
+    // Not connected — show the right connect button
+    if (isOAuth) {
+      const p = oauthProvider;
+      const hasClientId = p.hasClientId;
+      const btnStyle = `background:${p.buttonColor};color:${p.buttonTextColor};${p.buttonBorder ? `border:${p.buttonBorder};` : 'border:none;'}`;
+
+      return `
+        <div class="conn-integration-card" data-id="${intg.id}">
+          <div class="conn-intg-icon" style="background: ${intg.gradient}">
+            <span>${intg.icon}</span>
+          </div>
+          <div class="conn-intg-body">
+            <div class="conn-intg-top">
+              <span class="conn-intg-name">${intg.name}</span>
+            </div>
+            <p class="conn-intg-tagline">${intg.tagline}</p>
+            <p class="conn-intg-desc">${intg.description}</p>
+            <div class="conn-caps">${capsHTML}</div>
+          </div>
+          ${hasClientId
+            ? `<button class="conn-oauth-btn" data-provider="${p.id}" data-service="${intg.id}" style="${btnStyle}">
+                 ${p.buttonLabel}
+               </button>`
+            : `<button class="conn-setup-btn" data-provider="${p.id}" title="Client ID not configured — click to set up">
+                 ⚙ Setup required
+               </button>`
+          }
+        </div>
+      `;
+    }
+
+    // API-key service (Perplexity, Linear, etc.)
     return `
       <div class="conn-integration-card" data-id="${intg.id}">
         <div class="conn-intg-icon" style="background: ${intg.gradient}">
@@ -537,21 +629,98 @@ class ConnectorsManagerClass {
   }
 
   _bindConnectionCards(container) {
+    // OAuth "Sign in with X" buttons
+    container.querySelectorAll('.conn-oauth-btn').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await this._handleOAuthConnect(btn.dataset.provider, btn.dataset.service, btn);
+      });
+    });
+
+    // "Setup required" button → open Settings → Connected Apps
+    container.querySelectorAll('.conn-setup-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.hideHub();
+        this._openConnectedAppsSettings(btn.dataset.provider);
+      });
+    });
+
+    // Legacy API-key connect button (Perplexity, Linear, etc.)
     container.querySelectorAll('.conn-connect-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const id = btn.dataset.id;
-        this.openConnectModal(id);
+        this.openConnectModal(btn.dataset.id);
       });
     });
 
     container.querySelectorAll('.conn-disconnect-btn').forEach((btn) => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const id = btn.dataset.id;
-        await this.disconnectService(id);
+        const { id, type } = btn.dataset;
+        await this.disconnectService(id, type);
       });
     });
+  }
+
+  async _handleOAuthConnect(providerId, serviceId, btn) {
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Connecting…';
+    }
+    try {
+      const result = await window.navio.oauthConnect(providerId);
+      if (result?.needsClientId) {
+        this._openConnectedAppsSettings(providerId);
+        return;
+      }
+      if (result?.error) {
+        // Don't alert on user-cancelled (they closed the window)
+        if (!result.error.includes('closed by user')) {
+          this._showConnectError(serviceId, result.error);
+        }
+        return;
+      }
+      // Success — refresh state and re-render
+      await this._refreshOAuthState();
+      this.renderConnectionsTab();
+      this.renderSidebarPins();
+    } catch (e) {
+      this._showConnectError(serviceId, e.message);
+    } finally {
+      if (btn && !btn.closest('.conn-integration-card--connected')) {
+        btn.disabled = false;
+        // Re-render will have replaced btn so no need to reset text
+      }
+    }
+  }
+
+  _showConnectError(serviceId, message) {
+    const card = document.querySelector(`.conn-integration-card[data-id="${serviceId}"]`);
+    if (!card) return;
+    let err = card.querySelector('.conn-card-error');
+    if (!err) {
+      err = document.createElement('div');
+      err.className = 'conn-card-error';
+      card.appendChild(err);
+    }
+    err.textContent = message;
+    setTimeout(() => err?.remove(), 6000);
+  }
+
+  _openConnectedAppsSettings(providerId) {
+    // Open the Settings panel and navigate to "Connected Apps" section
+    const settingsBtn = document.getElementById('btn-settings') || document.querySelector('[data-action="settings"]');
+    if (settingsBtn) settingsBtn.click();
+    setTimeout(() => {
+      const section = document.getElementById('settings-connected-apps');
+      if (section) {
+        section.scrollIntoView({ behavior: 'smooth' });
+        // Flash highlight
+        section.classList.add('settings-highlight');
+        setTimeout(() => section.classList.remove('settings-highlight'), 2000);
+      }
+    }, 300);
   }
 
   // ── Connect Modal ─────────────────────────────────────────────────────────
@@ -705,10 +874,16 @@ class ConnectorsManagerClass {
     }
   }
 
-  async disconnectService(serviceId) {
+  async disconnectService(id, type) {
     try {
-      await window.navio.connectorRemoveKey(serviceId);
-      this.connectedIds.delete(serviceId);
+      if (type === 'oauth') {
+        // Disconnect the OAuth provider (removes all services under it)
+        await window.navio.oauthDisconnect(id);
+      } else {
+        // Legacy API-key removal
+        await window.navio.connectorRemoveKey(id);
+      }
+      await this._refreshOAuthState();
       this.renderConnectionsTab();
       this.renderSidebarPins();
     } catch (e) {

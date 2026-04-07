@@ -1117,6 +1117,478 @@ ipcMain.handle('ledger-export', () => {
   }
 });
 
+// ─── OAuth 2.0 System ───────────────────────────────────────────────────────
+// PKCE-based OAuth for all services. User clicks "Sign in with Google / Microsoft
+// / etc." → a popup BrowserWindow opens the provider's real login page → user
+// approves → Electron intercepts the redirect callback URL before it hits the
+// network → exchanges the auth code for tokens → stores tokens encrypted via
+// safeStorage. Zero token pasting, zero API keys to copy anywhere.
+//
+// One-time setup required (done by the developer / app owner):
+//   • Register NavioBrowser in each provider's developer console
+//   • Add the client_id for each provider in Settings → Connected Apps
+//   • Redirect URI to register: http://127.0.0.1:56789/oauth/callback
+// ─────────────────────────────────────────────────────────────────────────────
+
+const OAUTH_REDIRECT_URI = 'http://127.0.0.1:56789/oauth/callback';
+
+const OAUTH_PROVIDERS = {
+  google: {
+    name: 'Google',
+    buttonLabel: 'Sign in with Google',
+    buttonColor: '#fff',
+    buttonTextColor: '#3c4043',
+    buttonBorder: '1px solid #dadce0',
+    logo: 'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg',
+    authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+    tokenUrl: 'https://oauth2.googleapis.com/token',
+    revokeUrl: 'https://oauth2.googleapis.com/revoke',
+    scopes: [
+      'openid', 'email', 'profile',
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/drive.readonly',
+      'https://www.googleapis.com/auth/calendar.readonly'
+    ],
+    serviceIds: ['gmail', 'gdrive', 'gcalendar'],
+    configKey: 'oauthGoogleClientId',
+    consoleUrl: 'https://console.cloud.google.com/apis/credentials',
+    consoleHint: 'Create an OAuth 2.0 Client ID (Desktop app type). Add redirect URI: http://127.0.0.1:56789/oauth/callback'
+  },
+  microsoft: {
+    name: 'Microsoft',
+    buttonLabel: 'Sign in with Microsoft',
+    buttonColor: '#2f2f2f',
+    buttonTextColor: '#fff',
+    logo: null,
+    authUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+    tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+    revokeUrl: null,
+    scopes: ['offline_access', 'openid', 'profile', 'email', 'Mail.Read', 'Files.Read', 'Calendars.Read'],
+    serviceIds: ['outlook', 'onedrive'],
+    configKey: 'oauthMicrosoftClientId',
+    consoleUrl: 'https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/CreateApplicationBlade',
+    consoleHint: 'Register a new app, select "Personal Microsoft accounts only", add redirect URI http://127.0.0.1:56789/oauth/callback (type: Web)'
+  },
+  dropbox: {
+    name: 'Dropbox',
+    buttonLabel: 'Connect Dropbox',
+    buttonColor: '#0061ff',
+    buttonTextColor: '#fff',
+    logo: null,
+    authUrl: 'https://www.dropbox.com/oauth2/authorize',
+    tokenUrl: 'https://api.dropboxapi.com/oauth2/token',
+    revokeUrl: null,
+    scopes: ['files.metadata.read', 'files.content.read'],
+    serviceIds: ['dropbox'],
+    configKey: 'oauthDropboxAppKey',
+    consoleUrl: 'https://www.dropbox.com/developers/apps',
+    consoleHint: 'Create an app, choose "Scoped access" + "Full Dropbox", add http://127.0.0.1:56789/oauth/callback as redirect URI'
+  },
+  slack: {
+    name: 'Slack',
+    buttonLabel: 'Sign in with Slack',
+    buttonColor: '#4a154b',
+    buttonTextColor: '#fff',
+    logo: null,
+    authUrl: 'https://slack.com/oauth/v2/authorize',
+    tokenUrl: 'https://slack.com/api/oauth.v2.access',
+    revokeUrl: null,
+    scopes: ['channels:read', 'search:read', 'users:read'],
+    serviceIds: ['slack'],
+    configKey: 'oauthSlackClientId',
+    consoleUrl: 'https://api.slack.com/apps',
+    consoleHint: 'Create an app, add OAuth redirect URL http://127.0.0.1:56789/oauth/callback, request scopes: channels:read, search:read'
+  },
+  github: {
+    name: 'GitHub',
+    buttonLabel: 'Sign in with GitHub',
+    buttonColor: '#24292e',
+    buttonTextColor: '#fff',
+    logo: null,
+    authUrl: 'https://github.com/login/oauth/authorize',
+    tokenUrl: 'https://github.com/login/oauth/access_token',
+    revokeUrl: null,
+    scopes: ['repo', 'read:user'],
+    serviceIds: ['github'],
+    configKey: 'oauthGithubClientId',
+    consoleUrl: 'https://github.com/settings/applications/new',
+    consoleHint: 'Register a new OAuth App. Homepage URL: http://localhost, Callback URL: http://127.0.0.1:56789/oauth/callback'
+  },
+  notion: {
+    name: 'Notion',
+    buttonLabel: 'Connect Notion',
+    buttonColor: '#fff',
+    buttonTextColor: '#111',
+    buttonBorder: '1px solid #e5e5e5',
+    logo: null,
+    authUrl: 'https://api.notion.com/v1/oauth/authorize',
+    tokenUrl: 'https://api.notion.com/v1/oauth/token',
+    revokeUrl: null,
+    scopes: [],
+    serviceIds: ['notion'],
+    configKey: 'oauthNotionClientId',
+    consoleUrl: 'https://www.notion.so/my-integrations',
+    consoleHint: 'Create an integration, set type to "Public", add redirect URI http://127.0.0.1:56789/oauth/callback'
+  }
+};
+
+// ── PKCE helpers ──────────────────────────────────────────────────────────
+function _oauthGenerateVerifier() {
+  return crypto.randomBytes(32).toString('base64url');
+}
+
+function _oauthGenerateChallenge(verifier) {
+  return crypto.createHash('sha256').update(verifier).digest('base64url');
+}
+
+// ── Token storage (shares safeStorage with connector keys) ────────────────
+function oauthTokensPath() {
+  return path.join(app.getPath('userData'), 'navio-oauth-tokens.json');
+}
+
+function loadOAuthTokens() {
+  const p = oauthTokensPath();
+  if (!fs.existsSync(p)) return {};
+  try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch { return {}; }
+}
+
+function saveOAuthTokens(map) {
+  fs.writeFileSync(oauthTokensPath(), JSON.stringify(map, null, 2));
+}
+
+function encryptOAuthToken(val) {
+  const { safeStorage } = require('electron');
+  if (safeStorage.isEncryptionAvailable()) return safeStorage.encryptString(val).toString('base64');
+  return Buffer.from(val, 'utf8').toString('base64');
+}
+
+function decryptOAuthToken(b64) {
+  const { safeStorage } = require('electron');
+  const buf = Buffer.from(b64, 'base64');
+  try {
+    if (safeStorage.isEncryptionAvailable()) return safeStorage.decryptString(buf);
+    return buf.toString('utf8');
+  } catch { return ''; }
+}
+
+function storeOAuthTokenData(providerId, data) {
+  const map = loadOAuthTokens();
+  map[providerId] = {
+    access: encryptOAuthToken(data.access_token || ''),
+    refresh: encryptOAuthToken(data.refresh_token || ''),
+    expiresAt: data.expires_in ? Date.now() + data.expires_in * 1000 - 60000 : 0,
+    email: data.email || '',
+    name: data.name || '',
+    avatar: data.avatar || ''
+  };
+  saveOAuthTokens(map);
+}
+
+function getOAuthAccessToken(providerId) {
+  const map = loadOAuthTokens();
+  const entry = map[providerId];
+  if (!entry) return null;
+  return decryptOAuthToken(entry.access);
+}
+
+async function refreshOAuthToken(providerId) {
+  const map = loadOAuthTokens();
+  const entry = map[providerId];
+  if (!entry) return null;
+
+  const provider = OAUTH_PROVIDERS[providerId];
+  if (!provider || !provider.tokenUrl) return null;
+
+  const refreshToken = decryptOAuthToken(entry.refresh);
+  if (!refreshToken) return null;
+
+  const cfg = loadConfig();
+  const clientId = cfg[provider.configKey] || '';
+  if (!clientId) return null;
+
+  try {
+    const params = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: clientId
+    });
+    const res = await fetch(provider.tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString()
+    });
+    const data = await res.json();
+    if (data.access_token) {
+      map[providerId].access = encryptOAuthToken(data.access_token);
+      if (data.refresh_token) map[providerId].refresh = encryptOAuthToken(data.refresh_token);
+      map[providerId].expiresAt = data.expires_in ? Date.now() + data.expires_in * 1000 - 60000 : 0;
+      saveOAuthTokens(map);
+      return data.access_token;
+    }
+  } catch {}
+  return null;
+}
+
+async function getValidOAuthToken(providerId) {
+  const map = loadOAuthTokens();
+  const entry = map[providerId];
+  if (!entry) return null;
+  // If not expired or no expiry set, return current token
+  if (!entry.expiresAt || Date.now() < entry.expiresAt) {
+    return decryptOAuthToken(entry.access);
+  }
+  // Expired — try to refresh
+  return await refreshOAuthToken(providerId);
+}
+
+// Fetch user profile info after connecting (Google, Microsoft, GitHub, etc.)
+async function fetchOAuthUserInfo(providerId, accessToken) {
+  try {
+    if (providerId === 'google') {
+      const r = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      const d = await r.json();
+      return { email: d.email || '', name: d.name || '', avatar: d.picture || '' };
+    }
+    if (providerId === 'microsoft') {
+      const r = await fetch('https://graph.microsoft.com/v1.0/me', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      const d = await r.json();
+      return { email: d.mail || d.userPrincipalName || '', name: d.displayName || '', avatar: '' };
+    }
+    if (providerId === 'github') {
+      const r = await fetch('https://api.github.com/user', {
+        headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/vnd.github+json' }
+      });
+      const d = await r.json();
+      return { email: d.email || d.login || '', name: d.name || d.login || '', avatar: d.avatar_url || '' };
+    }
+    if (providerId === 'slack') {
+      const r = await fetch('https://slack.com/api/users.identity', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      const d = await r.json();
+      return { email: d.user?.email || '', name: d.user?.name || '', avatar: d.user?.image_72 || '' };
+    }
+  } catch {}
+  return { email: '', name: '', avatar: '' };
+}
+
+// ── IPC: oauth-connect ────────────────────────────────────────────────────
+// Opens a popup BrowserWindow with the provider's login page.
+// Intercepts the redirect callback URL, exchanges code for tokens, stores them.
+ipcMain.handle('oauth-connect', async (event, { providerId }) => {
+  const provider = OAUTH_PROVIDERS[providerId];
+  if (!provider) return { error: `Unknown provider: ${providerId}` };
+
+  const cfg = loadConfig();
+  const clientId = (cfg[provider.configKey] || '').trim();
+  if (!clientId) {
+    return {
+      error: `No client ID configured for ${provider.name}.`,
+      needsClientId: true,
+      consoleUrl: provider.consoleUrl,
+      consoleHint: provider.consoleHint,
+      configKey: provider.configKey,
+      providerName: provider.name
+    };
+  }
+
+  const verifier = _oauthGenerateVerifier();
+  const challenge = _oauthGenerateChallenge(verifier);
+  const state = crypto.randomBytes(16).toString('hex');
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: OAUTH_REDIRECT_URI,
+    response_type: 'code',
+    state,
+    code_challenge: challenge,
+    code_challenge_method: 'S256'
+  });
+
+  if (provider.scopes && provider.scopes.length > 0) {
+    params.set('scope', provider.scopes.join(' '));
+  }
+
+  // Notion and Dropbox need extra params
+  if (providerId === 'notion') {
+    params.set('owner', 'user');
+    params.set('response_type', 'code');
+  }
+  if (providerId === 'dropbox') {
+    params.set('token_access_type', 'offline');
+  }
+
+  const authUrl = `${provider.authUrl}?${params.toString()}`;
+
+  return new Promise((resolve) => {
+    const authWin = new BrowserWindow({
+      width: 500,
+      height: 680,
+      show: true,
+      modal: false,
+      autoHideMenuBar: true,
+      title: `Sign in with ${provider.name}`,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true
+      }
+    });
+
+    let settled = false;
+    const settle = (result) => {
+      if (settled) return;
+      settled = true;
+      try { if (!authWin.isDestroyed()) authWin.close(); } catch {}
+      resolve(result);
+    };
+
+    const interceptCallback = async (url) => {
+      if (!url.startsWith(OAUTH_REDIRECT_URI)) return false;
+      const parsed = new URL(url);
+      const code = parsed.searchParams.get('code');
+      const returnedState = parsed.searchParams.get('state');
+      const error = parsed.searchParams.get('error');
+
+      if (error) { settle({ error: parsed.searchParams.get('error_description') || error }); return true; }
+      if (returnedState !== state) { settle({ error: 'State mismatch — possible CSRF attempt.' }); return true; }
+      if (!code) { settle({ error: 'No authorization code received.' }); return true; }
+
+      // Exchange code for tokens
+      try {
+        const tokenParams = new URLSearchParams({
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: OAUTH_REDIRECT_URI,
+          client_id: clientId,
+          code_verifier: verifier
+        });
+
+        let tokenRes, tokenData;
+        if (providerId === 'github') {
+          tokenRes = await fetch(provider.tokenUrl, {
+            method: 'POST',
+            headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: tokenParams.toString()
+          });
+        } else if (providerId === 'notion') {
+          // Notion uses Basic auth with client_id:client_secret (no PKCE)
+          tokenRes = await fetch(provider.tokenUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Basic ${Buffer.from(`${clientId}:`).toString('base64')}`
+            },
+            body: JSON.stringify({ grant_type: 'authorization_code', code, redirect_uri: OAUTH_REDIRECT_URI })
+          });
+        } else {
+          tokenRes = await fetch(provider.tokenUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: tokenParams.toString()
+          });
+        }
+
+        tokenData = await tokenRes.json();
+        if (tokenData.error || !tokenData.access_token) {
+          settle({ error: tokenData.error_description || tokenData.error || 'Token exchange failed' });
+          return true;
+        }
+
+        // Fetch user profile
+        const userInfo = await fetchOAuthUserInfo(providerId, tokenData.access_token);
+        storeOAuthTokenData(providerId, { ...tokenData, ...userInfo });
+
+        settle({ ok: true, providerId, email: userInfo.email, name: userInfo.name, avatar: userInfo.avatar });
+      } catch (e) {
+        settle({ error: e.message });
+      }
+      return true;
+    };
+
+    authWin.webContents.on('will-navigate', (ev, url) => {
+      if (interceptCallback(url)) ev.preventDefault();
+    });
+    authWin.webContents.on('will-redirect', (ev, url) => {
+      if (url.startsWith(OAUTH_REDIRECT_URI)) {
+        interceptCallback(url);
+        ev.preventDefault();
+      }
+    });
+    authWin.on('closed', () => settle({ error: 'Login window closed by user.' }));
+
+    authWin.loadURL(authUrl);
+  });
+});
+
+// ── IPC: oauth-disconnect ─────────────────────────────────────────────────
+ipcMain.handle('oauth-disconnect', (event, { providerId }) => {
+  try {
+    const map = loadOAuthTokens();
+    const provider = OAUTH_PROVIDERS[providerId];
+    const entry = map[providerId];
+
+    // Best-effort revoke
+    if (entry && provider?.revokeUrl) {
+      const token = decryptOAuthToken(entry.access);
+      fetch(provider.revokeUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ token }).toString()
+      }).catch(() => {});
+    }
+
+    delete map[providerId];
+    saveOAuthTokens(map);
+    return { ok: true };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
+// ── IPC: oauth-status ─────────────────────────────────────────────────────
+// Returns which providers are connected + display info (email, avatar).
+// Never exposes actual tokens.
+ipcMain.handle('oauth-status', () => {
+  try {
+    const map = loadOAuthTokens();
+    const result = {};
+    for (const [id, entry] of Object.entries(map)) {
+      result[id] = {
+        connected: true,
+        email: entry.email || '',
+        name: entry.name || '',
+        avatar: entry.avatar || '',
+        expired: entry.expiresAt > 0 && Date.now() > entry.expiresAt
+      };
+    }
+    return result;
+  } catch { return {}; }
+});
+
+// ── IPC: oauth-providers-config ───────────────────────────────────────────
+// Returns provider metadata needed for the UI (no tokens, no secrets).
+ipcMain.handle('oauth-providers-config', () => {
+  const cfg = loadConfig();
+  return Object.entries(OAUTH_PROVIDERS).map(([id, p]) => ({
+    id,
+    name: p.name,
+    buttonLabel: p.buttonLabel,
+    buttonColor: p.buttonColor,
+    buttonTextColor: p.buttonTextColor,
+    buttonBorder: p.buttonBorder || null,
+    serviceIds: p.serviceIds,
+    configKey: p.configKey,
+    hasClientId: !!(cfg[p.configKey] || '').trim(),
+    consoleUrl: p.consoleUrl,
+    consoleHint: p.consoleHint
+  }));
+});
+
 // ─── Connector Integrations ─────────────────────────────────────────────────
 // Stores per-service API keys encrypted with safeStorage (or base64 fallback).
 // Keys are never exposed to the renderer — only a boolean "has key" map is returned.
@@ -1177,10 +1649,25 @@ ipcMain.handle('connector-save-key', (event, { serviceId, apiKey }) => {
 
 ipcMain.handle('connector-get-keys', () => {
   try {
-    const map = loadConnectorKeys();
     const result = {};
-    for (const id of Object.keys(map)) {
-      result[id] = !!map[id];
+    // Include manually stored API keys
+    const map = loadConnectorKeys();
+    for (const id of Object.keys(map)) result[id] = !!map[id];
+
+    // Also include services covered by OAuth tokens
+    const oauthServiceMap = {
+      google: ['gmail', 'gdrive', 'gcalendar'],
+      microsoft: ['outlook', 'onedrive'],
+      dropbox: ['dropbox'],
+      slack: ['slack'],
+      github: ['github'],
+      notion: ['notion']
+    };
+    const oauthTokens = loadOAuthTokens();
+    for (const [providerId, serviceIds] of Object.entries(oauthServiceMap)) {
+      if (oauthTokens[providerId]) {
+        for (const svcId of serviceIds) result[svcId] = true;
+      }
     }
     return result;
   } catch {
@@ -1201,22 +1688,34 @@ ipcMain.handle('connector-remove-key', (event, { serviceId }) => {
 
 ipcMain.handle('connector-query', async (event, { serviceId, query, options }) => {
   try {
-    const map = loadConnectorKeys();
-    if (!map[serviceId]) return { error: 'Service not connected' };
-    const apiKey = decryptConnectorKey(map[serviceId]);
-    if (!apiKey) return { error: 'Could not read stored key' };
+    // Check OAuth tokens first (Google, Microsoft, Dropbox, Slack, GitHub, Notion)
+    const oauthProviderForService = {
+      gmail: 'google', gdrive: 'google', gcalendar: 'google',
+      outlook: 'microsoft', onedrive: 'microsoft',
+      dropbox: 'dropbox', slack: 'slack', github: 'github', notion: 'notion'
+    };
+    const oauthProviderId = oauthProviderForService[serviceId];
+    let token = oauthProviderId ? await getValidOAuthToken(oauthProviderId) : null;
 
-    if (serviceId === 'github') return await queryGitHub(apiKey, query, options);
-    if (serviceId === 'notion') return await queryNotion(apiKey, query, options);
-    if (serviceId === 'perplexity') return await queryPerplexity(apiKey, query, options);
-    if (serviceId === 'linear') return await queryLinear(apiKey, query, options);
-    if (serviceId === 'gmail') return await queryGmail(apiKey, query, options);
-    if (serviceId === 'gdrive') return await queryGoogleDrive(apiKey, query, options);
-    if (serviceId === 'gcalendar') return await queryGoogleCalendar(apiKey, query, options);
-    if (serviceId === 'dropbox') return await queryDropbox(apiKey, query, options);
-    if (serviceId === 'onedrive') return await queryOneDrive(apiKey, query, options);
-    if (serviceId === 'slack') return await querySlack(apiKey, query, options);
-    if (serviceId === 'outlook') return await queryOutlook(apiKey, query, options);
+    // Fall back to manually stored API key if no OAuth token
+    if (!token) {
+      const map = loadConnectorKeys();
+      if (map[serviceId]) token = decryptConnectorKey(map[serviceId]);
+    }
+
+    if (!token) return { error: 'Service not connected — click Connect in the Connectors Hub.' };
+
+    if (serviceId === 'github') return await queryGitHub(token, query, options);
+    if (serviceId === 'notion') return await queryNotion(token, query, options);
+    if (serviceId === 'perplexity') return await queryPerplexity(token, query, options);
+    if (serviceId === 'linear') return await queryLinear(token, query, options);
+    if (serviceId === 'gmail') return await queryGmail(token, query, options);
+    if (serviceId === 'gdrive') return await queryGoogleDrive(token, query, options);
+    if (serviceId === 'gcalendar') return await queryGoogleCalendar(token, query, options);
+    if (serviceId === 'dropbox') return await queryDropbox(token, query, options);
+    if (serviceId === 'onedrive') return await queryOneDrive(token, query, options);
+    if (serviceId === 'slack') return await querySlack(token, query, options);
+    if (serviceId === 'outlook') return await queryOutlook(token, query, options);
     return { error: `No query handler for service: ${serviceId}` };
   } catch (e) {
     return { error: e.message };

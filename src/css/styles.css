@@ -5208,6 +5208,178 @@ body.onboarding-active #app {
 
 /* ── End Batch Draft Modal ─────────────────────────────────────────────── */
 
+/* ── OAuth Connect Buttons (Connectors Hub) ────────────────────────────── */
+.conn-oauth-btn {
+  display: block;
+  width: 100%;
+  padding: 9px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: opacity 0.15s, transform 0.15s;
+  margin-top: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.conn-oauth-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+.conn-oauth-btn:active { transform: translateY(0); }
+.conn-oauth-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+
+.conn-setup-btn {
+  display: block;
+  width: 100%;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  background: var(--bg-surface, #1a2540);
+  color: var(--text-secondary);
+  border: 1px dashed var(--glass-border, rgba(255,255,255,0.15));
+  transition: opacity 0.15s, border-color 0.15s;
+  margin-top: 10px;
+}
+.conn-setup-btn:hover { border-color: var(--text-accent, #00d8ff); color: var(--text-accent, #00d8ff); }
+
+.conn-oauth-account {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 6px;
+}
+.conn-oauth-avatar {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.conn-oauth-avatar-initials {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--text-accent, #00d8ff);
+  color: #000;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.conn-oauth-email {
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conn-card-error {
+  font-size: 11px;
+  color: var(--text-danger, #ff5a5f);
+  margin-top: 6px;
+  padding: 4px 8px;
+  background: rgba(255, 90, 95, 0.1);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 90, 95, 0.2);
+}
+
+/* ── OAuth Client ID Settings ────────────────────────────────────────────── */
+.oauth-setup-loading {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 8px 0;
+}
+
+.oauth-provider-row {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--glass-border, rgba(255,255,255,0.06));
+}
+.oauth-provider-row:last-child { border-bottom: none; }
+
+.oauth-provider-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.oauth-provider-label strong { font-size: 13px; color: var(--text-primary); }
+.oauth-provider-services {
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+.oauth-provider-input-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.oauth-client-id-input {
+  flex: 1;
+  background: var(--bg-surface, #1a2540);
+  border: 1px solid var(--glass-border, rgba(255,255,255,0.1));
+  border-radius: 7px;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: var(--text-primary);
+  font-family: 'Courier New', monospace;
+}
+.oauth-client-id-input:focus {
+  outline: none;
+  border-color: var(--text-accent, #00d8ff);
+}
+.oauth-client-id-save-btn {
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--text-accent, #00d8ff);
+  color: #000;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+.oauth-client-id-save-btn:hover { opacity: 0.85; }
+.oauth-client-id-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.oauth-provider-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.oauth-console-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-accent, #00d8ff);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.oauth-console-link:hover { text-decoration: underline; }
+.oauth-console-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+  line-height: 1.4;
+}
+
+/* Settings highlight animation (used when jumping to a section) */
+.settings-highlight {
+  animation: settings-pulse 0.6s ease-out 3;
+}
+@keyframes settings-pulse {
+  0%, 100% { background: transparent; }
+  50% { background: rgba(0, 216, 255, 0.06); border-radius: 8px; }
+}
+/* ── End OAuth Styles ────────────────────────────────────────────────────── */
+
 .live-settings-footer {
   display: flex;
   align-items: center;

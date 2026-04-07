@@ -72,5 +72,11 @@ contextBridge.exposeInMainWorld('navio', {
   connectorRemoveKey: (serviceId) => ipcRenderer.invoke('connector-remove-key', { serviceId }),
   connectorQuery: (serviceId, query, options) => ipcRenderer.invoke('connector-query', { serviceId, query, options }),
 
-  scanEmailInbox: (webContentsId) => ipcRenderer.invoke('scan-email-inbox', { webContentsId })
+  scanEmailInbox: (webContentsId) => ipcRenderer.invoke('scan-email-inbox', { webContentsId }),
+
+  // OAuth 2.0 — "Sign in with Google / Microsoft / etc." flow
+  oauthConnect: (providerId) => ipcRenderer.invoke('oauth-connect', { providerId }),
+  oauthDisconnect: (providerId) => ipcRenderer.invoke('oauth-disconnect', { providerId }),
+  oauthStatus: () => ipcRenderer.invoke('oauth-status'),
+  oauthProvidersConfig: () => ipcRenderer.invoke('oauth-providers-config')
 });
