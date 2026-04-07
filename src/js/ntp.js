@@ -511,13 +511,15 @@ const NTP = (() => {
       const imapSt = await window.navio.imapStatus();
       const pills = [];
 
+      const SVC_FAVICON = {
+        gmail:   'https://www.google.com/s2/favicons?domain=mail.google.com&sz=64',
+        outlook: 'https://www.google.com/s2/favicons?domain=outlook.live.com&sz=64',
+      };
+
       for (const [svcId, info] of Object.entries(imapSt || {})) {
         if (!info.connected) continue;
         const label = svcId === 'gmail' ? 'Gmail' : 'Outlook';
-        const grad = svcId === 'gmail'
-          ? 'linear-gradient(135deg,#ea4335,#fbbc04)'
-          : 'linear-gradient(135deg,#0078d4,#00bcf2)';
-        pills.push({ id: svcId, label, email: info.email, gradient: grad });
+        pills.push({ id: svcId, label, email: info.email, favicon: SVC_FAVICON[svcId] || '' });
       }
 
       if (pills.length === 0) { bar.style.display = 'none'; return; }
@@ -528,7 +530,7 @@ const NTP = (() => {
         el.className = 'ntp-service-pill';
         el.dataset.id = pill.id;
         el.innerHTML = `
-          <span class="ntp-svc-dot" style="background:${pill.gradient}"></span>
+          ${pill.favicon ? `<img class="ntp-svc-logo" src="${pill.favicon}" alt="${pill.label}">` : `<span class="ntp-svc-dot"></span>`}
           <span class="ntp-svc-label">${pill.label}</span>
           <span class="ntp-svc-email">${pill.email}</span>
           <span class="ntp-svc-count" id="ntp-svc-count-${pill.id}" style="display:none"></span>

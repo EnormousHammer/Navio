@@ -991,6 +991,7 @@ body.tabstrip-hidden .tab-strip-show {
   cursor: default;
 }
 .ntp-svc-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.ntp-svc-logo { width: 14px; height: 14px; object-fit: contain; border-radius: 3px; flex-shrink: 0; }
 .ntp-svc-label { font-weight: 600; color: var(--ntp-text); }
 .ntp-svc-email { opacity: 0.6; font-size: 10.5px; }
 .ntp-svc-count {
@@ -1725,38 +1726,36 @@ body.tabstrip-hidden .tab-strip-show {
 .ntp-shortcut:hover { transform: translateY(-3px); }
 
 .shortcut-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.1);
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.13);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
-  font-weight: 800;
-  color: white;
+  padding: 10px;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08);
-  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.10);
+  backdrop-filter: blur(12px);
+  overflow: hidden;
 }
 
-.si-google { background: linear-gradient(135deg, #4285f4, #34a853); }
-.si-gmail  { background: linear-gradient(135deg, #ea4335, #fbbc04); }
-.si-drive  { background: linear-gradient(135deg, #4285f4, #34a853); }
-.si-youtube { background: linear-gradient(135deg, #ff0000, #cc0000); }
-.si-github { background: linear-gradient(135deg, #333, #555); }
-.si-x { background: linear-gradient(135deg, #222, #444); }
-.si-reddit { background: linear-gradient(135deg, #ff4500, #ff6a33); }
-.si-ai { background: var(--gradient-primary); }
+.shortcut-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+}
 
-.ntp-shortcut:hover { transform: translateY(-3px); }
+.ntp-shortcut:hover { transform: translateY(-4px); }
 .ntp-shortcut:hover .shortcut-icon {
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.15);
-  border-color: rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.16);
+  box-shadow: 0 10px 28px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.18);
+  border-color: rgba(255,255,255,0.22);
 }
 
-.ntp-shortcut span { font-size: 11px; color: rgba(226,232,248,0.45); }
+.ntp-shortcut span { font-size: 11px; color: rgba(226,232,248,0.50); }
 
 .ntp-tip {
   color: var(--text-tertiary);
@@ -2889,6 +2888,14 @@ body.tabstrip-hidden .loading-indicator {
   font-weight: 900;
   color: white;
   letter-spacing: -0.3px;
+}
+
+.conn-svc-logo {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  border-radius: 4px;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.35));
 }
 
 .connector-card-info {
