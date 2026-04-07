@@ -3176,6 +3176,24 @@ body.onboarding-active #app {
   color: var(--text-secondary);
 }
 
+/* ── Agent loop continue pill ── */
+.navio-continue-pill {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 13px;
+  margin: 2px auto;
+  background: var(--accent-glow);
+  border: 1px solid rgba(0, 216, 255, 0.25);
+  border-radius: var(--radius-full);
+  font-size: 11.5px;
+  color: var(--accent);
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  animation: context-pulse 1.8s infinite;
+}
+
 /* ── Browser action cards ── */
 .browser-action-card {
   display: flex;

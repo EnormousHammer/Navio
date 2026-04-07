@@ -14,6 +14,7 @@ class AssistantManagerClass {
     this.isProcessing = false;
     this.conversationHistory = [];
     this._streamUnsubs = [];
+    this._autoFollowCount = 0;
 
     this.systemPrompt = `You are Navio, an intelligent AI assistant built into the Navio Browser. You help users browse the web efficiently, understand content, and automate tasks.
 
@@ -144,6 +145,7 @@ PERSONALITY:
     const text = this.inputEl.value.trim();
     if (!text || this.isProcessing) return;
 
+    this._autoFollowCount = 0; // reset agent loop on new user message
     this.inputEl.value = '';
     this.inputEl.style.height = 'auto';
 
@@ -329,10 +331,15 @@ PERSONALITY:
           this.addMessage('assistant', result.error, 'error');
         } else {
           this.addMessage('assistant', result.content);
-          this.conversationHistory.push(
-            { role: 'user', content: userHistory },
-            { role: 'assistant', content: result.content }
-          );
+          if (userHistory) {
+            this.conversationHistory.push(
+              { role: 'user', content: userHistory },
+              { role: 'assistant', content: result.content }
+            );
+          } else {
+            // Auto-follow-up: only store the AI turn so context is preserved
+            this.conversationHistory.push({ role: 'assistant', content: result.content });
+          }
           this._trimHistory();
           await window.navio.contextGraph({
             op: 'addTurn',
@@ -567,6 +574,12 @@ PERSONALITY:
       if (result && result.success) {
         card.classList.add('bac-done');
         card.querySelector('.bac-btns').innerHTML = '<span class="bac-status bac-ok">Done ✓</span>';
+        // Only trigger smart follow-up if this is the LAST pending action card in the message
+        const msgEl = card.closest('.message');
+        const pendingCards = msgEl ? msgEl.querySelectorAll('.browser-action-card:not(.bac-done):not(.bac-skipped):not(.bac-error)').length : 0;
+        if (pendingCards === 0) {
+          setTimeout(() => this._smartFollowUp(), 1800);
+        }
       } else {
         card.classList.add('bac-error');
         card.querySelector('.bac-btns').innerHTML = `<span class="bac-status">${result?.error || 'Failed'}</span>`;
@@ -575,6 +588,52 @@ PERSONALITY:
       card.classList.add('bac-error');
       card.querySelector('.bac-btns').innerHTML = `<span class="bac-status">${err.message || 'Error'}</span>`;
     }
+  }
+
+  async _smartFollowUp() {
+    const MAX_AUTO_STEPS = 8;
+    if (this.isProcessing || this._autoFollowCount >= MAX_AUTO_STEPS) {
+      if (this._autoFollowCount >= MAX_AUTO_STEPS) {
+        this._addContinuePill('Auto-continue limit reached. Tell me what to do next.');
+        this._autoFollowCount = 0;
+      }
+      return;
+    }
+    this._autoFollowCount++;
+
+    // Let the page settle (especially after navigation)
+    await new Promise((r) => setTimeout(r, 600));
+
+    let pageInfo = '';
+    try {
+      const page = await TabManager.getActivePageContent();
+      if (page && !page.error) {
+        const excerpt = (page.text || '').slice(0, 3000);
+        pageInfo = `Title: ${page.title}\nURL: ${page.url}\n\nPage content (excerpt):\n${excerpt}`;
+      }
+    } catch { /* ignore */ }
+
+    if (!pageInfo) {
+      this._addContinuePill('Could not read page — tell me what to do next.');
+      return;
+    }
+
+    const followUpText = `[Action completed. Current page state below — continue the task if more steps are needed, or summarize completion if done.]\n\n${pageInfo}`;
+
+    this._addContinuePill('↻ Reading page…');
+    await this.processMessage(followUpText, true, null);
+    // Remove the "reading" pill once the response is rendered
+    document.getElementById('navio-continue-pill')?.remove();
+  }
+
+  _addContinuePill(text) {
+    document.getElementById('navio-continue-pill')?.remove();
+    const pill = document.createElement('div');
+    pill.id = 'navio-continue-pill';
+    pill.className = 'navio-continue-pill';
+    pill.textContent = text;
+    this.messagesEl.appendChild(pill);
+    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
   }
 
   showTypingIndicator() {
