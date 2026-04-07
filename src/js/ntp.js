@@ -512,7 +512,7 @@ const NTP = (() => {
       const pills = [];
 
       const SVC_FAVICON = {
-        gmail:   'https://www.google.com/s2/favicons?domain=mail.google.com&sz=64',
+        gmail:   'https://www.gstatic.com/images/icons/material/product/2x/gmail_48dp.png',
         outlook: 'https://www.google.com/s2/favicons?domain=outlook.live.com&sz=64',
       };
 
