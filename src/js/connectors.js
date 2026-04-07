@@ -51,6 +51,8 @@ class ConnectorsManagerClass {
         tagline: 'Read, search and draft emails',
         description: 'Connect Gmail with your email and password. Works in the background — no tab needs to be open. AI can search your inbox and create drafts directly.',
         icon: 'M',
+        logo: 'https://www.gstatic.com/images/icons/material/product/2x/gmail_48dp.png',
+        logoBg: '#ffffff',
         gradient: 'linear-gradient(135deg, #ea4335, #fbbc04)',
         connectionType: 'imap',
         imapServiceId: 'gmail',
@@ -63,6 +65,8 @@ class ConnectorsManagerClass {
         tagline: 'Read, search and draft emails',
         description: 'Connect Outlook with your Microsoft email and password. Works in the background without any open tab. AI can search your inbox and create drafts.',
         icon: 'O',
+        logo: 'https://cdn.simpleicons.org/microsoftoutlook/0078d4',
+        logoBg: '#ffffff',
         gradient: 'linear-gradient(135deg, #0078d4, #00bcf2)',
         connectionType: 'imap',
         imapServiceId: 'outlook',
@@ -77,6 +81,8 @@ class ConnectorsManagerClass {
         tagline: 'Search files and documents',
         description: 'Connect Google Drive so the AI can find your files and documents. Ask "find the Q3 report" or "show recent spreadsheets."',
         icon: 'GD',
+        logo: 'https://www.gstatic.com/images/icons/material/product/2x/drive_48dp.png',
+        logoBg: '#ffffff',
         gradient: 'linear-gradient(135deg, #4285f4, #34a853)',
         keyLabel: 'Google Access Token',
         keyPlaceholder: 'ya29.a0...',
@@ -91,6 +97,8 @@ class ConnectorsManagerClass {
         tagline: 'Search files in your Dropbox',
         description: 'Connect Dropbox so the AI can search through your stored files and folders. Ask "find the presentation from last month" or "search for invoices."',
         icon: 'D',
+        logo: 'https://cdn.simpleicons.org/dropbox/0061fe',
+        logoBg: '#ffffff',
         gradient: 'linear-gradient(135deg, #0061fe, #0090ff)',
         keyLabel: 'Access Token',
         keyPlaceholder: 'sl.u.A...',
@@ -105,6 +113,8 @@ class ConnectorsManagerClass {
         tagline: 'Search files in OneDrive',
         description: 'Connect OneDrive so the AI can search your Microsoft files and documents. Pairs well with Outlook for full Microsoft 365 coverage.',
         icon: 'OD',
+        logo: 'https://cdn.simpleicons.org/microsoftonedrive/0078d4',
+        logoBg: '#ffffff',
         gradient: 'linear-gradient(135deg, #0078d4, #28a8ea)',
         keyLabel: 'Microsoft Graph Access Token',
         keyPlaceholder: 'eyJ0eXAi...',
@@ -121,6 +131,8 @@ class ConnectorsManagerClass {
         tagline: 'Search messages across your workspace',
         description: 'Connect Slack so the AI can search your messages and channels. Ask "find conversations about the launch" or "search for messages from the design team."',
         icon: 'S',
+        logo: 'https://cdn.simpleicons.org/slack/4a154b',
+        logoBg: '#ffffff',
         gradient: 'linear-gradient(135deg, #4a154b, #e01e5a)',
         keyLabel: 'User OAuth Token',
         keyPlaceholder: 'xoxp-...',
@@ -137,6 +149,8 @@ class ConnectorsManagerClass {
         tagline: 'Find events and upcoming meetings',
         description: 'Connect Google Calendar so the AI knows your schedule. Ask "what meetings do I have this week?" or "find events about the product review."',
         icon: 'GC',
+        logo: 'https://www.gstatic.com/images/icons/material/product/2x/calendar_48dp.png',
+        logoBg: '#ffffff',
         gradient: 'linear-gradient(135deg, #4285f4, #7baaf7)',
         keyLabel: 'Google Access Token',
         keyPlaceholder: 'ya29.a0...',
@@ -151,6 +165,8 @@ class ConnectorsManagerClass {
         tagline: 'Search across your pages and databases',
         description: 'Connect your Notion workspace so the AI can search your pages, databases, and notes. Ask "find the Q3 roadmap" or "what did we decide about the API design?"',
         icon: 'N',
+        logo: 'https://cdn.simpleicons.org/notion/000000',
+        logoBg: '#ffffff',
         gradient: 'linear-gradient(135deg, #2f2f2f, #4a4a4a)',
         keyLabel: 'Integration Token',
         keyPlaceholder: 'secret_...',
@@ -165,6 +181,8 @@ class ConnectorsManagerClass {
         tagline: 'Search issues and project updates',
         description: 'Connect Linear so the AI can search your issues and projects. Ask "what high-priority bugs are open?" or "show issues assigned to me."',
         icon: 'Li',
+        logo: 'https://cdn.simpleicons.org/linear/5e6ad2',
+        logoBg: '#ffffff',
         gradient: 'linear-gradient(135deg, #5e6ad2, #8b95e8)',
         keyLabel: 'API Key',
         keyPlaceholder: 'lin_api_...',
@@ -181,6 +199,8 @@ class ConnectorsManagerClass {
         tagline: 'Search issues, PRs, and repositories',
         description: 'Connect GitHub so the AI can search across your repositories. Ask "find open authentication bugs" or "show PRs waiting for review."',
         icon: 'GH',
+        logo: 'https://cdn.simpleicons.org/github/24292f',
+        logoBg: '#ffffff',
         gradient: 'linear-gradient(135deg, #24292f, #444d56)',
         keyLabel: 'Personal Access Token',
         keyPlaceholder: 'ghp_... or github_pat_...',
@@ -197,6 +217,8 @@ class ConnectorsManagerClass {
         tagline: 'Live web search with cited answers',
         description: 'Connect Perplexity\'s Sonar API to give the AI real-time web search. Ask about current events, news, or anything that needs up-to-date information.',
         icon: 'Px',
+        logo: 'https://cdn.simpleicons.org/perplexity/1fb8cd',
+        logoBg: '#ffffff',
         gradient: 'linear-gradient(135deg, #1a9688, #20b8a2)',
         keyLabel: 'API Key',
         keyPlaceholder: 'pplx-...',
@@ -544,8 +566,18 @@ class ConnectorsManagerClass {
     const oauthEntry = oauthProvider ? this.oauthStatus[oauthProvider.id] : null;
     const isOAuth = !!oauthProvider;
 
+    // Build the icon element — real logo image with white bg, fallback to letter
+    const iconEl = intg.logo
+      ? `<img src="${intg.logo}" alt="${intg.name}" class="conn-intg-logo" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+        + `<span class="conn-intg-icon-fallback" style="display:none">${intg.icon}</span>`
+      : `<span>${intg.icon}</span>`;
+
+    const iconBg = intg.logo ? (intg.logoBg || '#ffffff') : intg.gradient;
+    const iconStyle = intg.logo
+      ? `background:${iconBg}; border: 1px solid rgba(0,0,0,0.08);`
+      : `background:${intg.gradient};`;
+
     if (isConnected) {
-      // Show connected account email (IMAP or OAuth)
       const connectedEmail = isImap ? imapEntry?.email : oauthEntry?.email;
       let accountBadge = '';
       if (connectedEmail) {
@@ -564,9 +596,7 @@ class ConnectorsManagerClass {
 
       return `
         <div class="conn-integration-card conn-integration-card--connected" data-id="${intg.id}">
-          <div class="conn-intg-icon" style="background: ${intg.gradient}">
-            <span>${intg.icon}</span>
-          </div>
+          <div class="conn-intg-icon" style="${iconStyle}">${iconEl}</div>
           <div class="conn-intg-body">
             <div class="conn-intg-top">
               <span class="conn-intg-name">${intg.name}</span>
@@ -586,13 +616,11 @@ class ConnectorsManagerClass {
       `;
     }
 
-    // Not connected — IMAP: show email + password form
+    // Not connected — IMAP
     if (isImap) {
       return `
         <div class="conn-integration-card" data-id="${intg.id}">
-          <div class="conn-intg-icon" style="background: ${intg.gradient}">
-            <span>${intg.icon}</span>
-          </div>
+          <div class="conn-intg-icon" style="${iconStyle}">${iconEl}</div>
           <div class="conn-intg-body">
             <div class="conn-intg-top">
               <span class="conn-intg-name">${intg.name}</span>
@@ -601,24 +629,21 @@ class ConnectorsManagerClass {
             <p class="conn-intg-desc">${intg.description}</p>
             <div class="conn-caps">${capsHTML}</div>
           </div>
-          <button class="conn-imap-connect-btn" data-id="${intg.id}" data-imap="${intg.imapServiceId}">
-            Connect ${intg.name}
+          <button class="conn-card-action-btn conn-imap-connect-btn" data-id="${intg.id}" data-imap="${intg.imapServiceId}">
+            Connect
           </button>
         </div>
       `;
     }
 
-    // Not connected — show the right connect button (OAuth)
+    // Not connected — OAuth
     if (isOAuth) {
       const p = oauthProvider;
       const hasClientId = p.hasClientId;
-      const btnStyle = `background:${p.buttonColor};color:${p.buttonTextColor};${p.buttonBorder ? `border:${p.buttonBorder};` : 'border:none;'}`;
 
       return `
         <div class="conn-integration-card" data-id="${intg.id}">
-          <div class="conn-intg-icon" style="background: ${intg.gradient}">
-            <span>${intg.icon}</span>
-          </div>
+          <div class="conn-intg-icon" style="${iconStyle}">${iconEl}</div>
           <div class="conn-intg-body">
             <div class="conn-intg-top">
               <span class="conn-intg-name">${intg.name}</span>
@@ -628,23 +653,22 @@ class ConnectorsManagerClass {
             <div class="conn-caps">${capsHTML}</div>
           </div>
           ${hasClientId
-            ? `<button class="conn-oauth-btn" data-provider="${p.id}" data-service="${intg.id}" style="${btnStyle}">
+            ? `<button class="conn-card-action-btn conn-oauth-btn" data-provider="${p.id}" data-service="${intg.id}">
                  ${p.buttonLabel}
                </button>`
-            : `<button class="conn-setup-btn" data-provider="${p.id}" title="Client ID not configured — click to set up">
-                 ⚙ Setup required
+            : `<button class="conn-card-action-btn conn-setup-btn" data-provider="${p.id}" title="Click to configure">
+                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                 Setup
                </button>`
           }
         </div>
       `;
     }
 
-    // API-key service (Perplexity, Linear, etc.)
+    // API-key service
     return `
       <div class="conn-integration-card" data-id="${intg.id}">
-        <div class="conn-intg-icon" style="background: ${intg.gradient}">
-          <span>${intg.icon}</span>
-        </div>
+        <div class="conn-intg-icon" style="${iconStyle}">${iconEl}</div>
         <div class="conn-intg-body">
           <div class="conn-intg-top">
             <span class="conn-intg-name">${intg.name}</span>
@@ -653,7 +677,7 @@ class ConnectorsManagerClass {
           <p class="conn-intg-desc">${intg.description}</p>
           <div class="conn-caps">${capsHTML}</div>
         </div>
-        <button class="conn-connect-btn" data-id="${intg.id}">Connect</button>
+        <button class="conn-card-action-btn conn-connect-btn" data-id="${intg.id}">Connect</button>
       </div>
     `;
   }
