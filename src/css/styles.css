@@ -905,9 +905,10 @@ body.tabstrip-hidden .tab-strip-show {
 }
 .new-tab-page.active { display: flex; }
 
-/* Full-page animated background */
+/* Full-page animated background — must be absolute (not fixed) so it stays
+   within #browser-container and never bleeds over the tab-strip / navbar */
 .ntp-bg-layer {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 0;
   pointer-events: none;
@@ -1024,6 +1025,14 @@ body.tabstrip-hidden .tab-strip-show {
   line-height: 1;
   text-shadow: 0 0 40px rgba(0,212,255,0.25), 0 0 80px rgba(124,58,237,0.15);
   font-family: 'SF Pro Display', 'Helvetica Neue', system-ui, sans-serif;
+}
+.ntp-clock-ampm {
+  font-size: 0.35em;
+  font-weight: 300;
+  letter-spacing: 1px;
+  opacity: 0.55;
+  margin-left: 6px;
+  vertical-align: super;
 }
 .ntp-clock-sub {
   display: flex;

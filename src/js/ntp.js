@@ -57,12 +57,14 @@ const NTP = (() => {
     const tick = () => {
       const now = new Date();
 
-      // Big clock
+      // Big clock — 12-hour format with small AM/PM tag
       const clockEl = document.getElementById('ntp-clock');
       if (clockEl) {
-        const h = String(now.getHours()).padStart(2, '0');
+        let h = now.getHours();
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        h = h % 12 || 12;
         const m = String(now.getMinutes()).padStart(2, '0');
-        clockEl.textContent = `${h}:${m}`;
+        clockEl.innerHTML = `${h}:${m}<span class="ntp-clock-ampm">${ampm}</span>`;
       }
 
       // Date line
