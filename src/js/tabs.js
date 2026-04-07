@@ -157,6 +157,11 @@ class TabManagerClass {
         App.updateUrlBar(tab.url);
         App.updateNavigationButtons(wv);
         this.updateContextTitle(tab);
+        // Always hide the NTP overlay when a real page navigates — covers all
+        // navigation paths including IPC-driven loadURL() from the main process.
+        if (tab.url && tab.url !== 'about:blank' && !tab.url.startsWith('data:')) {
+          this.hideNewTabPage();
+        }
       }
     });
 
@@ -165,6 +170,10 @@ class TabManagerClass {
         tab.url = e.url;
         if (tab.id === this.activeTabId) {
           App.updateUrlBar(e.url);
+          // SPA navigation (YouTube, etc.) — ensure NTP stays hidden
+          if (e.url && e.url !== 'about:blank') {
+            this.hideNewTabPage();
+          }
         }
       }
     });

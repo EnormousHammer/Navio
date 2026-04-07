@@ -845,7 +845,7 @@ PERSONALITY:
 
     // Append accessibility snapshot so AI uses real element labels, not guessed selectors
     const snapText = await this._getPageSnapshotText();
-    const followUpText = `[Action completed. Continue task if more steps needed, or summarize if done.]\n\n${pageInfo}${snapText}`;
+    const followUpText = `[Action completed. Current page state follows. Continue task if steps remain, or give a clean summary if done. Use [[ACTION:type:params]] format for any new actions.]\n\n${pageInfo}${snapText}`;
     await this.processMessage(followUpText, true, null);
     document.getElementById('navio-continue-pill')?.remove();
 
