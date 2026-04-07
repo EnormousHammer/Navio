@@ -517,43 +517,92 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
     }
 
     switch (action) {
-      case 'navigate':
-        try {
-          await wc.loadURL(params.url);
-        } catch (navErr) {
-          // ERR_ABORTED (-3) happens when the page redirects mid-load (e.g. YouTube
-          // themeRefresh). The navigation still succeeded, so treat it as success.
-          if (!navErr.message?.includes('ERR_ABORTED') && !navErr.message?.includes('-3')) {
-            throw navErr;
-          }
-        }
-        return { success: true };
-
-      case 'click':
-        await wc.executeJavaScript(`
-          (function() {
-            const el = document.querySelector('${params.selector.replace(/'/g, "\\'")}');
-            if (el) { el.click(); return true; }
-            return false;
-          })()
-        `);
-        return { success: true };
-
-      case 'type':
-        await wc.executeJavaScript(`
-          (function() {
-            const el = document.querySelector('${params.selector.replace(/'/g, "\\'")}');
-            if (el) {
-              el.focus();
-              el.value = '${params.text.replace(/'/g, "\\'")}';
-              el.dispatchEvent(new Event('input', { bubbles: true }));
-              el.dispatchEvent(new Event('change', { bubbles: true }));
-              return true;
+      case 'navigate': {
+        // Wait for the page to fully load, not just navigation start.
+        // did-finish-load fires once the HTML + resources are done; we add a
+        // short extra wait so JS-rendered UIs (React, etc.) have time to paint.
+        await new Promise((resolve, reject) => {
+          const MAX_WAIT = 12000;
+          let settled = false;
+          const settle = (err) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            wc.removeListener('did-finish-load', onLoad);
+            wc.removeListener('did-fail-load', onFail);
+            if (err) reject(err); else resolve();
+          };
+          const timer = setTimeout(() => settle(), MAX_WAIT);
+          const onLoad = () => setTimeout(() => settle(), 800);
+          const onFail = (_, code, desc) => {
+            if (code === -3) setTimeout(() => settle(), 800); // redirect — still ok
+            else settle(new Error(`Navigation failed: ${desc} (${code})`));
+          };
+          wc.once('did-finish-load', onLoad);
+          wc.once('did-fail-load', onFail);
+          wc.loadURL(params.url).catch((e) => {
+            if (e.message?.includes('ERR_ABORTED') || e.message?.includes('-3')) {
+              // redirect in-flight — did-finish-load / did-fail-load will settle us
+            } else {
+              settle(e);
             }
-            return false;
-          })()
-        `);
+          });
+        });
         return { success: true };
+      }
+
+      case 'click': {
+        // Poll for the element up to 3 s so JS-rendered pages have time to render.
+        const sel = JSON.stringify(params.selector);
+        const res = await wc.executeJavaScript(`
+          new Promise((resolve) => {
+            const selector = ${sel};
+            let tries = 0;
+            const attempt = () => {
+              const el = document.querySelector(selector);
+              if (el) { el.scrollIntoView({ block: 'center' }); el.click(); resolve({ ok: true }); }
+              else if (++tries < 12) setTimeout(attempt, 250);
+              else resolve({ ok: false, error: 'Element not found: ' + selector });
+            };
+            attempt();
+          })
+        `);
+        if (!res.ok) return { error: res.error };
+        return { success: true };
+      }
+
+      case 'type': {
+        const tSel = JSON.stringify(params.selector);
+        const tVal = JSON.stringify(params.text || '');
+        const tRes = await wc.executeJavaScript(`
+          new Promise((resolve) => {
+            const selector = ${tSel};
+            const text = ${tVal};
+            let tries = 0;
+            const attempt = () => {
+              const el = document.querySelector(selector);
+              if (el) {
+                el.focus();
+                // Native input setter so React/Vue controlled inputs update correctly
+                const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
+                  || Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+                if (nativeSetter) nativeSetter.call(el, text);
+                else el.value = text;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                resolve({ ok: true });
+              } else if (++tries < 12) {
+                setTimeout(attempt, 250);
+              } else {
+                resolve({ ok: false, error: 'Element not found: ' + selector });
+              }
+            };
+            attempt();
+          })
+        `);
+        if (!tRes.ok) return { error: tRes.error };
+        return { success: true };
+      }
 
       case 'scroll':
         await wc.executeJavaScript(`

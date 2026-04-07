@@ -616,11 +616,15 @@ PERSONALITY:
     for (const card of cards) {
       if (!this._takeoverMode) break;
       await this._executeAction(card.dataset.action, card.dataset.params, card, true);
-      if (this._takeoverMode) await new Promise((r) => setTimeout(r, 700));
+      // Stop the chain if an action genuinely failed (element not found, etc.)
+      if (card.classList.contains('bac-error')) break;
+      // Navigate already waits for page load internally; still give a short gap for paint
+      const gap = card.dataset.action === 'navigate' ? 400 : 600;
+      if (this._takeoverMode) await new Promise((r) => setTimeout(r, gap));
     }
     // After all cards in this message are done, trigger the agent loop
     if (this._takeoverMode) {
-      setTimeout(() => this._smartFollowUp(), 1200);
+      setTimeout(() => this._smartFollowUp(), 1000);
     }
   }
 
