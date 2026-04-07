@@ -105,6 +105,74 @@ PERSONALITY:
     if (pinBtn) {
       pinBtn.addEventListener('click', () => this.pinActiveTab());
     }
+
+    this._bindVoiceMode();
+  }
+
+  // ── Voice Mode (Web Speech API) ──────────────────────────────────────────
+  _bindVoiceMode() {
+    const btn = document.getElementById('btn-voice-mode');
+    const hint = document.getElementById('voice-hint');
+    if (!btn) return;
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      btn.style.display = 'none';
+      return;
+    }
+
+    let recognition = null;
+    let listening = false;
+
+    const startListening = () => {
+      if (listening) return;
+      recognition = new SpeechRecognition();
+      recognition.lang = 'en-US';
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        listening = true;
+        btn.classList.add('listening');
+        if (hint) hint.textContent = 'Listening... click mic to stop';
+      };
+
+      recognition.onresult = (e) => {
+        const transcript = Array.from(e.results)
+          .map(r => r[0].transcript)
+          .join('');
+        this.inputEl.value = transcript;
+        this.inputEl.style.height = 'auto';
+        this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 120) + 'px';
+        if (e.results[e.results.length - 1].isFinal) {
+          stopListening();
+          if (transcript.trim()) this.sendMessage();
+        }
+      };
+
+      recognition.onerror = (e) => {
+        stopListening();
+        if (e.error !== 'no-speech') {
+          if (hint) hint.textContent = `Voice error: ${e.error}`;
+          setTimeout(() => { if (hint) hint.textContent = 'Enter to send \u00b7 Shift+Enter for new line'; }, 2500);
+        }
+      };
+
+      recognition.onend = () => stopListening();
+      recognition.start();
+    };
+
+    const stopListening = () => {
+      listening = false;
+      btn.classList.remove('listening');
+      if (hint) hint.textContent = 'Enter to send \u00b7 Shift+Enter for new line';
+      if (recognition) { try { recognition.stop(); } catch {} recognition = null; }
+    };
+
+    btn.addEventListener('click', () => {
+      if (listening) stopListening();
+      else startListening();
+    });
   }
 
   async persistScopeFromUI() {
@@ -161,6 +229,22 @@ PERSONALITY:
     const text = this.inputEl.value.trim();
     if (!text || this.isProcessing) return;
 
+    // Task chain intake mode
+    if (this._awaitingTaskChain) {
+      this._awaitingTaskChain = false;
+      const steps = text.split('\n').map(l => l.replace(/^\d+[\.\)]\s*/, '').trim()).filter(Boolean);
+      this.inputEl.value = '';
+      this.inputEl.style.height = 'auto';
+      this.addMessage('user', text);
+      if (steps.length === 0) {
+        this.addMessage('assistant', 'No steps detected. Please enter at least one task per line.');
+        return;
+      }
+      this.addMessage('assistant', `Starting task chain with **${steps.length} step${steps.length > 1 ? 's' : ''}**. I'll ask for your approval before each step.`);
+      this.startTaskChain(steps);
+      return;
+    }
+
     this._autoFollowCount = 0; // reset agent loop on new user message
     this.inputEl.value = '';
     this.inputEl.style.height = 'auto';
@@ -194,6 +278,16 @@ PERSONALITY:
       case 'translate':
         prompt = `Translate the main content of this page to English (if not already in English, otherwise ask what language to translate to):\n\nTitle: ${pageContent.title}\n\nContent:\n${pageContent.text?.substring(0, 5000)}`;
         break;
+      case 'task-chain':
+        // Show a dialog-like prompt to collect the task list
+        this.addMessage('assistant',
+          `**Task Chain** lets you define multiple steps for me to execute one by one, with your approval at each step.\n\n` +
+          `Type your steps below, one per line. Example:\n\`\`\`\nGo to gmail.com\nSearch for unread emails from Amazon\nSummarize the latest email\n\`\`\`\n\n` +
+          `Enter your task steps now:`
+        );
+        this._awaitingTaskChain = true;
+        setTimeout(() => this.inputEl.focus(), 200);
+        return;
       default:
         return;
     }
@@ -549,9 +643,16 @@ PERSONALITY:
       processedText = processedText.replace(/\[\[ACTION:(\w+):([\s\S]*?)\]\]/g, extractToken);
       // Legacy <<ACTION:type:params>> — keep compatible
       processedText = processedText.replace(/<<ACTION:(\w+):([\s\S]*?)>>/g, extractToken);
+      // Task chain approval gate: [[TASK_APPROVE:id]]
+      processedText = processedText.replace(/\[\[TASK_APPROVE:([\w-]+)\]\]/g, (_, id) => {
+        const idx = actionCards.length;
+        actionCards.push({ type: 'TASK_APPROVE', params: id });
+        return `\x00ACT${idx}\x00`;
+      });
     } else {
       processedText = processedText.replace(/\[\[ACTION:[\s\S]*?\]\]/g, '');
       processedText = processedText.replace(/<<ACTION:[\s\S]*?>>/g, '');
+      processedText = processedText.replace(/\[\[TASK_APPROVE:[\s\S]*?\]\]/g, '');
     }
 
     // ── 2. HTML-escape raw text ───────────────────────────────────────────────
@@ -646,26 +747,37 @@ PERSONALITY:
       };
 
       actionCards.forEach(({ type, params }, idx) => {
-        const icon = ACTION_ICONS[type] || ACTION_ICONS.navigate;
-        const verb = VERBS[type] || type;
-        const safeParams = params.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        // For navigate, show a human-readable URL label
-        let paramDisplay = safeParams;
-        if (type === 'navigate') {
-          try {
-            const u = new URL(params);
-            paramDisplay = u.hostname + (u.pathname !== '/' ? u.pathname : '') + (u.search ? '…' : '');
-            paramDisplay = paramDisplay.replace(/^www\./, '');
-          } catch (_) {}
+        let card;
+        if (type === 'TASK_APPROVE') {
+          // Render task chain approval gate
+          card = `<div class="tc-approval-gate" data-approval-id="${params}">
+            <span class="tca-label">Ready to execute this step</span>
+            <div class="tca-btns">
+              <button class="tca-approve" type="button" data-aid="${params}">▶ Run step</button>
+              <button class="tca-skip" type="button" data-aid="${params}">Skip</button>
+            </div>
+          </div>`;
+        } else {
+          const icon = ACTION_ICONS[type] || ACTION_ICONS.navigate;
+          const verb = VERBS[type] || type;
+          const safeParams = params.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+          let paramDisplay = safeParams;
+          if (type === 'navigate') {
+            try {
+              const u = new URL(params);
+              paramDisplay = u.hostname + (u.pathname !== '/' ? u.pathname : '') + (u.search ? '…' : '');
+              paramDisplay = paramDisplay.replace(/^www\./, '');
+            } catch (_) {}
+          }
+          card = `<div class="browser-action-card" data-action="${type}" data-params="${safeParams}">
+            <span class="bac-icon">${icon}</span>
+            <span class="bac-desc"><strong>${verb}</strong>${params ? `<span class="bac-param">${paramDisplay}</span>` : ''}</span>
+            <div class="bac-btns">
+              <button class="bac-run" type="button">Run</button>
+              <button class="bac-skip" type="button">Skip</button>
+            </div>
+          </div>`;
         }
-        const card = `<div class="browser-action-card" data-action="${type}" data-params="${safeParams}">
-          <span class="bac-icon">${icon}</span>
-          <span class="bac-desc"><strong>${verb}</strong>${params ? `<span class="bac-param">${paramDisplay}</span>` : ''}</span>
-          <div class="bac-btns">
-            <button class="bac-run" type="button">Run</button>
-            <button class="bac-skip" type="button">Skip</button>
-          </div>
-        </div>`;
         html = html.replace(`\x00ACT${idx}\x00`, card);
       });
     }
@@ -699,6 +811,22 @@ PERSONALITY:
   }
 
   async _wireActions(contentEl) {
+    // Wire task chain approval gates
+    contentEl.querySelectorAll('.tca-approve').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const gate = btn.closest('.tc-approval-gate');
+        if (gate) { gate.innerHTML = '<span style="color:var(--text-accent)">Running...</span>'; }
+        this.approveTaskStep(btn.dataset.aid);
+      });
+    });
+    contentEl.querySelectorAll('.tca-skip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const gate = btn.closest('.tc-approval-gate');
+        if (gate) { gate.innerHTML = '<span style="color:var(--text-secondary)">Skipped</span>'; }
+        this.skipTaskStep();
+      });
+    });
+
     const cards = Array.from(contentEl.querySelectorAll('.browser-action-card'));
     if (!cards.length) return;
 
@@ -1185,6 +1313,123 @@ PERSONALITY:
     } catch (e) {
       return null;
     }
+  }
+
+  // ── Task Chains (Agentic Workflows) ──────────────────────────────────────
+  // Allows user to define a multi-step task plan that gets executed step-by-step
+  // with approval gates between each step.
+
+  startTaskChain(steps) {
+    if (!steps || steps.length === 0) return;
+    this._taskChain = {
+      steps: steps.map((s, i) => ({ id: i, label: s, status: 'pending' })),
+      currentStep: 0
+    };
+    this._renderTaskChainUI();
+    this._runNextTaskStep();
+  }
+
+  _renderTaskChainUI() {
+    const chain = this._taskChain;
+    if (!chain) return;
+
+    // Remove existing chain UI
+    document.getElementById('navio-task-chain')?.remove();
+
+    const el = document.createElement('div');
+    el.id = 'navio-task-chain';
+    el.className = 'task-chain';
+    el.innerHTML = `
+      <div class="tc-header">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Task Chain
+        <button class="tc-cancel" id="tc-cancel-btn" title="Cancel chain">✕</button>
+      </div>
+      <div class="tc-steps" id="tc-steps-list">
+        ${chain.steps.map(s => `
+          <div class="tc-step tc-step-${s.status}" id="tc-step-${s.id}">
+            <div class="tc-step-icon">${s.status === 'done' ? '✓' : s.status === 'running' ? '⟳' : s.status === 'error' ? '✕' : String(s.id + 1)}</div>
+            <div class="tc-step-label">${this._escHtml(s.label)}</div>
+          </div>`).join('')}
+      </div>
+    `;
+    document.getElementById('assistant-panel')?.appendChild(el);
+    document.getElementById('tc-cancel-btn')?.addEventListener('click', () => this._cancelTaskChain());
+  }
+
+  async _runNextTaskStep() {
+    const chain = this._taskChain;
+    if (!chain) return;
+    const step = chain.steps[chain.currentStep];
+    if (!step) { this._finishTaskChain(); return; }
+
+    // Mark as running
+    step.status = 'running';
+    this._updateTaskStepUI(step);
+
+    // Show approval gate message
+    const approvalId = `tc-approve-${step.id}`;
+    this.addMessage('assistant',
+      `**Task ${step.id + 1}/${chain.steps.length}:** ${step.label}\n\n` +
+      `[[TASK_APPROVE:${approvalId}]]`
+    );
+  }
+
+  approveTaskStep(approvalId) {
+    const chain = this._taskChain;
+    if (!chain) return;
+    const step = chain.steps[chain.currentStep];
+    if (!step) return;
+
+    // Execute the step via AI
+    this.inputEl.value = step.label;
+    this.sendMessage().then(() => {
+      step.status = 'done';
+      this._updateTaskStepUI(step);
+      chain.currentStep++;
+      if (chain.currentStep < chain.steps.length) {
+        setTimeout(() => this._runNextTaskStep(), 500);
+      } else {
+        this._finishTaskChain();
+      }
+    }).catch(() => {
+      step.status = 'error';
+      this._updateTaskStepUI(step);
+    });
+  }
+
+  skipTaskStep() {
+    const chain = this._taskChain;
+    if (!chain) return;
+    const step = chain.steps[chain.currentStep];
+    if (step) { step.status = 'skipped'; this._updateTaskStepUI(step); }
+    chain.currentStep++;
+    if (chain.currentStep < chain.steps.length) this._runNextTaskStep();
+    else this._finishTaskChain();
+  }
+
+  _finishTaskChain() {
+    this.addMessage('assistant', '**Task chain complete!** All steps have been executed.');
+    this._taskChain = null;
+    setTimeout(() => document.getElementById('navio-task-chain')?.remove(), 3000);
+  }
+
+  _cancelTaskChain() {
+    this._taskChain = null;
+    document.getElementById('navio-task-chain')?.remove();
+    this.addMessage('assistant', 'Task chain cancelled.');
+  }
+
+  _updateTaskStepUI(step) {
+    const el = document.getElementById(`tc-step-${step.id}`);
+    if (!el) return;
+    el.className = `tc-step tc-step-${step.status}`;
+    const icon = el.querySelector('.tc-step-icon');
+    if (icon) icon.textContent = step.status === 'done' ? '✓' : step.status === 'running' ? '⟳' : step.status === 'error' ? '✕' : step.status === 'skipped' ? '–' : String(step.id + 1);
+  }
+
+  _escHtml(t) {
+    return String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 }
 

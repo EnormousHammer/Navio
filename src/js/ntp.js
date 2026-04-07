@@ -48,6 +48,7 @@ const NTP = (() => {
     _loadServicesBar();
     _loadInbox();
     _loadStockTicker();
+    _bindResultsPanel();
   }
 
   // ── Clock + Greeting ──────────────────────────────────────────────────────
@@ -340,6 +341,70 @@ const NTP = (() => {
     }
   }
 
+  // ── NTP Inline Results Panel ──────────────────────────────────────────────
+
+  function _bindResultsPanel() {
+    document.getElementById('ntp-results-close')?.addEventListener('click', _closeResults);
+    document.querySelectorAll('.ntp-rt-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.ntp-rt-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        const which = tab.dataset.tab;
+        document.getElementById('ntp-rt-ai').style.display = which === 'ai' ? '' : 'none';
+        document.getElementById('ntp-rt-news').style.display = which === 'news' ? '' : 'none';
+      });
+    });
+  }
+
+  function _closeResults() {
+    const panel = document.getElementById('ntp-results');
+    if (panel) panel.style.display = 'none';
+  }
+
+  async function _showInlineAIResults(query) {
+    const panel = document.getElementById('ntp-results');
+    const aiContent = document.getElementById('ntp-rt-ai-content');
+    const newsContent = document.getElementById('ntp-rt-news-content');
+    if (!panel || !aiContent) return;
+
+    panel.style.display = 'block';
+    document.querySelectorAll('.ntp-rt-tab').forEach(t => t.classList.remove('active'));
+    document.querySelector('.ntp-rt-tab[data-tab="ai"]')?.classList.add('active');
+    document.getElementById('ntp-rt-ai').style.display = '';
+    document.getElementById('ntp-rt-news').style.display = 'none';
+
+    aiContent.innerHTML = '<div class="ntp-brief-generating"><div class="ntp-brief-spinner"></div><p>Asking AI...</p></div>';
+
+    if (newsContent && _newsHeadlines.length > 0) {
+      const q = query.toLowerCase();
+      const words = q.split(/\s+/).filter(w => w.length > 3);
+      const related = _newsHeadlines
+        .filter(h => words.some(w => h.toLowerCase().includes(w)))
+        .slice(0, 6);
+      newsContent.innerHTML = related.length
+        ? related.map(h => '<div class="ntp-news-item"><div class="ntp-news-title">' + _esc(h) + '</div></div>').join('')
+        : '<p class="ntp-widget-empty">No related headlines found.</p>';
+    }
+
+    try {
+      const config = await window.navio.getConfig();
+      if (!config.hasApiKey) {
+        aiContent.innerHTML = '<div class="ntp-brief-error">No AI key configured. Add one in <strong>Settings - AI</strong>.</div>';
+        return;
+      }
+      const result = await window.navio.aiRequest({ messages: [{ role: 'user', content: query }] });
+      if (result.error) throw new Error(result.error);
+      const html = _esc(result.content || '')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/\n/g, '<br>');
+      aiContent.innerHTML = '<div class="ntp-brief-content"><p>' + html + '</p></div>';
+    } catch (e) {
+      aiContent.innerHTML = '<div class="ntp-brief-error">Error: ' + _esc(e.message) + '</div>';
+    }
+  }
+
   // ── Mode tabs (Search / Ask AI / Task) ───────────────────────────────────
 
   function _bindModeTabs() {
@@ -372,7 +437,11 @@ const NTP = (() => {
     const submit = () => {
       const val = input.value.trim();
       if (!val) return;
-      if (_mode === 'ai' || _mode === 'task') {
+      if (_mode === 'ai') {
+        // Show inline results panel on the NTP
+        _showInlineAIResults(val);
+      } else if (_mode === 'task') {
+        // Open assistant panel for tasks
         const assistantBtn = document.getElementById('btn-toggle-assistant');
         if (assistantBtn) assistantBtn.click();
         setTimeout(() => {
@@ -384,7 +453,12 @@ const NTP = (() => {
           }
         }, 150);
       } else {
-        if (typeof App !== 'undefined') App.handleSearch(val);
+        // Auto-detect: question-like goes to inline results, otherwise web search
+        if (typeof App !== 'undefined' && App._isAIQuery && App._isAIQuery(val)) {
+          _showInlineAIResults(val);
+        } else {
+          if (typeof App !== 'undefined') App.handleSearch(val);
+        }
       }
       input.value = '';
     };

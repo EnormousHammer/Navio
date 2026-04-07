@@ -6154,3 +6154,221 @@ body.onboarding-active #app {
   border-color: rgba(0,0,0,0.15);
 }
 
+
+/* Phase 2 additions - will be merged into styles.css */
+
+/* â”€â”€ NTP Inline Results Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.ntp-results {
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(0,212,255,0.2);
+  border-radius: 16px;
+  overflow: hidden;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  position: relative;
+  z-index: 2;
+  animation: ntp-results-in 0.2s ease;
+}
+@keyframes ntp-results-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.ntp-results-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 10px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.ntp-rt-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: color 0.15s, background 0.15s;
+}
+.ntp-rt-tab:hover { color: var(--text-primary); }
+.ntp-rt-tab.active {
+  color: var(--text-accent, #00d8ff);
+  background: rgba(0,212,255,0.07);
+  border-bottom: 2px solid var(--text-accent, #00d8ff);
+}
+.ntp-rt-close {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.ntp-rt-close:hover { background: rgba(255,255,255,0.06); color: var(--text-primary); }
+.ntp-rt-body { min-height: 80px; max-height: 320px; overflow-y: auto; }
+.ntp-rt-panel { padding: 4px 0; }
+
+/* â”€â”€ AI Profile grid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.ai-profile-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+.ai-profile-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+  font-family: var(--font-sans);
+}
+.ai-profile-btn:hover { border-color: rgba(0,212,255,0.3); background: rgba(0,212,255,0.04); }
+.ai-profile-btn.active {
+  border-color: var(--text-accent, #00d8ff);
+  background: rgba(0,212,255,0.07);
+  box-shadow: 0 0 0 1px rgba(0,212,255,0.2);
+}
+.ai-profile-icon { font-size: 16px; margin-bottom: 3px; }
+.ai-profile-name { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+.ai-profile-desc { font-size: 11px; color: var(--text-secondary); }
+
+/* â”€â”€ Profile pill in navbar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.profile-pill {
+  font-size: 13px !important;
+  font-weight: 700;
+  color: var(--text-accent, #00d8ff) !important;
+  min-width: 28px;
+}
+.profile-pill:hover { background: rgba(0,212,255,0.08) !important; }
+
+/* â”€â”€ Browser Memory in Settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.memory-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.memory-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+.memory-item-text { flex: 1; color: var(--text-primary); line-height: 1.4; }
+.memory-item-type {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.memory-item-type.auto { background: rgba(0,212,255,0.15); color: var(--text-accent, #00d8ff); }
+.memory-item-type.manual { background: rgba(124,58,237,0.2); color: #a78bfa; }
+.memory-item-del {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.memory-item-del:hover { background: rgba(252,129,129,0.1); color: #fc8181; }
+.memory-input {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-family: var(--font-sans);
+  outline: none;
+}
+.memory-input:focus { border-color: rgba(0,212,255,0.4); }
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Phase 3 — Voice Mode + Task Chains
+   ───────────────────────────────────────────────────────────────────────── */
+
+.voice-btn {
+  width: 30px; height: 30px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all var(--duration) var(--ease);
+  flex-shrink: 0;
+}
+.voice-btn:hover { color: var(--text-primary); border-color: rgba(0,212,255,0.4); }
+.voice-btn.listening {
+  color: #fc8181; border-color: #fc8181;
+  background: rgba(252,129,129,0.1);
+  animation: voice-pulse 1s ease-in-out infinite;
+}
+@keyframes voice-pulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(252,129,129,0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(252,129,129,0); }
+}
+
+.task-chain {
+  position: absolute; top: 56px; right: 12px; width: 220px;
+  background: var(--bg-elevated, #1a1f2e);
+  border: 1px solid rgba(0,212,255,0.25);
+  border-radius: 12px; padding: 10px 12px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+  z-index: 100; font-size: 12px;
+}
+.tc-header {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 700;
+  color: var(--text-accent, #00d8ff);
+  text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
+}
+.tc-cancel { margin-left: auto; background: transparent; border: none; color: var(--text-tertiary); cursor: pointer; font-size: 11px; padding: 2px 4px; border-radius: 4px; }
+.tc-cancel:hover { color: #fc8181; }
+.tc-steps { display: flex; flex-direction: column; gap: 4px; }
+.tc-step { display: flex; align-items: flex-start; gap: 8px; padding: 5px 6px; border-radius: 6px; background: rgba(255,255,255,0.03); }
+.tc-step-icon { width: 18px; height: 18px; border-radius: 50%; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; flex-shrink: 0; }
+.tc-step-running .tc-step-icon { background: rgba(0,212,255,0.2); color: var(--text-accent, #00d8ff); animation: spin 1s linear infinite; }
+.tc-step-done .tc-step-icon { background: rgba(34,197,94,0.2); color: #22c55e; }
+.tc-step-error .tc-step-icon { background: rgba(252,129,129,0.2); color: #fc8181; }
+.tc-step-skipped { opacity: 0.4; }
+.tc-step-label { flex: 1; font-size: 11.5px; color: var(--text-secondary); line-height: 1.3; }
+.tc-step-done .tc-step-label { color: var(--text-tertiary); text-decoration: line-through; }
+
+.tc-approval-gate { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(0,212,255,0.06); border: 1px solid rgba(0,212,255,0.2); border-radius: 8px; margin: 4px 0; }
+.tca-label { flex: 1; font-size: 12px; color: var(--text-secondary); }
+.tca-btns { display: flex; gap: 6px; }
+.tca-approve { padding: 4px 10px; background: var(--text-accent, #00d8ff); color: #000; border: none; border-radius: 5px; font-size: 11px; font-weight: 700; cursor: pointer; font-family: var(--font-sans); }
+.tca-approve:hover { opacity: 0.85; }
+.tca-skip { padding: 4px 8px; background: transparent; border: 1px solid var(--border); color: var(--text-secondary); border-radius: 5px; font-size: 11px; cursor: pointer; font-family: var(--font-sans); }
+.tca-skip:hover { background: rgba(255,255,255,0.05); }

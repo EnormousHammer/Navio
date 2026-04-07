@@ -220,7 +220,15 @@ STRICT EMAIL RULE — NEVER BREAK THIS:
 You are NOT allowed to click the Send button on any email service under ANY circumstances.
 - You MAY click "Compose", "Reply", "Reply All" and type draft text — this is for saving drafts, NOT sending.
 - You MUST NEVER click the "Send" button or any equivalent that dispatches an email.
-- If the user explicitly asks you to "send" an email, explain that you can only save drafts for their review — then offer to draft it instead.`;
+- If the user explicitly asks you to "send" an email, explain that you can only save drafts for their review — then offer to draft it instead.
+
+MEMORY:
+When you learn important facts about the user (name, job, preferences, location, tools they use, etc.), save them by ending your response with:
+<navio-memory>
+save:User is a software developer
+save:User prefers Python
+</navio-memory>
+Only save facts genuinely useful for future sessions. Never save sensitive data. Omit this block if nothing new was learned.`;
 
 // ── <navio-actions> block converter ──────────────────────────────────────────
 // The system prompt asks the model to output a <navio-actions> block at the end
@@ -252,20 +260,103 @@ function aiResponseHasBrokenActions(text) {
   return /\bACTION[\s_]?\d\b/i.test(text);                   // broken numbered labels
 }
 
-// Replaces ONLY the first system message with NAVIO_SYSTEM_PROMPT.
+// ── Browser Memory ───────────────────────────────────────────────────────────
+function memoryPath() {
+  return path.join(app.getPath('userData'), 'navio-memory.json');
+}
+function loadMemory() {
+  try { return JSON.parse(fs.readFileSync(memoryPath(), 'utf8')); }
+  catch { return { facts: [] }; }
+}
+function saveMemory(data) {
+  fs.writeFileSync(memoryPath(), JSON.stringify(data, null, 2), 'utf8');
+}
+
+function buildMemoryBlock() {
+  try {
+    const mem = loadMemory();
+    if (!mem.facts || mem.facts.length === 0) return '';
+    return '\n\nBROWSER MEMORY (remembered facts about this user — use naturally):\n' +
+      mem.facts.map(f => `- ${f.content}`).join('\n');
+  } catch { return ''; }
+}
+
+// ── Learning Profiles ─────────────────────────────────────────────────────────
+const PROFILE_EXTENSIONS = {
+  default: '',
+  developer: '\n\nPROFILE: Developer\n- Prioritize code accuracy, technical depth, and doc links.\n- Use code blocks liberally. Compare tools. Walk through debugging systematically.',
+  researcher: '\n\nPROFILE: Researcher\n- Prioritize accuracy, sources, and analytical depth over brevity.\n- Always cite sources. Challenge assumptions. Flag uncertain or contested claims.',
+  creator: '\n\nPROFILE: Creator\n- Help with writing, design thinking, and creative tasks.\n- Be generative — offer variations and unexpected angles. Polish tone and clarity.'
+};
+
+function buildProfileBlock() {
+  try {
+    const cfg = loadConfig();
+    return PROFILE_EXTENSIONS[cfg.aiProfile] || '';
+  } catch { return ''; }
+}
+
+// ── Parse and save <navio-memory> blocks from AI responses ───────────────────
+function extractAndSaveMemory(content) {
+  if (!content || typeof content !== 'string') return;
+  const match = content.match(/<navio-memory>([\s\S]*?)<\/navio-memory>/i);
+  if (!match) return;
+  const facts = match[1].split('\n')
+    .map(l => l.trim())
+    .filter(l => l.startsWith('save:'))
+    .map(l => l.slice(5).trim())
+    .filter(Boolean);
+  if (facts.length === 0) return;
+  const mem = loadMemory();
+  if (!mem.facts) mem.facts = [];
+  let changed = false;
+  for (const fact of facts) {
+    if (!mem.facts.find(f => f.content === fact)) {
+      mem.facts.push({ id: Date.now() + Math.random(), content: fact, type: 'auto', createdAt: new Date().toISOString() });
+      changed = true;
+    }
+  }
+  if (changed) saveMemory(mem);
+}
+
+// ── Memory IPC ───────────────────────────────────────────────────────────────
+ipcMain.handle('memory-get', () => loadMemory());
+ipcMain.handle('memory-add', (_, { content }) => {
+  const mem = loadMemory();
+  if (!mem.facts) mem.facts = [];
+  if (!content || mem.facts.find(f => f.content === content)) return { ok: false };
+  mem.facts.push({ id: Date.now(), content, type: 'manual', createdAt: new Date().toISOString() });
+  saveMemory(mem);
+  return { ok: true };
+});
+ipcMain.handle('memory-delete', (_, { id }) => {
+  const mem = loadMemory();
+  mem.facts = (mem.facts || []).filter(f => String(f.id) !== String(id));
+  saveMemory(mem);
+  return { ok: true };
+});
+ipcMain.handle('memory-clear', () => {
+  saveMemory({ facts: [] });
+  return { ok: true };
+});
+
+// Replaces ONLY the first system message with NAVIO_SYSTEM_PROMPT + memory + profile.
 // Other system messages (page context, selection, tab list, etc.) are preserved.
 // Called in every IPC handler so the cached renderer's stale system prompt is ignored.
 function injectSystemPrompt(messages) {
+  const memBlock = buildMemoryBlock();
+  const profileBlock = buildProfileBlock();
+  const fullPrompt = NAVIO_SYSTEM_PROMPT + memBlock + profileBlock;
   let replaced = false;
   const result = messages.map((m) => {
     if (!replaced && m.role === 'system') {
       replaced = true;
-      return { role: 'system', content: NAVIO_SYSTEM_PROMPT };
+      return { role: 'system', content: fullPrompt };
     }
     return m;
   });
   if (!replaced) {
-    result.unshift({ role: 'system', content: NAVIO_SYSTEM_PROMPT });
+    result.unshift({ role: 'system', content: fullPrompt });
   }
   return result;
 }
@@ -529,6 +620,11 @@ ipcMain.handle('ai-request', async (event, { messages }) => {
       if (!fixed.error && fixed.content) {
         result = { ...fixed, content: convertNavioActionsBlock(fixed.content) };
       }
+    }
+
+    // Extract and persist any <navio-memory> blocks from the response
+    if (!result.error && result.content) {
+      extractAndSaveMemory(result.content);
     }
 
     return result;

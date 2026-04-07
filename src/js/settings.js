@@ -55,7 +55,12 @@ class SettingsManagerClass {
       importScan: document.getElementById('btn-settings-import-scan'),
       importScanStatus: document.getElementById('settings-import-scan-status'),
       adBlock: document.getElementById('setting-ad-block'),
-      adBlockStats: document.getElementById('ad-block-stats-hint')
+      adBlockStats: document.getElementById('ad-block-stats-hint'),
+      memoryList: document.getElementById('memory-list'),
+      memoryAddInput: document.getElementById('memory-add-input'),
+      memoryAddBtn: document.getElementById('memory-add-btn'),
+      memoryClearBtn: document.getElementById('memory-clear-btn'),
+      aiProfileGrid: document.getElementById('ai-profile-grid')
     };
 
     this.panelIds = ['general', 'ai', 'appearance', 'browser', 'privacy', 'integrations', 'about'];
@@ -365,6 +370,8 @@ class SettingsManagerClass {
     this.modal.classList.add('visible');
     this._renderOAuthClientIdFields();
     this._refreshAdBlockStats();
+    this._loadMemoryList();
+    this._bindProfileGrid();
 
     // Live ad-blocker toggle (takes effect immediately without Save)
     if (this.elements.adBlock && !this.elements.adBlock._navioAdBlockBound) {
@@ -387,6 +394,83 @@ class SettingsManagerClass {
     } catch {
       this.elements.adBlockStats.textContent = 'Blocks requests from known ad networks, tracking pixels, and data brokers.';
     }
+  }
+
+  // ── Browser Memory ──────────────────────────────────────────────────────
+  async _loadMemoryList() {
+    const el = this.elements.memoryList;
+    if (!el) return;
+    try {
+      const mem = await window.navio.memoryGet();
+      const facts = mem.facts || [];
+      if (facts.length === 0) {
+        el.innerHTML = '<p class="settings-inline-hint" style="margin:8px 0">No memories saved yet. Navio will learn from your conversations.</p>';
+      } else {
+        el.innerHTML = facts.map(f => `
+          <div class="memory-item" data-id="${f.id}">
+            <span class="memory-item-text">${this._esc(f.content)}</span>
+            <span class="memory-item-type ${f.type === 'auto' ? 'auto' : 'manual'}">${f.type === 'auto' ? 'AI' : 'You'}</span>
+            <button class="memory-item-del" data-id="${f.id}" title="Delete">✕</button>
+          </div>`).join('');
+        el.querySelectorAll('.memory-item-del').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            await window.navio.memoryDelete(btn.dataset.id);
+            this._loadMemoryList();
+          });
+        });
+      }
+    } catch { el.innerHTML = '<p class="settings-inline-hint">Could not load memories.</p>'; }
+
+    // Bind add button (once)
+    if (this.elements.memoryAddBtn && !this.elements.memoryAddBtn._bound) {
+      this.elements.memoryAddBtn._bound = true;
+      this.elements.memoryAddBtn.addEventListener('click', async () => {
+        const val = this.elements.memoryAddInput?.value.trim();
+        if (!val) return;
+        await window.navio.memoryAdd(val);
+        this.elements.memoryAddInput.value = '';
+        this._loadMemoryList();
+      });
+      this.elements.memoryAddInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') this.elements.memoryAddBtn.click();
+      });
+    }
+    if (this.elements.memoryClearBtn && !this.elements.memoryClearBtn._bound) {
+      this.elements.memoryClearBtn._bound = true;
+      this.elements.memoryClearBtn.addEventListener('click', async () => {
+        if (!confirm('Clear all browser memories? This cannot be undone.')) return;
+        await window.navio.memoryClear();
+        this._loadMemoryList();
+      });
+    }
+  }
+
+  _esc(t) {
+    return String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // ── AI Profile ─────────────────────────────────────────────────────────
+  _bindProfileGrid() {
+    const grid = this.elements.aiProfileGrid;
+    if (!grid || grid._bound) return;
+    grid._bound = true;
+    const current = this.config.aiProfile || 'default';
+    grid.querySelectorAll('.ai-profile-btn').forEach(btn => {
+      if (btn.dataset.profile === current) btn.classList.add('active');
+      btn.addEventListener('click', async () => {
+        grid.querySelectorAll('.ai-profile-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const profile = btn.dataset.profile;
+        await window.navio.saveConfig({ aiProfile: profile });
+        this.config.aiProfile = profile;
+        // Update the navbar profile pill
+        const icons = { default: '✦', developer: '⌨', researcher: '🔬', creator: '✏' };
+        const pill = document.getElementById('profile-pill-icon');
+        if (pill) pill.textContent = icons[profile] || '✦';
+        const pillBtn = document.getElementById('btn-profile-pill');
+        if (pillBtn) pillBtn.title = `AI Profile: ${btn.querySelector('.ai-profile-name')?.textContent} — click to change`;
+      });
+    });
   }
 
   async _renderOAuthClientIdFields() {

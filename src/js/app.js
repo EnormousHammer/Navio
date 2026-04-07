@@ -76,6 +76,19 @@ class NavioApp {
     document.getElementById('btn-theme-toggle').addEventListener('click', () => {
       this.toggleTheme();
     });
+    // Profile pill → open Settings on AI tab
+    document.getElementById('btn-profile-pill')?.addEventListener('click', () => {
+      if (typeof SettingsManager !== 'undefined') {
+        SettingsManager.open();
+        SettingsManager.showPanel('ai');
+      }
+    });
+    // Restore profile pill icon from config
+    window.navio.getConfig().then(cfg => {
+      const icons = { default: '✦', developer: '⌨', researcher: '🔬', creator: '✏' };
+      const pill = document.getElementById('profile-pill-icon');
+      if (pill) pill.textContent = icons[cfg.aiProfile] || '✦';
+    }).catch(() => {});
   }
 
   async toggleTheme() {

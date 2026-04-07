@@ -92,5 +92,11 @@ contextBridge.exposeInMainWorld('navio', {
   ntpFetchStocks: () => ipcRenderer.invoke('ntp-stocks'),
 
   setAdBlocker: (enabled) => ipcRenderer.invoke('set-ad-blocker', { enabled }),
-  getAdBlockStats: () => ipcRenderer.invoke('get-ad-block-stats')
+  getAdBlockStats: () => ipcRenderer.invoke('get-ad-block-stats'),
+
+  // Browser Memory
+  memoryGet: () => ipcRenderer.invoke('memory-get'),
+  memoryAdd: (content) => ipcRenderer.invoke('memory-add', { content }),
+  memoryDelete: (id) => ipcRenderer.invoke('memory-delete', { id }),
+  memoryClear: () => ipcRenderer.invoke('memory-clear')
 });
