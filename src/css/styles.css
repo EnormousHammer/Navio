@@ -6655,3 +6655,178 @@ body.onboarding-active #app {
   border-color: rgba(34,197,94,0.35);
   background: rgba(34,197,94,0.04);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DARK MODE — full panel & surface polish
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Dark assistant panel ───────────────────────────────────────────────── */
+[data-theme="dark"] .assistant-panel {
+  background: linear-gradient(180deg, #111827 0%, #0c1220 100%);
+  border-left: 1px solid rgba(80,160,255,0.13);
+}
+[data-theme="dark"] .assistant-header {
+  background: linear-gradient(135deg, rgba(0,216,255,0.08) 0%, rgba(84,104,255,0.05) 100%);
+  border-bottom-color: rgba(80,160,255,0.12);
+}
+[data-theme="dark"] .assistant-context {
+  background: rgba(15,24,42,0.70);
+  border-bottom-color: rgba(80,160,255,0.09);
+}
+[data-theme="dark"] .assistant-messages {
+  background: transparent;
+}
+
+/* ── Dark message bubbles ───────────────────────────────────────────────── */
+[data-theme="dark"] .assistant-message .message-content {
+  background: rgba(23,32,51,0.90);
+  border-color: rgba(80,160,255,0.13);
+  backdrop-filter: blur(6px);
+}
+[data-theme="dark"] .user-message .message-content {
+  box-shadow: 0 3px 16px rgba(0,216,255,0.18);
+}
+
+/* ── Dark quick actions ─────────────────────────────────────────────────── */
+[data-theme="dark"] .quick-action {
+  background: rgba(20,30,52,0.60);
+  border-color: rgba(80,160,255,0.14);
+}
+[data-theme="dark"] .quick-action:hover {
+  background: rgba(0,216,255,0.08);
+  border-color: rgba(0,216,255,0.30);
+  box-shadow: 0 0 12px rgba(0,216,255,0.10);
+}
+
+/* ── Dark AI input area ─────────────────────────────────────────────────── */
+[data-theme="dark"] .assistant-input {
+  background: rgba(12,18,32,0.80);
+  border-top-color: rgba(80,160,255,0.11);
+}
+[data-theme="dark"] .chat-input {
+  background: rgba(20,30,50,0.75);
+  border-color: rgba(80,160,255,0.16);
+  color: var(--text-primary);
+}
+[data-theme="dark"] .chat-input:focus {
+  border-color: rgba(0,216,255,0.35);
+  box-shadow: 0 0 0 3px rgba(0,216,255,0.08);
+}
+
+/* ── Dark settings modal ────────────────────────────────────────────────── */
+[data-theme="dark"] .modal {
+  background: linear-gradient(180deg, #172033 0%, #111827 100%);
+  border-color: rgba(80,160,255,0.13);
+  box-shadow: 0 24px 64px rgba(0,5,24,0.72), 0 0 0 1px rgba(80,160,255,0.10);
+}
+[data-theme="dark"] .modal-header {
+  background: rgba(0,216,255,0.04);
+  border-bottom-color: rgba(80,160,255,0.11);
+}
+[data-theme="dark"] .settings-nav {
+  background: linear-gradient(180deg, #0f1828 0%, #0c1220 100%);
+  border-right-color: rgba(80,160,255,0.10);
+}
+[data-theme="dark"] .settings-nav-item:hover {
+  background: rgba(80,160,255,0.08);
+}
+[data-theme="dark"] .settings-nav-item.active {
+  background: rgba(0,216,255,0.10);
+  color: #52d5f2;
+  border-color: rgba(0,216,255,0.28);
+}
+[data-theme="dark"] .settings-panels {
+  background: rgba(17,24,39,0.95);
+}
+[data-theme="dark"] .setting-row {
+  border-color: rgba(80,160,255,0.08);
+}
+[data-theme="dark"] .setting-row input[type="text"],
+[data-theme="dark"] .setting-row input[type="password"],
+[data-theme="dark"] .setting-row input[type="email"],
+[data-theme="dark"] .setting-row select {
+  background: rgba(15,24,42,0.75);
+  border-color: rgba(80,160,255,0.16);
+  color: var(--text-primary);
+}
+[data-theme="dark"] .setting-row input:focus,
+[data-theme="dark"] .setting-row select:focus {
+  border-color: rgba(0,216,255,0.38);
+  box-shadow: 0 0 0 3px rgba(0,216,255,0.08);
+  background: rgba(18,28,50,0.90);
+}
+
+/* ── Dark connectors hub ────────────────────────────────────────────────── */
+[data-theme="dark"] .connectors-hub {
+  background: linear-gradient(180deg, #172033 0%, #0f1828 100%);
+  border-color: rgba(80,160,255,0.13);
+  box-shadow: 0 20px 60px rgba(0,5,24,0.70), 0 0 0 1px rgba(80,160,255,0.10);
+}
+[data-theme="dark"] .connector-card {
+  background: rgba(20,32,52,0.85);
+  border-color: rgba(80,160,255,0.12);
+  backdrop-filter: blur(4px);
+}
+[data-theme="dark"] .connector-card.connected {
+  border-color: rgba(34,197,94,0.30);
+  background: rgba(34,197,94,0.05);
+}
+
+/* ── Dark nav-btn hover refinement ─────────────────────────────────────── */
+[data-theme="dark"] .nav-btn:hover {
+  background: rgba(80,160,255,0.10);
+  color: var(--text-primary);
+}
+[data-theme="dark"] .nav-btn.ai-trigger:hover {
+  background: rgba(0,216,255,0.10);
+  box-shadow: 0 0 14px rgba(0,216,255,0.14);
+}
+
+/* ── Dark theme-toggle button ───────────────────────────────────────────── */
+[data-theme="dark"] .theme-toggle-btn {
+  background: rgba(20,32,52,0.80);
+  border-color: rgba(80,160,255,0.16);
+}
+[data-theme="dark"] .theme-toggle-btn:hover {
+  background: rgba(0,216,255,0.10);
+  border-color: rgba(0,216,255,0.35);
+  box-shadow: 0 0 12px rgba(0,216,255,0.15);
+}
+
+/* ── Dark modal overlay ─────────────────────────────────────────────────── */
+[data-theme="dark"] .modal-overlay,
+[data-theme="dark"] .connectors-hub-overlay {
+  background: rgba(2,5,18,0.88);
+}
+
+/* ── Dark tab close hover ───────────────────────────────────────────────── */
+[data-theme="dark"] .tab-strip-new:hover {
+  background: rgba(80,160,255,0.10);
+}
+
+/* ── Light theme-toggle button ──────────────────────────────────────────── */
+[data-theme="light"] .theme-toggle-btn {
+  background: #f4f5fb;
+  border-color: rgba(50,70,160,0.14);
+}
+[data-theme="light"] .theme-toggle-btn:hover {
+  background: rgba(0,120,220,0.08);
+  border-color: rgba(0,120,220,0.30);
+  color: #0070d8;
+  box-shadow: 0 0 10px rgba(0,120,220,0.10);
+}
+
+/* ── Light AI input area ────────────────────────────────────────────────── */
+[data-theme="light"] .assistant-input {
+  background: #f8f9fd;
+  border-top-color: rgba(50,70,160,0.09);
+}
+[data-theme="light"] .chat-input {
+  background: #ffffff;
+  border-color: rgba(50,70,160,0.14);
+  color: var(--text-primary);
+}
+[data-theme="light"] .chat-input:focus {
+  border-color: rgba(0,120,220,0.38);
+  box-shadow: 0 0 0 3px rgba(0,120,220,0.09);
+}
