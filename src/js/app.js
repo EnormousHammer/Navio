@@ -96,16 +96,55 @@ class NavioApp {
     });
   }
 
+  // ── Auto Search Mode ────────────────────────────────────────────────────
+  // Detects natural-language questions and routes them to AI automatically.
+  _isAIQuery(input) {
+    const q = (input || '').trim().toLowerCase();
+    if (q.length < 4) return false;
+    // Starts with a question word or imperative
+    if (/^(what|who|where|when|why|how|is |are |can |does |do |will |should |would |could |explain |tell me|summarize|compare|define|describe|help |write |create |draft |translate|analyze|list |give me|find |show me|what's|who's|where's|when's|why's|how's)\b/.test(q)) return true;
+    // Ends with question mark
+    if (q.endsWith('?')) return true;
+    // 6+ words with no URL characters → likely a sentence
+    if (q.split(/\s+/).length >= 6 && !/[./:]/.test(q)) return true;
+    return false;
+  }
+
+  _sendToAI(query) {
+    AssistantManager.open();
+    setTimeout(() => {
+      if (AssistantManager.inputEl) {
+        AssistantManager.inputEl.value = query;
+        AssistantManager.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        AssistantManager.sendMessage();
+      }
+    }, 150);
+  }
+
   bindNavigation() {
     const urlInput = document.getElementById('url-input');
     const btnBack = document.getElementById('btn-back');
     const btnForward = document.getElementById('btn-forward');
     const btnReload = document.getElementById('btn-reload');
 
+    // Show AI hint badge when input looks like a question
+    const aiHint = document.getElementById('url-ai-hint');
+    urlInput.addEventListener('input', () => {
+      if (!aiHint) return;
+      const raw = urlInput.value.trim();
+      const show = raw.length > 3 && !raw.startsWith('http') && this._isAIQuery(raw);
+      aiHint.classList.toggle('visible', show);
+    });
+    aiHint?.addEventListener('click', () => {
+      const raw = urlInput.value.trim();
+      if (raw) { this._sendToAI(raw); urlInput.value = ''; urlInput.blur(); }
+    });
+
     urlInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
         const raw = urlInput.value.trim();
+        // Explicit AI prefix
         if (raw.startsWith('?')) {
           const q = raw.slice(1).trim();
           AssistantManager.open();
@@ -116,15 +155,21 @@ class NavioApp {
           urlInput.blur();
           return;
         }
+        // Auto-detect AI question (unless Shift held = force web search)
+        if (!e.shiftKey && this._isAIQuery(raw)) {
+          this._sendToAI(raw);
+          urlInput.value = '';
+          urlInput.blur();
+          return;
+        }
         this.navigateTo(raw);
         urlInput.blur();
       }
       if (e.key === 'Escape') {
         urlInput.blur();
+        if (aiHint) aiHint.classList.remove('visible');
         const activeTab = TabManager.getActiveTab();
-        if (activeTab) {
-          urlInput.value = activeTab.url || '';
-        }
+        if (activeTab) urlInput.value = activeTab.url || '';
       }
     });
 
@@ -248,6 +293,17 @@ class NavioApp {
   toggleTabStrip() {
     this.tabStripHidden = !this.tabStripHidden;
     document.body.classList.toggle('tabstrip-hidden', this.tabStripHidden);
+  }
+
+  // Used by NTP.js submit — public so ntp.js can call it
+  handleSearch(input) {
+    const raw = (input || '').trim();
+    if (!raw) return;
+    if (raw.startsWith('?')) {
+      this._sendToAI(raw.slice(1).trim());
+      return;
+    }
+    this.navigateTo(raw);
   }
 
   bindNewTabPage() {

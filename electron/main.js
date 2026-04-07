@@ -2486,19 +2486,77 @@ app.whenReady().then(async () => {
     navioSession.setPermissionCheckHandler(() => true);
   }
 
-  // Apply ad-blocker to the navio session (where webview traffic actually flows)
-  const adPatterns = [
-    'doubleclick.net',
-    'googlesyndication.com',
-    'adservice.google',
-    'facebook.com/tr',
-    'analytics.facebook.com'
+  // ── Ad Blocker ────────────────────────────────────────────────────────────
+  // Comprehensive domain/pattern list. Matched as substrings of the full URL.
+  const AD_BLOCK_PATTERNS = [
+    // Core ad networks
+    'doubleclick.net','googlesyndication.com','adservice.google',
+    'googleadservices.com','googletagservices.com','tpc.googlesyndication.com',
+    'pagead2.googlesyndication.com','fundingchoicesmessages.google.com',
+    'amazon-adsystem.com','assoc-amazon.com',
+    'ads.yahoo.com','gemini.yahoo.com','advertising.yahoo.com',
+    'syndication.twitter.com','ads.twitter.com',
+    'ads.linkedin.com','snap.licdn.com',
+    // Tracking pixels & data brokers
+    'facebook.com/tr','connect.facebook.net','analytics.facebook.com',
+    'scorecardresearch.com','quantserve.com','quantcast.com',
+    // DSP / SSP / exchanges
+    'adnxs.com','rubiconproject.com','pubmatic.com',
+    'openx.net','openx.com','casalemedia.com',
+    'criteo.com','criteo.net',
+    'bidswitch.net','sharethrough.com','triplelift.com',
+    'smartadserver.com','smaato.net',
+    'spotxchange.com','spotx.tv',
+    'teads.tv','teads.com',
+    'yieldmo.com','zedo.com','undertone.com','unrulymedia.com',
+    'media.net','outbrain.com','outbrainimg.com',
+    'taboola.com','revcontent.com','mgid.com',
+    'propellerads.com','propellerclick.com',
+    'adzerk.net','adzerk.com',
+    'advertising.com','adtech.de','adform.net',
+    'moatads.com','adsafeprotected.com',
+    'adcolony.com','appsflyer.com','adjust.com','adjust.io',
+    'mopub.com','chartboost.com',
+    'adrollapp.com','buysellads.com','buysellads.net',
+    'pagefair.com',
+    // Analytics / session recording
+    'hotjar.com','fullstory.com','mouseflow.com','crazyegg.com',
+    'mixpanel.com','amplitude.com',
+    'heap.com','heapanalytics.com',
+    // Pop-up / redirect networks
+    'popads.net','popcash.net','exoclick.com',
+    'trafficjunky.net','trafficholder.com',
+    // Malvertising / low-quality
+    'cdnwidget.com','adnium.com','justpremium.com',
   ];
 
+  const cfg0 = loadConfig();
+  let adBlockEnabled = cfg0.adBlockEnabled !== false; // default ON
+  let adBlockCount   = 0;
+
   navioSession.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
-    const shouldBlock = adPatterns.some((pattern) => details.url.includes(pattern));
-    callback({ cancel: shouldBlock });
+    if (adBlockEnabled) {
+      const url = details.url;
+      if (AD_BLOCK_PATTERNS.some(p => url.includes(p))) {
+        adBlockCount++;
+        callback({ cancel: true });
+        return;
+      }
+    }
+    callback({});
   });
+
+  ipcMain.handle('set-ad-blocker', async (_, { enabled }) => {
+    adBlockEnabled = !!enabled;
+    saveConfig({ adBlockEnabled: adBlockEnabled });
+    return { ok: true, enabled: adBlockEnabled };
+  });
+
+  ipcMain.handle('get-ad-block-stats', () => ({
+    enabled: adBlockEnabled,
+    blocked: adBlockCount,
+    domains: AD_BLOCK_PATTERNS.length
+  }));
 
   globalShortcut.register('F12', () => {
     mainWindow?.webContents.openDevTools({ mode: 'detach' });

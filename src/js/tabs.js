@@ -9,6 +9,11 @@ class TabManagerClass {
     this.activeTabId = null;
     this.tabCounter = 0;
 
+    // ── Tab Groups ────────────────────────────────────────────────────────
+    this.groups = {};        // { [groupId]: { id, name, color } }
+    this._groupCounter = 0;
+    this._GROUP_COLORS = ['#06b6d4','#8b5cf6','#22c55e','#ef4444','#f97316','#eab308','#ec4899'];
+
     this.tabListEl = document.getElementById('tab-list');
     this.browserContainer = document.getElementById('browser-container');
     this.newTabPage = document.getElementById('new-tab-page');
@@ -384,6 +389,11 @@ class TabManagerClass {
       this.closeTab(tab.id);
     });
 
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      this._showTabContextMenu(tab.id, e.clientX, e.clientY);
+    });
+
     this.tabListEl.appendChild(el);
 
     requestAnimationFrame(() => {
@@ -408,6 +418,16 @@ class TabManagerClass {
       faviconEl.innerHTML = '';
     } else if (!tab.favicon) {
       faviconEl.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>`;
+    }
+
+    // Group color indicator
+    if (tab.groupId && this.groups[tab.groupId]) {
+      const color = this.groups[tab.groupId].color;
+      el.style.setProperty('--tg-color', color);
+      el.classList.add('in-group');
+    } else {
+      el.style.removeProperty('--tg-color');
+      el.classList.remove('in-group');
     }
   }
 
@@ -454,6 +474,127 @@ class TabManagerClass {
       params,
       userConfirmed: true
     });
+  }
+
+  // ── Tab Groups ─────────────────────────────────────────────────────────
+
+  createGroup(name, color) {
+    const id = `grp-${++this._groupCounter}`;
+    this.groups[id] = { id, name: name || `Group ${this._groupCounter}`, color: color || this._GROUP_COLORS[0] };
+    return id;
+  }
+
+  addTabToGroup(tabId, groupId) {
+    // Remove from any current group first
+    this.removeTabFromGroup(tabId);
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab || !this.groups[groupId]) return;
+    tab.groupId = groupId;
+    this.updateTabUI(tab);
+  }
+
+  removeTabFromGroup(tabId) {
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab || !tab.groupId) return;
+    tab.groupId = null;
+    this.updateTabUI(tab);
+  }
+
+  // ── Tab Context Menu ───────────────────────────────────────────────────
+
+  _showTabContextMenu(tabId, x, y) {
+    this._hideTabContextMenu();
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab) return;
+
+    const existingGroups = Object.values(this.groups);
+    const currentGroupId = tab.groupId || null;
+
+    const colorDots = this._GROUP_COLORS.map((c, i) =>
+      `<button class="tcm-color-dot${i === 0 ? ' selected' : ''}" data-color="${c}" style="background:${c}" title="${c}"></button>`
+    ).join('');
+
+    const groupItems = existingGroups.length ? `
+      <div class="tcm-label">Add to group</div>
+      ${existingGroups.map(g => `
+        <button class="tcm-item${currentGroupId === g.id ? ' tcm-active' : ''}" data-action="add-to-group" data-gid="${g.id}">
+          <span class="tcm-dot" style="background:${g.color}"></span>${this.escapeHtml(g.name)}
+        </button>`).join('')}
+      <div class="tcm-sep"></div>` : '';
+
+    const removeItem = currentGroupId ? `
+      <button class="tcm-item" data-action="remove-from-group">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+        Remove from group
+      </button>
+      <div class="tcm-sep"></div>` : '';
+
+    const menu = document.createElement('div');
+    menu.id = 'tab-ctx-menu';
+    menu.className = 'tab-ctx-menu';
+    menu.innerHTML = `
+      ${removeItem}
+      ${groupItems}
+      <div class="tcm-label">New group</div>
+      <div class="tcm-ng-row">
+        <div class="tcm-color-picker">${colorDots}</div>
+        <input class="tcm-ng-input" id="tcm-ng-name" placeholder="Group name…" value="Group ${existingGroups.length + 1}" maxlength="20">
+        <button class="tcm-ng-btn" id="tcm-ng-create">Create</button>
+      </div>
+      <div class="tcm-sep"></div>
+      <button class="tcm-item tcm-danger" data-action="close-tab">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        Close tab
+      </button>
+    `;
+    document.body.appendChild(menu);
+
+    // Position — keep within viewport
+    const mw = 220;
+    menu.style.left = `${Math.min(x, window.innerWidth - mw - 8)}px`;
+    menu.style.top = `${Math.min(y, window.innerHeight - (menu.scrollHeight || 240) - 8)}px`;
+
+    // Color picker selection
+    let selectedColor = this._GROUP_COLORS[0];
+    menu.querySelectorAll('.tcm-color-dot').forEach(dot => {
+      dot.addEventListener('click', () => {
+        menu.querySelectorAll('.tcm-color-dot').forEach(d => d.classList.remove('selected'));
+        dot.classList.add('selected');
+        selectedColor = dot.dataset.color;
+      });
+    });
+
+    // Create group button
+    menu.querySelector('#tcm-ng-create')?.addEventListener('click', () => {
+      const name = menu.querySelector('#tcm-ng-name')?.value.trim() || `Group ${Object.keys(this.groups).length + 1}`;
+      const gid = this.createGroup(name, selectedColor);
+      this.addTabToGroup(tabId, gid);
+      this._hideTabContextMenu();
+    });
+
+    // Action buttons
+    menu.querySelectorAll('[data-action]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const act = btn.dataset.action;
+        if (act === 'close-tab') this.closeTab(tabId);
+        else if (act === 'remove-from-group') this.removeTabFromGroup(tabId);
+        else if (act === 'add-to-group') this.addTabToGroup(tabId, btn.dataset.gid);
+        this._hideTabContextMenu();
+      });
+    });
+
+    // Close on outside click
+    const closeOutside = (e) => {
+      if (!menu.contains(e.target)) {
+        this._hideTabContextMenu();
+        document.removeEventListener('mousedown', closeOutside);
+      }
+    };
+    setTimeout(() => document.addEventListener('mousedown', closeOutside), 10);
+  }
+
+  _hideTabContextMenu() {
+    document.getElementById('tab-ctx-menu')?.remove();
   }
 }
 

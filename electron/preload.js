@@ -89,5 +89,8 @@ contextBridge.exposeInMainWorld('navio', {
   imapSearch: (serviceId, query, limit) => ipcRenderer.invoke('imap-search', { serviceId, query, limit }),
   imapCreateDraft: (serviceId, opts) => ipcRenderer.invoke('imap-create-draft', { serviceId, ...opts }),
   imapGetEmailBody: (serviceId, uid) => ipcRenderer.invoke('imap-get-email-body', { serviceId, uid }),
-  ntpFetchStocks: () => ipcRenderer.invoke('ntp-stocks')
+  ntpFetchStocks: () => ipcRenderer.invoke('ntp-stocks'),
+
+  setAdBlocker: (enabled) => ipcRenderer.invoke('set-ad-blocker', { enabled }),
+  getAdBlockStats: () => ipcRenderer.invoke('get-ad-block-stats')
 });

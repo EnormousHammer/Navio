@@ -53,7 +53,9 @@ class SettingsManagerClass {
       exportLedger: document.getElementById('btn-export-ledger'),
       ledgerStatus: document.getElementById('ledger-export-status'),
       importScan: document.getElementById('btn-settings-import-scan'),
-      importScanStatus: document.getElementById('settings-import-scan-status')
+      importScanStatus: document.getElementById('settings-import-scan-status'),
+      adBlock: document.getElementById('setting-ad-block'),
+      adBlockStats: document.getElementById('ad-block-stats-hint')
     };
 
     this.panelIds = ['general', 'ai', 'appearance', 'browser', 'privacy', 'integrations', 'about'];
@@ -252,6 +254,7 @@ class SettingsManagerClass {
     if (this.elements.syncEnabled) this.elements.syncEnabled.checked = !!this.config.syncEnabled;
     if (this.elements.extensionsAI) this.elements.extensionsAI.checked = !!this.config.extensionsAllowAI;
     if (this.elements.formAutofill) this.elements.formAutofill.checked = this.config.formAutofillAssist !== false;
+    if (this.elements.adBlock) this.elements.adBlock.checked = this.config.adBlockEnabled !== false;
 
     this.elements.provider.value = this.config.aiProvider || 'openai';
     try {
@@ -360,8 +363,30 @@ class SettingsManagerClass {
     if (this.elements.ledgerStatus) this.elements.ledgerStatus.textContent = '';
     this.showPanel('general');
     this.modal.classList.add('visible');
-    // Render OAuth client ID fields when the integrations panel is first shown
     this._renderOAuthClientIdFields();
+    this._refreshAdBlockStats();
+
+    // Live ad-blocker toggle (takes effect immediately without Save)
+    if (this.elements.adBlock && !this.elements.adBlock._navioAdBlockBound) {
+      this.elements.adBlock._navioAdBlockBound = true;
+      this.elements.adBlock.addEventListener('change', async () => {
+        const enabled = this.elements.adBlock.checked;
+        await window.navio.setAdBlocker(enabled);
+        this._refreshAdBlockStats();
+      });
+    }
+  }
+
+  async _refreshAdBlockStats() {
+    if (!this.elements.adBlockStats) return;
+    try {
+      const s = await window.navio.getAdBlockStats();
+      const status = s.enabled ? 'ON' : 'OFF';
+      this.elements.adBlockStats.textContent =
+        `Status: ${status} · ${s.blocked.toLocaleString()} requests blocked this session · ${s.domains} domains in blocklist`;
+    } catch {
+      this.elements.adBlockStats.textContent = 'Blocks requests from known ad networks, tracking pixels, and data brokers.';
+    }
   }
 
   async _renderOAuthClientIdFields() {
@@ -485,6 +510,7 @@ class SettingsManagerClass {
       syncEnabled: !!(this.elements.syncEnabled && this.elements.syncEnabled.checked),
       extensionsAllowAI: !!(this.elements.extensionsAI && this.elements.extensionsAI.checked),
       formAutofillAssist: !!(this.elements.formAutofill && this.elements.formAutofill.checked),
+      adBlockEnabled: !!(this.elements.adBlock && this.elements.adBlock.checked),
       aiProvider: this.elements.provider.value,
       apiKey: this.elements.apiKey.value.trim(),
       aiModel: this.elements.model.value === '__custom__'
