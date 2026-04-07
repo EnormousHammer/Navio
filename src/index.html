@@ -196,19 +196,26 @@
 
       <div class="assistant-toolbar">
         <label class="sr-only" for="assistant-data-scope">AI data scope</label>
-        <select id="assistant-data-scope" title="What the assistant may send about the current page">
-          <option value="none">Context: none</option>
-          <option value="selection">Context: selection</option>
-          <option value="excerpt">Context: excerpt</option>
-          <option value="full">Context: extended</option>
-        </select>
-        <button type="button" class="btn btn-secondary" id="btn-pin-tab" style="font-size:11px;padding:4px 10px">Pin tab</button>
+        <div class="scope-pill-wrap">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="scope-pill-icon"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+          <select id="assistant-data-scope" title="What the assistant may send about the current page">
+            <option value="none">Context: off</option>
+            <option value="selection">Context: selection</option>
+            <option value="excerpt">Context: excerpt</option>
+            <option value="full">Context: extended</option>
+          </select>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="scope-pill-chevron"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <button type="button" class="assistant-pin-btn" id="btn-pin-tab" title="Pin this tab so AI always uses it as context">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          Pin tab
+        </button>
         <span class="assistant-context-receipt" id="assistant-context-receipt"></span>
       </div>
 
       <div class="assistant-quick-actions">
         <button class="quick-action" data-action="summarize">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
           Summarize
         </button>
         <button class="quick-action" data-action="explain">
@@ -216,7 +223,7 @@
           Explain
         </button>
         <button class="quick-action" data-action="extract">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
           Extract
         </button>
         <button class="quick-action" data-action="translate">
@@ -226,17 +233,36 @@
       </div>
 
       <div class="assistant-messages" id="assistant-messages">
-        <div class="message assistant-message">
-          <div class="message-content">
-            <p>Welcome to <strong>Navio AI</strong>. I'm your intelligent browser companion.</p>
-            <ul>
-              <li>Summarize & explain any web page</li>
-              <li>Answer questions with page context</li>
-              <li>Navigate & research for you</li>
-              <li>Extract structured data</li>
-            </ul>
-            <p>Configure your API key in <strong>Settings</strong> to begin.</p>
+        <div class="assistant-welcome">
+          <div class="welcome-glow-ring">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a7 7 0 0 1 7 7v1a7 7 0 0 1-14 0V9a7 7 0 0 1 7-7z"/>
+              <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+              <circle cx="9" cy="9" r="1" fill="currentColor"/>
+              <circle cx="15" cy="9" r="1" fill="currentColor"/>
+            </svg>
           </div>
+          <h3 class="welcome-title">Navio AI</h3>
+          <p class="welcome-sub">Your intelligent browser companion</p>
+          <div class="welcome-caps">
+            <div class="welcome-cap">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span>Summarize &amp; explain any page</span>
+            </div>
+            <div class="welcome-cap">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <span>Research &amp; answer questions</span>
+            </div>
+            <div class="welcome-cap">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+              <span>Extract structured data</span>
+            </div>
+            <div class="welcome-cap">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 8l6 6"/><path d="M4 14l6-6 2-3"/><path d="M2 5h12"/><path d="M22 22l-5-10-5 10"/><path d="M14 18h6"/></svg>
+              <span>Translate in one click</span>
+            </div>
+          </div>
+          <p class="welcome-cta">Add your API key in <strong>Settings</strong> to get started.</p>
         </div>
       </div>
 

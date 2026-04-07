@@ -307,7 +307,7 @@ PERSONALITY:
         const result = await window.navio.aiRequest({ messages });
         this.removeTypingIndicator();
         if (result.error) {
-          this.addMessage('assistant', `**Error:** ${result.error}`);
+          this.addMessage('assistant', result.error, 'error');
         } else {
           this.addMessage('assistant', result.content);
           this.conversationHistory.push(
@@ -326,7 +326,7 @@ PERSONALITY:
       }
     } catch (err) {
       this.removeTypingIndicator();
-      this.addMessage('assistant', `**Connection error:** ${err.message}`);
+      this.addMessage('assistant', err.message, 'error');
     }
 
     this.isProcessing = false;
@@ -374,7 +374,7 @@ PERSONALITY:
       if (!buffer) {
         const fallback = await window.navio.aiRequest({ messages });
         if (fallback.error) {
-          this.addMessage('assistant', `**Error:** ${fallback.error || msg}`);
+          this.addMessage('assistant', fallback.error || msg, 'error');
         } else {
           this.addMessage('assistant', fallback.content);
           this.conversationHistory.push(
@@ -402,13 +402,27 @@ PERSONALITY:
     }
   }
 
-  addMessage(role, content) {
+  addMessage(role, content, type = '') {
     const msgEl = document.createElement('div');
-    msgEl.className = `message ${role}-message`;
+    msgEl.className = `message ${role}-message${type ? ' message-' + type : ''}`;
 
     const contentEl = document.createElement('div');
     contentEl.className = 'message-content';
-    contentEl.innerHTML = this.formatMessage(content);
+
+    if (type === 'error') {
+      // Clean the raw error text of any markdown bold we added at call sites
+      const clean = content.replace(/^\*\*Error:\*\*\s*/i, '').replace(/^\*\*Connection error:\*\*\s*/i, '');
+      contentEl.innerHTML = `
+        <div class="msg-error-header">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          Error
+        </div>
+        <div class="msg-error-body">${this.formatMessage(clean)}</div>`;
+    } else {
+      contentEl.innerHTML = this.formatMessage(content);
+    }
 
     msgEl.appendChild(contentEl);
     this.messagesEl.appendChild(msgEl);

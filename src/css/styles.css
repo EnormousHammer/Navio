@@ -2985,19 +2985,82 @@ body.onboarding-active #app {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 6px;
+  padding: 7px 12px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-deep);
 }
 
-.assistant-toolbar select {
-  font-size: 11px;
-  padding: 4px 8px;
-  border-radius: var(--radius-xs);
-  border: 1px solid var(--border);
+/* Custom scope pill that wraps the native <select> */
+.scope-pill-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px 4px 9px;
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
   background: var(--bg-surface);
-  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease);
+  position: relative;
+}
+
+.scope-pill-wrap:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.scope-pill-icon,
+.scope-pill-chevron {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.scope-pill-wrap select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-accent);
+  font-size: 11.5px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  outline: none;
+  padding: 0;
+  /* Let the chevron overlap cleanly */
+}
+
+/* Pin tab button */
+.assistant-pin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px 4px 9px;
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+}
+
+.assistant-pin-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-glow);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.assistant-pin-btn.pinned {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-glow);
 }
 
 .assistant-context-receipt {
@@ -3005,6 +3068,112 @@ body.onboarding-active #app {
   color: var(--text-tertiary);
   flex: 1 1 100%;
   line-height: 1.35;
+}
+
+/* ── Welcome card ── */
+.assistant-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 28px 20px 22px;
+  gap: 6px;
+}
+
+.welcome-glow-ring {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--accent-glow);
+  border: 1.5px solid rgba(0, 216, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  box-shadow: 0 0 24px rgba(0, 216, 255, 0.15);
+  margin-bottom: 6px;
+}
+
+.welcome-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: 0.3px;
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.welcome-sub {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin: 0 0 10px;
+}
+
+.welcome-caps {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+  margin: 2px 0 14px;
+}
+
+.welcome-cap {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+.welcome-cap svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.welcome-cta {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  margin: 0;
+}
+
+.welcome-cta strong {
+  color: var(--text-accent);
+}
+
+/* ── Error message bubble ── */
+.message-error .message-content {
+  background: rgba(255, 80, 80, 0.07) !important;
+  border: 1px solid rgba(255, 80, 80, 0.25) !important;
+  color: var(--text-primary) !important;
+}
+
+.msg-error-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ff6b6b;
+  margin-bottom: 6px;
+}
+
+.msg-error-header svg {
+  flex-shrink: 0;
+  color: #ff6b6b;
+}
+
+.msg-error-body {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
 }
 
 .reading-mode-pane {

@@ -251,12 +251,21 @@ async function performAiFetch(cfg, apiKey, messages, useStream) {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`
     };
-    body = JSON.stringify({
+    // Reasoning models (o1, o3, o4 series) require max_completion_tokens
+    // and do not accept temperature.
+    const isReasoning = /^o[1-9]/.test(model || '');
+    const tokenKey = isReasoning ? 'max_completion_tokens' : 'max_tokens';
+    const bodyObj = {
       model: model || 'gpt-4o',
       messages,
-      max_tokens: 4096,
+      [tokenKey]: 4096,
       stream: !!useStream
-    });
+    };
+    if (isReasoning) {
+      // Reasoning models fix temperature at 1 internally; passing it causes errors
+      delete bodyObj.temperature;
+    }
+    body = JSON.stringify(bodyObj);
   } else if (provider === 'anthropic') {
     if (useStream) return { error: 'Streaming not implemented for this provider; disable stream in settings.' };
     url = 'https://api.anthropic.com/v1/messages';
