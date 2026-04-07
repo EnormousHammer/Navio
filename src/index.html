@@ -111,56 +111,135 @@
       <div id="browser-container">
         <div id="reading-mode-pane" class="reading-mode-pane" aria-hidden="true"></div>
         <div id="new-tab-page" class="new-tab-page">
-          <div class="ntp-content">
-            <!-- Futuristic orb -->
+
+          <!-- Top bar: greeting, date/time, weather -->
+          <div class="ntp-topbar">
+            <div class="ntp-greeting-block">
+              <span id="ntp-greeting">Good morning</span>
+              <span class="ntp-date" id="ntp-date"></span>
+            </div>
+            <div class="ntp-weather-block" id="ntp-weather-block" style="display:none">
+              <span id="ntp-weather-icon">☁</span>
+              <span id="ntp-weather-temp"></span>
+              <span id="ntp-weather-desc"></span>
+            </div>
+          </div>
+
+          <!-- Connected services status bar -->
+          <div class="ntp-services-bar" id="ntp-services-bar">
+            <!-- Populated by ntp.js -->
+          </div>
+
+          <!-- Hero: logo + AI input -->
+          <div class="ntp-hero">
             <div class="ntp-orb">
               <div class="orb-ring orb-ring-1"></div>
               <div class="orb-ring orb-ring-2"></div>
               <div class="orb-ring orb-ring-3"></div>
               <div class="orb-core">
-                <svg viewBox="0 0 32 32" width="40" height="40">
+                <svg viewBox="0 0 32 32" width="28" height="28">
                   <path d="M16 2L4 28h6l6-16 6 16h6L16 2z" fill="white"/>
                 </svg>
               </div>
             </div>
             <h1 class="ntp-title">Navio</h1>
-            <p class="ntp-subtitle">Intelligence meets the internet</p>
+
+            <!-- Mode tabs -->
+            <div class="ntp-mode-tabs">
+              <button class="ntp-mode-tab active" data-mode="search">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                Search
+              </button>
+              <button class="ntp-mode-tab" data-mode="ai">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                Ask AI
+              </button>
+              <button class="ntp-mode-tab" data-mode="task">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                Task
+              </button>
+            </div>
+
             <div class="ntp-search">
               <div class="ntp-search-glow"></div>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" id="ntp-search-input" placeholder="Search the web or ask Navio AI..." spellcheck="false" autocomplete="off">
-            </div>
-            <div class="ntp-shortcuts" id="ntp-shortcuts">
-              <button type="button" class="ntp-shortcut" data-url="https://www.google.com">
-                <div class="shortcut-icon si-google">G</div>
-                <span>Google</span>
+              <svg class="ntp-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="ntp-search-input" placeholder="Search the web or ask Navio AI…" spellcheck="false" autocomplete="off">
+              <button class="ntp-search-send" id="ntp-search-send" title="Send to AI">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
               </button>
-              <button type="button" class="ntp-shortcut" data-url="https://www.youtube.com">
-                <div class="shortcut-icon si-youtube">Y</div>
-                <span>YouTube</span>
-              </button>
-              <button type="button" class="ntp-shortcut" data-url="https://github.com">
-                <div class="shortcut-icon si-github">GH</div>
-                <span>GitHub</span>
-              </button>
-              <button type="button" class="ntp-shortcut" data-url="https://twitter.com">
-                <div class="shortcut-icon si-x">X</div>
-                <span>Twitter/X</span>
-              </button>
-              <button type="button" class="ntp-shortcut" data-url="https://reddit.com">
-                <div class="shortcut-icon si-reddit">R</div>
-                <span>Reddit</span>
-              </button>
-              <button type="button" class="ntp-shortcut" data-url="https://chat.openai.com">
-                <div class="shortcut-icon si-ai">AI</div>
-                <span>ChatGPT</span>
-              </button>
-            </div>
-            <div class="ntp-tip">
-              <div class="tip-glow"></div>
-              <span>Press <kbd>Ctrl+Shift+A</kbd> to summon Navio AI</span>
             </div>
           </div>
+
+          <!-- Quick links -->
+          <div class="ntp-shortcuts" id="ntp-shortcuts">
+            <button type="button" class="ntp-shortcut" data-url="https://www.google.com">
+              <div class="shortcut-icon si-google">G</div>
+              <span>Google</span>
+            </button>
+            <button type="button" class="ntp-shortcut" data-url="https://mail.google.com">
+              <div class="shortcut-icon si-gmail">M</div>
+              <span>Gmail</span>
+            </button>
+            <button type="button" class="ntp-shortcut" data-url="https://drive.google.com">
+              <div class="shortcut-icon si-drive">▲</div>
+              <span>Drive</span>
+            </button>
+            <button type="button" class="ntp-shortcut" data-url="https://www.youtube.com">
+              <div class="shortcut-icon si-youtube">▶</div>
+              <span>YouTube</span>
+            </button>
+            <button type="button" class="ntp-shortcut" data-url="https://github.com">
+              <div class="shortcut-icon si-github">GH</div>
+              <span>GitHub</span>
+            </button>
+            <button type="button" class="ntp-shortcut" data-url="https://twitter.com">
+              <div class="shortcut-icon si-x">X</div>
+              <span>X</span>
+            </button>
+            <button type="button" class="ntp-shortcut" data-url="https://reddit.com">
+              <div class="shortcut-icon si-reddit">R</div>
+              <span>Reddit</span>
+            </button>
+            <button type="button" class="ntp-shortcut" data-url="https://chat.openai.com">
+              <div class="shortcut-icon si-ai">AI</div>
+              <span>ChatGPT</span>
+            </button>
+          </div>
+
+          <!-- Dashboard widgets: News + Email -->
+          <div class="ntp-widgets">
+            <!-- News feed -->
+            <div class="ntp-widget" id="ntp-widget-news">
+              <div class="ntp-widget-header">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 0-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></svg>
+                Top Stories
+                <span class="ntp-widget-source" id="ntp-news-source">HackerNews</span>
+              </div>
+              <div class="ntp-widget-body" id="ntp-news-list">
+                <div class="ntp-widget-loading">
+                  <span></span><span></span><span></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Email inbox widget -->
+            <div class="ntp-widget" id="ntp-widget-email">
+              <div class="ntp-widget-header">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                Inbox
+                <span class="ntp-widget-badge" id="ntp-unread-badge" style="display:none"></span>
+                <button class="ntp-widget-action" id="ntp-draft-all-btn" style="display:none" title="Draft replies for all unread emails">✦ Draft All</button>
+              </div>
+              <div class="ntp-widget-body" id="ntp-email-list">
+                <div class="ntp-email-empty">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                  <p>Connect Gmail or Outlook in the Connectors Hub to see your inbox here.</p>
+                  <button class="ntp-connect-email-btn" id="ntp-connect-email">Connect email</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </main>
@@ -654,6 +733,20 @@
 
           <div class="settings-panel" id="settings-panel-integrations" role="tabpanel">
 
+            <!-- ── OAuth Connected Apps ─────────────────────────────────── -->
+            <div class="settings-section" id="settings-connected-apps">
+              <h3>Connected Apps — OAuth 2.0</h3>
+              <p class="settings-inline-hint">
+                Enter the <strong>Client ID</strong> for each service you want to connect. This is a one-time developer setup — after this, users just click <em>"Sign in with Google"</em> and log in normally.
+                Each client ID is free to create and takes about 5 minutes per service.
+              </p>
+              <div id="oauth-client-id-fields">
+                <!-- Populated dynamically by settings.js -->
+                <div class="oauth-setup-loading">Loading…</div>
+              </div>
+            </div>
+            <!-- ── End OAuth Connected Apps ────────────────────────────── -->
+
             <div class="settings-section">
               <h3>Model Context Protocol (MCP)</h3>
               <p class="settings-inline-hint">Stub host: enable to surface tool placeholders and ledger entries. Full MCP SDK wiring is a future release.</p>
@@ -910,5 +1003,6 @@
   <script src="js/settings.js"></script>
   <script src="js/connectors.js"></script>
   <script src="js/live-connectors.js"></script>
+  <script src="js/ntp.js"></script>
 </body>
 </html>

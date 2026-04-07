@@ -756,12 +756,10 @@ body.tabstrip-hidden .tab-strip-show {
   top: 0; left: 0;
   width: 100%; height: 100%;
   display: none;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   background: var(--bg-void);
-  overflow: hidden;
-  /* Must sit above always-visible webviews (webviews appear later in DOM but
-     have no explicit z-index; giving NTP z-index:2 ensures it covers them). */
+  overflow-y: auto;
+  overflow-x: hidden;
   z-index: 2;
 }
 
@@ -769,14 +767,97 @@ body.tabstrip-hidden .tab-strip-show {
 
 .new-tab-page::before {
   content: '';
-  position: absolute;
-  width: 600px;
-  height: 600px;
-  top: 50%;
+  position: fixed;
+  width: 700px;
+  height: 500px;
+  top: 0;
   left: 50%;
-  transform: translate(-50%, -60%);
+  transform: translateX(-50%);
   background: var(--ntp-radial);
   pointer-events: none;
+  z-index: 0;
+}
+
+/* ── NTP Topbar ────────────────────────────────────────────────────────── */
+.ntp-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 32px 0;
+  position: relative;
+  z-index: 1;
+}
+.ntp-greeting-block {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.ntp-greeting-block span:first-child {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.ntp-date {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.ntp-weather-block {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+#ntp-weather-temp { font-weight: 600; color: var(--text-primary); }
+
+/* ── NTP Services Bar ─────────────────────────────────────────────────── */
+.ntp-services-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 32px 0;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 1;
+}
+.ntp-service-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-surface, rgba(255,255,255,0.04));
+  border: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  border-radius: 20px;
+  padding: 4px 12px 4px 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: default;
+}
+.ntp-svc-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ntp-svc-label { font-weight: 600; color: var(--text-primary); }
+.ntp-svc-email { opacity: 0.65; font-size: 11px; }
+.ntp-svc-count {
+  background: var(--text-accent, #00d8ff);
+  color: #000;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 1px 5px;
+  min-width: 16px;
+  text-align: center;
+}
+
+/* ── NTP Hero (orb + title + search) ──────────────────────────────────── */
+.ntp-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 20px 4px;
+  position: relative;
+  z-index: 1;
 }
 
 .ntp-content {
@@ -787,6 +868,39 @@ body.tabstrip-hidden .tab-strip-show {
   position: relative;
   z-index: 1;
 }
+
+/* ── NTP Mode Tabs ──────────────────────────────────────────────────────── */
+.ntp-mode-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-surface, rgba(255,255,255,0.04));
+  border: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  border-radius: 20px;
+  padding: 3px;
+  margin-bottom: 16px;
+}
+.ntp-mode-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 14px;
+  border-radius: 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  font-family: var(--font-sans);
+}
+.ntp-mode-tab:hover { color: var(--text-primary); }
+.ntp-mode-tab.active {
+  background: var(--text-accent, #00d8ff);
+  color: #000;
+  font-weight: 700;
+}
+.ntp-mode-tab svg { flex-shrink: 0; }
 
 .ntp-orb {
   width: 120px;
@@ -904,6 +1018,219 @@ body.tabstrip-hidden .tab-strip-show {
 
 .ntp-search input::placeholder { color: var(--text-tertiary); }
 
+.ntp-search-send {
+  background: var(--text-accent, #00d8ff);
+  color: #000;
+  border: none;
+  border-radius: 50%;
+  width: 32px; height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s, transform 0.15s;
+}
+.ntp-search-send:hover { opacity: 0.85; transform: scale(1.05); }
+
+/* ── NTP Widgets ──────────────────────────────────────────────────────── */
+.ntp-widgets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 16px 32px 32px;
+  position: relative;
+  z-index: 1;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+@media (max-width: 700px) {
+  .ntp-widgets { grid-template-columns: 1fr; }
+}
+.ntp-widget {
+  background: var(--bg-surface, rgba(255,255,255,0.03));
+  border: 1px solid var(--glass-border, rgba(255,255,255,0.07));
+  border-radius: 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 340px;
+}
+.ntp-widget-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--glass-border, rgba(255,255,255,0.06));
+  flex-shrink: 0;
+}
+.ntp-widget-header svg { flex-shrink: 0; }
+.ntp-widget-source {
+  margin-left: auto;
+  font-size: 10px;
+  opacity: 0.5;
+  font-weight: 400;
+  text-transform: none;
+}
+.ntp-widget-badge {
+  background: var(--text-accent, #00d8ff);
+  color: #000;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 1px 6px;
+}
+.ntp-widget-action {
+  margin-left: auto;
+  background: var(--text-accent, #00d8ff);
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: opacity 0.15s;
+}
+.ntp-widget-action:hover { opacity: 0.85; }
+.ntp-widget-body {
+  overflow-y: auto;
+  flex: 1;
+  padding: 8px 0;
+}
+.ntp-widget-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px;
+}
+.ntp-widget-loading span {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--text-accent, #00d8ff);
+  animation: ntp-pulse 1.2s ease-in-out infinite;
+}
+.ntp-widget-loading span:nth-child(2) { animation-delay: 0.2s; }
+.ntp-widget-loading span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes ntp-pulse {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+.ntp-widget-empty {
+  padding: 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+  opacity: 0.7;
+}
+
+/* ── News items ─────────────────────────────────────────────────────── */
+.ntp-news-item {
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--glass-border, rgba(255,255,255,0.04));
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.ntp-news-item:last-child { border-bottom: none; }
+.ntp-news-item:hover { background: rgba(255,255,255,0.04); }
+.ntp-news-title {
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.4;
+  margin-bottom: 3px;
+}
+.ntp-news-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.65;
+}
+.ntp-news-meta span:not(:last-child)::after { content: '·'; margin-left: 8px; }
+
+/* ── Email inbox items ───────────────────────────────────────────────── */
+.ntp-email-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.ntp-email-empty svg { opacity: 0.4; }
+.ntp-connect-email-btn {
+  background: var(--text-accent, #00d8ff);
+  color: #000;
+  border: none;
+  border-radius: 7px;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  margin-top: 4px;
+}
+.ntp-email-item {
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--glass-border, rgba(255,255,255,0.04));
+  position: relative;
+  cursor: default;
+}
+.ntp-email-item:last-child { border-bottom: none; }
+.ntp-email-item:hover { background: rgba(255,255,255,0.03); }
+.ntp-email-from {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ntp-email-subject {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+.ntp-email-meta {
+  font-size: 10px;
+  color: var(--text-tertiary, rgba(255,255,255,0.3));
+  margin-top: 2px;
+}
+.ntp-email-draft-btn {
+  display: none;
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--text-accent, #00d8ff);
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+.ntp-email-item:hover .ntp-email-draft-btn { display: block; }
+
+/* ── NTP Shortcuts (updated for new layout) ───────────────────────────── */
+
 .ntp-shortcuts {
   display: flex;
   flex-wrap: wrap;
@@ -954,6 +1281,8 @@ body.tabstrip-hidden .tab-strip-show {
 }
 
 .si-google { background: linear-gradient(135deg, #4285f4, #34a853); }
+.si-gmail  { background: linear-gradient(135deg, #ea4335, #fbbc04); }
+.si-drive  { background: linear-gradient(135deg, #4285f4, #34a853); }
 .si-youtube { background: linear-gradient(135deg, #ff0000, #cc0000); }
 .si-github { background: linear-gradient(135deg, #333, #555); }
 .si-x { background: linear-gradient(135deg, #222, #444); }
@@ -5208,8 +5537,8 @@ body.onboarding-active #app {
 
 /* ── End Batch Draft Modal ─────────────────────────────────────────────── */
 
-/* ── Connectors Hub — Open Tab Buttons ─────────────────────────────────── */
-.conn-open-tab-btn {
+/* ── OAuth Connect Buttons (Connectors Hub) ────────────────────────────── */
+.conn-oauth-btn {
   display: block;
   width: 100%;
   padding: 9px 14px;
@@ -5218,16 +5547,17 @@ body.onboarding-active #app {
   font-weight: 600;
   cursor: pointer;
   text-align: center;
-  background: var(--text-accent, #00d8ff);
-  color: #000;
-  border: none;
   transition: opacity 0.15s, transform 0.15s;
   margin-top: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.conn-open-tab-btn:hover { opacity: 0.88; transform: translateY(-1px); }
-.conn-open-tab-btn:active { transform: translateY(0); }
+.conn-oauth-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+.conn-oauth-btn:active { transform: translateY(0); }
+.conn-oauth-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
 
-.conn-jump-btn {
+.conn-setup-btn {
   display: block;
   width: 100%;
   padding: 8px 14px;
@@ -5236,13 +5566,55 @@ body.onboarding-active #app {
   font-weight: 600;
   cursor: pointer;
   text-align: center;
-  background: transparent;
-  color: var(--text-accent, #00d8ff);
-  border: 1px solid var(--text-accent, #00d8ff);
-  transition: background 0.15s, opacity 0.15s;
+  background: var(--bg-surface, #1a2540);
+  color: var(--text-secondary);
+  border: 1px dashed var(--glass-border, rgba(255,255,255,0.15));
+  transition: opacity 0.15s, border-color 0.15s;
   margin-top: 10px;
 }
-.conn-jump-btn:hover { background: rgba(0, 216, 255, 0.08); }
+.conn-setup-btn:hover { border-color: var(--text-accent, #00d8ff); color: var(--text-accent, #00d8ff); }
+
+.conn-oauth-account {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 6px;
+}
+.conn-oauth-avatar {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.conn-oauth-avatar-initials {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--text-accent, #00d8ff);
+  color: #000;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.conn-oauth-email {
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conn-card-error {
+  font-size: 11px;
+  color: var(--text-danger, #ff5a5f);
+  margin-top: 6px;
+  padding: 4px 8px;
+  background: rgba(255, 90, 95, 0.1);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 90, 95, 0.2);
+}
 
 /* ── OAuth Client ID Settings ────────────────────────────────────────────── */
 .oauth-setup-loading {

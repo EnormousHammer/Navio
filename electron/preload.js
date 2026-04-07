@@ -78,5 +78,15 @@ contextBridge.exposeInMainWorld('navio', {
   oauthConnect: (providerId) => ipcRenderer.invoke('oauth-connect', { providerId }),
   oauthDisconnect: (providerId) => ipcRenderer.invoke('oauth-disconnect', { providerId }),
   oauthStatus: () => ipcRenderer.invoke('oauth-status'),
-  oauthProvidersConfig: () => ipcRenderer.invoke('oauth-providers-config')
+  oauthProvidersConfig: () => ipcRenderer.invoke('oauth-providers-config'),
+
+  // IMAP — direct email connection, no OAuth/tokens needed
+  // Works in background even when no email tab is open
+  imapConnect: (serviceId, email, password) => ipcRenderer.invoke('imap-connect', { serviceId, email, password }),
+  imapDisconnect: (serviceId) => ipcRenderer.invoke('imap-disconnect', { serviceId }),
+  imapStatus: () => ipcRenderer.invoke('imap-status'),
+  imapGetUnread: (serviceId, limit) => ipcRenderer.invoke('imap-get-unread', { serviceId, limit }),
+  imapSearch: (serviceId, query, limit) => ipcRenderer.invoke('imap-search', { serviceId, query, limit }),
+  imapCreateDraft: (serviceId, opts) => ipcRenderer.invoke('imap-create-draft', { serviceId, ...opts }),
+  imapGetEmailBody: (serviceId, uid) => ipcRenderer.invoke('imap-get-email-body', { serviceId, uid })
 });

@@ -1,10 +1,10 @@
 /**
  * Navio Browser - Connectors Hub
  *
- * Session-based integrations — no tokens, no OAuth, no setup:
- *  1. "Connections" tab  — the user opens a service in a tab and logs in
- *     normally. Navio reads from that open tab. "Connected" = tab is open.
- *     The AI can then read, search, summarise, and draft from that service.
+ * Two-tier system inspired by Claude/Perplexity:
+ *  1. "Connections" tab  — API-authenticated integrations the AI assistant can
+ *     actually query (GitHub, Notion, Perplexity search, Linear).
+ *     Connect once → AI uses them during conversations.
  *  2. "Quick Launch" tab — curated URL shortcuts (original behaviour).
  */
 
@@ -28,68 +28,74 @@ class ConnectorsManagerClass {
       dropbox: 'dropbox', slack: 'slack', github: 'github', notion: 'notion'
     };
 
-    // ── Session-based connectors ─────────────────────────────────────────────
-    // No tokens, no OAuth, no API keys.
-    // The user just logs into the service in a Navio tab — exactly like opening
-    // any website. Once they're logged in, Navio can read from that open tab.
-    // "Connected" = a tab with that service is currently open.
+    // ── Real API connectors — grouped by category ───────────────────────────
+    // Each service has a token/key the user provides once.
+    // The AI assistant can then query these services during conversations.
     this.integrationCategories = [
       { id: 'email',        name: 'Email',          icon: '✉' },
-      { id: 'cloud',        name: 'Cloud & Files',  icon: '☁' },
+      { id: 'cloud',        name: 'Cloud Storage',  icon: '☁' },
       { id: 'communication',name: 'Communication',  icon: '💬' },
       { id: 'productivity', name: 'Productivity',   icon: '📋' },
       { id: 'development',  name: 'Development',    icon: '</>' },
+      { id: 'ai-search',    name: 'AI & Search',    icon: '✦'  },
     ];
 
+    // IMAP status — loaded on init (gmail, outlook)
+    this.imapStatus = {};
+
     this.integrations = [
-      // ── Email ────────────────────────────────────────────────────────────
+      // ── Email — IMAP (email + password, no tokens/OAuth) ─────────────────
       {
         id: 'gmail',
         name: 'Gmail',
-        tagline: 'Read, search & draft email replies',
-        description: 'Open Gmail and log in — Navio reads your inbox from the open tab. Ask the AI to find emails, summarise your inbox, or draft replies.',
+        tagline: 'Read, search and draft emails',
+        description: 'Connect Gmail with your email and password. Works in the background — no tab needs to be open. AI can search your inbox and create drafts directly.',
         icon: 'M',
         gradient: 'linear-gradient(135deg, #ea4335, #fbbc04)',
-        openUrl: 'https://mail.google.com',
-        urlFragment: 'mail.google.com',
-        capabilities: ['Search emails by sender, subject, or keyword', 'Summarise your inbox', 'Draft & save replies'],
+        connectionType: 'imap',
+        imapServiceId: 'gmail',
+        capabilities: ['Search inbox by sender, subject, keyword', 'Read email threads', 'Create drafts in your Drafts folder', 'Check unread count'],
         category: 'email'
       },
       {
         id: 'outlook',
         name: 'Outlook',
-        tagline: 'Read, search & draft email replies',
-        description: 'Open Outlook and log in — Navio reads your inbox from the open tab. Ask the AI to find emails or draft replies.',
+        tagline: 'Read, search and draft emails',
+        description: 'Connect Outlook with your Microsoft email and password. Works in the background without any open tab. AI can search your inbox and create drafts.',
         icon: 'O',
         gradient: 'linear-gradient(135deg, #0078d4, #00bcf2)',
-        openUrl: 'https://outlook.live.com',
-        urlFragment: 'outlook.live.com',
-        capabilities: ['Search emails by keyword', 'Find messages by sender', 'Draft & save replies'],
+        connectionType: 'imap',
+        imapServiceId: 'outlook',
+        capabilities: ['Search inbox by sender, subject, keyword', 'Read email threads', 'Create drafts in your Drafts folder', 'Check unread count'],
         category: 'email'
       },
 
-      // ── Cloud & Files ────────────────────────────────────────────────────
+      // ── Cloud Storage ────────────────────────────────────────────────────
       {
         id: 'gdrive',
         name: 'Google Drive',
-        tagline: 'Search and open files',
-        description: 'Open Google Drive and log in — Navio reads file names and recent activity from the open tab.',
+        tagline: 'Search files and documents',
+        description: 'Connect Google Drive so the AI can find your files and documents. Ask "find the Q3 report" or "show recent spreadsheets."',
         icon: 'GD',
         gradient: 'linear-gradient(135deg, #4285f4, #34a853)',
-        openUrl: 'https://drive.google.com',
-        urlFragment: 'drive.google.com',
-        capabilities: ['Search files by name', 'Find recent documents', 'Open files directly'],
+        keyLabel: 'Google Access Token',
+        keyPlaceholder: 'ya29.a0...',
+        keyHint: 'Get a token from developers.google.com/oauthplayground — select Drive API (drive.readonly scope)',
+        keyLink: 'https://developers.google.com/oauthplayground/',
+        capabilities: ['Search files by name or content', 'Find Docs, Sheets, Slides', 'Locate recent files'],
         category: 'cloud'
       },
       {
         id: 'dropbox',
         name: 'Dropbox',
         tagline: 'Search files in your Dropbox',
-        description: 'Open Dropbox and log in — Navio reads your file list from the open tab.',
+        description: 'Connect Dropbox so the AI can search through your stored files and folders. Ask "find the presentation from last month" or "search for invoices."',
         icon: 'D',
         gradient: 'linear-gradient(135deg, #0061fe, #0090ff)',
-        openUrl: 'https://www.dropbox.com/home',
-        urlFragment: 'dropbox.com',
+        keyLabel: 'Access Token',
+        keyPlaceholder: 'sl.u.A...',
+        keyHint: 'Create an app at dropbox.com/developers/apps → generate an access token under "OAuth 2"',
+        keyLink: 'https://www.dropbox.com/developers/apps',
         capabilities: ['Search files by name', 'Find documents and media', 'Browse folder structure'],
         category: 'cloud'
       },
@@ -97,11 +103,13 @@ class ConnectorsManagerClass {
         id: 'onedrive',
         name: 'OneDrive',
         tagline: 'Search files in OneDrive',
-        description: 'Open OneDrive and log in — Navio reads your file list from the open tab.',
+        description: 'Connect OneDrive so the AI can search your Microsoft files and documents. Pairs well with Outlook for full Microsoft 365 coverage.',
         icon: 'OD',
         gradient: 'linear-gradient(135deg, #0078d4, #28a8ea)',
-        openUrl: 'https://onedrive.live.com',
-        urlFragment: 'onedrive.live.com',
+        keyLabel: 'Microsoft Graph Access Token',
+        keyPlaceholder: 'eyJ0eXAi...',
+        keyHint: 'Get a token from developer.microsoft.com/en-us/graph/graph-explorer — sign in and copy the token',
+        keyLink: 'https://developer.microsoft.com/en-us/graph/graph-explorer',
         capabilities: ['Search files and folders', 'Find Office documents', 'Locate recent files'],
         category: 'cloud'
       },
@@ -110,13 +118,15 @@ class ConnectorsManagerClass {
       {
         id: 'slack',
         name: 'Slack',
-        tagline: 'Read and search messages',
-        description: 'Open Slack and log in — Navio reads your messages from the open tab.',
+        tagline: 'Search messages across your workspace',
+        description: 'Connect Slack so the AI can search your messages and channels. Ask "find conversations about the launch" or "search for messages from the design team."',
         icon: 'S',
         gradient: 'linear-gradient(135deg, #4a154b, #e01e5a)',
-        openUrl: 'https://app.slack.com',
-        urlFragment: 'app.slack.com',
-        capabilities: ['Read messages from visible channels', 'Summarise recent activity', 'Find conversations by topic'],
+        keyLabel: 'User OAuth Token',
+        keyPlaceholder: 'xoxp-...',
+        keyHint: 'Create a Slack app at api.slack.com/apps → OAuth & Permissions → install and copy the User Token (xoxp-)',
+        keyLink: 'https://api.slack.com/apps',
+        capabilities: ['Search messages across all channels', 'Find conversations by topic', 'Search by user or channel'],
         category: 'communication'
       },
 
@@ -124,25 +134,43 @@ class ConnectorsManagerClass {
       {
         id: 'gcalendar',
         name: 'Google Calendar',
-        tagline: 'See your schedule',
-        description: 'Open Google Calendar and log in — Navio reads your upcoming events from the open tab.',
+        tagline: 'Find events and upcoming meetings',
+        description: 'Connect Google Calendar so the AI knows your schedule. Ask "what meetings do I have this week?" or "find events about the product review."',
         icon: 'GC',
         gradient: 'linear-gradient(135deg, #4285f4, #7baaf7)',
-        openUrl: 'https://calendar.google.com',
-        urlFragment: 'calendar.google.com',
-        capabilities: ['Read upcoming events', 'Find meetings by title', 'See today\'s schedule'],
+        keyLabel: 'Google Access Token',
+        keyPlaceholder: 'ya29.a0...',
+        keyHint: 'Get a token from developers.google.com/oauthplayground — select Calendar API (calendar.readonly scope)',
+        keyLink: 'https://developers.google.com/oauthplayground/',
+        capabilities: ['Search upcoming events', 'Find meetings by title or attendee', 'View next 30 days of schedule'],
         category: 'productivity'
       },
       {
         id: 'notion',
         name: 'Notion',
-        tagline: 'Search pages and notes',
-        description: 'Open Notion and log in — Navio reads your pages from the open tab.',
+        tagline: 'Search across your pages and databases',
+        description: 'Connect your Notion workspace so the AI can search your pages, databases, and notes. Ask "find the Q3 roadmap" or "what did we decide about the API design?"',
         icon: 'N',
         gradient: 'linear-gradient(135deg, #2f2f2f, #4a4a4a)',
-        openUrl: 'https://www.notion.so',
-        urlFragment: 'notion.so',
-        capabilities: ['Read open pages and databases', 'Summarise notes', 'Find content on screen'],
+        keyLabel: 'Integration Token',
+        keyPlaceholder: 'secret_...',
+        keyHint: 'Create an integration at notion.so/my-integrations → copy the token → share pages with the integration',
+        keyLink: 'https://www.notion.so/my-integrations',
+        capabilities: ['Search pages & databases', 'Find notes and docs', 'Retrieve meeting notes'],
+        category: 'productivity'
+      },
+      {
+        id: 'linear',
+        name: 'Linear',
+        tagline: 'Search issues and project updates',
+        description: 'Connect Linear so the AI can search your issues and projects. Ask "what high-priority bugs are open?" or "show issues assigned to me."',
+        icon: 'Li',
+        gradient: 'linear-gradient(135deg, #5e6ad2, #8b95e8)',
+        keyLabel: 'API Key',
+        keyPlaceholder: 'lin_api_...',
+        keyHint: 'Go to linear.app/settings/api → Personal API keys → create and copy',
+        keyLink: 'https://linear.app/settings/api',
+        capabilities: ['Search issues by keyword', 'Filter by team / state', 'Track priorities'],
         category: 'productivity'
       },
 
@@ -150,15 +178,33 @@ class ConnectorsManagerClass {
       {
         id: 'github',
         name: 'GitHub',
-        tagline: 'Browse issues, PRs and code',
-        description: 'Open GitHub and log in — Navio reads issues, PRs, and code from the open tab.',
+        tagline: 'Search issues, PRs, and repositories',
+        description: 'Connect GitHub so the AI can search across your repositories. Ask "find open authentication bugs" or "show PRs waiting for review."',
         icon: 'GH',
         gradient: 'linear-gradient(135deg, #24292f, #444d56)',
-        openUrl: 'https://github.com',
-        urlFragment: 'github.com',
-        capabilities: ['Read open issues & PRs', 'Summarise repository activity', 'Search code on screen'],
+        keyLabel: 'Personal Access Token',
+        keyPlaceholder: 'ghp_... or github_pat_...',
+        keyHint: 'Go to github.com/settings/tokens → generate a classic or fine-grained token with repo + read:org scopes',
+        keyLink: 'https://github.com/settings/tokens',
+        capabilities: ['Search issues & pull requests', 'Search code', 'Find repositories'],
         category: 'development'
       },
+
+      // ── AI & Search ──────────────────────────────────────────────────────
+      {
+        id: 'perplexity',
+        name: 'Perplexity',
+        tagline: 'Live web search with cited answers',
+        description: 'Connect Perplexity\'s Sonar API to give the AI real-time web search. Ask about current events, news, or anything that needs up-to-date information.',
+        icon: 'Px',
+        gradient: 'linear-gradient(135deg, #1a9688, #20b8a2)',
+        keyLabel: 'API Key',
+        keyPlaceholder: 'pplx-...',
+        keyHint: 'Go to perplexity.ai/settings/api → generate an API key',
+        keyLink: 'https://www.perplexity.ai/settings/api',
+        capabilities: ['Real-time web search', 'Answers with source citations', 'Current events & news'],
+        category: 'ai-search'
+      }
     ];
 
     // Services that support the Live Connector system
@@ -281,34 +327,43 @@ class ConnectorsManagerClass {
       this.favorites = ['gmail', 'gdrive', 'dropbox', 'slack', 'notion', 'github', 'chatgpt'];
     }
 
-    // "Connected" is determined by open tabs, not stored keys
-    this._refreshConnectedFromTabs();
+    // Load OAuth status and provider configs (for "Sign in with Google" buttons)
+    try {
+      const [oauthSt, oauthProv] = await Promise.all([
+        window.navio.oauthStatus(),
+        window.navio.oauthProvidersConfig()
+      ]);
+      this.oauthStatus = oauthSt || {};
+      this.oauthProviders = oauthProv || [];
+    } catch {}
+
+    // Load IMAP connection status (gmail, outlook)
+    try {
+      this.imapStatus = await window.navio.imapStatus() || {};
+    } catch {}
+
+    try {
+      const keys = await window.navio.connectorGetKeys();
+      this.connectedIds = new Set(Object.keys(keys).filter((k) => keys[k]));
+    } catch (e) {
+      this.connectedIds = new Set();
+    }
 
     this.renderSidebarPins();
     this.bindEvents();
-
-    // Re-check connected state whenever tabs change
-    if (typeof TabManager !== 'undefined') {
-      document.addEventListener('navio-tabs-changed', () => {
-        this._refreshConnectedFromTabs();
-        if (this.hubVisible && this.activeTab === 'connections') {
-          this.renderConnectionsTab();
-        }
-      });
-    }
   }
 
-  _refreshConnectedFromTabs() {
-    if (typeof TabManager === 'undefined') return;
-    this.connectedIds = new Set();
-    for (const intg of this.integrations) {
-      if (!intg.urlFragment) continue;
-      const isOpen = TabManager.tabs.some((t) => {
-        const url = t.webview?.src || t.url || '';
-        return url.includes(intg.urlFragment);
-      });
-      if (isOpen) this.connectedIds.add(intg.id);
-    }
+  async _refreshOAuthState() {
+    try {
+      const [oauthSt, imapSt, keys] = await Promise.all([
+        window.navio.oauthStatus(),
+        window.navio.imapStatus(),
+        window.navio.connectorGetKeys()
+      ]);
+      this.oauthStatus = oauthSt || {};
+      this.imapStatus = imapSt || {};
+      this.connectedIds = new Set(Object.keys(keys).filter((k) => keys[k]));
+    } catch {}
   }
 
   bindEvents() {
@@ -472,12 +527,41 @@ class ConnectorsManagerClass {
     this._bindConnectionCards(container);
   }
 
+  _oauthProviderFor(serviceId) {
+    const pid = this.serviceToOAuth[serviceId];
+    if (!pid) return null;
+    return this.oauthProviders.find((p) => p.id === pid) || null;
+  }
+
   _integrationCardHTML(intg, isConnected) {
     const capsHTML = intg.capabilities
       .map((c) => `<span class="conn-cap-pill">${c}</span>`)
       .join('');
 
+    const isImap = intg.connectionType === 'imap';
+    const imapEntry = isImap ? this.imapStatus[intg.imapServiceId] : null;
+    const oauthProvider = !isImap ? this._oauthProviderFor(intg.id) : null;
+    const oauthEntry = oauthProvider ? this.oauthStatus[oauthProvider.id] : null;
+    const isOAuth = !!oauthProvider;
+
     if (isConnected) {
+      // Show connected account email (IMAP or OAuth)
+      const connectedEmail = isImap ? imapEntry?.email : oauthEntry?.email;
+      let accountBadge = '';
+      if (connectedEmail) {
+        const avatarHtml = oauthEntry?.avatar
+          ? `<img class="conn-oauth-avatar" src="${oauthEntry.avatar}" alt="">`
+          : `<span class="conn-oauth-avatar-initials">${connectedEmail[0].toUpperCase()}</span>`;
+        accountBadge = `
+          <div class="conn-oauth-account">
+            ${avatarHtml}
+            <span class="conn-oauth-email">${connectedEmail}</span>
+          </div>`;
+      }
+
+      const disconnectTarget = isImap ? intg.imapServiceId : (isOAuth ? oauthProvider.id : intg.id);
+      const disconnectType = isImap ? 'imap' : (isOAuth ? 'oauth' : 'key');
+
       return `
         <div class="conn-integration-card conn-integration-card--connected" data-id="${intg.id}">
           <div class="conn-intg-icon" style="background: ${intg.gradient}">
@@ -488,19 +572,74 @@ class ConnectorsManagerClass {
               <span class="conn-intg-name">${intg.name}</span>
               <span class="conn-connected-badge">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                Tab open
+                Connected
               </span>
             </div>
+            ${accountBadge}
             <p class="conn-intg-tagline">${intg.tagline}</p>
             <div class="conn-caps">${capsHTML}</div>
           </div>
-          <button class="conn-jump-btn" data-id="${intg.id}" title="Switch to this tab">
-            Switch to tab
+          <button class="conn-disconnect-btn" data-id="${disconnectTarget}" data-type="${disconnectType}" title="Disconnect">
+            Disconnect
           </button>
         </div>
       `;
     }
 
+    // Not connected — IMAP: show email + password form
+    if (isImap) {
+      return `
+        <div class="conn-integration-card" data-id="${intg.id}">
+          <div class="conn-intg-icon" style="background: ${intg.gradient}">
+            <span>${intg.icon}</span>
+          </div>
+          <div class="conn-intg-body">
+            <div class="conn-intg-top">
+              <span class="conn-intg-name">${intg.name}</span>
+            </div>
+            <p class="conn-intg-tagline">${intg.tagline}</p>
+            <p class="conn-intg-desc">${intg.description}</p>
+            <div class="conn-caps">${capsHTML}</div>
+          </div>
+          <button class="conn-imap-connect-btn" data-id="${intg.id}" data-imap="${intg.imapServiceId}">
+            Connect ${intg.name}
+          </button>
+        </div>
+      `;
+    }
+
+    // Not connected — show the right connect button (OAuth)
+    if (isOAuth) {
+      const p = oauthProvider;
+      const hasClientId = p.hasClientId;
+      const btnStyle = `background:${p.buttonColor};color:${p.buttonTextColor};${p.buttonBorder ? `border:${p.buttonBorder};` : 'border:none;'}`;
+
+      return `
+        <div class="conn-integration-card" data-id="${intg.id}">
+          <div class="conn-intg-icon" style="background: ${intg.gradient}">
+            <span>${intg.icon}</span>
+          </div>
+          <div class="conn-intg-body">
+            <div class="conn-intg-top">
+              <span class="conn-intg-name">${intg.name}</span>
+            </div>
+            <p class="conn-intg-tagline">${intg.tagline}</p>
+            <p class="conn-intg-desc">${intg.description}</p>
+            <div class="conn-caps">${capsHTML}</div>
+          </div>
+          ${hasClientId
+            ? `<button class="conn-oauth-btn" data-provider="${p.id}" data-service="${intg.id}" style="${btnStyle}">
+                 ${p.buttonLabel}
+               </button>`
+            : `<button class="conn-setup-btn" data-provider="${p.id}" title="Client ID not configured — click to set up">
+                 ⚙ Setup required
+               </button>`
+          }
+        </div>
+      `;
+    }
+
+    // API-key service (Perplexity, Linear, etc.)
     return `
       <div class="conn-integration-card" data-id="${intg.id}">
         <div class="conn-intg-icon" style="background: ${intg.gradient}">
@@ -514,44 +653,228 @@ class ConnectorsManagerClass {
           <p class="conn-intg-desc">${intg.description}</p>
           <div class="conn-caps">${capsHTML}</div>
         </div>
-        <button class="conn-open-tab-btn" data-id="${intg.id}" data-url="${intg.openUrl || ''}">
-          Open ${intg.name}
-        </button>
+        <button class="conn-connect-btn" data-id="${intg.id}">Connect</button>
       </div>
     `;
   }
 
   _bindConnectionCards(container) {
-    // "Open [Service]" — opens the service in a new tab, user logs in normally
-    container.querySelectorAll('.conn-open-tab-btn').forEach((btn) => {
+    // IMAP "Connect Gmail/Outlook" — email + password form
+    container.querySelectorAll('.conn-imap-connect-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const url = btn.dataset.url;
-        if (url && typeof TabManager !== 'undefined') {
-          TabManager.createTab(url);
-          this.hideHub();
-          // After a short delay, re-check which tabs are open
-          setTimeout(() => {
-            this._refreshConnectedFromTabs();
-            this.renderSidebarPins();
-          }, 1500);
-        }
+        this._openImapConnectModal(btn.dataset.id, btn.dataset.imap);
       });
     });
 
-    // "Switch to tab" — brings the existing tab into focus
-    container.querySelectorAll('.conn-jump-btn').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
+    // OAuth "Sign in with X" buttons
+    container.querySelectorAll('.conn-oauth-btn').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const id = btn.dataset.id;
-        const intg = this.integrations.find((i) => i.id === id);
-        if (!intg?.urlFragment || typeof TabManager === 'undefined') return;
-        const tab = TabManager.tabs.find((t) =>
-          (t.webview?.src || t.url || '').includes(intg.urlFragment)
-        );
-        if (tab) { TabManager.switchToTab(tab.id); this.hideHub(); }
+        await this._handleOAuthConnect(btn.dataset.provider, btn.dataset.service, btn);
       });
     });
+
+    // "Setup required" button → open Settings → Connected Apps
+    container.querySelectorAll('.conn-setup-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.hideHub();
+        this._openConnectedAppsSettings(btn.dataset.provider);
+      });
+    });
+
+    // Legacy API-key connect button (Perplexity, Linear, etc.)
+    container.querySelectorAll('.conn-connect-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.openConnectModal(btn.dataset.id);
+      });
+    });
+
+    container.querySelectorAll('.conn-disconnect-btn').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const { id, type } = btn.dataset;
+        await this.disconnectService(id, type);
+      });
+    });
+  }
+
+  _openImapConnectModal(serviceId, imapServiceId) {
+    const intg = this.integrations.find((i) => i.id === serviceId);
+    if (!intg) return;
+    document.getElementById('conn-modal-overlay')?.remove();
+
+    const isGmail = imapServiceId === 'gmail';
+    const overlay = document.createElement('div');
+    overlay.id = 'conn-modal-overlay';
+    overlay.className = 'conn-modal-overlay';
+    overlay.innerHTML = `
+      <div class="conn-modal" role="dialog" aria-modal="true">
+        <div class="conn-modal-header">
+          <div class="conn-modal-title-row">
+            <div class="conn-modal-icon" style="background: ${intg.gradient}"><span>${intg.icon}</span></div>
+            <div>
+              <h2 class="conn-modal-title">Connect ${intg.name}</h2>
+              <p class="conn-modal-subtitle">Works without any open tab — reads and drafts in the background</p>
+            </div>
+          </div>
+          <button class="conn-modal-close" aria-label="Close">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="conn-modal-body">
+          <label class="conn-modal-label" for="imap-email-input">Email address</label>
+          <input type="email" id="imap-email-input" class="conn-modal-input" placeholder="${isGmail ? 'you@gmail.com' : 'you@outlook.com'}" autocomplete="email">
+
+          <label class="conn-modal-label" style="margin-top:12px" for="imap-pass-input">
+            ${isGmail ? 'App Password' : 'Password'}
+          </label>
+          <div class="conn-modal-input-wrap">
+            <input type="password" id="imap-pass-input" class="conn-modal-input" placeholder="${isGmail ? '16-character app password' : 'Your account password'}" autocomplete="current-password" spellcheck="false">
+            <button class="conn-modal-toggle-vis" title="Show/hide">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+
+          ${isGmail ? `
+          <div class="conn-modal-hint-row" style="margin-top:8px">
+            <p class="conn-modal-hint">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+              Gmail requires an App Password (not your regular password). Takes 60 seconds to generate.
+            </p>
+            <a class="conn-modal-key-link" data-href="https://myaccount.google.com/apppasswords" href="#">
+              Get App Password
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </a>
+          </div>` : ''}
+
+          <div class="conn-modal-caps" style="margin-top:14px">
+            <span class="conn-modal-caps-label">What the AI will be able to do:</span>
+            <ul class="conn-modal-caps-list">
+              ${intg.capabilities.map((c) => `<li><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>${c}</li>`).join('')}
+            </ul>
+          </div>
+          <div class="conn-modal-error" id="conn-modal-error" style="display:none"></div>
+        </div>
+        <div class="conn-modal-footer">
+          <button class="conn-modal-cancel">Cancel</button>
+          <button class="conn-modal-confirm" id="imap-connect-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+            Connect ${intg.name}
+          </button>
+        </div>
+      </div>`;
+
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector('.conn-modal-close').addEventListener('click', close);
+    overlay.querySelector('.conn-modal-cancel').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    overlay.querySelectorAll('.conn-modal-key-link').forEach((a) => {
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        const href = a.dataset.href;
+        if (href && typeof TabManager !== 'undefined') { TabManager.createTab(href); close(); this.hideHub(); }
+      });
+    });
+
+    const passInput = overlay.querySelector('#imap-pass-input');
+    overlay.querySelector('.conn-modal-toggle-vis').addEventListener('click', () => {
+      passInput.type = passInput.type === 'password' ? 'text' : 'password';
+    });
+
+    const connectBtn = overlay.querySelector('#imap-connect-btn');
+    const errorEl = overlay.querySelector('#conn-modal-error');
+    connectBtn.addEventListener('click', async () => {
+      const email = overlay.querySelector('#imap-email-input').value.trim();
+      const password = passInput.value;
+      if (!email || !password) {
+        errorEl.textContent = 'Please enter your email and password.';
+        errorEl.style.display = 'flex';
+        return;
+      }
+      connectBtn.disabled = true;
+      connectBtn.innerHTML = `<svg class="conn-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Connecting…`;
+      errorEl.style.display = 'none';
+      try {
+        const result = await window.navio.imapConnect(imapServiceId, email, password);
+        if (result?.error) throw new Error(result.error);
+        await this._refreshOAuthState();
+        close();
+        this.renderConnectionsTab();
+        this.renderSidebarPins();
+      } catch (e) {
+        errorEl.textContent = e.message || 'Connection failed. Check your credentials.';
+        errorEl.style.display = 'flex';
+        connectBtn.disabled = false;
+        connectBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/></svg> Connect ${intg.name}`;
+      }
+    });
+
+    setTimeout(() => overlay.querySelector('#imap-email-input').focus(), 100);
+  }
+
+  async _handleOAuthConnect(providerId, serviceId, btn) {
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Connecting…';
+    }
+    try {
+      const result = await window.navio.oauthConnect(providerId);
+      if (result?.needsClientId) {
+        this._openConnectedAppsSettings(providerId);
+        return;
+      }
+      if (result?.error) {
+        // Don't alert on user-cancelled (they closed the window)
+        if (!result.error.includes('closed by user')) {
+          this._showConnectError(serviceId, result.error);
+        }
+        return;
+      }
+      // Success — refresh state and re-render
+      await this._refreshOAuthState();
+      this.renderConnectionsTab();
+      this.renderSidebarPins();
+    } catch (e) {
+      this._showConnectError(serviceId, e.message);
+    } finally {
+      if (btn && !btn.closest('.conn-integration-card--connected')) {
+        btn.disabled = false;
+        // Re-render will have replaced btn so no need to reset text
+      }
+    }
+  }
+
+  _showConnectError(serviceId, message) {
+    const card = document.querySelector(`.conn-integration-card[data-id="${serviceId}"]`);
+    if (!card) return;
+    let err = card.querySelector('.conn-card-error');
+    if (!err) {
+      err = document.createElement('div');
+      err.className = 'conn-card-error';
+      card.appendChild(err);
+    }
+    err.textContent = message;
+    setTimeout(() => err?.remove(), 6000);
+  }
+
+  _openConnectedAppsSettings(providerId) {
+    // Open the Settings panel and navigate to "Connected Apps" section
+    const settingsBtn = document.getElementById('btn-settings') || document.querySelector('[data-action="settings"]');
+    if (settingsBtn) settingsBtn.click();
+    setTimeout(() => {
+      const section = document.getElementById('settings-connected-apps');
+      if (section) {
+        section.scrollIntoView({ behavior: 'smooth' });
+        // Flash highlight
+        section.classList.add('settings-highlight');
+        setTimeout(() => section.classList.remove('settings-highlight'), 2000);
+      }
+    }, 300);
   }
 
   // ── Connect Modal ─────────────────────────────────────────────────────────
@@ -705,18 +1028,21 @@ class ConnectorsManagerClass {
     }
   }
 
-  async disconnectService(id) {
-    // "Disconnect" simply means closing the tab for that service
-    const intg = this.integrations.find((i) => i.id === id);
-    if (intg?.urlFragment && typeof TabManager !== 'undefined') {
-      const tab = TabManager.tabs.find((t) =>
-        (t.webview?.src || t.url || '').includes(intg.urlFragment)
-      );
-      if (tab) TabManager.closeTab(tab.id);
+  async disconnectService(id, type) {
+    try {
+      if (type === 'imap') {
+        await window.navio.imapDisconnect(id);
+      } else if (type === 'oauth') {
+        await window.navio.oauthDisconnect(id);
+      } else {
+        await window.navio.connectorRemoveKey(id);
+      }
+      await this._refreshOAuthState();
+      this.renderConnectionsTab();
+      this.renderSidebarPins();
+    } catch (e) {
+      console.error('Failed to disconnect service:', e);
     }
-    this._refreshConnectedFromTabs();
-    this.renderConnectionsTab();
-    this.renderSidebarPins();
   }
 
   // ── Quick Launch Tab (original behaviour) ────────────────────────────────

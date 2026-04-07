@@ -11,5 +11,8 @@
   "license": "MIT",
   "devDependencies": {
     "electron": "^35.0.0"
+  },
+  "dependencies": {
+    "imapflow": "^1.2.18"
   }
 }

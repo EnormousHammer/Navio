@@ -1669,6 +1669,11 @@ ipcMain.handle('connector-get-keys', () => {
         for (const svcId of serviceIds) result[svcId] = true;
       }
     }
+
+    // Also include IMAP-connected services (gmail, outlook via email+password)
+    const imapCreds = loadImapCreds();
+    for (const svcId of Object.keys(imapCreds)) result[svcId] = true;
+
     return result;
   } catch {
     return {};
@@ -1994,6 +1999,258 @@ async function queryOutlook(token, query, options = {}) {
   }));
   return { results, total: results.length };
 }
+// ─── IMAP Email Integration ───────────────────────────────────────────────────
+// Direct IMAP connection — no OAuth, no open tab required.
+// User enters email + password (or Gmail App Password) once.
+// NavioBrowser can then read emails and create drafts anytime in the background.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const IMAP_SERVICE_CONFIG = {
+  gmail: {
+    name: 'Gmail',
+    host: 'imap.gmail.com',
+    port: 993,
+    secure: true,
+    inboxFolder: 'INBOX',
+    draftFolder: '[Gmail]/Drafts',
+    sentFolder: '[Gmail]/Sent Mail',
+    appPasswordUrl: 'https://myaccount.google.com/apppasswords',
+    hint: 'Use your Gmail address and an App Password (generate one at myaccount.google.com/apppasswords — takes 60 seconds).'
+  },
+  outlook: {
+    name: 'Outlook',
+    host: 'outlook.office365.com',
+    port: 993,
+    secure: true,
+    inboxFolder: 'INBOX',
+    draftFolder: 'Drafts',
+    sentFolder: 'Sent Items',
+    appPasswordUrl: null,
+    hint: 'Use your Microsoft email address and account password.'
+  }
+};
+
+function imapCredsPath() {
+  return path.join(app.getPath('userData'), 'navio-imap-creds.json');
+}
+function loadImapCreds() {
+  const p = imapCredsPath();
+  if (!fs.existsSync(p)) return {};
+  try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch { return {}; }
+}
+function saveImapCreds(map) {
+  fs.writeFileSync(imapCredsPath(), JSON.stringify(map, null, 2));
+}
+function storeImapCreds(serviceId, email, password) {
+  const { safeStorage } = require('electron');
+  const map = loadImapCreds();
+  const encrypt = (v) => safeStorage.isEncryptionAvailable()
+    ? safeStorage.encryptString(v).toString('base64')
+    : Buffer.from(v).toString('base64');
+  map[serviceId] = { email: encrypt(email), password: encrypt(password) };
+  saveImapCreds(map);
+}
+function getImapCreds(serviceId) {
+  const { safeStorage } = require('electron');
+  const map = loadImapCreds();
+  const entry = map[serviceId];
+  if (!entry) return null;
+  const decrypt = (b64) => {
+    const buf = Buffer.from(b64, 'base64');
+    try {
+      return safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(buf) : buf.toString('utf8');
+    } catch { return ''; }
+  };
+  return { email: decrypt(entry.email), password: decrypt(entry.password) };
+}
+
+async function imapGetClient(serviceId) {
+  const { ImapFlow } = require('imapflow');
+  const cfg = IMAP_SERVICE_CONFIG[serviceId];
+  const creds = getImapCreds(serviceId);
+  if (!cfg || !creds) throw new Error(`${serviceId} not connected`);
+  const client = new ImapFlow({
+    host: cfg.host, port: cfg.port, secure: cfg.secure,
+    auth: { user: creds.email, pass: creds.password },
+    logger: false,
+    tls: { rejectUnauthorized: false }
+  });
+  await client.connect();
+  return client;
+}
+
+// IPC: test + save IMAP credentials
+ipcMain.handle('imap-connect', async (event, { serviceId, email, password }) => {
+  try {
+    const { ImapFlow } = require('imapflow');
+    const cfg = IMAP_SERVICE_CONFIG[serviceId];
+    if (!cfg) return { error: 'Unknown service' };
+    const client = new ImapFlow({
+      host: cfg.host, port: cfg.port, secure: cfg.secure,
+      auth: { user: email, pass: password },
+      logger: false,
+      tls: { rejectUnauthorized: false }
+    });
+    await client.connect();
+    await client.logout();
+    storeImapCreds(serviceId, email, password);
+    return { ok: true, email };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
+// IPC: disconnect IMAP
+ipcMain.handle('imap-disconnect', (event, { serviceId }) => {
+  try {
+    const map = loadImapCreds();
+    delete map[serviceId];
+    saveImapCreds(map);
+    return { ok: true };
+  } catch (e) { return { error: e.message }; }
+});
+
+// IPC: get IMAP status (which services are connected + email address)
+ipcMain.handle('imap-status', () => {
+  const { safeStorage } = require('electron');
+  const map = loadImapCreds();
+  const result = {};
+  const decrypt = (b64) => {
+    const buf = Buffer.from(b64, 'base64');
+    try { return safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(buf) : buf.toString('utf8'); }
+    catch { return ''; }
+  };
+  for (const [id, entry] of Object.entries(map)) {
+    result[id] = { connected: true, email: decrypt(entry.email) };
+  }
+  return result;
+});
+
+// IPC: fetch unread emails + count (no open tab needed)
+ipcMain.handle('imap-get-unread', async (event, { serviceId, limit = 15 }) => {
+  try {
+    const client = await imapGetClient(serviceId);
+    const cfg = IMAP_SERVICE_CONFIG[serviceId];
+    const lock = await client.getMailboxLock(cfg.inboxFolder);
+    try {
+      const status = await client.status(cfg.inboxFolder, { unseen: true, messages: true });
+      const uids = await client.search({ unseen: true }, { uid: true });
+      const recentUids = uids.slice(-limit);
+      const messages = [];
+      if (recentUids.length > 0) {
+        for await (const msg of client.fetch(recentUids, { envelope: true, bodyStructure: true }, { uid: true })) {
+          const from = msg.envelope.from?.[0];
+          messages.push({
+            uid: msg.uid,
+            subject: msg.envelope.subject || '(no subject)',
+            from: from?.address || '',
+            fromName: from?.name || from?.address || '',
+            date: msg.envelope.date?.toISOString() || '',
+            snippet: ''
+          });
+        }
+      }
+      return { unreadCount: status.unseen || 0, messages: messages.reverse() };
+    } finally {
+      lock.release();
+      await client.logout();
+    }
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
+// IPC: search emails
+ipcMain.handle('imap-search', async (event, { serviceId, query, limit = 20 }) => {
+  try {
+    const client = await imapGetClient(serviceId);
+    const cfg = IMAP_SERVICE_CONFIG[serviceId];
+    const lock = await client.getMailboxLock(cfg.inboxFolder);
+    try {
+      const uids = await client.search({ or: [{ subject: query }, { from: query }, { body: query }] }, { uid: true });
+      const recentUids = uids.slice(-limit);
+      const messages = [];
+      if (recentUids.length > 0) {
+        for await (const msg of client.fetch(recentUids, { envelope: true, bodyParts: ['text'], source: false }, { uid: true })) {
+          const from = msg.envelope.from?.[0];
+          messages.push({
+            uid: msg.uid,
+            subject: msg.envelope.subject || '(no subject)',
+            from: from?.address || '',
+            fromName: from?.name || from?.address || '',
+            date: msg.envelope.date?.toISOString() || ''
+          });
+        }
+      }
+      return { messages: messages.reverse(), total: uids.length };
+    } finally {
+      lock.release();
+      await client.logout();
+    }
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
+// IPC: create a draft in the Drafts folder (real IMAP APPEND)
+ipcMain.handle('imap-create-draft', async (event, { serviceId, to, subject, body, inReplyTo }) => {
+  try {
+    const client = await imapGetClient(serviceId);
+    const cfg = IMAP_SERVICE_CONFIG[serviceId];
+    const creds = getImapCreds(serviceId);
+    try {
+      // Build RFC 2822 formatted email
+      const now = new Date().toUTCString();
+      const msgId = `<navio-draft-${Date.now()}@navio.local>`;
+      const lines = [
+        `From: ${creds.email}`,
+        `To: ${to || ''}`,
+        `Subject: ${subject || ''}`,
+        `Date: ${now}`,
+        `Message-ID: ${msgId}`,
+        ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`, `References: ${inReplyTo}`] : []),
+        'MIME-Version: 1.0',
+        'Content-Type: text/plain; charset=utf-8',
+        'Content-Transfer-Encoding: 8bit',
+        '',
+        body || ''
+      ];
+      const raw = lines.join('\r\n');
+      await client.append(cfg.draftFolder, raw, ['\\Draft', '\\Seen'], new Date());
+      return { ok: true };
+    } finally {
+      await client.logout();
+    }
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
+// IPC: fetch body of a specific email by UID
+ipcMain.handle('imap-get-email-body', async (event, { serviceId, uid }) => {
+  try {
+    const client = await imapGetClient(serviceId);
+    const cfg = IMAP_SERVICE_CONFIG[serviceId];
+    const lock = await client.getMailboxLock(cfg.inboxFolder);
+    try {
+      let body = '';
+      for await (const msg of client.fetch([uid], { bodyParts: ['text'], envelope: true }, { uid: true })) {
+        const textPart = msg.bodyParts?.get('text');
+        if (textPart) body = Buffer.from(textPart).toString('utf-8');
+      }
+      return { body };
+    } finally {
+      lock.release();
+      await client.logout();
+    }
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
+// Update connector-get-keys to also include IMAP-connected services
+// (already done above, but also update connector-query to use IMAP)
+
 // ── Inbox scanner — reads email list from open tab via JS injection ──────────
 // No tokens or OAuth needed — uses the user's existing logged-in browser session.
 ipcMain.handle('scan-email-inbox', async (event, { webContentsId }) => {
