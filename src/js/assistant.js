@@ -946,7 +946,7 @@ PERSONALITY:
         });
 
         card.classList.add('bac-done');
-        card.querySelector('.bac-btns').innerHTML = '<span class="bac-status bac-ok">Done ✓</span>';
+        card.querySelector('.bac-btns').innerHTML = '<span class="bac-status bac-ok"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>Done</span>';
         if (!fromTakeover) {
           const msgEl = card.closest('.message');
           const pending = msgEl
@@ -956,7 +956,7 @@ PERSONALITY:
         }
       } catch (err) {
         card.classList.add('bac-error');
-        card.querySelector('.bac-btns').innerHTML = `<span class="bac-status">${err.message || 'Navigation error'}</span>`;
+        card.querySelector('.bac-btns').innerHTML = `<span class="bac-status"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> ${err.message || 'Navigation error'}</span>`;
       }
       return;
     }
@@ -978,7 +978,7 @@ PERSONALITY:
       const result = await window.navio.browserAction({ webContentsId, action, params, userConfirmed: true });
       if (result && result.success) {
         card.classList.add('bac-done');
-        card.querySelector('.bac-btns').innerHTML = '<span class="bac-status bac-ok">Done ✓</span>';
+        card.querySelector('.bac-btns').innerHTML = '<span class="bac-status bac-ok"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>Done</span>';
         if (!fromTakeover) {
           const msgEl = card.closest('.message');
           const pending = msgEl
