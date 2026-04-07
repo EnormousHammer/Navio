@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('navio', {
 
   extractPageContent: (webContentsId) => ipcRenderer.invoke('extract-page-content', webContentsId),
   extractPageSelection: (webContentsId) => ipcRenderer.invoke('extract-page-selection', webContentsId),
+  pageSnapshot: (webContentsId) => ipcRenderer.invoke('page-snapshot', webContentsId),
   browserAction: (params) => ipcRenderer.invoke('browser-action', params),
 
   contextGraph: (payload) => ipcRenderer.invoke('context-graph', payload),

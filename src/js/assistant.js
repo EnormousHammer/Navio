@@ -25,26 +25,27 @@ CAPABILITIES:
 
 BROWSER CONTROL:
 You can execute actions in the active tab by embedding action tokens in your response.
-Each token becomes a confirmation card the user can approve or skip.
+Each token becomes a confirmation card — or auto-executes if the user enabled takeover mode.
 
 Supported actions:
-- Navigate to a URL:       <<ACTION:navigate:https://example.com>>
-- Click an element:        <<ACTION:click:#css-selector>>
-- Type into a field:       <<ACTION:type:#css-selector:text to type>>
-- Scroll down or up:       <<ACTION:scroll:down>>  /  <<ACTION:scroll:up>>
-- Go back in history:      <<ACTION:goBack:>>
-- Go forward in history:   <<ACTION:goForward:>>
+- Navigate:   <<ACTION:navigate:https://example.com>>
+- Click:      <<ACTION:click:text=Search>>          ← preferred: find by visible text
+              <<ACTION:click:aria=Submit form>>      ← or by aria-label
+              <<ACTION:click:#some-id>>              ← CSS selector only as last resort
+- Type:       <<ACTION:type:text=Search:query here>> ← find input by placeholder/label text
+              <<ACTION:type:aria=Search input:query>>
+              <<ACTION:type:#id:text>>
+- Scroll:     <<ACTION:scroll:down>>  /  <<ACTION:scroll:up>>
+- Back/Fwd:   <<ACTION:goBack:>>  /  <<ACTION:goForward:>>
 
-CRITICAL RULES for browser control:
-- ALWAYS emit ALL steps for a task in a SINGLE response — never stop after one action and wait.
-  Example for "go to youtube and search cats": emit navigate + type + click all at once.
-- Use well-known, stable selectors for popular sites (YouTube, Google, etc.):
-    YouTube search box:  input#search
-    YouTube search btn:  button#search-icon-legacy
-    Google search box:   input[name="q"]
-    Google search btn:   input[name="btnK"]
-- Briefly describe each step before its token.
-- If you are unsure of a selector, use the best guess and note it may need adjustment.
+CRITICAL RULES:
+1. ALWAYS use text= or aria= selectors — they survive site redesigns. CSS selectors break.
+   ✓ <<ACTION:click:text=Search>>
+   ✗ <<ACTION:click:#search-icon-legacy>>
+2. When a [Page elements] snapshot is provided, reference EXACT label text from it.
+3. Emit ALL steps for a task in ONE response. Never stop after one action and wait.
+4. Describe each step briefly before its token.
+5. After navigate, remaining actions run on the newly loaded page.
 
 FORMATTING:
 - Use markdown-like formatting: **bold**, *italic*, \`code\`
@@ -312,6 +313,13 @@ PERSONALITY:
       if (titles) {
         messages.push({ role: 'system', content: `[Pinned tabs in workspace]\n${titles}` });
       }
+    }
+
+    // Inject accessibility snapshot when user is likely requesting browser control
+    const browserIntent = /\b(click|go to|open|navigate|visit|search|type|fill|scroll|find|press|submit|play|watch|buy|book|login|sign)\b/i.test(text);
+    if (browserIntent && !isQuickAction) {
+      const snapText = await this._getPageSnapshotText();
+      if (snapText) messages.push({ role: 'system', content: snapText });
     }
 
     const recentHistory = this.conversationHistory.slice(-20);
@@ -701,7 +709,10 @@ PERSONALITY:
     }
 
     this._addContinuePill('↻ Reading page…');
-    const followUpText = `[Action completed. Current page — continue task if more steps needed, or summarize completion if done.]\n\n${pageInfo}`;
+
+    // Append accessibility snapshot so AI uses real element labels, not guessed selectors
+    const snapText = await this._getPageSnapshotText();
+    const followUpText = `[Action completed. Continue task if more steps needed, or summarize if done.]\n\n${pageInfo}${snapText}`;
     await this.processMessage(followUpText, true, null);
     document.getElementById('navio-continue-pill')?.remove();
 
@@ -713,6 +724,19 @@ PERSONALITY:
         const newCards = contentEl.querySelectorAll('.browser-action-card:not(.bac-done):not(.bac-skipped):not(.bac-error)');
         if (newCards.length) await this._executeTakeover(contentEl);
       }
+    }
+  }
+
+  async _getPageSnapshotText() {
+    try {
+      const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
+      if (!wv) return '';
+      const snap = await window.navio.pageSnapshot(wv.getWebContentsId());
+      if (!snap || snap.error || !snap.elements?.length) return '';
+      const lines = snap.elements.map(e => `  [${e.role}] "${e.label}" → ${e.selector}`);
+      return `\n\n[Page elements — use text= or aria= to reference these]\n${lines.join('\n')}`;
+    } catch {
+      return '';
     }
   }
 

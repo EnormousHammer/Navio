@@ -499,6 +499,49 @@ ipcMain.handle('extract-page-selection', async (event, webContentsId) => {
   }
 });
 
+// Accessibility-first snapshot of interactive elements on the active page
+ipcMain.handle('page-snapshot', async (event, webContentsId) => {
+  try {
+    const wc = electronWebContents.fromId(webContentsId);
+    if (!wc) return { error: 'WebContents not found' };
+    const snapshot = await wc.executeJavaScript(`
+      (() => {
+        const results = [];
+        const seen = new WeakSet();
+        const sel = 'a,button,input,textarea,select,[role="button"],[role="link"],[role="checkbox"],[role="radio"],[role="menuitem"],[role="tab"],[role="option"],[role="switch"],[role="combobox"],[role="searchbox"]';
+        for (const el of document.querySelectorAll(sel)) {
+          if (seen.has(el)) continue;
+          seen.add(el);
+          const r = el.getBoundingClientRect();
+          if (r.width < 2 || r.height < 2) continue;
+          const cs = window.getComputedStyle(el);
+          if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') continue;
+          const tag = el.tagName.toLowerCase();
+          const role = el.getAttribute('role') || (tag === 'a' ? 'link' : tag === 'button' ? 'button' : tag === 'input' ? el.type || 'input' : tag);
+          const ariaLabel = el.getAttribute('aria-label') || '';
+          const placeholder = el.getAttribute('placeholder') || '';
+          const title = el.getAttribute('title') || '';
+          const name = el.getAttribute('name') || '';
+          const id = el.id || '';
+          const visibleText = (el.innerText || el.textContent || '').replace(/\\s+/g,' ').trim().slice(0,80);
+          const label = (ariaLabel || visibleText || placeholder || title || name).trim().slice(0,80);
+          let selector = id ? '#'+id : (name ? tag+'[name="'+name+'"]' : null);
+          if (!selector) {
+            const classes = Array.from(el.classList).filter(c => !/^[a-z]{1,2}$/.test(c)).slice(0,2);
+            selector = tag + (classes.length ? '.'+classes.join('.') : '');
+          }
+          if (label) results.push({ role, label, selector });
+          if (results.length >= 60) break;
+        }
+        return results;
+      })()
+    `);
+    return { elements: snapshot, url: wc.getURL(), title: wc.getTitle() };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
 ipcMain.handle('browser-action', async (event, { webContentsId, action, params, userConfirmed }) => {
   try {
     if (RISKY_BROWSER_ACTIONS.has(action) && !userConfirmed) {
@@ -552,17 +595,46 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
       }
 
       case 'click': {
-        // Poll for the element up to 3 s so JS-rendered pages have time to render.
-        const sel = JSON.stringify(params.selector);
+        const cSel = JSON.stringify(params.selector || '');
         const res = await wc.executeJavaScript(`
           new Promise((resolve) => {
-            const selector = ${sel};
+            const raw = ${cSel};
+            // Multi-strategy element finder (accessibility-first, CSS fallback)
+            function findEl(sel) {
+              if (!sel) return null;
+              if (sel.startsWith('text=')) {
+                const q = sel.slice(5).trim().toLowerCase();
+                const candidates = document.querySelectorAll(
+                  'a,button,input[type="submit"],input[type="button"],[role="button"],[role="link"],[role="menuitem"],[role="tab"]'
+                );
+                for (const el of candidates) {
+                  const lbl = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim().toLowerCase();
+                  if (lbl.includes(q)) return el;
+                }
+                return null;
+              }
+              if (sel.startsWith('aria=')) {
+                const q = sel.slice(5).trim().toLowerCase();
+                for (const el of document.querySelectorAll('[aria-label]')) {
+                  if (el.getAttribute('aria-label').toLowerCase().includes(q)) return el;
+                }
+                return null;
+              }
+              try { return document.querySelector(sel); } catch { return null; }
+            }
             let tries = 0;
             const attempt = () => {
-              const el = document.querySelector(selector);
-              if (el) { el.scrollIntoView({ block: 'center' }); el.click(); resolve({ ok: true }); }
-              else if (++tries < 12) setTimeout(attempt, 250);
-              else resolve({ ok: false, error: 'Element not found: ' + selector });
+              const el = findEl(raw);
+              if (el) {
+                el.scrollIntoView({ block: 'center', behavior: 'instant' });
+                el.focus();
+                el.click();
+                resolve({ ok: true });
+              } else if (++tries < 14) {
+                setTimeout(attempt, 250);
+              } else {
+                resolve({ ok: false, error: 'Element not found: ' + raw });
+              }
             };
             attempt();
           })
@@ -572,29 +644,44 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
       }
 
       case 'type': {
-        const tSel = JSON.stringify(params.selector);
+        const tSel = JSON.stringify(params.selector || '');
         const tVal = JSON.stringify(params.text || '');
         const tRes = await wc.executeJavaScript(`
           new Promise((resolve) => {
-            const selector = ${tSel};
+            const raw = ${tSel};
             const text = ${tVal};
+            function findEl(sel) {
+              if (!sel) return null;
+              if (sel.startsWith('text=') || sel.startsWith('aria=')) {
+                const prefix = sel.startsWith('text=') ? 'text=' : 'aria=';
+                const q = sel.slice(prefix.length).trim().toLowerCase();
+                for (const el of document.querySelectorAll('input,textarea,select,[contenteditable]')) {
+                  const lbl = (el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.getAttribute('name') || '').toLowerCase();
+                  if (lbl.includes(q)) return el;
+                }
+                return null;
+              }
+              try { return document.querySelector(sel); } catch { return null; }
+            }
             let tries = 0;
             const attempt = () => {
-              const el = document.querySelector(selector);
+              const el = findEl(raw);
               if (el) {
                 el.focus();
-                // Native input setter so React/Vue controlled inputs update correctly
-                const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
-                  || Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
-                if (nativeSetter) nativeSetter.call(el, text);
-                else el.value = text;
-                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.scrollIntoView({ block: 'center', behavior: 'instant' });
+                // Native input setter so React/Vue controlled inputs detect change
+                const proto = el.tagName === 'TEXTAREA'
+                  ? window.HTMLTextAreaElement.prototype
+                  : window.HTMLInputElement.prototype;
+                const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+                if (setter) setter.call(el, text); else el.value = text;
+                el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text }));
                 el.dispatchEvent(new Event('change', { bubbles: true }));
                 resolve({ ok: true });
-              } else if (++tries < 12) {
+              } else if (++tries < 14) {
                 setTimeout(attempt, 250);
               } else {
-                resolve({ ok: false, error: 'Element not found: ' + selector });
+                resolve({ ok: false, error: 'Element not found: ' + raw });
               }
             };
             attempt();
