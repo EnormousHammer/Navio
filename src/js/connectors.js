@@ -8,6 +8,12 @@ class ConnectorsManagerClass {
     this.favorites = [];
     this.hubVisible = false;
 
+    // Services that support the Live Connector system
+    this.liveCapableIds = new Set([
+      'gmail', 'outlook', 'slack', 'discord', 'teams',
+      'github', 'google-calendar', 'notion'
+    ]);
+
     this.services = [
       // ─── Email ───
       { id: 'gmail', name: 'Gmail', url: 'https://mail.google.com', category: 'email', icon: 'M', color: '#ea4335', gradient: 'linear-gradient(135deg, #ea4335, #fbbc04)' },
@@ -228,17 +234,35 @@ class ConnectorsManagerClass {
       `;
       for (const service of grouped[cat.id]) {
         const isFav = this.favorites.includes(service.id);
+        const isLiveCapable = this.liveCapableIds.has(service.id);
+        const isLive = isLiveCapable && typeof LiveConnectorManager !== 'undefined' && LiveConnectorManager.isEnabled(service.id);
+        const liveMode = isLive && typeof LiveConnectorManager !== 'undefined' ? LiveConnectorManager.getMode(service.id) : '';
+        const liveBadge = isLiveCapable
+          ? `<div class="connector-live-badge ${isLive ? 'connector-live-badge--on' : ''}" data-service-id="${service.id}" title="${isLive ? `Live · ${liveMode} mode` : 'Enable live monitoring'}">
+              <span class="connector-live-dot"></span>
+              <span class="connector-live-label">${isLive ? 'LIVE' : 'Live'}</span>
+             </div>`
+          : '';
+        const settingsBtn = isLiveCapable
+          ? `<button class="connector-live-settings-btn" data-service-id="${service.id}" title="Live Connector settings">
+               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+             </button>`
+          : '';
         html += `
-          <div class="connector-card" data-service-id="${service.id}" title="${service.name} — ${service.url}">
+          <div class="connector-card ${isLive ? 'connector-card--live' : ''}" data-service-id="${service.id}" title="${service.name} — ${service.url}">
             <div class="connector-card-icon" style="background: ${service.gradient}">
               <span>${service.icon}</span>
             </div>
             <div class="connector-card-info">
               <span class="connector-card-name">${service.name}</span>
+              ${liveBadge}
             </div>
-            <button class="connector-fav-btn ${isFav ? 'active' : ''}" data-service-id="${service.id}" title="${isFav ? 'Remove from sidebar' : 'Pin to sidebar'}">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="${isFav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-            </button>
+            <div class="connector-card-actions">
+              ${settingsBtn}
+              <button class="connector-fav-btn ${isFav ? 'active' : ''}" data-service-id="${service.id}" title="${isFav ? 'Remove from sidebar' : 'Pin to sidebar'}">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="${isFav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              </button>
+            </div>
           </div>
         `;
       }
@@ -250,6 +274,8 @@ class ConnectorsManagerClass {
     container.querySelectorAll('.connector-card').forEach((card) => {
       card.addEventListener('click', (e) => {
         if (e.target.closest('.connector-fav-btn')) return;
+        if (e.target.closest('.connector-live-settings-btn')) return;
+        if (e.target.closest('.connector-live-badge')) return;
         const id = card.dataset.serviceId;
         this.openService(id);
       });
@@ -266,6 +292,46 @@ class ConnectorsManagerClass {
         btn.title = isFav ? 'Remove from sidebar' : 'Pin to sidebar';
       });
     });
+
+    // Live badge — quick toggle
+    container.querySelectorAll('.connector-live-badge').forEach((badge) => {
+      badge.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = badge.dataset.serviceId;
+        if (typeof LiveConnectorManager !== 'undefined') {
+          await LiveConnectorManager.toggleLive(id);
+          this.renderHubServices();
+        }
+      });
+    });
+
+    // Live settings gear
+    container.querySelectorAll('.connector-live-settings-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.serviceId;
+        if (typeof LiveConnectorManager !== 'undefined') {
+          LiveConnectorManager.openSettings(id);
+        }
+      });
+    });
+  }
+
+  // Called by LiveConnectorManager after toggling to refresh a single card's badge
+  refreshLiveBadge(serviceId) {
+    const card = document.querySelector(`.connector-card[data-service-id="${serviceId}"]`);
+    if (!card) return;
+    if (typeof LiveConnectorManager === 'undefined') return;
+    const isLive = LiveConnectorManager.isEnabled(serviceId);
+    const mode = LiveConnectorManager.getMode(serviceId);
+    card.classList.toggle('connector-card--live', isLive);
+    const badge = card.querySelector('.connector-live-badge');
+    if (badge) {
+      badge.classList.toggle('connector-live-badge--on', isLive);
+      badge.title = isLive ? `Live · ${mode} mode` : 'Enable live monitoring';
+      const label = badge.querySelector('.connector-live-label');
+      if (label) label.textContent = isLive ? 'LIVE' : 'Live';
+    }
   }
 
   filterServices(query) {

@@ -237,7 +237,7 @@ class SettingsManagerClass {
     } catch {
       this.elements.apiKey.value = '';
     }
-    this.elements.model.value = this.config.aiModel || 'gpt-5.4';
+    this.elements.model.value = this.config.aiModel || 'gpt-4o';
     this.elements.endpoint.value = this.config.customEndpoint || '';
     this.elements.searchEngine.value = this.config.searchEngine || 'https://www.google.com/search?q=';
     this.elements.homepage.value = this.config.homepage || 'https://www.google.com';
@@ -291,29 +291,35 @@ class SettingsManagerClass {
 
   updateModelOptions() {
     const provider = this.elements.provider.value;
-    const modelSelect = this.elements.model;
-    const currentValue = modelSelect.value;
+    const modelInput = this.elements.model;
+    const datalist = document.getElementById('model-suggestions');
+    const hintEl = document.getElementById('setting-model-hint');
 
-    const optgroups = modelSelect.querySelectorAll('optgroup');
-    optgroups.forEach((group) => {
-      const label = group.label.toLowerCase();
-      if (provider === 'custom') {
-        group.style.display = '';
-      } else if (provider === 'openai' && label.includes('openai')) {
-        group.style.display = '';
-      } else if (provider === 'anthropic' && label.includes('anthropic')) {
-        group.style.display = '';
-      } else if (provider === 'google' && label.includes('google')) {
-        group.style.display = '';
-      } else {
-        group.style.display = 'none';
-      }
-    });
-
-    const visibleOptions = Array.from(modelSelect.querySelectorAll('optgroup:not([style*="none"]) option'));
-    if (visibleOptions.length > 0 && !visibleOptions.find((o) => o.value === currentValue)) {
-      modelSelect.value = visibleOptions[0].value;
+    // Show only the relevant provider's suggestions in the datalist
+    if (datalist) {
+      Array.from(datalist.options).forEach((opt) => {
+        const optProvider = opt.getAttribute('data-provider');
+        opt.disabled = optProvider && provider !== 'custom' && optProvider !== provider;
+      });
     }
+
+    // Per-provider defaults — only auto-fill if the current value belongs to
+    // a different provider (i.e. user just switched providers).
+    const defaults = { openai: 'gpt-4o', anthropic: 'claude-opus-4-5', google: 'gemini-2.0-flash', custom: '' };
+    const providerDefaults = { openai: ['gpt-4o','gpt-4o-mini','o3','o3-mini','o1','o1-mini'], anthropic: ['claude-opus-4-5','claude-sonnet-4-5','claude-haiku-4-5','claude-3-5-sonnet-20241022'], google: ['gemini-2.0-flash','gemini-2.0-flash-lite','gemini-1.5-pro','gemini-1.5-flash'] };
+    const currentModelBelongsToProvider = (providerDefaults[provider] || []).includes(modelInput.value);
+    if (!modelInput.value || (!currentModelBelongsToProvider && provider !== 'custom')) {
+      modelInput.value = defaults[provider] || '';
+    }
+
+    // Show a hint with the default for this provider
+    const hints = {
+      openai: 'Suggested: gpt-4o · gpt-4o-mini · o3 · o1. You can type any model name.',
+      anthropic: 'Suggested: claude-opus-4-5 · claude-sonnet-4-5. You can type any model name.',
+      google: 'Suggested: gemini-2.0-flash · gemini-1.5-pro. You can type any model name.',
+      custom: 'Enter the model name your custom endpoint expects.'
+    };
+    if (hintEl) hintEl.textContent = hints[provider] || '';
   }
 
   async open() {

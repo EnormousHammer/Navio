@@ -17,7 +17,7 @@ function getConfigPath() {
 
 const DEFAULT_CONFIG = {
   aiProvider: 'openai',
-  aiModel: 'gpt-5.4',
+  aiModel: 'gpt-4o',
   customEndpoint: '',
   theme: 'dark',
   searchEngine: 'https://www.google.com/search?q=',
@@ -238,7 +238,7 @@ ipcMain.handle('open-devtools-active', (event, webContentsId) => {
 
 async function performAiFetch(cfg, apiKey, messages, useStream) {
   const provider = cfg.aiProvider || 'openai';
-  const model = cfg.aiModel || 'gpt-5.4';
+  const model = cfg.aiModel || 'gpt-4o';
   const endpoint = cfg.customEndpoint || '';
 
   let url;
@@ -252,7 +252,7 @@ async function performAiFetch(cfg, apiKey, messages, useStream) {
       Authorization: `Bearer ${apiKey}`
     };
     body = JSON.stringify({
-      model: model || 'gpt-5.4',
+      model: model || 'gpt-4o',
       messages,
       max_tokens: 4096,
       stream: !!useStream
@@ -268,14 +268,14 @@ async function performAiFetch(cfg, apiKey, messages, useStream) {
       'anthropic-version': '2023-06-01'
     };
     body = JSON.stringify({
-      model: model || 'claude-opus-4.6',
+      model: model || 'claude-opus-4-5',
       max_tokens: 4096,
       system: systemMsg?.content || '',
       messages: chatMsgs
     });
   } else if (provider === 'google') {
     if (useStream) return { error: 'Streaming not implemented for this provider; disable stream in settings.' };
-    url = `https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemini-3.1-pro'}:generateContent?key=${apiKey}`;
+    url = `https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemini-2.0-flash'}:generateContent?key=${apiKey}`;
     headers = { 'Content-Type': 'application/json' };
     const contents = messages
       .filter((m) => m.role !== 'system')
@@ -704,6 +704,26 @@ ipcMain.handle('proactive-tick', (event, payload) => {
   if (now - last < minGap) return { suggestion: null };
   saveConfig({ lastProactiveSuggestionAt: now });
   return { suggestion: { fire: true, id: `sug-${now}` } };
+});
+
+ipcMain.handle('live-connector-data', (event, payload) => {
+  const dataPath = path.join(app.getPath('userData'), 'live-connector-data.json');
+  try {
+    if (payload?.op === 'get') {
+      if (fs.existsSync(dataPath)) {
+        const raw = fs.readFileSync(dataPath, 'utf-8');
+        return { data: JSON.parse(raw) };
+      }
+      return { data: { liveConfig: {}, styleMemory: {} } };
+    }
+    if (payload?.op === 'set' && payload.data) {
+      fs.writeFileSync(dataPath, JSON.stringify(payload.data, null, 2));
+      return { ok: true };
+    }
+  } catch (e) {
+    return { error: e.message };
+  }
+  return { error: 'Unknown op' };
 });
 
 ipcMain.handle('ledger-export', () => {

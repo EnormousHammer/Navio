@@ -62,5 +62,7 @@ contextBridge.exposeInMainWorld('navio', {
 
   clearBrowsingData: () => ipcRenderer.invoke('clear-browsing-data'),
 
-  getIntroVideoUrl: () => ipcRenderer.invoke('get-intro-video-url')
+  getIntroVideoUrl: () => ipcRenderer.invoke('get-intro-video-url'),
+
+  liveConnectorData: (payload) => ipcRenderer.invoke('live-connector-data', payload)
 });
