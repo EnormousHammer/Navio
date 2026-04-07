@@ -639,6 +639,12 @@ PERSONALITY:
     };
 
     if (parseActions) {
+      // [[PLAN:step1||step2||step3]] — plan block from <navio-plan>
+      processedText = processedText.replace(/\[\[PLAN:([\s\S]*?)\]\]/g, (_, encoded) => {
+        const idx = actionCards.length;
+        actionCards.push({ type: 'PLAN', params: encoded });
+        return `\x00ACT${idx}\x00`;
+      });
       // [[ACTION:type:params]] — non-greedy, stops at first ]]
       processedText = processedText.replace(/\[\[ACTION:(\w+):([\s\S]*?)\]\]/g, extractToken);
       // Legacy <<ACTION:type:params>> — keep compatible
@@ -650,6 +656,7 @@ PERSONALITY:
         return `\x00ACT${idx}\x00`;
       });
     } else {
+      processedText = processedText.replace(/\[\[PLAN:[\s\S]*?\]\]/g, '');
       processedText = processedText.replace(/\[\[ACTION:[\s\S]*?\]\]/g, '');
       processedText = processedText.replace(/<<ACTION:[\s\S]*?>>/g, '');
       processedText = processedText.replace(/\[\[TASK_APPROVE:[\s\S]*?\]\]/g, '');
@@ -746,10 +753,27 @@ PERSONALITY:
         scroll: 'Scroll', goBack: 'Go back', goForward: 'Go forward'
       };
 
+      const EDIT_ICON = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+
       actionCards.forEach(({ type, params }, idx) => {
         let card;
-        if (type === 'TASK_APPROVE') {
-          // Render task chain approval gate
+        if (type === 'PLAN') {
+          // Render a plan overview card
+          const steps = params.split('||').filter(Boolean);
+          const stepItems = steps.map((s, i) =>
+            `<div class="navio-plan-step">
+              <span class="navio-plan-num">${i + 1}</span>
+              <span class="navio-plan-text">${s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>
+            </div>`
+          ).join('');
+          card = `<div class="navio-plan-card">
+            <div class="navio-plan-header">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+              Plan — ${steps.length} step${steps.length !== 1 ? 's' : ''}
+            </div>
+            <div class="navio-plan-steps">${stepItems}</div>
+          </div>`;
+        } else if (type === 'TASK_APPROVE') {
           card = `<div class="tc-approval-gate" data-approval-id="${params}">
             <span class="tca-label">Ready to execute this step</span>
             <div class="tca-btns">
@@ -771,8 +795,9 @@ PERSONALITY:
           }
           card = `<div class="browser-action-card" data-action="${type}" data-params="${safeParams}">
             <span class="bac-icon">${icon}</span>
-            <span class="bac-desc"><strong>${verb}</strong>${params ? `<span class="bac-param">${paramDisplay}</span>` : ''}</span>
+            <span class="bac-desc"><strong>${verb}</strong>${params ? `<span class="bac-param" title="${safeParams}">${paramDisplay}</span>` : ''}</span>
             <div class="bac-btns">
+              <button class="bac-edit" type="button" title="Edit this step">${EDIT_ICON}</button>
               <button class="bac-run" type="button">Run</button>
               <button class="bac-skip" type="button">Skip</button>
             </div>
@@ -848,14 +873,72 @@ PERSONALITY:
       return;
     }
 
-    // Manual mode — individual Run / Skip buttons
+    // Manual mode — individual Run / Skip / Edit buttons
     cards.forEach((card) => {
       const action = card.dataset.action;
-      const params = card.dataset.params;
-      card.querySelector('.bac-run')?.addEventListener('click', () => this._executeAction(action, params, card, false));
+
+      card.querySelector('.bac-run')?.addEventListener('click', () => {
+        this._executeAction(action, card.dataset.params, card, false);
+      });
+
       card.querySelector('.bac-skip')?.addEventListener('click', () => {
         card.classList.add('bac-skipped');
         card.querySelector('.bac-btns').innerHTML = '<span class="bac-status">Skipped</span>';
+      });
+
+      // Edit button — inline edit of the params
+      card.querySelector('.bac-edit')?.addEventListener('click', () => {
+        const currentParams = card.dataset.params;
+        const descEl = card.querySelector('.bac-desc');
+        const btnsEl = card.querySelector('.bac-btns');
+        // Replace desc with an input
+        const oldDescHTML = descEl.innerHTML;
+        const oldBtnsHTML = btnsEl.innerHTML;
+        descEl.innerHTML = `<input class="bac-edit-input" type="text" value="${currentParams.replace(/"/g,'&quot;')}" spellcheck="false">`;
+        btnsEl.innerHTML = `<button class="bac-edit-save" type="button">Save</button><button class="bac-edit-cancel" type="button">Cancel</button>`;
+        const input = descEl.querySelector('.bac-edit-input');
+        input.focus();
+        input.select();
+        btnsEl.querySelector('.bac-edit-save').addEventListener('click', () => {
+          const newParams = input.value.trim();
+          if (newParams) card.dataset.params = newParams;
+          descEl.innerHTML = oldDescHTML;
+          btnsEl.innerHTML = oldBtnsHTML;
+          // Re-wire the new buttons
+          card.querySelector('.bac-run')?.addEventListener('click', () => this._executeAction(action, card.dataset.params, card, false));
+          card.querySelector('.bac-skip')?.addEventListener('click', () => {
+            card.classList.add('bac-skipped');
+            card.querySelector('.bac-btns').innerHTML = '<span class="bac-status">Skipped</span>';
+          });
+          card.querySelector('.bac-edit')?.addEventListener('click', () => card.querySelector('.bac-edit').click());
+          // Update the visible param tag if it exists
+          const paramTag = card.querySelector('.bac-param');
+          if (paramTag) {
+            let display = card.dataset.params;
+            if (action === 'navigate') {
+              try {
+                const u = new URL(display);
+                display = u.hostname + (u.pathname !== '/' ? u.pathname : '') + (u.search ? '…' : '');
+                display = display.replace(/^www\./, '');
+              } catch (_) {}
+            }
+            paramTag.textContent = display;
+            paramTag.title = card.dataset.params;
+          }
+        });
+        btnsEl.querySelector('.bac-edit-cancel').addEventListener('click', () => {
+          descEl.innerHTML = oldDescHTML;
+          btnsEl.innerHTML = oldBtnsHTML;
+          card.querySelector('.bac-run')?.addEventListener('click', () => this._executeAction(action, card.dataset.params, card, false));
+          card.querySelector('.bac-skip')?.addEventListener('click', () => {
+            card.classList.add('bac-skipped');
+            card.querySelector('.bac-btns').innerHTML = '<span class="bac-status">Skipped</span>';
+          });
+        });
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') btnsEl.querySelector('.bac-edit-save').click();
+          if (e.key === 'Escape') btnsEl.querySelector('.bac-edit-cancel').click();
+        });
       });
     });
 

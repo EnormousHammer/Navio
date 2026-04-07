@@ -7224,6 +7224,143 @@ body.onboarding-active #app {
   border-bottom: 1px solid var(--border);
 }
 
+/* ── Navio Plan Card ── */
+.navio-plan-card {
+  margin: 8px 0 4px;
+  padding: 11px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-left: 3px solid #a78bfa;
+  border-radius: 8px;
+}
+
+.navio-plan-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #a78bfa;
+  margin-bottom: 10px;
+}
+
+.navio-plan-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.navio-plan-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.navio-plan-num {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(167, 139, 250, 0.12);
+  border: 1px solid rgba(167, 139, 250, 0.30);
+  color: #a78bfa;
+  font-size: 10.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.navio-plan-text {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  flex: 1;
+}
+
+[data-theme="light"] .navio-plan-card {
+  background: #f5f3ff;
+  border-color: rgba(124, 58, 237, 0.12);
+  border-left-color: #7c3aed;
+}
+
+[data-theme="light"] .navio-plan-header { color: #7c3aed; }
+[data-theme="light"] .navio-plan-num {
+  background: rgba(124, 58, 237, 0.08);
+  border-color: rgba(124, 58, 237, 0.22);
+  color: #7c3aed;
+}
+
+/* ── Edit button on action cards ── */
+.bac-edit {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.bac-edit:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-glow);
+}
+
+/* Edit mode input */
+.bac-edit-input {
+  flex: 1;
+  background: var(--bg-base);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  outline: none;
+  min-width: 0;
+  width: 100%;
+}
+
+.bac-edit-save {
+  padding: 3px 10px;
+  background: var(--accent);
+  border: none;
+  border-radius: 5px;
+  color: #000;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  white-space: nowrap;
+}
+
+.bac-edit-save:hover { opacity: 0.85; }
+
+.bac-edit-cancel {
+  padding: 3px 9px;
+  background: transparent;
+  border: 1px solid var(--glass-border);
+  border-radius: 5px;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  white-space: nowrap;
+}
+
+.bac-edit-cancel:hover { color: var(--text-secondary); border-color: var(--text-secondary); }
+
 /* ── Browser action cards: refined ── */
 .browser-action-card {
   display: flex;
