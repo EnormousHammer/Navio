@@ -835,7 +835,89 @@ PERSONALITY:
     this._addContinuePill('Navio stopped. You\'re back in control.');
   }
 
+  _wirePlanStep(step) {
+    const textEl = step.querySelector('.navio-plan-text');
+    if (!textEl || step.classList.contains('navio-plan-editing')) return;
+    const clone = textEl.cloneNode(true);
+    textEl.replaceWith(clone);
+    clone.addEventListener('click', () => clone.dispatchEvent(new MouseEvent('click')));
+    // Let _wireActions handle it — just re-attach the main listener
+    clone.title = 'Click to edit';
+    clone.style.cursor = 'pointer';
+    clone.addEventListener('click', () => {
+      if (step.classList.contains('navio-plan-editing')) return;
+      step.classList.add('navio-plan-editing');
+      const original = clone.textContent;
+      const input = document.createElement('input');
+      input.className = 'navio-plan-edit-input';
+      input.type = 'text';
+      input.value = original;
+      input.spellcheck = false;
+      clone.replaceWith(input);
+      input.focus(); input.select();
+      const finish = (keep) => {
+        step.classList.remove('navio-plan-editing');
+        const span = document.createElement('span');
+        span.className = 'navio-plan-text';
+        span.textContent = keep ? (input.value.trim() || original) : original;
+        input.replaceWith(span);
+        this._wirePlanStep(step);
+      };
+      input.addEventListener('blur', () => finish(true));
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { e.preventDefault(); input.removeEventListener('blur', () => finish(true)); finish(false); }
+      });
+    });
+  }
+
   async _wireActions(contentEl) {
+    // ── Wire plan card steps — click any step text to edit it ──────────────
+    contentEl.querySelectorAll('.navio-plan-step').forEach((step, idx) => {
+      const textEl = step.querySelector('.navio-plan-text');
+      if (!textEl) return;
+      textEl.title = 'Click to edit this step';
+      textEl.addEventListener('click', () => {
+        if (step.classList.contains('navio-plan-editing')) return;
+        step.classList.add('navio-plan-editing');
+        const original = textEl.textContent;
+        const input = document.createElement('input');
+        input.className = 'navio-plan-edit-input';
+        input.type = 'text';
+        input.value = original;
+        input.spellcheck = false;
+        textEl.replaceWith(input);
+        input.focus();
+        input.select();
+
+        const save = () => {
+          step.classList.remove('navio-plan-editing');
+          const newText = document.createElement('span');
+          newText.className = 'navio-plan-text';
+          newText.textContent = input.value.trim() || original;
+          newText.title = 'Click to edit this step';
+          input.replaceWith(newText);
+          newText.addEventListener('click', () => newText.click());
+          // Re-wire so it's editable again
+          this._wirePlanStep(step);
+        };
+        const cancel = () => {
+          step.classList.remove('navio-plan-editing');
+          const newText = document.createElement('span');
+          newText.className = 'navio-plan-text';
+          newText.textContent = original;
+          newText.title = 'Click to edit this step';
+          input.replaceWith(newText);
+          this._wirePlanStep(step);
+        };
+        input.addEventListener('blur', save);
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+          if (e.key === 'Escape') { e.preventDefault(); input.removeEventListener('blur', save); cancel(); }
+        });
+      });
+    });
+
     // Wire task chain approval gates
     contentEl.querySelectorAll('.tca-approve').forEach(btn => {
       btn.addEventListener('click', () => {
