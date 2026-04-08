@@ -523,16 +523,48 @@ class SettingsManagerClass {
     // Bind save buttons
     container.querySelectorAll('.oauth-client-id-save-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        const key = btn.dataset.key;
-        const input = container.querySelector(`input[data-key="${key}"]`);
-        const val = (input?.value || '').trim();
-        btn.disabled = true;
+        const key      = btn.dataset.key;
+        const provider = btn.dataset.provider;
+        const input    = container.querySelector(`input[data-key="${key}"]`);
+        const val      = (input?.value || '').trim();
+        btn.disabled   = true;
         btn.textContent = 'Saving…';
         try {
           await window.navio.saveConfig({ [key]: val });
           this.config[key] = val;
-          btn.textContent = '✓ Saved';
-          setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
+
+          if (val) {
+            // Client ID saved — immediately open the OAuth sign-in popup so the
+            // user doesn't have to find the "Sign in" button in the Connectors Hub.
+            btn.textContent = 'Signing in…';
+            const result = await window.navio.oauthConnect(provider);
+            if (result && result.error) {
+              btn.textContent = '⚠ Sign-in failed';
+              // Show the error inline under the input
+              let errEl = btn.closest('.oauth-provider-row').querySelector('.oauth-signin-error');
+              if (!errEl) {
+                errEl = document.createElement('div');
+                errEl.className = 'oauth-signin-error';
+                errEl.style.cssText = 'color:var(--text-danger,#f87171);font-size:12px;margin-top:4px;';
+                btn.closest('.oauth-provider-input-row').after(errEl);
+              }
+              errEl.textContent = result.error;
+              setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 3000);
+            } else if (result && result.ok) {
+              btn.textContent = `✓ Connected as ${result.email || result.name || 'account'}`;
+              const row = btn.closest('.oauth-provider-row');
+              // Remove any previous error
+              row.querySelector('.oauth-signin-error')?.remove();
+              setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 4000);
+            } else {
+              btn.textContent = '✓ Saved';
+              setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
+            }
+          } else {
+            // Client ID cleared — just confirm save
+            btn.textContent = '✓ Saved';
+            setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
+          }
         } catch {
           btn.textContent = 'Error';
           setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
