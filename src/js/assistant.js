@@ -87,7 +87,7 @@ PERSONALITY:
 
     this.inputEl.addEventListener('input', () => {
       this.inputEl.style.height = 'auto';
-      this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 120) + 'px';
+      this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + 'px';
     });
 
     document.querySelectorAll('.quick-action').forEach((btn) => {
@@ -143,7 +143,7 @@ PERSONALITY:
           .join('');
         this.inputEl.value = transcript;
         this.inputEl.style.height = 'auto';
-        this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 120) + 'px';
+        this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + 'px';
         if (e.results[e.results.length - 1].isFinal) {
           stopListening();
           if (transcript.trim()) this.sendMessage();
