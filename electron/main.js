@@ -3327,6 +3327,49 @@ ipcMain.handle('ntp-gmail-inbox', async () => {
   }
 });
 
+// ── Gmail message full body (for AI draft reply) ─────────────────────────────
+ipcMain.handle('gmail-get-message-body', async (_, { id }) => {
+  try {
+    const token = await getValidOAuthToken('google');
+    if (!token) return { error: 'not_signed_in' };
+
+    const r = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=full`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const d = await r.json();
+    if (!r.ok) return { error: d.error?.message || 'Gmail API error' };
+
+    // Extract plain-text body (walk the payload tree)
+    function extractBody(payload) {
+      if (!payload) return '';
+      if (payload.mimeType === 'text/plain' && payload.body?.data) {
+        return Buffer.from(payload.body.data, 'base64').toString('utf-8');
+      }
+      for (const part of payload.parts || []) {
+        const found = extractBody(part);
+        if (found) return found;
+      }
+      // Fallback: top-level body data (some simple messages)
+      if (payload.body?.data) {
+        return Buffer.from(payload.body.data, 'base64').toString('utf-8');
+      }
+      return '';
+    }
+
+    const headers = d.payload?.headers || [];
+    const get = (name) => headers.find(h => h.name === name)?.value || '';
+    return {
+      body:    extractBody(d.payload),
+      subject: get('Subject'),
+      from:    get('From'),
+      to:      get('To'),
+      date:    get('Date'),
+      snippet: d.snippet || '',
+    };
+  } catch (e) { return { error: e.message }; }
+});
+
 // Update connector-get-keys to also include IMAP-connected services
 // (already done above, but also update connector-query to use IMAP)
 

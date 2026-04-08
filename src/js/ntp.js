@@ -827,10 +827,16 @@ const NTP = (() => {
   // ── Inbox widget ──────────────────────────────────────────────────────────
 
   async function _loadInbox() {
-    const emailList = document.getElementById('ntp-email-list');
-    const unreadBadge = document.getElementById('ntp-unread-badge');
-    const draftAllBtn = document.getElementById('ntp-draft-all-btn');
+    const emailList      = document.getElementById('ntp-email-list');
+    const unreadBadge    = document.getElementById('ntp-unread-badge');
+    const draftAllBtn    = document.getElementById('ntp-draft-all-btn');
+    const analyzeBtn     = document.getElementById('ntp-inbox-analyze-btn');
     if (!emailList) return;
+
+    if (analyzeBtn && !analyzeBtn._wired) {
+      analyzeBtn._wired = true;
+      analyzeBtn.addEventListener('click', () => _analyzeInbox(analyzeBtn));
+    }
 
     try {
       const imapSt = await window.navio.imapStatus();
@@ -866,27 +872,41 @@ const NTP = (() => {
             return;
           }
           emailList.innerHTML = messages.map(msg => `
-            <div class="ntp-email-item ${msg.unread ? 'unread' : ''}" data-msgid="${_esc(msg.id || '')}">
+            <div class="ntp-email-item ${msg.unread ? 'unread' : ''}" data-msgid="${_esc(msg.id || '')}"
+                 data-sender="${_esc(msg.sender || '')}" data-sendername="${_esc(msg.senderName || '')}">
               <div class="ntp-email-header">
                 <span class="ntp-email-sender">${_esc(msg.senderName || msg.sender || '')}</span>
                 <span class="ntp-email-date">${_esc(_formatEmailDate(msg.date))}</span>
               </div>
               <div class="ntp-email-subject">${_esc(msg.subject)}</div>
               <div class="ntp-email-preview">${_esc(msg.snippet || '')}</div>
+              <button class="ntp-email-draft-btn" data-msgid="${_esc(msg.id || '')}" title="Draft a reply">
+                ✦ Draft reply
+              </button>
             </div>
           `).join('');
-          // Click any email to open it in Gmail
+          // Click email row (not the draft button) → open in Gmail
           emailList.querySelectorAll('.ntp-email-item[data-msgid]').forEach(el => {
-            el.addEventListener('click', () => {
+            el.addEventListener('click', (e) => {
+              if (e.target.closest('.ntp-email-draft-btn')) return; // handled separately
               const id = el.dataset.msgid;
               const url = id
                 ? `https://mail.google.com/mail/u/0/#inbox/${id}`
                 : 'https://mail.google.com/mail/u/0/#inbox';
-              if (typeof TabManager !== 'undefined') {
-                TabManager.createTab(url);
-              } else {
-                window.open(url, '_blank');
-              }
+              if (typeof TabManager !== 'undefined') TabManager.createTab(url);
+              else window.open(url, '_blank');
+            });
+          });
+          // Draft reply button for Gmail OAuth emails
+          emailList.querySelectorAll('.ntp-email-draft-btn[data-msgid]').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+              e.stopPropagation();
+              const item = btn.closest('.ntp-email-item');
+              const msgid    = btn.dataset.msgid;
+              const subject  = item.querySelector('.ntp-email-subject')?.textContent || '';
+              const fromName = item.dataset.sendername || item.dataset.sender || '';
+              const sender   = item.dataset.sender || '';
+              await _draftGmailEmail(msgid, subject, fromName, sender, btn);
             });
           });
           return;
@@ -1089,6 +1109,180 @@ const NTP = (() => {
       alert(`Could not generate draft: ${e.message}`);
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = '✦ Draft reply'; }
+    }
+  }
+
+  // ── AI draft for a Gmail OAuth email (no tab needed) ─────────────────────
+
+  async function _draftGmailEmail(msgId, subject, fromName, senderEmail, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    try {
+      const config = await window.navio.getConfig();
+      if (!config.hasApiKey) {
+        alert('No AI API key configured. Open Settings → AI to add one.');
+        return;
+      }
+
+      const msgData = await window.navio.gmailGetMessageBody(msgId);
+      const body    = msgData?.body    || '';
+      const snippet = msgData?.snippet || '';
+      const date    = msgData?.date    || '';
+
+      // Build style context from saved examples
+      let styleCtx = '';
+      if (typeof LiveConnectorManager !== 'undefined') {
+        const examples = LiveConnectorManager._data?.styleMemory?.gmail?.examples || [];
+        if (examples.length) {
+          styleCtx = '\n\nExamples of how I typically reply:\n' +
+            examples.slice(-3).map(ex => `---\nSubject: ${ex.subject}\nMy reply: ${ex.reply}`).join('\n');
+        }
+      }
+
+      const systemPrompt =
+        'You are a professional email assistant drafting a reply on behalf of the user. ' +
+        'Write ONLY the reply body — no preamble, no subject line, no "Here is a draft" intro. ' +
+        'Match the tone of the original email (professional if formal, friendly if casual). ' +
+        'Be concise and clear.' + styleCtx;
+
+      const emailCtx =
+        `Draft a reply to this email:\n\nFrom: ${fromName} <${senderEmail}>\nDate: ${date}\nSubject: ${subject}\n\n` +
+        `Body:\n${(body || snippet).slice(0, 3500)}`;
+
+      const result = await window.navio.aiRequest({
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user',   content: emailCtx }
+        ]
+      });
+      if (result.error) throw new Error(result.error);
+
+      if (typeof LiveConnectorManager !== 'undefined') {
+        LiveConnectorManager._showDraftModal({
+          draft: result.content,
+          context: { subject, sender: fromName },
+          serviceId: 'gmail',
+          tabId: null,
+          providerLabel: config.aiModel || config.aiProvider || 'AI'
+        });
+      }
+
+      // Replace "Send to Gmail" button with a "Open reply in Gmail" button
+      // (uses Gmail compose URL — works without an open Gmail tab)
+      setTimeout(() => {
+        const injectBtn = document.getElementById('lm-inject');
+        if (injectBtn) {
+          injectBtn.innerHTML = `
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.37 2 2 0 0 1 3.58 1h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9c1.91 3.28 4.85 6.22 8.13 8.13l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+            </svg>
+            Reply in Gmail
+          `;
+          injectBtn.replaceWith(injectBtn.cloneNode(true));
+          document.getElementById('lm-inject')?.addEventListener('click', () => {
+            const draftText = document.getElementById('lm-draft-text')?.value || '';
+            const replySubject = subject.startsWith('Re:') ? subject : `Re: ${subject}`;
+            // Try inject into open Gmail tab first; fall back to compose URL
+            const gmailTab = typeof TabManager !== 'undefined'
+              ? TabManager.tabs?.find(t => (t.webview?.src || t.url || '').includes('mail.google.com'))
+              : null;
+            if (gmailTab && typeof LiveConnectorManager !== 'undefined') {
+              LiveConnectorManager._injectDraft('gmail', gmailTab.id, draftText);
+            } else {
+              const composeUrl = `https://mail.google.com/mail/?view=cm` +
+                `&to=${encodeURIComponent(senderEmail)}` +
+                `&su=${encodeURIComponent(replySubject)}` +
+                `&body=${encodeURIComponent(draftText)}`;
+              if (typeof TabManager !== 'undefined') TabManager.createTab(composeUrl);
+              else window.open(composeUrl, '_blank');
+              document.getElementById('live-draft-modal')?.classList.remove('active');
+            }
+          });
+        }
+      }, 100);
+
+    } catch (e) {
+      alert(`Could not generate draft: ${e.message}`);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '✦ Draft reply'; }
+    }
+  }
+
+  // ── AI inbox analysis (unanswered emails + action items) ─────────────────
+
+  async function _analyzeInbox(btn) {
+    if (!_inboxMessages.length) {
+      alert('No emails loaded yet. Please wait for the inbox to load first.');
+      return;
+    }
+    const origText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '…';
+
+    try {
+      const config = await window.navio.getConfig();
+      if (!config.hasApiKey) {
+        alert('No AI API key configured. Open Settings → AI to add one.');
+        return;
+      }
+
+      const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      const emailSummary = _inboxMessages.slice(0, 15).map((m, i) => {
+        const d    = m.date ? new Date(m.date) : null;
+        const when = d ? d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'unknown date';
+        const read = m.unread === false ? 'read' : 'unread';
+        return `${i + 1}. [${read}] ${when} — From: ${m.senderName || m.sender || 'unknown'} — Subject: ${m.subject}${m.snippet ? '\n   Preview: ' + m.snippet : ''}`;
+      }).join('\n');
+
+      const prompt =
+        `Today is ${today}.\n\nHere are the emails in my inbox:\n\n${emailSummary}\n\n` +
+        `Please analyze this inbox and tell me:\n` +
+        `1. Which emails from today likely still need a reply from me?\n` +
+        `2. Any urgent action items or deadlines I should know about?\n` +
+        `3. Which emails are informational (no action needed)?\n\n` +
+        `Be concise. Format with clear sections.`;
+
+      const result = await window.navio.aiRequest({
+        messages: [
+          { role: 'system', content: 'You are a smart email assistant helping the user triage their inbox. Be concise, practical, and list the most important items first. No fluff.' },
+          { role: 'user',   content: prompt }
+        ]
+      });
+      if (result.error) throw new Error(result.error);
+
+      // Show analysis in the AI Brief panel (repurpose it temporarily)
+      const briefArea = document.getElementById('ntp-brief-content');
+      const briefWidget = document.querySelector('.ntp-brief-widget');
+      if (briefArea && briefWidget) {
+        const html = result.content
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+          .replace(/\*(.+?)\*/g, '<em>$1</em>')
+          .replace(/^#{1,3} (.+)$/gm, '<strong>$1</strong>')
+          .replace(/\n/g, '<br>');
+        briefArea.innerHTML = `
+          <div style="font-size:11px;color:var(--ntp-text-muted);margin-bottom:6px">Inbox Analysis · ${new Date().toLocaleTimeString()}</div>
+          <div style="line-height:1.6">${html}</div>`;
+        briefWidget.classList.add('ntp-brief-expanded');
+        briefWidget.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else {
+        // Fallback: show in a simple modal-style overlay on the NTP
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center';
+        const card = document.createElement('div');
+        card.style.cssText = 'background:var(--bg-surface,#1e1e2e);color:var(--text-primary,#cdd6f4);border-radius:12px;padding:24px;max-width:560px;width:90%;max-height:80vh;overflow-y:auto;font-size:13px;line-height:1.6;box-shadow:0 20px 60px rgba(0,0,0,.5)';
+        card.innerHTML = `<div style="font-weight:700;font-size:15px;margin-bottom:12px">Inbox Analysis</div>` +
+          result.content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>') +
+          `<div style="margin-top:16px;text-align:right"><button style="padding:6px 16px;border-radius:6px;border:none;background:var(--accent,#89b4fa);color:#1e1e2e;cursor:pointer;font-size:12px">Close</button></div>`;
+        overlay.appendChild(card);
+        card.querySelector('button').addEventListener('click', () => overlay.remove());
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+        document.body.appendChild(overlay);
+      }
+    } catch (e) {
+      alert(`Inbox analysis failed: ${e.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = origText;
     }
   }
 
