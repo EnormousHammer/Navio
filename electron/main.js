@@ -3357,35 +3357,43 @@ app.whenReady().then(async () => {
   // Set up the persist:navio session used by all webview tabs
   const navioSession = session.fromPartition('persist:navio');
 
-  // ── User-Agent: present as a real Chrome browser ──────────────────────────
-  // Electron injects "Electron/x.x.x" into the UA string which causes Google
-  // and other sites to return ERR_BLOCKED_BY_RESPONSE or show degraded pages.
-  // We strip the Electron token and present a standard Chrome/Windows UA.
-  const rawUA = navioSession.getUserAgent();
-  const cleanUA = rawUA
-    .replace(/\s*Electron\/[\d.]+/g, '')
-    .replace(/\s*NavioBrowser\/[\d.]+/g, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-  navioSession.setUserAgent(cleanUA);
+  // ── Apply UA + header fixes to a session ─────────────────────────────────
+  // Shared helper so both the main webview session AND the default session
+  // (used by OAuth popup BrowserWindows) get identical treatment.
+  function applySessionFixes(ses) {
+    // Strip "Electron/x.x.x" from the UA — Google and others detect it and
+    // block pages or disable JavaScript features (causing dead buttons).
+    const ua = ses.getUserAgent()
+      .replace(/\s*Electron\/[\d.]+/g, '')
+      .replace(/\s*NavioBrowser\/[\d.]+/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    ses.setUserAgent(ua);
 
-  // ── Strip blocking response headers ──────────────────────────────────────
-  // Google (Gmail, Drive, etc.) returns COOP / COEP / X-Frame-Options headers
-  // that Electron's renderer rejects, causing ERR_BLOCKED_BY_RESPONSE even on
-  // top-level navigations. We strip just the headers that cause this issue.
-  navioSession.webRequest.onHeadersReceived({ urls: ['*://*/*'] }, (details, callback) => {
-    const headers = details.responseHeaders || {};
-    const drop = [
-      'x-frame-options',
-      'cross-origin-opener-policy',
-      'cross-origin-embedder-policy',
-      'cross-origin-resource-policy',
-    ];
-    for (const key of Object.keys(headers)) {
-      if (drop.includes(key.toLowerCase())) delete headers[key];
-    }
-    callback({ responseHeaders: headers });
-  });
+    // Strip COOP / COEP / X-Frame-Options response headers that cause
+    // ERR_BLOCKED_BY_RESPONSE in Electron's renderer on Google and other sites.
+    ses.webRequest.onHeadersReceived({ urls: ['*://*/*'] }, (details, callback) => {
+      const headers = details.responseHeaders || {};
+      const drop = [
+        'x-frame-options',
+        'cross-origin-opener-policy',
+        'cross-origin-embedder-policy',
+        'cross-origin-resource-policy',
+      ];
+      for (const key of Object.keys(headers)) {
+        if (drop.includes(key.toLowerCase())) delete headers[key];
+      }
+      callback({ responseHeaders: headers });
+    });
+  }
+
+  // Apply to the webview tab session
+  applySessionFixes(navioSession);
+
+  // Apply to the default session — this is what OAuth popup BrowserWindows use.
+  // Without this, Google's sign-in page loads but buttons (e.g. Next) are dead
+  // because Google detects Electron via UA and disables its JS handlers.
+  applySessionFixes(session.defaultSession);
 
   // Allow all permission requests from web content (camera, mic, notifications, etc.)
   navioSession.setPermissionRequestHandler((webContents, permission, callback) => {
