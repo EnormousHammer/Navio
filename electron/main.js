@@ -2256,7 +2256,7 @@ ipcMain.handle('oauth-connect', async (event, { providerId }) => {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
-        sandbox: true
+        sandbox: false  // Google sign-in requires web APIs that Electron sandbox blocks
       }
     });
 
