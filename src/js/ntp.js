@@ -14,9 +14,10 @@
 const NTP = (() => {
   let _mode = 'search'; // 'search' | 'ai' | 'task'
   let _ntpVisible = false;
-  let _weatherData = null; // cached for AI brief
-  let _newsHeadlines = []; // cached for AI brief
-  let _stockData = [];     // cached for AI brief
+  let _weatherData    = null; // cached for AI brief
+  let _newsHeadlines  = [];   // cached for AI brief
+  let _stockData      = [];   // cached for AI brief
+  let _inboxMessages  = [];   // cached from _loadInbox() for AI brief
   let _tickerMode = 'markets'; // 'markets' | 'sports' | 'news'
 
   // ── Init ──────────────────────────────────────────────────────────────────
@@ -60,6 +61,7 @@ const NTP = (() => {
     _loadTickerForMode();
     _bindResultsPanel();
     _loadPrivacyStats();
+    _maybeAutoGenerateBrief();
   }
 
   // ── Clock + Greeting ──────────────────────────────────────────────────────
@@ -478,7 +480,34 @@ const NTP = (() => {
   // ── AI Brief ──────────────────────────────────────────────────────────────
 
   function _bindAIBrief() {
-    document.getElementById('ntp-brief-gen-btn')?.addEventListener('click', _generateAIBrief);
+    document.getElementById('ntp-brief-gen-btn')?.addEventListener('click', () => {
+      // Force-refresh: clear cache then regenerate
+      try { localStorage.removeItem('navio-brief-cache'); } catch {}
+      _generateAIBrief();
+    });
+  }
+
+  // Auto-show cached brief or generate a fresh one (max once per day)
+  function _maybeAutoGenerateBrief() {
+    const body = document.getElementById('ntp-brief-body');
+    if (!body) return;
+
+    const today = new Date().toDateString();
+    try {
+      const raw = localStorage.getItem('navio-brief-cache');
+      if (raw) {
+        const { date, html } = JSON.parse(raw);
+        if (date === today && html) {
+          body.innerHTML = html;
+          const btn = document.getElementById('ntp-brief-gen-btn');
+          if (btn) { btn.disabled = false; btn.textContent = '↺ Refresh'; }
+          return; // cached — no API call needed
+        }
+      }
+    } catch {}
+
+    // No cache for today — auto-generate after a short delay so inbox/news load first
+    setTimeout(_generateAIBrief, 1800);
   }
 
   // Convert any stray markdown to clean HTML (safety net in case AI ignores instructions)
@@ -525,56 +554,78 @@ const NTP = (() => {
         sections.push(`Weather: ${_weatherData.icon} ${_weatherData.temp}°C, ${_weatherData.desc}.`);
       }
 
-      // Unread emails
-      try {
-        const imapSt = await window.navio.imapStatus();
-        const connected = Object.keys(imapSt || {});
-        if (connected.length > 0) {
-          const unreadResults = await Promise.all(
-            connected.map(svc => window.navio.imapGetUnread(svc, 1).catch(() => null))
-          );
-          const totalUnread = unreadResults.reduce((sum, r) => sum + (r?.unreadCount || 0), 0);
-          if (totalUnread > 0) {
-            sections.push(`Unread emails: ${totalUnread} unread across ${connected.map(s => s === 'gmail' ? 'Gmail' : 'Outlook').join(', ')}.`);
-          } else {
-            sections.push('Inbox: all caught up, no unread emails.');
+      // ── Emails ────────────────────────────────────────────────────────────
+      if (_inboxMessages.length > 0) {
+        const unread = _inboxMessages.filter(m => m.unread);
+        const pool   = unread.length > 0 ? unread : _inboxMessages;
+        const top5   = pool.slice(0, 5)
+          .map(m => `  • From ${m.senderName || 'Unknown'}: "${m.subject}"${m.snippet ? ' — ' + m.snippet.slice(0, 60) : ''}`)
+          .join('\n');
+        sections.push(`Inbox (${unread.length} unread of ${_inboxMessages.length}):\n${top5}`);
+      } else {
+        try {
+          const imapSt = await window.navio.imapStatus();
+          const connected = Object.keys(imapSt || {});
+          if (connected.length > 0) {
+            const unreadResults = await Promise.all(
+              connected.map(svc => window.navio.imapGetUnread(svc, 3).catch(() => null))
+            );
+            const allMsgs = unreadResults.flatMap(r => r?.messages || []);
+            if (allMsgs.length > 0) {
+              const top = allMsgs.slice(0, 5).map(m => `  • From ${m.fromName || m.from}: "${m.subject}"`).join('\n');
+              sections.push(`Inbox (${allMsgs.length}+ unread):\n${top}`);
+            } else {
+              sections.push('Inbox: all caught up.');
+            }
           }
-        }
-      } catch {}
+        } catch {}
+      }
 
+      // ── News ──────────────────────────────────────────────────────────────
       if (_newsHeadlines.length > 0) {
-        sections.push(`Top world news headlines:\n${_newsHeadlines.slice(0, 5).map((h, i) => `${i + 1}. ${h}`).join('\n')}`);
+        sections.push(`Breaking news:\n${_newsHeadlines.slice(0, 6).map((h, i) => `  ${i + 1}. ${h}`).join('\n')}`);
       }
 
+      // ── Markets ───────────────────────────────────────────────────────────
       if (_stockData.length > 0) {
-        const marketSummary = _stockData
+        const indices = _stockData
           .filter(s => ['GSPC', 'DJI', 'IXIC'].includes(s.symbol))
-          .map(s => `${s.symbol === 'GSPC' ? 'S&P 500' : s.symbol === 'DJI' ? 'DOW' : 'NASDAQ'}: ${(s.pct || 0) >= 0 ? '+' : ''}${(s.pct || 0).toFixed(2)}%`)
+          .map(s => `${s.symbol === 'GSPC' ? 'S&P 500' : s.symbol === 'DJI' ? 'DOW' : 'NASDAQ'} ${(s.pct || 0) >= 0 ? '+' : ''}${(s.pct || 0).toFixed(2)}%`)
           .join(', ');
-        if (marketSummary) sections.push(`Markets: ${marketSummary}.`);
-
-        const btc = _stockData.find(s => s.symbol === 'BTC-USD');
-        if (btc) sections.push(`BTC: $${btc.price?.toLocaleString('en-US', { maximumFractionDigits: 0 })} (${(btc.pct || 0) >= 0 ? '+' : ''}${(btc.pct || 0).toFixed(2)}%).`);
+        if (indices) {
+          const btc = _stockData.find(s => s.symbol === 'BTC-USD');
+          const btcStr = btc ? ` | BTC $${btc.price?.toLocaleString('en-US', { maximumFractionDigits: 0 })} (${(btc.pct || 0) >= 0 ? '+' : ''}${(btc.pct || 0).toFixed(2)}%)` : '';
+          sections.push(`Markets: ${indices}${btcStr}.`);
+        }
       }
 
-      const messages = [
+      const aiMessages = [
         {
           role: 'system',
-          content: 'You are a personalized AI briefing assistant. Write a concise, friendly daily brief in 3-5 short paragraphs. Use PLAIN TEXT ONLY — no markdown, no asterisks, no hashes, no dashes, no bullet points, no numbered lists, no bold or italic markers whatsoever. Just clean, flowing prose sentences. Keep it under 160 words. Make it feel intelligent, warm, and actionable.'
+          content: 'You are a personalized AI briefing assistant. Write a concise, intelligent daily brief covering ALL of the data provided — emails, breaking news, and markets. Organize it naturally into 3-5 short paragraphs covering: (1) email highlights — mention specific senders and topics, (2) most important world news stories, (3) market snapshot. Use PLAIN TEXT ONLY — no markdown, no asterisks, no bullets, no hashes. Just clean flowing prose. Keep under 200 words. Be warm but businesslike.',
         },
         {
           role: 'user',
-          content: `Here is today's context data:\n\n${sections.join('\n\n')}\n\nWrite my daily brief.`
-        }
+          content: `Here is my data for today:\n\n${sections.join('\n\n')}\n\nWrite my daily brief.`,
+        },
       ];
 
-      const result = await window.navio.aiRequest({ messages });
+      const result = await window.navio.aiRequest({ messages: aiMessages });
       if (result.error) throw new Error(result.error);
 
       const briefDate = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
       const briefTime = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
       const briefHtml = _renderBriefHtml(result.content || '');
-      body.innerHTML = `<div class="ntp-brief-content"><div class="ntp-brief-datestamp">${_esc(briefDate)} <span class="ntp-brief-time">· ${_esc(briefTime)}</span></div>${briefHtml}</div>`;
+      const fullHtml = `<div class="ntp-brief-content"><div class="ntp-brief-datestamp">${_esc(briefDate)} <span class="ntp-brief-time">· ${_esc(briefTime)}</span></div>${briefHtml}</div>`;
+      body.innerHTML = fullHtml;
+
+      // Cache so it re-displays instantly when the NTP is opened again today
+      try {
+        localStorage.setItem('navio-brief-cache', JSON.stringify({
+          date: new Date().toDateString(),
+          html: fullHtml,
+        }));
+      } catch {}
 
     } catch (e) {
       body.innerHTML = `<div class="ntp-brief-error">Could not generate brief: ${_esc(e.message)}</div>`;
@@ -808,6 +859,7 @@ const NTP = (() => {
           return;
         } else {
           const messages  = gmailResult?.messages || [];
+          _inboxMessages  = messages; // cache for AI brief
           const unreadCount = gmailResult?.unreadCount || 0;
           if (unreadBadge) {
             unreadBadge.textContent = unreadCount;
@@ -944,6 +996,12 @@ const NTP = (() => {
         emailList.innerHTML = '<p class="ntp-widget-empty">All caught up — no unread emails.</p>';
         return;
       }
+
+      // Normalise IMAP shape to match Gmail shape for AI brief
+      _inboxMessages = messages.map(m => ({
+        unread: true, subject: m.subject,
+        senderName: m.fromName || m.from, date: m.date, snippet: '',
+      }));
 
       emailList.innerHTML = messages.map(m => `
         <div class="ntp-email-item" data-uid="${m.uid}" data-svc="${svcId}">

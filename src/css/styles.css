@@ -7596,7 +7596,16 @@ body.onboarding-active #app {
 /* Email inbox widget */
 [data-theme="light"] .ntp-email-item { border-bottom-color: rgba(50,70,160,0.07); }
 [data-theme="light"] .ntp-email-item:hover { background: rgba(50,70,160,0.04); }
-[data-theme="light"] .ntp-email-subject { color: #16172a; }
+[data-theme="light"] .ntp-email-item.unread { background: rgba(0,85,200,0.055); border-left-color: #0055cc; }
+[data-theme="light"] .ntp-email-item.unread:hover { background: rgba(0,85,200,0.09); }
+[data-theme="light"] .ntp-email-subject { color: rgba(22,23,42,0.72); }
+[data-theme="light"] .ntp-email-item.unread .ntp-email-subject { color: #0a0b1a; font-weight: 600; }
+[data-theme="light"] .ntp-email-sender { color: rgba(22,23,42,0.58); }
+[data-theme="light"] .ntp-email-item.unread .ntp-email-sender { color: #0055cc; font-weight: 700; }
+[data-theme="light"] .ntp-email-date { color: rgba(22,23,42,0.38); }
+[data-theme="light"] .ntp-email-item.unread .ntp-email-date { color: #0055cc; font-weight: 600; }
+[data-theme="light"] .ntp-email-preview { color: rgba(22,23,42,0.42); }
+[data-theme="light"] .ntp-email-item.unread .ntp-email-preview { color: rgba(22,23,42,0.58); }
 [data-theme="light"] .ntp-email-from,
 [data-theme="light"] .ntp-email-time { color: rgba(22,23,42,0.50); }
 
@@ -8652,6 +8661,10 @@ body.onboarding-active #app {
   color: #ff7070;
   background: rgba(255,80,80,0.1);
 }
+
+/* Ensure hidden attribute wins over display:flex on inline AI elements */
+.inline-ai-toolbar[hidden],
+.inline-ai-card[hidden] { display: none !important; }
 
 /* ── Inline AI Toolbar ───────────────────────────────────────────────────── */
 .inline-ai-toolbar {
