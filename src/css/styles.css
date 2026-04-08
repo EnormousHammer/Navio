@@ -8232,10 +8232,8 @@ body.onboarding-active #app {
 
 /* ── @Tab Mention Picker ─────────────────────────────────────────────────── */
 .at-mention-picker {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
-  right: 0;
+  position: fixed;
+  /* left/width/bottom are set dynamically via JS based on textarea's getBoundingClientRect */
   background: var(--bg-elevated, #1a1f2e);
   border: 1px solid rgba(0,216,255,0.2);
   border-radius: 10px;
@@ -8320,11 +8318,19 @@ body.onboarding-active #app {
   flex-direction: column;
   z-index: 1200;
   box-shadow: -8px 0 32px rgba(0,0,5,0.45);
-  transform: translateX(100%);
-  transition: transform 0.22s cubic-bezier(0.4,0,0.2,1);
+  /* Default: slide off-screen to the right, invisible to pointer & a11y */
+  transform: translateX(110%);
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform 0.22s cubic-bezier(0.4,0,0.2,1),
+              visibility 0s linear 0.22s;
 }
-.reading-list-panel:not([hidden]) {
+.reading-list-panel.rl-open {
   transform: translateX(0);
+  visibility: visible;
+  pointer-events: auto;
+  transition: transform 0.22s cubic-bezier(0.4,0,0.2,1),
+              visibility 0s linear 0s;
 }
 
 .rl-header {

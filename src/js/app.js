@@ -557,18 +557,18 @@ const ReadingListManager = (() => {
 
   function open() {
     const p = _panel();
-    if (p) { p.hidden = false; p.classList.add('rl-open'); }
+    if (p) p.classList.add('rl-open');
     refresh();
   }
 
   function close() {
     const p = _panel();
-    if (p) { p.hidden = true; p.classList.remove('rl-open'); }
+    if (p) p.classList.remove('rl-open');
   }
 
   function toggle() {
     const p = _panel();
-    p && !p.hidden ? close() : open();
+    p && p.classList.contains('rl-open') ? close() : open();
   }
 
   async function saveCurrent() {
@@ -580,14 +580,20 @@ const ReadingListManager = (() => {
     const r = await window.navio.readingListAdd(tab.url, tab.title, tab.favicon);
     if (r.ok && r.added) {
       _showAppToast('Saved for later', 'success');
+      open(); // always show the panel after saving so user sees the item
       refresh();
     } else if (r.ok && !r.added) {
-      _showAppToast('Already in reading list', 'info');
+      _showAppToast('Already saved', 'info');
+      open();
     }
   }
 
   // Wire buttons once DOM is ready
-  document.getElementById('btn-read-later')?.addEventListener('click', toggle);
+  // Clicking the navbar icon: if panel is open → close; otherwise save + open
+  document.getElementById('btn-read-later')?.addEventListener('click', () => {
+    const p = _panel();
+    if (p && p.classList.contains('rl-open')) { close(); } else { saveCurrent(); }
+  });
   document.getElementById('btn-close-reading-list')?.addEventListener('click', close);
   refresh();
 

@@ -225,8 +225,14 @@ PERSONALITY:
       picker = document.createElement('div');
       picker.id = 'at-mention-picker';
       picker.className = 'at-mention-picker';
-      this.inputEl.parentElement.appendChild(picker);
+      document.body.appendChild(picker);
     }
+    // Position above the input using fixed coords so any parent layout doesn't matter
+    const rect = this.inputEl.getBoundingClientRect();
+    picker.style.left  = rect.left + 'px';
+    picker.style.width = rect.width + 'px';
+    picker.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
+    picker.style.top = '';
     picker.innerHTML = tabs.slice(0, 8).map((t, i) => `
       <div class="at-mention-item" data-idx="${i}" data-title="${t.title.replace(/"/g,'&quot;')}">
         ${t.favicon ? `<img class="at-mention-favicon" src="${t.favicon}" alt="">` : '<div class="at-mention-favicon-ph"></div>'}

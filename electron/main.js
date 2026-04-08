@@ -3920,12 +3920,15 @@ app.whenReady().then(async () => {
   const cfg0 = loadConfig();
   let adBlockEnabled = cfg0.adBlockEnabled !== false; // default ON
   let adBlockCount   = 0;
+  let adBlockBytes   = 0; // estimated bytes saved (avg ~40 KB per blocked request)
+  const AD_AVG_BYTES = 40 * 1024;
 
   navioSession.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
     if (adBlockEnabled) {
       const url = details.url;
       if (AD_BLOCK_PATTERNS.some(p => url.includes(p))) {
         adBlockCount++;
+        adBlockBytes += AD_AVG_BYTES;
         callback({ cancel: true });
         return;
       }
@@ -3942,6 +3945,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('get-ad-block-stats', () => ({
     enabled: adBlockEnabled,
     blocked: adBlockCount,
+    bytesSaved: adBlockBytes,
     domains: AD_BLOCK_PATTERNS.length
   }));
 

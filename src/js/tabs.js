@@ -374,7 +374,11 @@ class TabManagerClass {
     const tabEl = document.getElementById(`tabitem-${id}`);
     if (tabEl) tabEl.remove();
 
+    const hadGroup = tab.groupId;
     this.tabs.splice(index, 1);
+
+    // If the closed tab was in a group, rebuild the strip to update counts/remove empty headers
+    if (hadGroup) this._reRenderTabList();
 
     // If closing active tab, switch to another
     if (this.activeTabId === id) {
