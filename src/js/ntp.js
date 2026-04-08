@@ -799,7 +799,7 @@ const NTP = (() => {
             return;
           }
           emailList.innerHTML = messages.map(msg => `
-            <div class="ntp-email-item ${msg.unread ? 'unread' : ''}">
+            <div class="ntp-email-item ${msg.unread ? 'unread' : ''}" data-msgid="${_esc(msg.id || '')}">
               <div class="ntp-email-header">
                 <span class="ntp-email-sender">${_esc(msg.senderName || msg.sender || '')}</span>
                 <span class="ntp-email-date">${_esc(_formatEmailDate(msg.date))}</span>
@@ -808,6 +808,20 @@ const NTP = (() => {
               <div class="ntp-email-preview">${_esc(msg.snippet || '')}</div>
             </div>
           `).join('');
+          // Click any email to open it in Gmail
+          emailList.querySelectorAll('.ntp-email-item[data-msgid]').forEach(el => {
+            el.addEventListener('click', () => {
+              const id = el.dataset.msgid;
+              const url = id
+                ? `https://mail.google.com/mail/u/0/#inbox/${id}`
+                : 'https://mail.google.com/mail/u/0/#inbox';
+              if (typeof TabManager !== 'undefined') {
+                TabManager.createTab(url);
+              } else {
+                window.open(url, '_blank');
+              }
+            });
+          });
           return;
         }
       }

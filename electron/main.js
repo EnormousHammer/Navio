@@ -6,6 +6,15 @@ const crypto = require('crypto');
 const secureConfig = require('./secure-config');
 const { createStore } = require('./navio-store');
 
+// Disable browser-level COOP/COEP enforcement so sites like Gmail and Google
+// services load correctly in Electron webviews. Without this, Chromium 130+
+// (Electron 33+) rejects the navigation with ERR_BLOCKED_BY_RESPONSE BEFORE
+// our onHeadersReceived handler can strip the Cross-Origin-Opener-Policy header.
+app.commandLine.appendSwitch(
+  'disable-features',
+  'CrossOriginOpenerPolicy,CrossOriginEmbedderPolicy,CrossOriginEmbedderPolicyCredentialless'
+);
+
 const INTRO_VIDEO_PATH = path.join(__dirname, '..', 'public', 'intro_video', 'intro_final.mp4');
 
 let mainWindow = null;
@@ -3493,18 +3502,26 @@ app.whenReady().then(async () => {
       .trim();
     ses.setUserAgent(ua);
 
-    // Strip COOP / COEP / X-Frame-Options response headers that cause
-    // ERR_BLOCKED_BY_RESPONSE in Electron's renderer on Google and other sites.
+    // Strip security headers that cause ERR_BLOCKED_BY_RESPONSE when Google and
+    // other sites are loaded directly in Electron webviews.
     ses.webRequest.onHeadersReceived({ urls: ['*://*/*'] }, (details, callback) => {
       const headers = details.responseHeaders || {};
       const drop = [
         'x-frame-options',
         'cross-origin-opener-policy',
+        'cross-origin-opener-policy-report-only',
         'cross-origin-embedder-policy',
+        'cross-origin-embedder-policy-report-only',
         'cross-origin-resource-policy',
       ];
       for (const key of Object.keys(headers)) {
         if (drop.includes(key.toLowerCase())) delete headers[key];
+        // Strip frame-ancestors directive from CSP without removing the entire header
+        if (key.toLowerCase() === 'content-security-policy') {
+          headers[key] = headers[key].map(v =>
+            v.replace(/frame-ancestors[^;]*(;|$)/gi, '').trim()
+          );
+        }
       }
       callback({ responseHeaders: headers });
     });

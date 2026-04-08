@@ -1272,7 +1272,7 @@ body.tabstrip-hidden .tab-strip-show {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  max-height: 320px;
+  max-height: 400px;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
@@ -1422,94 +1422,122 @@ body.tabstrip-hidden .tab-strip-show {
   font-family: var(--font-sans);
   margin-top: 4px;
 }
+/* ── Email item ─────────────────────────────────────────────────── */
 .ntp-email-item {
-  padding: 10px 14px 10px 14px;
-  border-bottom: 1px solid rgba(255,255,255,0.045);
+  padding: 11px 14px 11px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
   position: relative;
   cursor: pointer;
-  transition: background 0.12s;
-  border-left: 2px solid transparent;
+  transition: background 0.15s;
+  border-left: 3px solid transparent;
+  text-decoration: none;
+  display: block;
 }
 .ntp-email-item:last-child { border-bottom: none; }
-.ntp-email-item:hover { background: rgba(255,255,255,0.04); }
-.ntp-email-item.unread {
-  border-left-color: rgba(0,216,255,0.55);
-}
-/* Row 1: sender + time */
+.ntp-email-item:hover { background: rgba(255,255,255,0.06); }
+.ntp-email-item.unread { border-left-color: #00d8ff; background: rgba(0,216,255,0.04); }
+.ntp-email-item.unread:hover { background: rgba(0,216,255,0.07); }
+
+/* Row 1: sender + timestamp */
 .ntp-email-header {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
 }
 .ntp-email-sender {
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: rgba(255,255,255,0.6);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1;
 }
 .ntp-email-item.unread .ntp-email-sender {
   font-weight: 700;
-  color: var(--text-primary);
+  color: #ffffff;
 }
 .ntp-email-date {
-  font-size: 10.5px;
-  color: var(--text-tertiary);
+  font-size: 11px;
+  color: rgba(255,255,255,0.35);
   flex-shrink: 0;
   white-space: nowrap;
 }
+.ntp-email-item.unread .ntp-email-date {
+  color: rgba(0,216,255,0.75);
+  font-weight: 600;
+}
+
 /* Row 2: subject */
 .ntp-email-subject {
-  font-size: 12px;
-  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 400;
+  color: rgba(255,255,255,0.45);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-bottom: 2px;
-  opacity: 0.8;
+  margin-bottom: 3px;
 }
 .ntp-email-item.unread .ntp-email-subject {
-  color: var(--text-primary);
+  color: rgba(255,255,255,0.9);
   font-weight: 600;
-  opacity: 1;
 }
+
 /* Row 3: snippet */
 .ntp-email-preview {
-  font-size: 11.5px;
-  color: var(--text-tertiary);
-  line-height: 1.4;
+  font-size: 12px;
+  color: rgba(255,255,255,0.3);
+  line-height: 1.45;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-/* Legacy classes kept for IMAP path */
+.ntp-email-item.unread .ntp-email-preview {
+  color: rgba(255,255,255,0.45);
+}
+
+/* "Open Gmail" hint on hover */
+.ntp-email-item::after {
+  content: '↗';
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 13px;
+  color: rgba(255,255,255,0.2);
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+.ntp-email-item:hover::after { opacity: 1; }
+
+/* Legacy classes (IMAP fallback path) */
 .ntp-email-from {
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: #ffffff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .ntp-email-meta {
-  font-size: 10px;
-  color: var(--text-tertiary);
+  font-size: 11px;
+  color: rgba(255,255,255,0.35);
   margin-top: 2px;
 }
 .ntp-email-draft-btn {
   display: none;
   position: absolute;
-  right: 12px;
+  right: 30px;
   top: 50%;
   transform: translateY(-50%);
   background: var(--text-accent, #00d8ff);
   color: #000;
   border: none;
   border-radius: 6px;
-  padding: 4px 10px;
+  padding: 3px 9px;
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
