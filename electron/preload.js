@@ -98,5 +98,32 @@ contextBridge.exposeInMainWorld('navio', {
   memoryGet: () => ipcRenderer.invoke('memory-get'),
   memoryAdd: (content) => ipcRenderer.invoke('memory-add', { content }),
   memoryDelete: (id) => ipcRenderer.invoke('memory-delete', { id }),
-  memoryClear: () => ipcRenderer.invoke('memory-clear')
+  memoryClear: () => ipcRenderer.invoke('memory-clear'),
+
+  // External protocol handler — opens mailto:, tel:, sms: in the OS default app
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
+  // Download lifecycle events pushed from the main process
+  onDownloadStarted: (cb) => {
+    const h = (_, d) => cb(d);
+    ipcRenderer.on('download-started', h);
+    return () => ipcRenderer.removeListener('download-started', h);
+  },
+  onDownloadProgress: (cb) => {
+    const h = (_, d) => cb(d);
+    ipcRenderer.on('download-progress', h);
+    return () => ipcRenderer.removeListener('download-progress', h);
+  },
+  onDownloadDone: (cb) => {
+    const h = (_, d) => cb(d);
+    ipcRenderer.on('download-done', h);
+    return () => ipcRenderer.removeListener('download-done', h);
+  },
+
+  // Certificate warning pushed when a self-signed / untrusted cert is bypassed
+  onCertificateWarning: (cb) => {
+    const h = (_, d) => cb(d);
+    ipcRenderer.on('certificate-warning', h);
+    return () => ipcRenderer.removeListener('certificate-warning', h);
+  }
 });

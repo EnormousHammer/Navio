@@ -184,6 +184,12 @@ class TabManagerClass {
     });
 
     wv.addEventListener('new-window', (e) => {
+      if (!e.url) return;
+      // External protocols clicked inside a page — open in OS, don't load in a tab
+      if (/^(mailto|tel|sms|callto):/i.test(e.url)) {
+        window.navio.openExternal(e.url).catch(() => {});
+        return;
+      }
       this.createTab(e.url);
     });
 

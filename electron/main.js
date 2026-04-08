@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, dialog, Menu, MenuItem, globalShortcut, nativeTheme, clipboard, webContents: electronWebContents } = require('electron');
+const { app, BrowserWindow, ipcMain, session, shell, dialog, Menu, MenuItem, globalShortcut, nativeTheme, clipboard, webContents: electronWebContents } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -3394,6 +3394,70 @@ app.whenReady().then(async () => {
   // Without this, Google's sign-in page loads but buttons (e.g. Next) are dead
   // because Google detects Electron via UA and disables its JS handlers.
   applySessionFixes(session.defaultSession);
+
+  // ── Downloads ─────────────────────────────────────────────────────────────
+  // Without a will-download handler Electron silently drops every download.
+  // We auto-save to the OS downloads folder and push progress events to the UI.
+  function handleDownloads(ses) {
+    ses.on('will-download', (event, item) => {
+      const filename = item.getFilename();
+      const savePath  = path.join(app.getPath('downloads'), filename);
+      item.setSavePath(savePath);
+
+      mainWindow?.webContents.send('download-started', {
+        filename,
+        savePath,
+        total: item.getTotalBytes()
+      });
+
+      item.on('updated', (_, state) => {
+        mainWindow?.webContents.send('download-progress', {
+          filename,
+          state,
+          received: item.getReceivedBytes(),
+          total:    item.getTotalBytes()
+        });
+      });
+
+      item.once('done', (_, state) => {
+        mainWindow?.webContents.send('download-done', { filename, savePath, state });
+      });
+    });
+  }
+  handleDownloads(navioSession);
+  handleDownloads(session.defaultSession);
+
+  // ── Certificate errors ────────────────────────────────────────────────────
+  // Electron rejects self-signed and corporate proxy certificates by default.
+  // We allow them (matching real-browser "proceed anyway" behaviour) and notify
+  // the UI so the user can see a warning toast for the affected hostname.
+  function handleCertErrors(ses) {
+    ses.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+      event.preventDefault();
+      callback(true);
+      try {
+        const hostname = new URL(url).hostname;
+        mainWindow?.webContents.send('certificate-warning', { hostname, error });
+      } catch {}
+    });
+  }
+  handleCertErrors(navioSession);
+  handleCertErrors(session.defaultSession);
+
+  // ── External protocols ────────────────────────────────────────────────────
+  // mailto:, tel:, sms: etc. must open the OS default handler, not load in
+  // a webview tab.  The renderer calls this IPC when it detects such a URL.
+  ipcMain.handle('open-external', async (_, url) => {
+    try {
+      if (/^(mailto|tel|sms|callto|wtai|market|ms-windows-store):/i.test(url)) {
+        await shell.openExternal(url);
+        return { ok: true };
+      }
+      return { error: 'Protocol not permitted for external opening.' };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
 
   // Allow all permission requests from web content (camera, mic, notifications, etc.)
   navioSession.setPermissionRequestHandler((webContents, permission, callback) => {

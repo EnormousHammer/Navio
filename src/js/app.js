@@ -212,6 +212,12 @@ class NavioApp {
 
     if (/^https?:\/\//i.test(input)) return input;
 
+    // External OS protocols — open in the default OS app, never load in a webview tab
+    if (/^(mailto|tel|sms|callto|wtai|market|ms-windows-store):/i.test(input)) {
+      window.navio.openExternal(input).catch(() => {});
+      return null;
+    }
+
     if (/^[a-z][a-z0-9+.-]*:\/\//i.test(input)) return input;
 
     if (/^(localhost|127\.0\.0\.1)(:\d+)?(\/.*)?$/i.test(input)) {
@@ -249,6 +255,38 @@ class NavioApp {
       if (url && typeof TabManager !== 'undefined') {
         TabManager.createTab(url);
       }
+    });
+
+    // ── Download toasts ───────────────────────────────────────────────────
+    const _showAppToast = (msg, type = 'info') => {
+      const stack = document.getElementById('live-notif-stack');
+      if (!stack) return;
+      const icons = { success: '✓', info: 'ℹ', error: '✗', warning: '⚠' };
+      const id = Date.now();
+      const el = document.createElement('div');
+      el.className = `live-notification live-toast live-toast-${type}`;
+      el.id = `app-toast-${id}`;
+      el.innerHTML = `<span class="live-toast-icon">${icons[type] || '•'}</span><span class="live-toast-msg">${msg}</span><button class="live-notif-x">×</button>`;
+      el.querySelector('.live-notif-x').addEventListener('click', () => el.remove());
+      stack.prepend(el);
+      setTimeout(() => el.remove(), 5000);
+    };
+
+    window.navio.onDownloadStarted(({ filename }) => {
+      _showAppToast(`⬇ Downloading: ${filename}`, 'info');
+    });
+
+    window.navio.onDownloadDone(({ filename, state }) => {
+      if (state === 'completed') {
+        _showAppToast(`✓ Saved: ${filename}`, 'success');
+      } else {
+        _showAppToast(`✗ Download failed: ${filename}`, 'error');
+      }
+    });
+
+    // ── Certificate warning toasts ────────────────────────────────────────
+    window.navio.onCertificateWarning(({ hostname }) => {
+      _showAppToast(`⚠ Untrusted certificate on ${hostname} — proceeding anyway`, 'warning');
     });
 
     window.navio.onShortcut((action) => {
