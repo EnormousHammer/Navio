@@ -313,15 +313,20 @@ const NTP = (() => {
     }
   }
 
-  // Helper: set ticker track content with seamless scroll duplication
+  // Helper: set ticker track content with seamless scroll duplication.
+  // Dynamically sets animation duration so all modes scroll at the same pixels/sec.
+  const TICKER_PX_PER_SEC = 120; // consistent scroll speed across markets/sports/news
   function _setTickerTrack(html) {
     const track = document.getElementById('ntp-ticker-track');
     if (!track) return;
     track.style.animation = 'none';
     track.innerHTML = html + html; // duplicate for seamless loop
-    // Force reflow then re-enable animation
-    void track.offsetWidth;
-    track.style.animation = '';
+    // Measure half-width (one content copy) after DOM update, then set duration
+    void track.offsetWidth; // force reflow so scrollWidth is accurate
+    const halfWidth = track.scrollWidth / 2;
+    const duration = Math.max(10, Math.round(halfWidth / TICKER_PX_PER_SEC));
+    track.style.setProperty('--ticker-duration', `${duration}s`);
+    track.style.animation = ''; // re-enable (picks up the CSS var)
   }
 
   // ── Stock Market Ticker ────────────────────────────────────────────────────

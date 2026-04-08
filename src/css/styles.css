@@ -1674,7 +1674,7 @@ body.tabstrip-hidden .tab-strip-show {
   gap: 0;
   height: 100%;
   white-space: nowrap;
-  animation: ntp-ticker-scroll 35s linear infinite;
+  animation: ntp-ticker-scroll var(--ticker-duration, 35s) linear infinite;
   width: max-content;
   will-change: transform;
 }
