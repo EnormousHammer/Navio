@@ -222,6 +222,24 @@ class TabManagerClass {
         });
       } catch {/* ignore */}
     });
+
+    // Handle IPC messages from the webview-preload script
+    wv.addEventListener('ipc-message', (e) => {
+      try {
+        const data = e.args && e.args[0];
+        if (e.channel === 'navio-form-submit' && data) {
+          // Credential capture — offer to save
+          if (typeof PasswordManager !== 'undefined') {
+            PasswordManager.showSavePrompt(data, wv);
+          }
+        } else if (e.channel === 'navio-login-form' && data) {
+          // Login form detected — check if we have saved credentials to autofill
+          if (typeof PasswordManager !== 'undefined') {
+            PasswordManager.checkAutofill(data.url, wv);
+          }
+        }
+      } catch {}
+    });
   }
 
   _buildErrorPage(description, url) {

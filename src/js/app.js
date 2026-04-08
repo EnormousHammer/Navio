@@ -276,9 +276,29 @@ class NavioApp {
       _showAppToast(`⬇ Downloading: ${filename}`, 'info');
     });
 
-    window.navio.onDownloadDone(({ filename, state }) => {
+    window.navio.onDownloadDone(({ filename, savePath, state }) => {
       if (state === 'completed') {
-        _showAppToast(`✓ Saved: ${filename}`, 'success');
+        // Show a richer toast with a "Show" button so the user can find the file.
+        const stack = document.getElementById('live-notif-stack');
+        if (stack) {
+          const id = Date.now();
+          const el = document.createElement('div');
+          el.className = 'live-notification live-toast live-toast-success';
+          el.id = `app-toast-${id}`;
+          el.innerHTML = `
+            <span class="live-toast-icon">✓</span>
+            <span class="live-toast-msg">Saved: ${filename}</span>
+            <button class="live-toast-show-btn" title="Show in folder" style="background:none;border:1px solid rgba(0,216,255,0.4);color:#00d8ff;cursor:pointer;font-size:10.5px;padding:2px 8px;border-radius:5px;margin-left:6px;font-family:inherit;flex-shrink:0;">Show</button>
+            <button class="live-notif-x">×</button>`;
+          el.querySelector('.live-notif-x').addEventListener('click', () => el.remove());
+          el.querySelector('.live-toast-show-btn').addEventListener('click', () => {
+            window.navio.showInFolder(savePath);
+          });
+          stack.prepend(el);
+          setTimeout(() => el.remove(), 10000);
+        } else {
+          _showAppToast(`✓ Saved: ${filename}`, 'success');
+        }
       } else {
         _showAppToast(`✗ Download failed: ${filename}`, 'error');
       }
@@ -448,3 +468,90 @@ class NavioApp {
 }
 
 const App = new NavioApp();
+
+// ── Password Manager ───────────────────────────────────────────────────────
+// Handles the save-password prompt bar, autofill offer bar, and the secure
+// credential vault (persisted in main via safeStorage).
+
+const PasswordManager = (() => {
+  let _pendingSave = null;  // { username, password, url }
+  let _autofillWv  = null;  // active webview for autofill
+  let _autofillPwd = null;  // { username, password }
+
+  const saveBar       = document.getElementById('pwd-save-bar');
+  const autofillBar   = document.getElementById('pwd-autofill-bar');
+  const saveUser      = document.getElementById('pwd-save-user');
+  const saveSite      = document.getElementById('pwd-save-site');
+  const autofillUser  = document.getElementById('pwd-autofill-user');
+
+  function _originLabel(url) {
+    try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
+  }
+
+  function _hideSave() {
+    if (saveBar) saveBar.hidden = true;
+    _pendingSave = null;
+  }
+
+  function _hideAutofill() {
+    if (autofillBar) autofillBar.hidden = true;
+    _autofillWv = null;
+    _autofillPwd = null;
+  }
+
+  // ── Show "Save password?" prompt ──────────────────────────────────────────
+  function showSavePrompt({ username, password, url }, wv) {
+    if (!saveBar) return;
+    _pendingSave = { username, password, url };
+    if (saveSite) saveSite.textContent = _originLabel(url);
+    if (saveUser) saveUser.textContent = username;
+    saveBar.hidden = false;
+    // Auto-dismiss after 30 s
+    clearTimeout(saveBar._timer);
+    saveBar._timer = setTimeout(_hideSave, 30000);
+  }
+
+  // ── Check if we have credentials for the current URL ──────────────────────
+  async function checkAutofill(url, wv) {
+    if (!autofillBar) return;
+    try {
+      const r = await window.navio.passwordsGet(url);
+      if (!r.ok || !r.entries.length) return;
+      const entry = r.entries[0];
+      _autofillWv  = wv;
+      _autofillPwd = entry;
+      if (autofillUser) autofillUser.textContent = entry.username;
+      autofillBar.hidden = false;
+      clearTimeout(autofillBar._timer);
+      autofillBar._timer = setTimeout(_hideAutofill, 20000);
+    } catch {}
+  }
+
+  // Wire up the bar buttons
+  document.getElementById('pwd-save-btn')?.addEventListener('click', async () => {
+    if (!_pendingSave) return;
+    try {
+      await window.navio.passwordsSave(_pendingSave.url, _pendingSave.username, _pendingSave.password);
+    } catch {}
+    _hideSave();
+  });
+
+  document.getElementById('pwd-never-btn')?.addEventListener('click', _hideSave);
+  document.getElementById('pwd-dismiss-btn')?.addEventListener('click', _hideSave);
+
+  document.getElementById('pwd-autofill-btn')?.addEventListener('click', () => {
+    if (_autofillWv && _autofillPwd) {
+      try {
+        _autofillWv.send('navio-autofill', {
+          username: _autofillPwd.username,
+          password: _autofillPwd.password,
+        });
+      } catch {}
+    }
+    _hideAutofill();
+  });
+
+  document.getElementById('pwd-autofill-dismiss')?.addEventListener('click', _hideAutofill);
+
+  return { showSavePrompt, checkAutofill };
+})();

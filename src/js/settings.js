@@ -2,6 +2,13 @@
  * Navio Browser - Settings Manager
  */
 
+function _esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function _escAttr(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+}
+
 const PROVIDER_KEY_LINKS = {
   openai: { label: 'Get an OpenAI API key', href: 'https://platform.openai.com/api-keys' },
   anthropic: { label: 'Get an Anthropic API key', href: 'https://console.anthropic.com/settings/keys' },
@@ -63,7 +70,7 @@ class SettingsManagerClass {
       aiProfileGrid: document.getElementById('ai-profile-grid')
     };
 
-    this.panelIds = ['general', 'ai', 'appearance', 'browser', 'privacy', 'integrations', 'about'];
+    this.panelIds = ['general', 'ai', 'appearance', 'browser', 'privacy', 'integrations', 'passwords', 'about'];
 
     this.bindEvents();
     this.loadConfig();
@@ -168,7 +175,43 @@ class SettingsManagerClass {
     });
 
     this.elements.nav.querySelectorAll('.settings-nav-item').forEach((btn) => {
-      btn.addEventListener('click', () => this.showPanel(btn.dataset.panel));
+      btn.addEventListener('click', () => {
+        this.showPanel(btn.dataset.panel);
+        if (btn.dataset.panel === 'passwords') this._renderPasswordList();
+      });
+    });
+
+    // Password manager — export
+    document.getElementById('btn-pwd-export')?.addEventListener('click', async () => {
+      try {
+        const r = await window.navio.passwordsExportCsv();
+        if (!r.ok) { alert('Export failed: ' + r.error); return; }
+        const blob = new Blob([r.csv], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'navio-passwords.csv';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      } catch (e) { alert('Export failed: ' + e.message); }
+    });
+
+    // Password manager — import
+    const importFile = document.getElementById('pwd-import-file');
+    document.getElementById('btn-pwd-import')?.addEventListener('click', () => importFile?.click());
+    importFile?.addEventListener('change', async () => {
+      const file = importFile.files[0];
+      if (!file) return;
+      const status = document.getElementById('pwd-import-status');
+      if (status) status.textContent = 'Importing…';
+      try {
+        const text = await file.text();
+        const r = await window.navio.passwordsImportCsv(text);
+        if (status) status.textContent = r.ok ? `Imported ${r.imported} credential(s).` : ('Failed: ' + r.error);
+        if (r.ok) this._renderPasswordList();
+      } catch (e) {
+        if (status) status.textContent = 'Import failed: ' + e.message;
+      }
+      importFile.value = '';
     });
 
     document.addEventListener('keydown', (e) => {
@@ -192,6 +235,40 @@ class SettingsManagerClass {
       const el = document.getElementById(`settings-panel-${id}`);
       if (el) el.classList.toggle('active', id === panelId);
     });
+  }
+
+  async _renderPasswordList() {
+    const container = document.getElementById('pwd-list');
+    if (!container) return;
+    try {
+      const r = await window.navio.passwordsList();
+      if (!r.ok || !r.entries.length) {
+        container.innerHTML = '<p class="pwd-list-empty">No saved passwords yet.</p>';
+        return;
+      }
+      container.innerHTML = r.entries.map((e) => {
+        const site = e.origin.replace(/^https?:\/\//, '');
+        const date = e.created ? new Date(e.created).toLocaleDateString() : '';
+        return `<div class="pwd-entry" data-origin="${_escAttr(e.origin)}" data-user="${_escAttr(e.username)}">
+          <div class="pwd-entry-info">
+            <span class="pwd-entry-site">${_esc(site)}</span>
+            <span class="pwd-entry-user">${_esc(e.username)}</span>
+            ${date ? `<span class="pwd-entry-date">${_esc(date)}</span>` : ''}
+          </div>
+          <button class="pwd-entry-delete" title="Remove" data-origin="${_escAttr(e.origin)}" data-user="${_escAttr(e.username)}">×</button>
+        </div>`;
+      }).join('');
+      container.querySelectorAll('.pwd-entry-delete').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const origin = btn.dataset.origin;
+          const username = btn.dataset.user;
+          await window.navio.passwordsDelete(origin, username);
+          this._renderPasswordList();
+        });
+      });
+    } catch (e) {
+      container.innerHTML = `<p class="pwd-list-empty">Could not load passwords: ${e.message}</p>`;
+    }
   }
 
   _syncModelCustomUI() {

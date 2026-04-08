@@ -480,6 +480,21 @@ const NTP = (() => {
     document.getElementById('ntp-brief-gen-btn')?.addEventListener('click', _generateAIBrief);
   }
 
+  // Convert any stray markdown to clean HTML (safety net in case AI ignores instructions)
+  function _renderBriefHtml(raw) {
+    let text = raw
+      .replace(/^#{1,4}\s*/gm, '')                         // strip # headers
+      .replace(/\*\*(.*?)\*\*/gs, '<strong>$1</strong>')  // **bold**
+      .replace(/__(.*?)__/gs, '<strong>$1</strong>')      // __bold__
+      .replace(/\*(.*?)\*/gs, '<em>$1</em>')              // *italic*
+      .replace(/_(.*?)_/gs, '<em>$1</em>')                // _italic_
+      .replace(/^[-*•]\s+/gm, '')                         // strip bullet chars
+      .replace(/^\d+\.\s+/gm, '')                         // strip numbered lists
+      .trim();
+    const paras = text.split(/\n{2,}/).map(p => p.replace(/\n/g, ' ').trim()).filter(Boolean);
+    return paras.map(p => `<p>${p}</p>`).join('');
+  }
+
   async function _generateAIBrief() {
     const body = document.getElementById('ntp-brief-body');
     const btn = document.getElementById('ntp-brief-gen-btn');
@@ -544,7 +559,7 @@ const NTP = (() => {
       const messages = [
         {
           role: 'system',
-          content: 'You are a personalized AI briefing assistant. Write a concise, friendly daily brief in 3-5 short paragraphs. Use natural language, no bullet points, no headers. Keep it under 150 words. Make it feel intelligent, warm, and actionable.'
+          content: 'You are a personalized AI briefing assistant. Write a concise, friendly daily brief in 3-5 short paragraphs. Use PLAIN TEXT ONLY — no markdown, no asterisks, no hashes, no dashes, no bullet points, no numbered lists, no bold or italic markers whatsoever. Just clean, flowing prose sentences. Keep it under 160 words. Make it feel intelligent, warm, and actionable.'
         },
         {
           role: 'user',
@@ -555,7 +570,10 @@ const NTP = (() => {
       const result = await window.navio.aiRequest({ messages });
       if (result.error) throw new Error(result.error);
 
-      body.innerHTML = `<div class="ntp-brief-content">${_esc(result.content || '').replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>')}</div>`;
+      const briefDate = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+      const briefTime = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+      const briefHtml = _renderBriefHtml(result.content || '');
+      body.innerHTML = `<div class="ntp-brief-content"><div class="ntp-brief-datestamp">${_esc(briefDate)} <span class="ntp-brief-time">· ${_esc(briefTime)}</span></div>${briefHtml}</div>`;
 
     } catch (e) {
       body.innerHTML = `<div class="ntp-brief-error">Could not generate brief: ${_esc(e.message)}</div>`;

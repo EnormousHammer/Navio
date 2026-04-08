@@ -1399,8 +1399,11 @@ ipcMain.handle('page-snapshot', async (event, webContentsId) => {
     if (!wc) return { error: 'WebContents not found' };
     const snapshot = await wc.executeJavaScript(`
       (() => {
-        const results = [];
+        const regular = [];
+        const priority = []; // submit/next/continue buttons — always appended regardless of limit
         const seen = new WeakSet();
+        // Keywords that mark a button as a "priority" element we never want to miss
+        const PRIORITY_RE = /\\b(next|continue|submit|save|proceed|confirm|done|finish|complete|create|login|sign.?in|book|order|buy|pay|checkout|apply|ok)\\b/i;
         const sel = 'a,button,input,textarea,select,[role="button"],[role="link"],[role="checkbox"],[role="radio"],[role="menuitem"],[role="tab"],[role="option"],[role="switch"],[role="combobox"],[role="searchbox"]';
         for (const el of document.querySelectorAll(sel)) {
           if (seen.has(el)) continue;
@@ -1418,15 +1421,24 @@ ipcMain.handle('page-snapshot', async (event, webContentsId) => {
           const id = el.id || '';
           const visibleText = (el.innerText || el.textContent || '').replace(/\\s+/g,' ').trim().slice(0,80);
           const label = (ariaLabel || visibleText || placeholder || title || name).trim().slice(0,80);
+          if (!label) continue;
           let selector = id ? '#'+id : (name ? tag+'[name="'+name+'"]' : null);
           if (!selector) {
             const classes = Array.from(el.classList).filter(c => !/^[a-z]{1,2}$/.test(c)).slice(0,2);
             selector = tag + (classes.length ? '.'+classes.join('.') : '');
           }
-          if (label) results.push({ role, label, selector });
-          if (results.length >= 60) break;
+          const item = { role, label, selector };
+          const isSubmit = (tag === 'button' && /^(submit)?$/.test(el.type || '')) ||
+                           (tag === 'input'  && /^(submit|button)$/.test(el.type || '')) ||
+                           PRIORITY_RE.test(label);
+          if (isSubmit) {
+            priority.push(item); // collected separately, never cut off
+          } else if (regular.length < 100) {
+            regular.push(item);
+          }
         }
-        return results;
+        // Priority buttons always appended at the end so the AI always sees them
+        return [...regular, ...priority];
       })()
     `);
     return { elements: snapshot, url: wc.getURL(), title: wc.getTitle() };
@@ -1677,11 +1689,43 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
         return { success: true };
       }
 
-      case 'scroll':
+      case 'scroll': {
+        const scrollDir = params.direction === 'up' ? -1 : 1;
+        const scrollAmt = 650;
         await wc.executeJavaScript(`
-          window.scrollBy(0, ${params.direction === 'up' ? -500 : 500})
+          (function() {
+            const dir = ${scrollDir};
+            const amt = ${scrollAmt};
+
+            // Strategy 1: scroll the window
+            const beforeY = window.scrollY;
+            window.scrollBy(0, dir * amt);
+            if (Math.abs(window.scrollY - beforeY) > 2) return; // window moved — done
+
+            // Strategy 2: walk up from the focused element looking for a scrollable ancestor
+            function canScroll(el) {
+              if (!el || el === document.documentElement) return false;
+              const s = window.getComputedStyle(el);
+              return /auto|scroll/.test(s.overflow + s.overflowY) && el.scrollHeight > el.clientHeight + 4;
+            }
+            let el = document.activeElement;
+            while (el && el !== document.body && el !== document.documentElement) {
+              if (canScroll(el)) { el.scrollBy(0, dir * amt); return; }
+              el = el.parentElement;
+            }
+
+            // Strategy 3: largest scrollable element on the page
+            let best = null, bestArea = 0;
+            for (const node of document.querySelectorAll('*')) {
+              if (!canScroll(node)) continue;
+              const area = node.scrollHeight * node.offsetWidth;
+              if (area > bestArea) { best = node; bestArea = area; }
+            }
+            if (best) best.scrollBy(0, dir * amt);
+          })()
         `);
         return { success: true };
+      }
 
       case 'goBack':
         wc.goBack();
@@ -3414,6 +3458,144 @@ ipcMain.handle('import-bookmarks', async (event, browserPath) => {
 
 ipcMain.handle('get-downloads-path', () => app.getPath('downloads'));
 
+ipcMain.handle('show-in-folder', (_, filePath) => {
+  try {
+    shell.showItemInFolder(filePath);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// ── Password vault ─────────────────────────────────────────────────────────
+// Credentials are stored in <userData>/navio-passwords.json.
+// Passwords are encrypted with Electron's safeStorage (OS keychain / DPAPI).
+
+function _pwdVaultPath() {
+  return path.join(app.getPath('userData'), 'navio-passwords.json');
+}
+
+function _pwdLoad() {
+  try { return JSON.parse(fs.readFileSync(_pwdVaultPath(), 'utf8')); } catch { return {}; }
+}
+
+function _pwdSave(vault) {
+  fs.writeFileSync(_pwdVaultPath(), JSON.stringify(vault, null, 2), 'utf8');
+}
+
+function _pwdEncrypt(val) {
+  const { safeStorage } = require('electron');
+  if (safeStorage.isEncryptionAvailable()) return safeStorage.encryptString(val).toString('base64');
+  return Buffer.from(val, 'utf8').toString('base64');
+}
+
+function _pwdDecrypt(enc) {
+  const { safeStorage } = require('electron');
+  const buf = Buffer.from(enc, 'base64');
+  try {
+    if (safeStorage.isEncryptionAvailable()) return safeStorage.decryptString(buf);
+    return buf.toString('utf8');
+  } catch { return ''; }
+}
+
+function _pwdOrigin(url) {
+  try { return new URL(url).origin; } catch { return url; }
+}
+
+ipcMain.handle('passwords-save', (_, { url, username, password }) => {
+  try {
+    const vault = _pwdLoad();
+    const origin = _pwdOrigin(url);
+    if (!vault[origin]) vault[origin] = [];
+    const idx = vault[origin].findIndex(e => e.username === username);
+    const entry = { username, password: _pwdEncrypt(password), created: new Date().toISOString() };
+    if (idx >= 0) vault[origin][idx] = entry; else vault[origin].push(entry);
+    _pwdSave(vault);
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+
+ipcMain.handle('passwords-list', () => {
+  try {
+    const vault = _pwdLoad();
+    const entries = [];
+    for (const [origin, list] of Object.entries(vault)) {
+      for (const e of list) entries.push({ origin, username: e.username, created: e.created });
+    }
+    return { ok: true, entries };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+
+ipcMain.handle('passwords-get', (_, { url }) => {
+  try {
+    const vault = _pwdLoad();
+    const origin = _pwdOrigin(url);
+    const list = vault[origin] || [];
+    return { ok: true, entries: list.map(e => ({ username: e.username, password: _pwdDecrypt(e.password), created: e.created })) };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+
+ipcMain.handle('passwords-delete', (_, { origin, username }) => {
+  try {
+    const vault = _pwdLoad();
+    if (vault[origin]) {
+      vault[origin] = vault[origin].filter(e => e.username !== username);
+      if (!vault[origin].length) delete vault[origin];
+    }
+    _pwdSave(vault);
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+
+ipcMain.handle('passwords-export-csv', () => {
+  try {
+    const vault = _pwdLoad();
+    const rows = ['name,url,username,password'];
+    for (const [origin, list] of Object.entries(vault)) {
+      const site = origin.replace(/^https?:\/\//, '');
+      for (const e of list) {
+        const pwd = _pwdDecrypt(e.password);
+        rows.push(`"${site}","${origin}","${e.username.replace(/"/g, '""')}","${pwd.replace(/"/g, '""')}"`);
+      }
+    }
+    return { ok: true, csv: rows.join('\n') };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+
+ipcMain.handle('passwords-import-csv', (_, { csv }) => {
+  try {
+    const vault = _pwdLoad();
+    const lines = csv.split('\n');
+    let imported = 0;
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      // Minimal RFC-4180 CSV parse
+      const parts = [];
+      let cur = '', inQ = false;
+      for (const ch of line + ',') {
+        if (ch === '"') { inQ = !inQ; continue; }
+        if (ch === ',' && !inQ) { parts.push(cur); cur = ''; continue; }
+        cur += ch;
+      }
+      if (parts.length < 4) continue;
+      // Chrome format: name, url, username, password
+      const [, rawUrl, username, password] = parts;
+      if (!rawUrl || !username || !password) continue;
+      try {
+        const origin = _pwdOrigin(rawUrl);
+        if (!vault[origin]) vault[origin] = [];
+        const idx = vault[origin].findIndex(e => e.username === username);
+        const entry = { username, password: _pwdEncrypt(password), created: new Date().toISOString() };
+        if (idx >= 0) vault[origin][idx] = entry; else vault[origin].push(entry);
+        imported++;
+      } catch {}
+    }
+    _pwdSave(vault);
+    return { ok: true, imported };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+
 ipcMain.handle('show-webview-context-menu', (event, { webContentsId, x, y, params }) => {
   try {
     const wc = electronWebContents.fromId(webContentsId);
@@ -3489,6 +3671,11 @@ app.whenReady().then(async () => {
   // Set up the persist:navio session used by all webview tabs
   const navioSession = session.fromPartition('persist:navio');
 
+  // Inject the webview preload into every page loaded in persist:navio webviews.
+  // This enables password detection, autofill, and future in-page features
+  // without requiring a <preload> attribute on each individual <webview> element.
+  navioSession.setPreloads([path.join(__dirname, 'webview-preload.js')]);
+
   // ── Apply UA + header fixes to a session ─────────────────────────────────
   // Shared helper so both the main webview session AND the default session
   // (used by OAuth popup BrowserWindows) get identical treatment.
@@ -3540,28 +3727,66 @@ app.whenReady().then(async () => {
   // We auto-save to the OS downloads folder and push progress events to the UI.
   function handleDownloads(ses) {
     ses.on('will-download', (event, item) => {
-      const filename = item.getFilename();
-      const savePath  = path.join(app.getPath('downloads'), filename);
-      item.setSavePath(savePath);
+      try {
+        // --- Sanitize filename ---
+        // Content-Disposition headers often include timestamps like
+        // "report_2024-01-15T10:23:45.pdf". Colons (:) and other chars are
+        // illegal on Windows; setSavePath silently fails and cancels the download.
+        let filename = item.getFilename() || 'download';
+        filename = filename
+          .replace(/[\\/:*?"<>|\x00-\x1f]/g, '_')  // replace Windows-invalid chars
+          .replace(/\.{2,}/g, '.')                   // collapse consecutive dots
+          .replace(/^[\s.]+|[\s.]+$/g, '')           // strip leading/trailing dots & spaces
+          .slice(0, 200)                              // guard against MAX_PATH overflows
+          .trim();
+        if (!filename) filename = 'download';
 
-      mainWindow?.webContents.send('download-started', {
-        filename,
-        savePath,
-        total: item.getTotalBytes()
-      });
+        const downloadsDir = app.getPath('downloads');
+        const ext  = path.extname(filename);
+        const base = path.basename(filename, ext) || 'download';
 
-      item.on('updated', (_, state) => {
-        mainWindow?.webContents.send('download-progress', {
-          filename,
-          state,
-          received: item.getReceivedBytes(),
-          total:    item.getTotalBytes()
+        // --- Handle filename conflicts ---
+        // setSavePath with a path that already exists will fail or corrupt the file.
+        let savePath = path.join(downloadsDir, filename);
+        let counter  = 1;
+        while (fs.existsSync(savePath) && counter <= 99) {
+          savePath = path.join(downloadsDir, `${base} (${counter})${ext}`);
+          counter++;
+        }
+
+        item.setSavePath(savePath);
+
+        const displayName = path.basename(savePath);
+        console.log(`[navio] Download started: ${displayName} → ${savePath}`);
+
+        mainWindow?.webContents.send('download-started', {
+          filename: displayName,
+          savePath,
+          total: item.getTotalBytes()
         });
-      });
 
-      item.once('done', (_, state) => {
-        mainWindow?.webContents.send('download-done', { filename, savePath, state });
-      });
+        item.on('updated', (_, state) => {
+          mainWindow?.webContents.send('download-progress', {
+            filename: displayName,
+            state,
+            received: item.getReceivedBytes(),
+            total:    item.getTotalBytes()
+          });
+        });
+
+        item.once('done', (_, state) => {
+          console.log(`[navio] Download ${state}: ${displayName}`);
+          mainWindow?.webContents.send('download-done', { filename: displayName, savePath, state });
+          // Reveal the file in Explorer/Finder so the user can always find it.
+          if (state === 'completed') {
+            shell.showItemInFolder(savePath);
+          }
+        });
+
+      } catch (err) {
+        // Log the error — without this, download failures are completely invisible.
+        console.error('[navio] Download handler error:', err.message, err.stack);
+      }
     });
   }
   handleDownloads(navioSession);

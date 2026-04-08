@@ -114,6 +114,25 @@
         </div>
       </nav>
 
+      <!-- Password save prompt (shown below nav when a login form is submitted) -->
+      <div id="pwd-save-bar" class="pwd-save-bar" hidden>
+        <svg class="pwd-save-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <span class="pwd-save-msg">Save password for <strong id="pwd-save-site"></strong>?</span>
+        <span class="pwd-save-user" id="pwd-save-user"></span>
+        <button id="pwd-save-btn" class="pwd-save-action">Save</button>
+        <button id="pwd-never-btn" class="pwd-save-never">Never</button>
+        <button id="pwd-dismiss-btn" class="pwd-save-dismiss" title="Dismiss">×</button>
+      </div>
+
+      <!-- Autofill offer bar (shown when a login form is found and we have credentials) -->
+      <div id="pwd-autofill-bar" class="pwd-autofill-bar" hidden>
+        <svg class="pwd-save-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span class="pwd-autofill-msg">Saved credentials available</span>
+        <span class="pwd-autofill-user" id="pwd-autofill-user"></span>
+        <button id="pwd-autofill-btn" class="pwd-save-action">Autofill</button>
+        <button id="pwd-autofill-dismiss" class="pwd-save-dismiss" title="Dismiss">×</button>
+      </div>
+
       <!-- Browser Views Container -->
       <div id="browser-container">
         <div id="reading-mode-pane" class="reading-mode-pane" aria-hidden="true"></div>
@@ -590,6 +609,10 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
             <span>Integrations</span>
           </button>
+          <button type="button" class="settings-nav-item" data-panel="passwords">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span>Passwords</span>
+          </button>
           <button type="button" class="settings-nav-item" data-panel="about">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
             <span>About</span>
@@ -915,6 +938,24 @@
                 <input type="checkbox" id="setting-form-autofill" checked>
                 <span>Show form field hints from extracted page metadata in assistant</span>
               </label>
+            </div>
+          </div>
+
+          <div class="settings-panel" id="settings-panel-passwords" role="tabpanel">
+            <div class="settings-section">
+              <h3>Saved passwords</h3>
+              <p class="text-muted" style="margin-bottom:12px">Passwords are encrypted with your OS keychain (Windows DPAPI / macOS Keychain). They never leave your device.</p>
+              <div class="pwd-mgr-toolbar">
+                <button id="btn-pwd-export" class="btn-secondary btn-sm">Export CSV</button>
+                <button id="btn-pwd-import" class="btn-secondary btn-sm">Import CSV</button>
+                <input id="pwd-import-file" type="file" accept=".csv" style="display:none" tabindex="-1">
+                <span id="pwd-import-status" class="settings-hint" style="margin-left:8px"></span>
+              </div>
+            </div>
+            <div class="settings-section">
+              <div id="pwd-list" class="pwd-list">
+                <p class="pwd-list-empty">No saved passwords yet.</p>
+              </div>
             </div>
           </div>
 

@@ -105,6 +105,17 @@ contextBridge.exposeInMainWorld('navio', {
   // External protocol handler — opens mailto:, tel:, sms: in the OS default app
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
+  // Reveal a downloaded file in the OS file manager (Explorer / Finder)
+  showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),
+
+  // Password manager (safeStorage-encrypted vault)
+  passwordsSave:      (url, username, password) => ipcRenderer.invoke('passwords-save', { url, username, password }),
+  passwordsList:      ()                        => ipcRenderer.invoke('passwords-list'),
+  passwordsGet:       (url)                     => ipcRenderer.invoke('passwords-get', { url }),
+  passwordsDelete:    (origin, username)        => ipcRenderer.invoke('passwords-delete', { origin, username }),
+  passwordsExportCsv: ()                        => ipcRenderer.invoke('passwords-export-csv'),
+  passwordsImportCsv: (csv)                     => ipcRenderer.invoke('passwords-import-csv', { csv }),
+
   // Download lifecycle events pushed from the main process
   onDownloadStarted: (cb) => {
     const h = (_, d) => cb(d);

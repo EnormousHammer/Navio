@@ -1249,11 +1249,11 @@ body.tabstrip-hidden .tab-strip-show {
 .ntp-widgets {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 12px;
-  padding: 8px 22px 20px;
+  gap: 14px;
+  padding: 4px 22px 24px;
   position: relative;
   z-index: 1;
-  max-width: 1400px;
+  max-width: 1420px;
   width: 100%;
   margin: 0 auto;
   box-sizing: border-box;
@@ -1267,35 +1267,51 @@ body.tabstrip-hidden .tab-strip-show {
 }
 .ntp-widget {
   background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 18px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  max-height: 400px;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  min-height: 260px;
+  max-height: min(500px, 52vh);
+  position: relative;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+/* Subtle shimmer line at the top of every widget */
+.ntp-widget::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 10%; right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+  pointer-events: none;
+  z-index: 1;
 }
 .ntp-widget:hover {
-  border-color: rgba(0,212,255,0.25);
-  box-shadow: 0 8px 32px rgba(0,212,255,0.08), 0 4px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.07);
-  transform: translateY(-1px);
+  border-color: rgba(0,212,255,0.3);
+  box-shadow: 0 12px 40px rgba(0,212,255,0.1), 0 4px 24px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08);
+  transform: translateY(-2px);
 }
 /* AI Brief widget — gradient neon border */
 .ntp-widget-ai {
   border-color: transparent;
-  background: linear-gradient(145deg, rgba(124,58,237,0.08), rgba(0,212,255,0.04));
-  position: relative;
+  background: linear-gradient(145deg, rgba(124,58,237,0.1), rgba(0,212,255,0.05));
 }
+/* Override the generic shimmer with a stronger top glow */
 .ntp-widget-ai::before {
+  left: 5%; right: 5%;
+  background: linear-gradient(90deg, transparent, rgba(0,212,255,0.35), rgba(124,58,237,0.35), transparent);
+}
+.ntp-widget-ai::after {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: 18px;
   padding: 1px;
-  background: linear-gradient(135deg, rgba(0,212,255,0.4), rgba(124,58,237,0.4), rgba(244,114,182,0.3));
+  background: linear-gradient(135deg, rgba(0,212,255,0.45), rgba(124,58,237,0.45), rgba(244,114,182,0.35));
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
@@ -1306,16 +1322,19 @@ body.tabstrip-hidden .tab-strip-show {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 11px 15px;
-  font-size: 10.5px;
-  font-weight: 700;
-  color: rgba(226,232,248,0.5);
+  padding: 12px 16px;
+  font-size: 10px;
+  font-weight: 800;
+  color: rgba(226,232,248,0.55);
   text-transform: uppercase;
-  letter-spacing: 0.7px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  letter-spacing: 1px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
   flex-shrink: 0;
+  background: rgba(255,255,255,0.015);
+  position: relative;
+  z-index: 2;
 }
-.ntp-widget-header svg { flex-shrink: 0; opacity: 0.7; }
+.ntp-widget-header svg { flex-shrink: 0; opacity: 0.65; }
 .ntp-widget-source {
   margin-left: auto;
   font-size: 10px;
@@ -1334,26 +1353,42 @@ body.tabstrip-hidden .tab-strip-show {
 }
 .ntp-widget-action {
   margin-left: auto;
-  background: rgba(0,216,255,0.15);
+  background: rgba(0,216,255,0.12);
   color: #00d8ff;
-  border: 1px solid rgba(0,216,255,0.25);
-  border-radius: 6px;
-  padding: 3px 9px;
-  font-size: 10.5px;
-  font-weight: 700;
+  border: 1px solid rgba(0,216,255,0.2);
+  border-radius: 7px;
+  padding: 3px 10px;
+  font-size: 10px;
+  font-weight: 800;
   cursor: pointer;
   font-family: var(--font-sans);
-  transition: background 0.15s, box-shadow 0.15s;
+  letter-spacing: 0.2px;
+  transition: background 0.15s, box-shadow 0.15s, border-color 0.15s;
+  flex-shrink: 0;
 }
 .ntp-widget-action:hover {
-  background: rgba(0,216,255,0.25);
-  box-shadow: 0 0 12px rgba(0,212,255,0.2);
+  background: rgba(0,216,255,0.22);
+  border-color: rgba(0,216,255,0.4);
+  box-shadow: 0 0 14px rgba(0,212,255,0.2);
+}
+.ntp-widget-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .ntp-widget-body {
   overflow-y: auto;
   flex: 1;
-  padding: 8px 0;
+  padding: 6px 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
 }
+.ntp-widget-body::-webkit-scrollbar { width: 4px; }
+.ntp-widget-body::-webkit-scrollbar-track { background: transparent; }
+.ntp-widget-body::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.1);
+  border-radius: 4px;
+}
+.ntp-widget-body::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
 .ntp-widget-loading {
   display: flex;
   align-items: center;
@@ -1384,16 +1419,20 @@ body.tabstrip-hidden .tab-strip-show {
 /* ── News items ─────────────────────────────────────────────────────── */
 .ntp-news-title {
   font-size: 13px;
-  color: var(--text-primary);
-  line-height: 1.4;
-  margin-bottom: 3px;
+  font-weight: 500;
+  color: rgba(226,232,248,0.9);
+  line-height: 1.45;
+  margin-bottom: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .ntp-news-meta {
   display: flex;
   gap: 8px;
-  font-size: 11px;
-  color: var(--text-secondary);
-  opacity: 0.65;
+  font-size: 10.5px;
+  color: rgba(226,232,248,0.4);
 }
 .ntp-news-meta span:not(:last-child)::after { content: '·'; margin-left: 8px; }
 
@@ -1403,29 +1442,33 @@ body.tabstrip-hidden .tab-strip-show {
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  padding: 24px 16px;
+  padding: 28px 20px;
   text-align: center;
   color: var(--text-secondary);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.6;
 }
-.ntp-email-empty svg { opacity: 0.4; }
+.ntp-email-empty svg { opacity: 0.35; }
 .ntp-connect-email-btn {
-  background: var(--text-accent, #00d8ff);
+  background: linear-gradient(135deg, #00d8ff, #0099cc);
   color: #000;
   border: none;
-  border-radius: 7px;
-  padding: 6px 16px;
+  border-radius: 8px;
+  padding: 7px 18px;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   font-family: var(--font-sans);
   margin-top: 4px;
+  transition: opacity 0.15s, transform 0.15s;
+  box-shadow: 0 2px 12px rgba(0,216,255,0.3);
 }
+.ntp-connect-email-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+
 /* ── Email item ─────────────────────────────────────────────────── */
 .ntp-email-item {
-  padding: 11px 14px 11px 16px;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+  padding: 10px 14px 10px 15px;
+  border-bottom: 1px solid rgba(255,255,255,0.045);
   position: relative;
   cursor: pointer;
   transition: background 0.15s;
@@ -1434,9 +1477,12 @@ body.tabstrip-hidden .tab-strip-show {
   display: block;
 }
 .ntp-email-item:last-child { border-bottom: none; }
-.ntp-email-item:hover { background: rgba(255,255,255,0.06); }
-.ntp-email-item.unread { border-left-color: #00d8ff; background: rgba(0,216,255,0.04); }
-.ntp-email-item.unread:hover { background: rgba(0,216,255,0.07); }
+.ntp-email-item:hover { background: rgba(255,255,255,0.05); }
+.ntp-email-item.unread {
+  border-left-color: #00d8ff;
+  background: rgba(0,216,255,0.035);
+}
+.ntp-email-item.unread:hover { background: rgba(0,216,255,0.065); }
 
 /* Row 1: sender + timestamp */
 .ntp-email-header {
@@ -1447,9 +1493,9 @@ body.tabstrip-hidden .tab-strip-show {
   margin-bottom: 3px;
 }
 .ntp-email-sender {
-  font-size: 13px;
-  font-weight: 500;
-  color: rgba(255,255,255,0.6);
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.55);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1457,56 +1503,57 @@ body.tabstrip-hidden .tab-strip-show {
 }
 .ntp-email-item.unread .ntp-email-sender {
   font-weight: 700;
-  color: #ffffff;
+  color: #00d8ff;
 }
 .ntp-email-date {
-  font-size: 11px;
-  color: rgba(255,255,255,0.35);
+  font-size: 10.5px;
+  color: rgba(255,255,255,0.3);
   flex-shrink: 0;
   white-space: nowrap;
 }
 .ntp-email-item.unread .ntp-email-date {
-  color: rgba(0,216,255,0.75);
+  color: rgba(0,216,255,0.65);
   font-weight: 600;
 }
 
-/* Row 2: subject */
+/* Row 2: subject — allow 2 lines so full title is readable */
 .ntp-email-subject {
   font-size: 13px;
-  font-weight: 400;
-  color: rgba(255,255,255,0.45);
-  white-space: nowrap;
+  font-weight: 500;
+  color: rgba(255,255,255,0.55);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.4;
   margin-bottom: 3px;
 }
 .ntp-email-item.unread .ntp-email-subject {
-  color: rgba(255,255,255,0.9);
+  color: rgba(255,255,255,0.92);
   font-weight: 600;
 }
 
-/* Row 3: snippet */
+/* Row 3: snippet — one line preview */
 .ntp-email-preview {
-  font-size: 12px;
-  color: rgba(255,255,255,0.3);
-  line-height: 1.45;
-  overflow: hidden;
+  font-size: 11.5px;
+  color: rgba(255,255,255,0.28);
+  line-height: 1.4;
   white-space: nowrap;
+  overflow: hidden;
   text-overflow: ellipsis;
 }
 .ntp-email-item.unread .ntp-email-preview {
-  color: rgba(255,255,255,0.45);
+  color: rgba(255,255,255,0.42);
 }
 
 /* "Open Gmail" hint on hover */
 .ntp-email-item::after {
   content: '↗';
   position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 13px;
-  color: rgba(255,255,255,0.2);
+  right: 11px;
+  top: 10px;
+  font-size: 11px;
+  color: rgba(0,216,255,0.4);
   opacity: 0;
   transition: opacity 0.15s;
   pointer-events: none;
@@ -1515,34 +1562,37 @@ body.tabstrip-hidden .tab-strip-show {
 
 /* Legacy classes (IMAP fallback path) */
 .ntp-email-from {
-  font-size: 13px;
-  font-weight: 600;
-  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(0,216,255,0.85);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-bottom: 2px;
 }
 .ntp-email-meta {
-  font-size: 11px;
-  color: rgba(255,255,255,0.35);
+  font-size: 10.5px;
+  color: rgba(255,255,255,0.3);
   margin-top: 2px;
 }
 .ntp-email-draft-btn {
   display: none;
   position: absolute;
-  right: 30px;
+  right: 28px;
   top: 50%;
   transform: translateY(-50%);
-  background: var(--text-accent, #00d8ff);
-  color: #000;
-  border: none;
+  background: rgba(0,216,255,0.15);
+  color: #00d8ff;
+  border: 1px solid rgba(0,216,255,0.3);
   border-radius: 6px;
-  padding: 3px 9px;
-  font-size: 11px;
+  padding: 3px 10px;
+  font-size: 10.5px;
   font-weight: 700;
   cursor: pointer;
   font-family: var(--font-sans);
+  transition: background 0.15s;
 }
+.ntp-email-draft-btn:hover { background: rgba(0,216,255,0.25); }
 .ntp-email-item:hover .ntp-email-draft-btn { display: block; }
 
 /* ── LIVE badge ──────────────────────────────────────────────────────────*/
@@ -1564,15 +1614,14 @@ body.tabstrip-hidden .tab-strip-show {
 /* ── News category tag ───────────────────────────────────────────────────*/
 .ntp-news-category {
   font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.6px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
   text-transform: uppercase;
-  color: var(--text-accent, #00d8ff);
-  opacity: 0.7;
-  margin-bottom: 2px;
+  color: rgba(0,216,255,0.65);
+  margin-bottom: 3px;
 }
 .ntp-news-item {
-  padding: 9px 16px 9px 12px;
+  padding: 9px 14px 9px 13px;
   border-bottom: 1px solid rgba(255,255,255,0.04);
   cursor: pointer;
   transition: background 0.12s, border-left-color 0.12s;
@@ -1580,9 +1629,10 @@ body.tabstrip-hidden .tab-strip-show {
 }
 .ntp-news-item:last-child { border-bottom: none; }
 .ntp-news-item:hover {
-  background: rgba(0,212,255,0.04);
-  border-left-color: rgba(0,212,255,0.4);
+  background: rgba(0,212,255,0.05);
+  border-left-color: rgba(0,212,255,0.45);
 }
+.ntp-news-item:hover .ntp-news-title { color: #e2e8f8; }
 
 /* ── AI Brief widget styles ─────────────────────────────────────────────*/
 .ntp-brief-idle {
@@ -1590,39 +1640,40 @@ body.tabstrip-hidden .tab-strip-show {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 18px 16px;
+  padding: 22px 20px;
   text-align: center;
-  gap: 10px;
+  gap: 12px;
   height: 100%;
 }
 .ntp-brief-orb {
-  width: 40px; height: 40px;
+  width: 42px; height: 42px;
   border-radius: 50%;
   background: conic-gradient(from 0deg, #00d4ff, #7c3aed, #f472b6, #00d4ff);
   animation: ntp-orb-spin 4s linear infinite;
-  box-shadow: 0 0 20px rgba(0,212,255,0.3);
-  opacity: 0.7;
+  box-shadow: 0 0 24px rgba(0,212,255,0.35), 0 0 50px rgba(124,58,237,0.2);
+  opacity: 0.8;
 }
 @keyframes ntp-orb-spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
 .ntp-brief-idle p {
-  font-size: 12px;
-  color: var(--text-secondary);
-  line-height: 1.5;
+  font-size: 12.5px;
+  color: rgba(226,232,248,0.6);
+  line-height: 1.55;
   margin: 0;
 }
 .ntp-brief-meta {
   list-style: none;
   padding: 0; margin: 0;
   font-size: 11px;
-  color: var(--text-tertiary, rgba(255,255,255,0.35));
+  color: rgba(226,232,248,0.35);
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   text-align: left;
 }
+.ntp-brief-meta li { letter-spacing: 0.1px; }
 .ntp-brief-generating {
   display: flex;
   flex-direction: column;
@@ -1643,52 +1694,38 @@ body.tabstrip-hidden .tab-strip-show {
   to { transform: rotate(360deg); }
 }
 .ntp-brief-content {
-  padding: 14px 16px;
-  font-size: 12.5px;
-  line-height: 1.7;
-  color: var(--text-secondary);
+  padding: 14px 16px 16px;
+  font-size: 13px;
+  line-height: 1.75;
+  color: rgba(226,232,248,0.82);
   overflow-y: auto;
   height: 100%;
 }
-.ntp-brief-content p { margin: 0 0 9px; }
+.ntp-brief-content p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.75;
+}
 .ntp-brief-content p:last-child { margin-bottom: 0; }
-.ntp-brief-content h2 {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-tertiary);
+.ntp-brief-content strong { color: rgba(226,232,248,0.96); font-weight: 600; }
+.ntp-brief-content em { color: rgba(0,216,255,0.85); font-style: normal; }
+
+/* Date stamp at the top of every generated brief */
+.ntp-brief-datestamp {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
   text-transform: uppercase;
-  letter-spacing: 0.6px;
-  margin: 14px 0 6px;
-  padding-bottom: 5px;
-  border-bottom: 1px solid rgba(255,255,255,0.07);
+  color: rgba(0,216,255,0.75);
+  margin-bottom: 12px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid rgba(0,216,255,0.15);
 }
-.ntp-brief-content h2:first-child { margin-top: 0; }
-.ntp-brief-content h3 {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 10px 0 3px;
-}
-.ntp-brief-content h4 {
-  font-size: 12px;
+.ntp-brief-time {
   font-weight: 600;
-  color: var(--text-secondary);
-  margin: 8px 0 2px;
-}
-.ntp-brief-content strong { color: var(--text-primary); font-weight: 600; }
-.ntp-brief-content ul,
-.ntp-brief-content ol {
-  padding-left: 18px;
-  margin: 4px 0 8px;
-}
-.ntp-brief-content li {
-  margin-bottom: 3px;
-  line-height: 1.55;
-}
-.ntp-brief-content hr {
-  border: none;
-  border-top: 1px solid rgba(255,255,255,0.07);
-  margin: 10px 0;
+  opacity: 0.7;
+  letter-spacing: 0.4px;
+  text-transform: none;
 }
 /* Pop-out button on widget headers */
 .ntp-widget-popout {
@@ -8089,4 +8126,195 @@ body.onboarding-active #app {
 
 [data-theme="light"] .navio-takeover-banner::before {
   background: linear-gradient(90deg, transparent, rgba(0, 100, 220, 0.7), transparent);
+}
+
+/* ── Password save / autofill bars ─────────────────────────────────────── */
+.pwd-save-bar,
+.pwd-autofill-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: rgba(12, 22, 42, 0.97);
+  border-bottom: 1px solid rgba(0, 216, 255, 0.18);
+  font-size: 13px;
+  color: #c8d4f0;
+  flex-shrink: 0;
+  z-index: 900;
+  backdrop-filter: blur(10px);
+  animation: pwdBarIn 0.2s ease;
+}
+
+.pwd-save-bar[hidden],
+.pwd-autofill-bar[hidden] {
+  display: none;
+}
+
+@keyframes pwdBarIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+.pwd-save-icon {
+  flex-shrink: 0;
+  color: #00d8ff;
+  opacity: 0.85;
+}
+
+.pwd-save-msg,
+.pwd-autofill-msg {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pwd-save-msg strong {
+  color: #e2e8f8;
+}
+
+.pwd-save-user,
+.pwd-autofill-user {
+  font-size: 12px;
+  color: #7a9ac8;
+  background: rgba(80,160,255,0.07);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(80,160,255,0.15);
+  flex-shrink: 0;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pwd-save-action {
+  background: linear-gradient(135deg, #00b8db, #4c5fff);
+  color: #fff;
+  border: none;
+  padding: 5px 14px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+  font-family: inherit;
+}
+.pwd-save-action:hover { opacity: 0.85; }
+
+.pwd-save-never {
+  background: rgba(255,80,80,0.1);
+  color: #ff7070;
+  border: 1px solid rgba(255,80,80,0.25);
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+.pwd-save-never:hover { background: rgba(255,80,80,0.2); }
+
+.pwd-save-dismiss {
+  background: none;
+  border: none;
+  color: #5a6a8a;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+.pwd-save-dismiss:hover { color: #c8d4f0; }
+
+/* ── Password manager panel ─────────────────────────────────────────────── */
+.pwd-mgr-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.btn-sm {
+  padding: 6px 14px;
+  font-size: 12.5px;
+}
+
+.pwd-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.pwd-list-empty {
+  color: #5a6a8a;
+  font-size: 13px;
+  padding: 12px 0;
+}
+
+.pwd-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: rgba(30, 45, 80, 0.4);
+  border: 1px solid rgba(80,160,255,0.08);
+  transition: background 0.15s;
+}
+.pwd-entry:hover { background: rgba(40, 60, 100, 0.5); }
+
+.pwd-entry-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.pwd-entry-site {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #c8d4f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.pwd-entry-user {
+  font-size: 12px;
+  color: #7a9ac8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.pwd-entry-date {
+  font-size: 11px;
+  color: #445068;
+  flex-shrink: 0;
+}
+
+.pwd-entry-delete {
+  background: none;
+  border: none;
+  color: #5a6a8a;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.pwd-entry-delete:hover {
+  color: #ff7070;
+  background: rgba(255,80,80,0.1);
 }
