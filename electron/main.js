@@ -179,6 +179,36 @@ function isEmailWriteAction(action, params) {
 const NAVIO_SYSTEM_PROMPT = `You are Navio, an intelligent AI assistant built into the Navio Browser. You help users browse the web, understand content, and automate tasks.
 
 ══════════════════════════════════════════
+STEP 0 — ASK FIRST WHEN MISSING CRITICAL INFO
+══════════════════════════════════════════
+Before browsing or acting, decide: do you have enough info to do this correctly the FIRST time?
+
+ASK before acting when the task involves any of these and the info is missing:
+- Travel planning (flights, hotels, trips): need departure city, destination, travel DATES, number of travelers, budget
+- Purchases or bookings: need size, specs, budget, preferences
+- Creating documents or reports: need topic depth, target audience, required sections
+- Any personalized task where a wrong assumption wastes the whole session
+
+HOW TO ASK:
+- Ask ALL missing questions in ONE message — 2 to 5 short bullet-point questions
+- Do NOT start any <navio-actions> or browsing until you have the answers
+- Keep it brief and friendly — no long preamble, just the questions
+
+EXAMPLE — user says "plan me a trip to Vancouver":
+Instead of immediately searching flights, reply:
+"Before I search, a few quick questions:
+• What dates are you planning to travel? (flight prices vary daily)
+• Flying from which city?
+• How many people are traveling?
+• What's your total budget?
+• Any must-haves? (e.g. direct flights only, hotel amenities)"
+
+NEVER ask when the task is self-contained:
+- "search for X", "navigate to X", "play me a video" → just do it
+- "what's the weather in Tokyo" → just do it
+- "open Google Docs" → just do it
+
+══════════════════════════════════════════
 STEP 1 — REASON ABOUT INTENT (always do this first, silently)
 ══════════════════════════════════════════
 Before acting on any browser task, think:
@@ -293,6 +323,16 @@ Output the insertText: action right now with ALL the content.
 after "insertText:" — the parser will collect everything until the next action keyword.
 Use \n in the content for newlines if needed, OR just put real line breaks.
 
+⚠️ USE MARKDOWN FOR RICH FORMATTING — Navio automatically converts it to styled Google Doc content:
+- # Title          → Heading 1 (document title)
+- ## Section       → Heading 2 (section header)
+- ### Subsection   → Heading 3
+- **bold text**    → bold
+- - bullet item    → bulleted list
+- 1. item          → numbered list
+- ---              → horizontal rule / divider
+Plain lines become regular paragraphs. Always use these for structured documents.
+
 Exact sequence for Google Docs:
 <navio-actions>
 navigate:https://docs.google.com/document/create
@@ -301,10 +341,16 @@ navigate:https://docs.google.com/document/create
 After page loads, in the SAME response or next follow-up:
 <navio-actions>
 click:.kix-appview-editor
-insertText:Full document title and content here
-Line 2 of content
-Line 3 of content
-...all content goes here...
+insertText:# Document Title Here
+
+## Section One
+**Key fact:** some detail here
+
+- Bullet point one
+- Bullet point two
+
+## Section Two
+More content here...
 </navio-actions>
 
 DO NOT split into separate messages: navigate in one action, then click+insertText in one action.
@@ -433,6 +479,70 @@ save:User is a software developer
 save:User prefers Python
 </navio-memory>
 Only save facts genuinely useful for future sessions. Never save sensitive data. Omit this block if nothing new was learned.`;
+
+// ── Markdown → HTML converter (used for Google Docs rich-text paste) ─────────
+// Converts simple markdown (headings, bold, italic, bullets, hr) to HTML so that
+// when pasted into Google Docs via Ctrl+V the content arrives with real formatting.
+
+function _escHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function _inlineFormat(str) {
+  str = _escHtml(str);
+  str = str.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  str = str.replace(/__(.+?)__/g, '<strong>$1</strong>');
+  str = str.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  str = str.replace(/_(.+?)_/g, '<em>$1</em>');
+  return str;
+}
+
+function markdownToHtml(text) {
+  const lines = text.split('\n');
+  const out = [];
+  let inUl = false;
+  let inOl = false;
+
+  const closeList = () => {
+    if (inUl) { out.push('</ul>'); inUl = false; }
+    if (inOl) { out.push('</ol>'); inOl = false; }
+  };
+
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t) {
+      closeList();
+      out.push('<br>');
+      continue;
+    }
+    if (t === '---' || t === '***' || t === '___') {
+      closeList();
+      out.push('<hr>');
+    } else if (t.startsWith('### ')) {
+      closeList();
+      out.push(`<h3>${_inlineFormat(t.slice(4))}</h3>`);
+    } else if (t.startsWith('## ')) {
+      closeList();
+      out.push(`<h2>${_inlineFormat(t.slice(3))}</h2>`);
+    } else if (t.startsWith('# ')) {
+      closeList();
+      out.push(`<h1>${_inlineFormat(t.slice(2))}</h1>`);
+    } else if (t.startsWith('- ') || t.startsWith('* ')) {
+      if (inOl) { out.push('</ol>'); inOl = false; }
+      if (!inUl) { out.push('<ul>'); inUl = true; }
+      out.push(`<li>${_inlineFormat(t.slice(2))}</li>`);
+    } else if (/^\d+\.\s/.test(t)) {
+      if (inUl) { out.push('</ul>'); inUl = false; }
+      if (!inOl) { out.push('<ol>'); inOl = true; }
+      out.push(`<li>${_inlineFormat(t.replace(/^\d+\.\s/, ''))}</li>`);
+    } else {
+      closeList();
+      out.push(`<p>${_inlineFormat(t)}</p>`);
+    }
+  }
+  closeList();
+  return out.join('');
+}
 
 // ── <navio-actions> block converter ──────────────────────────────────────────
 // The system prompt asks the model to output a <navio-actions> block at the end
@@ -1277,7 +1387,8 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
         // "Tab 1") instead of the editor canvas, so the canvas loses focus before
         // we paste.  Always click .kix-appview-editor first to guarantee focus.
         const insertUrl = wc.getURL?.() || '';
-        if (/docs\.google\.com\/document/.test(insertUrl)) {
+        const isGoogleDocInsert = /docs\.google\.com\/document/.test(insertUrl);
+        if (isGoogleDocInsert) {
           await wc.executeJavaScript(`
             (function() {
               const editor = document.querySelector('.kix-appview-editor');
@@ -1286,11 +1397,21 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
           `).catch(() => {});
           await new Promise(r => setTimeout(r, 200));
         }
-        // 1. Write to system clipboard (works regardless of focus state)
-        clipboard.writeText(textToInsert);
+        // 1. Write to clipboard — use HTML for Google Docs so formatting is preserved
+        //    (headings, bold, bullets from markdown are rendered as real Doc styles).
+        //    For all other pages fall back to plain text.
+        if (isGoogleDocInsert) {
+          const htmlBody = markdownToHtml(textToInsert);
+          clipboard.write({
+            text: textToInsert,
+            html: `<html><body>${htmlBody}</body></html>`
+          });
+        } else {
+          clipboard.writeText(textToInsert);
+        }
         // 2. Give the page a moment to process any pending focus state
         await new Promise(r => setTimeout(r, 200));
-        // 3. Send Ctrl+V — Google Docs/Sheets intercepts this and pastes
+        // 3. Send Ctrl+V — Google Docs intercepts this and pastes with formatting
         wc.sendInputEvent({ type: 'keyDown', keyCode: 'V', modifiers: ['control'] });
         await new Promise(r => setTimeout(r, 50));
         wc.sendInputEvent({ type: 'keyUp',   keyCode: 'V', modifiers: ['control'] });
