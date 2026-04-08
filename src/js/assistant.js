@@ -761,17 +761,27 @@ PERSONALITY:
           // Render a plan overview card
           const steps = params.split('||').filter(Boolean);
           const stepItems = steps.map((s, i) =>
-            `<div class="navio-plan-step">
+            `<div class="navio-plan-step" draggable="true">
+              <span class="navio-plan-drag" title="Drag to reorder">
+                <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><circle cx="3" cy="2.5" r="1.2"/><circle cx="7" cy="2.5" r="1.2"/><circle cx="3" cy="7" r="1.2"/><circle cx="7" cy="7" r="1.2"/><circle cx="3" cy="11.5" r="1.2"/><circle cx="7" cy="11.5" r="1.2"/></svg>
+              </span>
               <span class="navio-plan-num">${i + 1}</span>
               <span class="navio-plan-text">${s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>
+              <button class="navio-plan-del" title="Remove step" type="button">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
             </div>`
           ).join('');
           card = `<div class="navio-plan-card">
             <div class="navio-plan-header">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-              Plan — ${steps.length} step${steps.length !== 1 ? 's' : ''}
+              <span class="navio-plan-title-text">Plan — ${steps.length} step${steps.length !== 1 ? 's' : ''}</span>
             </div>
             <div class="navio-plan-steps">${stepItems}</div>
+            <button class="navio-plan-add-btn" type="button">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add step
+            </button>
           </div>`;
         } else if (type === 'TASK_APPROVE') {
           card = `<div class="tc-approval-gate" data-approval-id="${params}">
@@ -874,11 +884,113 @@ PERSONALITY:
     });
   }
 
-  async _wireActions(contentEl) {
-    // ── Wire plan card steps — click text to edit inline ──────────────────
-    contentEl.querySelectorAll('.navio-plan-step').forEach((step) => {
-      this._wirePlanStep(step);
+  // Renumber all .navio-plan-num elements inside a plan card and update header count
+  _renumberPlan(card) {
+    const steps = Array.from(card.querySelectorAll('.navio-plan-step'));
+    steps.forEach((s, i) => {
+      const num = s.querySelector('.navio-plan-num');
+      if (num) num.textContent = i + 1;
     });
+    const titleEl = card.querySelector('.navio-plan-title-text');
+    if (titleEl) titleEl.textContent = `Plan — ${steps.length} step${steps.length !== 1 ? 's' : ''}`;
+  }
+
+  // Wire a plan card: edit-on-click, drag-to-reorder, add step, delete step
+  _wirePlanCard(card) {
+    const stepsContainer = card.querySelector('.navio-plan-steps');
+
+    // ── Wire all existing steps ─────────────────────────────────────────
+    card.querySelectorAll('.navio-plan-step').forEach(step => this._wirePlanStep(step));
+
+    // ── Drag-to-reorder ─────────────────────────────────────────────────
+    let dragSrc = null;
+
+    const onDragStart = (e) => {
+      dragSrc = e.currentTarget;
+      dragSrc.classList.add('navio-plan-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', '');
+    };
+    const onDragEnd = (e) => {
+      e.currentTarget.classList.remove('navio-plan-dragging');
+      stepsContainer.querySelectorAll('.navio-plan-step').forEach(s => s.classList.remove('navio-plan-drag-over'));
+      this._renumberPlan(card);
+    };
+    const onDragOver = (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const target = e.currentTarget;
+      if (target === dragSrc) return;
+      stepsContainer.querySelectorAll('.navio-plan-step').forEach(s => s.classList.remove('navio-plan-drag-over'));
+      target.classList.add('navio-plan-drag-over');
+    };
+    const onDrop = (e) => {
+      e.preventDefault();
+      const target = e.currentTarget;
+      if (!dragSrc || target === dragSrc) return;
+      target.classList.remove('navio-plan-drag-over');
+      const steps = Array.from(stepsContainer.querySelectorAll('.navio-plan-step'));
+      const srcIdx = steps.indexOf(dragSrc);
+      const tgtIdx = steps.indexOf(target);
+      if (srcIdx < tgtIdx) {
+        target.after(dragSrc);
+      } else {
+        target.before(dragSrc);
+      }
+      this._renumberPlan(card);
+    };
+
+    const wireStepDrag = (step) => {
+      step.setAttribute('draggable', 'true');
+      step.addEventListener('dragstart', onDragStart);
+      step.addEventListener('dragend', onDragEnd);
+      step.addEventListener('dragover', onDragOver);
+      step.addEventListener('drop', onDrop);
+    };
+    card.querySelectorAll('.navio-plan-step').forEach(wireStepDrag);
+
+    // ── Delete step ─────────────────────────────────────────────────────
+    const wireDeleteBtn = (step) => {
+      const btn = step.querySelector('.navio-plan-del');
+      if (!btn) return;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        step.remove();
+        this._renumberPlan(card);
+      });
+    };
+    card.querySelectorAll('.navio-plan-step').forEach(wireDeleteBtn);
+
+    // ── Add step ────────────────────────────────────────────────────────
+    const addBtn = card.querySelector('.navio-plan-add-btn');
+    if (addBtn) {
+      addBtn.addEventListener('click', () => {
+        const newStep = document.createElement('div');
+        newStep.className = 'navio-plan-step';
+        newStep.setAttribute('draggable', 'true');
+        newStep.innerHTML = `
+          <span class="navio-plan-drag" title="Drag to reorder">
+            <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><circle cx="3" cy="2.5" r="1.2"/><circle cx="7" cy="2.5" r="1.2"/><circle cx="3" cy="7" r="1.2"/><circle cx="7" cy="7" r="1.2"/><circle cx="3" cy="11.5" r="1.2"/><circle cx="7" cy="11.5" r="1.2"/></svg>
+          </span>
+          <span class="navio-plan-num">?</span>
+          <span class="navio-plan-text navio-plan-empty" style="color:var(--text-tertiary)">New step — click to edit</span>
+          <button class="navio-plan-del" title="Remove step" type="button">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>`;
+        stepsContainer.appendChild(newStep);
+        this._renumberPlan(card);
+        wireStepDrag(newStep);
+        wireDeleteBtn(newStep);
+        this._wirePlanStep(newStep);
+        // Auto-open edit on the new step's text
+        setTimeout(() => newStep.querySelector('.navio-plan-text')?.click(), 30);
+      });
+    }
+  }
+
+  async _wireActions(contentEl) {
+    // ── Wire plan cards ──────────────────────────────────────────────────
+    contentEl.querySelectorAll('.navio-plan-card').forEach(card => this._wirePlanCard(card));
 
     // Wire task chain approval gates
     contentEl.querySelectorAll('.tca-approve').forEach(btn => {

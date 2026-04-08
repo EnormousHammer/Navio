@@ -7320,7 +7320,90 @@ body.onboarding-active #app {
 .navio-plan-step {
   display: flex;
   align-items: flex-start;
-  gap: 9px;
+  gap: 7px;
+  border-radius: 6px;
+  padding: 2px 4px;
+  margin: 0 -4px;
+  transition: background 0.12s;
+  cursor: default;
+}
+
+.navio-plan-step:hover .navio-plan-drag { opacity: 1; }
+.navio-plan-step:hover .navio-plan-del { opacity: 1; }
+
+.navio-plan-drag {
+  opacity: 0;
+  color: var(--text-tertiary);
+  cursor: grab;
+  flex-shrink: 0;
+  margin-top: 4px;
+  transition: opacity 0.12s;
+  padding: 2px 1px;
+}
+.navio-plan-drag:active { cursor: grabbing; }
+
+.navio-plan-del {
+  opacity: 0;
+  flex-shrink: 0;
+  margin-top: 3px;
+  margin-left: auto;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.navio-plan-del:hover {
+  background: rgba(252, 129, 129, 0.15);
+  color: #fc8181;
+}
+
+.navio-plan-step.navio-plan-dragging {
+  opacity: 0.35;
+}
+.navio-plan-step.navio-plan-drag-over {
+  background: rgba(167, 139, 250, 0.10);
+  border-radius: 6px;
+}
+
+.navio-plan-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  padding: 5px 10px;
+  width: 100%;
+  background: transparent;
+  border: 1px dashed rgba(167, 139, 250, 0.35);
+  border-radius: 6px;
+  color: rgba(167, 139, 250, 0.7);
+  font-size: 12px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  justify-content: center;
+}
+.navio-plan-add-btn:hover {
+  border-color: #a78bfa;
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.06);
+}
+
+[data-theme="light"] .navio-plan-add-btn {
+  border-color: rgba(124, 58, 237, 0.25);
+  color: rgba(124, 58, 237, 0.6);
+}
+[data-theme="light"] .navio-plan-add-btn:hover {
+  border-color: #7c3aed;
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.05);
 }
 
 .navio-plan-num {
