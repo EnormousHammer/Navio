@@ -226,13 +226,18 @@ const NTP = (() => {
 
   // ── Stock Market Ticker ────────────────────────────────────────────────────
 
-  async function _loadStockTicker() {
+  async function _loadStockTicker(retried = false) {
     const track = document.getElementById('ntp-ticker-track');
     if (!track) return;
 
     try {
       const result = await window.navio.ntpFetchStocks();
       if (!result || result.error || !Array.isArray(result) || result.length === 0) {
+        // If main process busted the crumb cache, retry once after a short delay
+        if (!retried && result?.error) {
+          setTimeout(() => _loadStockTicker(true), 3000);
+          return;
+        }
         track.innerHTML = '<span class="ntp-ticker-loading">Market data unavailable</span>';
         return;
       }
