@@ -281,31 +281,41 @@ DOCUMENTS & PRODUCTIVITY:
 - Create Google Sheet: https://docs.google.com/spreadsheets/create
 - Create Google Slides: https://docs.google.com/presentation/create
 
-GOOGLE DOCS — HOW TO TYPE CONTENT (IMPORTANT):
-Google Docs uses a canvas editor. You CANNOT use type: to find a text area.
-Correct approach:
-1. navigate:https://docs.google.com/document/create
-2. Wait for page load, then click the document body to focus the editor:
-   click:aria=Document content
-3. Use insertText: to insert all content at once. insertText pastes directly into the focused editor:
-   insertText:Full document text here with \n for newlines
+GOOGLE DOCS — HOW TO TYPE CONTENT (CRITICAL — READ CAREFULLY):
+Google Docs uses a canvas editor. Standard type: or click-to-focus approaches do NOT work.
+The ONLY reliable way is: insertText: which writes to clipboard and pastes via Ctrl+V.
 
-GOOGLE SHEETS — HOW TO FILL CELLS (IMPORTANT):
-Google Sheets cells are not standard inputs. Correct approach:
+Exact sequence for Google Docs:
+1. navigate:https://docs.google.com/document/create
+2. After the page loads, click anywhere in the white document body to give the editor focus.
+   The best selector for this is: click:.kix-appview-editor
+   If that fails try: click:aria=Document content
+3. Then immediately call insertText: with ALL the content you want in the doc.
+   insertText puts the full text on the clipboard and pastes it — do NOT call it multiple times.
+   Example: insertText:Vancouver Trip Plan\n\nFlight: Air Canada CA$356\nHotel: Best Western CA$143/night\n\nDay 1: ...
+
+GOOGLE SHEETS — HOW TO FILL CELLS (CRITICAL — READ CAREFULLY):
+Google Sheets cells are also canvas-based. insertText: uses clipboard paste, which fills one cell at a time.
+
+Exact sequence for Google Sheets:
 1. navigate:https://docs.google.com/spreadsheets/create
-2. Wait for page load. Click cell A1:
-   click:aria=A1
-3. Use insertText: to type cell value, then press Tab to move right or Enter to move down:
-   insertText:Header 1
+2. Click cell A1 to give it focus: click:aria=A1
+3. Use insertText: then pressKey:Tab to move right, pressKey:Enter to move down:
+   insertText:Category
    pressKey:Tab
-   insertText:Header 2
+   insertText:Detail
    pressKey:Tab
-   insertText:Header 3
+   insertText:Cost
    pressKey:Enter
-   insertText:Row 1 value
+   insertText:Flight
    pressKey:Tab
-   ... continue for all cells
-NEVER use type:text=Rich Text Area or type:text=Document — these will always fail in Google Docs/Sheets.
+   insertText:Air Canada YYZ→YVR non-stop
+   pressKey:Tab
+   insertText:CA$356
+   pressKey:Enter
+   ... continue for every row
+
+NEVER use type:text=Rich Text Area, type:text=Document, or type:text=Body — these always fail in Google editors.
 
 JOBS & PROFESSIONAL:
 - Job search: https://www.linkedin.com/jobs/search/?keywords=QUERY
@@ -1183,9 +1193,11 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
           const currentUrl = wc.getURL?.() || '';
           const isGoogleEditor = /docs\.google\.com|sheets\.google\.com|slides\.google\.com/.test(currentUrl);
           if (isGoogleEditor) {
-            wc.focus();
-            await new Promise(r => setTimeout(r, 150));
-            await wc.insertText(params.text || '');
+            clipboard.writeText(params.text || '');
+            await new Promise(r => setTimeout(r, 200));
+            wc.sendInputEvent({ type: 'keyDown', keyCode: 'V', modifiers: ['control'] });
+            await new Promise(r => setTimeout(r, 50));
+            wc.sendInputEvent({ type: 'keyUp',   keyCode: 'V', modifiers: ['control'] });
             return { success: true };
           }
           return { error: tRes.error };
@@ -1207,16 +1219,20 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
         wc.goForward();
         return { success: true };
 
-      // insertText — types directly into whatever is focused using Electron's
-      // native insertText, bypassing the DOM element search entirely.
-      // Required for Google Docs (canvas editor) and other apps that intercept
-      // keyboard events rather than exposing standard input/textarea elements.
+      // insertText — writes text to system clipboard and pastes via Ctrl+V.
+      // This is the ONLY reliable way to inject text into Google Docs/Sheets
+      // because their canvas editor requires a real paste event, not a DOM
+      // value setter or insertText() call.
       case 'insertText': {
         const textToInsert = params?.text || '';
-        // Focus the webContents before inserting so keystrokes land in the editor
-        wc.focus();
-        await new Promise(r => setTimeout(r, 120));
-        await wc.insertText(textToInsert);
+        // 1. Write to system clipboard (works regardless of focus state)
+        clipboard.writeText(textToInsert);
+        // 2. Give the page a moment to process any pending focus state
+        await new Promise(r => setTimeout(r, 200));
+        // 3. Send Ctrl+V — Google Docs/Sheets intercepts this and pastes
+        wc.sendInputEvent({ type: 'keyDown', keyCode: 'V', modifiers: ['control'] });
+        await new Promise(r => setTimeout(r, 50));
+        wc.sendInputEvent({ type: 'keyUp',   keyCode: 'V', modifiers: ['control'] });
         return { success: true };
       }
 
