@@ -181,8 +181,9 @@ class TabManagerClass {
     });
 
     wv.addEventListener('did-navigate', (e) => {
-      // Don't overwrite state for internal error pages loaded as data: URLs
-      if (!e.url.startsWith('data:')) {
+      // Skip about:blank (initial webview state) and data: error pages so the
+      // NTP tab's url stays '' (falsy) and showNewTabPage() keeps working.
+      if (e.url && e.url !== 'about:blank' && !e.url.startsWith('data:')) {
         tab.url = e.url;
       }
       if (tab.id === this.activeTabId) {
