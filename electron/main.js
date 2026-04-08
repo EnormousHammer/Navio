@@ -281,6 +281,32 @@ DOCUMENTS & PRODUCTIVITY:
 - Create Google Sheet: https://docs.google.com/spreadsheets/create
 - Create Google Slides: https://docs.google.com/presentation/create
 
+GOOGLE DOCS — HOW TO TYPE CONTENT (IMPORTANT):
+Google Docs uses a canvas editor. You CANNOT use type: to find a text area.
+Correct approach:
+1. navigate:https://docs.google.com/document/create
+2. Wait for page load, then click the document body to focus the editor:
+   click:aria=Document content
+3. Use insertText: to insert all content at once. insertText pastes directly into the focused editor:
+   insertText:Full document text here with \n for newlines
+
+GOOGLE SHEETS — HOW TO FILL CELLS (IMPORTANT):
+Google Sheets cells are not standard inputs. Correct approach:
+1. navigate:https://docs.google.com/spreadsheets/create
+2. Wait for page load. Click cell A1:
+   click:aria=A1
+3. Use insertText: to type cell value, then press Tab to move right or Enter to move down:
+   insertText:Header 1
+   pressKey:Tab
+   insertText:Header 2
+   pressKey:Tab
+   insertText:Header 3
+   pressKey:Enter
+   insertText:Row 1 value
+   pressKey:Tab
+   ... continue for all cells
+NEVER use type:text=Rich Text Area or type:text=Document — these will always fail in Google Docs/Sheets.
+
 JOBS & PROFESSIONAL:
 - Job search: https://www.linkedin.com/jobs/search/?keywords=QUERY
 - Or: https://www.indeed.com/jobs?q=QUERY
@@ -404,7 +430,7 @@ function convertNavioActionsBlock(text) {
       if (colon < 0) return '';
       const type = line.slice(0, colon).trim().toLowerCase();
       const params = line.slice(colon + 1).trim();
-      const valid = ['navigate', 'click', 'type', 'scroll', 'goback', 'goforward'];
+      const valid = ['navigate', 'click', 'type', 'insertText', 'scroll', 'goback', 'goforward', 'pressKey'];
       const normType = type === 'goback' ? 'goBack' : type === 'goforward' ? 'goForward' : type;
       if (!valid.includes(type)) return '';
       return `[[ACTION:${normType}:${params}]]`;
@@ -1151,7 +1177,19 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
             attempt();
           })
         `);
-        if (!tRes.ok) return { error: tRes.error };
+        if (!tRes.ok) {
+          // Fallback: Google Docs/Sheets use a canvas editor — no DOM input to find.
+          // Use Electron's native insertText() which works on any focused surface.
+          const currentUrl = wc.getURL?.() || '';
+          const isGoogleEditor = /docs\.google\.com|sheets\.google\.com|slides\.google\.com/.test(currentUrl);
+          if (isGoogleEditor) {
+            wc.focus();
+            await new Promise(r => setTimeout(r, 150));
+            await wc.insertText(params.text || '');
+            return { success: true };
+          }
+          return { error: tRes.error };
+        }
         return { success: true };
       }
 
@@ -1169,19 +1207,42 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
         wc.goForward();
         return { success: true };
 
+      // insertText — types directly into whatever is focused using Electron's
+      // native insertText, bypassing the DOM element search entirely.
+      // Required for Google Docs (canvas editor) and other apps that intercept
+      // keyboard events rather than exposing standard input/textarea elements.
+      case 'insertText': {
+        const textToInsert = params?.text || '';
+        // Focus the webContents before inserting so keystrokes land in the editor
+        wc.focus();
+        await new Promise(r => setTimeout(r, 120));
+        await wc.insertText(textToInsert);
+        return { success: true };
+      }
+
       case 'pressKey': {
         // Dispatch a keyboard event on the focused element or document.
-        // Used to save Gmail/Outlook drafts (Escape triggers auto-save).
+        // Used for navigation within Google Sheets (Tab/Enter) and saving drafts.
         const key = params?.key || 'Escape';
-        const code = params?.code || key;
+        const KEY_MAP = {
+          'Tab':    { code: 'Tab',    keyCode: 9  },
+          'Enter':  { code: 'Enter',  keyCode: 13 },
+          'Escape': { code: 'Escape', keyCode: 27 },
+          'ArrowDown':  { code: 'ArrowDown',  keyCode: 40 },
+          'ArrowUp':    { code: 'ArrowUp',    keyCode: 38 },
+          'ArrowLeft':  { code: 'ArrowLeft',  keyCode: 37 },
+          'ArrowRight': { code: 'ArrowRight', keyCode: 39 },
+        };
+        const km = KEY_MAP[key] || { code: key, keyCode: 0 };
         await wc.executeJavaScript(`
           (function() {
             const target = document.activeElement || document.body;
             ['keydown', 'keypress', 'keyup'].forEach(type => {
               target.dispatchEvent(new KeyboardEvent(type, {
                 key: ${JSON.stringify(key)},
-                code: ${JSON.stringify(code)},
-                keyCode: ${JSON.stringify(key === 'Escape' ? 27 : 0)},
+                code: ${JSON.stringify(km.code)},
+                keyCode: ${km.keyCode},
+                which: ${km.keyCode},
                 bubbles: true,
                 cancelable: true
               }));
