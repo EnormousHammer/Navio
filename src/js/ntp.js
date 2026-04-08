@@ -29,16 +29,23 @@ const NTP = (() => {
 
     const observer = new MutationObserver(() => {
       const isActive = document.getElementById('new-tab-page')?.classList.contains('active');
+      const ticker = document.getElementById('ntp-stock-ticker');
       if (isActive && !_ntpVisible) {
         _ntpVisible = true;
+        if (ticker) ticker.classList.add('visible');
         _onShow();
       } else if (!isActive) {
         _ntpVisible = false;
+        if (ticker) ticker.classList.remove('visible');
       }
     });
     const ntp = document.getElementById('new-tab-page');
     if (ntp) observer.observe(ntp, { attributes: true, attributeFilter: ['class'] });
-    if (ntp?.classList.contains('active')) { _ntpVisible = true; _onShow(); }
+    if (ntp?.classList.contains('active')) {
+      _ntpVisible = true;
+      document.getElementById('ntp-stock-ticker')?.classList.add('visible');
+      _onShow();
+    }
   }
 
   function _onShow() {

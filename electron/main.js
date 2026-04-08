@@ -1273,6 +1273,19 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
       // value setter or insertText() call.
       case 'insertText': {
         const textToInsert = params?.text || '';
+        // On Google Docs the model often clicks a document-tab sidebar item (e.g.
+        // "Tab 1") instead of the editor canvas, so the canvas loses focus before
+        // we paste.  Always click .kix-appview-editor first to guarantee focus.
+        const insertUrl = wc.getURL?.() || '';
+        if (/docs\.google\.com\/document/.test(insertUrl)) {
+          await wc.executeJavaScript(`
+            (function() {
+              const editor = document.querySelector('.kix-appview-editor');
+              if (editor) { editor.click(); }
+            })()
+          `).catch(() => {});
+          await new Promise(r => setTimeout(r, 200));
+        }
         // 1. Write to system clipboard (works regardless of focus state)
         clipboard.writeText(textToInsert);
         // 2. Give the page a moment to process any pending focus state
