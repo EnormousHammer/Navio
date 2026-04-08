@@ -265,6 +265,14 @@ class TabManagerClass {
           if (typeof PasswordManager !== 'undefined') {
             PasswordManager.checkAutofill(data.url, wv);
           }
+        } else if (e.channel === 'navio-text-selected' && data) {
+          // Text selected — show inline AI toolbar
+          if (typeof InlineAI !== 'undefined') {
+            const wvRect = wv.getBoundingClientRect();
+            InlineAI.show(data.text, wvRect.left + data.x, wvRect.top + data.y, wv);
+          }
+        } else if (e.channel === 'navio-selection-cleared') {
+          if (typeof InlineAI !== 'undefined') InlineAI.hide();
         }
       } catch {}
     });

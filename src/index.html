@@ -368,6 +368,25 @@
     </div>
 
     <!-- AI Assistant Panel -->
+    <!-- Inline AI Toolbar (appears above selected text) -->
+    <div id="inline-ai-toolbar" class="inline-ai-toolbar" hidden>
+      <button class="iai-btn" data-action="explain">Explain</button>
+      <button class="iai-btn" data-action="summarize">Summarize</button>
+      <button class="iai-btn" data-action="rewrite">Rewrite</button>
+      <button class="iai-btn" data-action="translate">Translate</button>
+      <div class="iai-sep"></div>
+      <button class="iai-btn iai-copy-btn" data-action="copy">Copy</button>
+    </div>
+
+    <!-- Inline AI Result Card -->
+    <div id="inline-ai-card" class="inline-ai-card" hidden>
+      <div class="iai-card-header">
+        <span class="iai-card-label" id="iai-card-label">Result</span>
+        <button class="iai-card-close" id="iai-card-close" title="Close">×</button>
+      </div>
+      <div class="iai-card-body" id="iai-card-body"></div>
+    </div>
+
     <!-- Reading List Panel -->
     <aside id="reading-list-panel" class="reading-list-panel">
       <div class="rl-header">

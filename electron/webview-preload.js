@@ -73,6 +73,29 @@ try {
     window.addEventListener('DOMContentLoaded', checkForLoginForm);
   }
 
+  // ── Text selection → inline AI toolbar ───────────────────────────────────
+  document.addEventListener('mouseup', function() {
+    try {
+      const sel = window.getSelection();
+      const text = sel?.toString().trim();
+      if (!text || text.length < 3) {
+        ipcRenderer.sendToHost('navio-selection-cleared', {});
+        return;
+      }
+      const range = sel.getRangeAt(0);
+      const rect  = range.getBoundingClientRect();
+      ipcRenderer.sendToHost('navio-text-selected', {
+        text: text.slice(0, 3000), // cap to avoid huge payloads
+        x: rect.left + rect.width / 2,
+        y: rect.top,
+      });
+    } catch {}
+  });
+
+  document.addEventListener('scroll', function() {
+    try { ipcRenderer.sendToHost('navio-selection-cleared', {}); } catch {}
+  }, { passive: true });
+
   // ── Handle autofill command sent from the renderer ─────────────────────────
   ipcRenderer.on('navio-autofill', (_, { username, password }) => {
     try {

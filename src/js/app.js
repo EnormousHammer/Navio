@@ -686,3 +686,157 @@ const PasswordManager = (() => {
 
   return { showSavePrompt, checkAutofill };
 })();
+
+// ── Inline AI ─────────────────────────────────────────────────────────────
+// Highlights any selected text and floats a toolbar above it with quick AI
+// actions (Explain, Summarize, Rewrite, Translate). Results stream into a
+// small card anchored beneath the toolbar.
+
+const InlineAI = (() => {
+  const _toolbar = () => document.getElementById('inline-ai-toolbar');
+  const _card    = () => document.getElementById('inline-ai-card');
+  const _body    = () => document.getElementById('iai-card-body');
+  const _label   = () => document.getElementById('iai-card-label');
+
+  let _text   = '';
+  let _unsubs = []; // stream unsubscribe callbacks
+
+  const LABELS = {
+    explain:   'Explanation',
+    summarize: 'Summary',
+    rewrite:   'Rewrite',
+    translate: 'Translation',
+  };
+
+  const PROMPTS = {
+    explain:   t => `Explain this text clearly and concisely in 2-4 sentences:\n\n"${t}"`,
+    summarize: t => `Summarize this in 1-3 sentences:\n\n"${t}"`,
+    rewrite:   t => `Rewrite this to be clearer and more professional:\n\n"${t}"`,
+    translate: t => `Translate this to English (if it is already English, improve the phrasing):\n\n"${t}"`,
+  };
+
+  function _cancelStream() {
+    _unsubs.forEach(u => { try { u(); } catch {} });
+    _unsubs = [];
+  }
+
+  function show(text, x, y) {
+    _text = text;
+    _cancelStream();
+
+    const tb = _toolbar();
+    if (!tb) return;
+
+    // Position toolbar above the selection mid-point, clamped to viewport
+    const tbW = tb.offsetWidth  || 320;
+    const tbH = tb.offsetHeight || 38;
+    const top  = Math.max(8, y - tbH - 10);
+    const left = Math.max(8, Math.min(x - tbW / 2, window.innerWidth - tbW - 8));
+
+    tb.style.top    = top  + 'px';
+    tb.style.left   = left + 'px';
+    tb.style.bottom = '';
+    tb.hidden = false;
+
+    // Hide the result card when a new selection appears
+    const c = _card();
+    if (c) c.hidden = true;
+  }
+
+  function hide() {
+    _cancelStream();
+    const tb = _toolbar();
+    const c  = _card();
+    if (tb) tb.hidden = true;
+    if (c)  c.hidden  = true;
+    _text = '';
+  }
+
+  async function _runAction(action) {
+    if (!_text) return;
+    _cancelStream();
+
+    const card  = _card();
+    const body  = _body();
+    const label = _label();
+    const tb    = _toolbar();
+    if (!card || !body || !label) return;
+
+    label.textContent = LABELS[action] || 'Result';
+    body.textContent  = ''; // empty → spinner shows via CSS :empty
+
+    // Anchor card just below the toolbar
+    if (tb) {
+      const tbRect = tb.getBoundingClientRect();
+      const cardW  = 360;
+      const top    = tbRect.bottom + 8;
+      const left   = Math.max(8, Math.min(tbRect.left, window.innerWidth - cardW - 8));
+      // Flip above toolbar if card would go off the bottom of the screen
+      const maxTop = window.innerHeight - 200;
+      if (top > maxTop) {
+        card.style.top    = '';
+        card.style.bottom = (window.innerHeight - tbRect.top + 8) + 'px';
+      } else {
+        card.style.top    = top + 'px';
+        card.style.bottom = '';
+      }
+      card.style.left = left + 'px';
+    }
+    card.hidden = false;
+
+    try {
+      const prompt = PROMPTS[action]?.(_text);
+      if (!prompt) return;
+
+      // Use streaming so the result appears word-by-word
+      let result = '';
+      await window.navio.aiRequestStream({
+        messages: [
+          { role: 'system', content: 'You are a helpful writing assistant. Be concise. Reply in plain text only — no markdown, no bullet points.' },
+          { role: 'user',   content: prompt },
+        ],
+      });
+
+      _unsubs.push(window.navio.onAiStreamChunk(chunk => {
+        result += chunk;
+        if (body) body.textContent = result;
+      }));
+      _unsubs.push(window.navio.onAiStreamDone(() => { _cancelStream(); }));
+      _unsubs.push(window.navio.onAiStreamError(err => {
+        if (body) body.textContent = 'Error: ' + err;
+        _cancelStream();
+      }));
+    } catch (err) {
+      if (body) body.textContent = 'Error: ' + err.message;
+    }
+  }
+
+  // ── Wire toolbar buttons ──────────────────────────────────────────────────
+  document.getElementById('inline-ai-toolbar')?.addEventListener('mousedown', e => {
+    // Prevent the mousedown from bubbling to the outside-click handler
+    e.stopPropagation();
+    const btn = e.target.closest('.iai-btn');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    if (action === 'copy') {
+      navigator.clipboard.writeText(_text).catch(() => {});
+      hide();
+    } else if (action) {
+      _runAction(action);
+    }
+  });
+
+  document.getElementById('iai-card-close')?.addEventListener('mousedown', e => {
+    e.stopPropagation();
+    hide();
+  });
+
+  document.getElementById('inline-ai-card')?.addEventListener('mousedown', e => {
+    e.stopPropagation(); // keep card open while user interacts with it
+  });
+
+  // Hide toolbar+card when clicking anywhere else in the main window
+  document.addEventListener('mousedown', () => hide());
+
+  return { show, hide };
+})();

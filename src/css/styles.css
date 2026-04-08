@@ -8652,3 +8652,122 @@ body.onboarding-active #app {
   color: #ff7070;
   background: rgba(255,80,80,0.1);
 }
+
+/* ── Inline AI Toolbar ───────────────────────────────────────────────────── */
+.inline-ai-toolbar {
+  position: fixed;
+  z-index: 3100;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-elevated, #1a1f2e);
+  border: 1px solid rgba(0,216,255,0.22);
+  border-radius: 22px;
+  padding: 4px 6px;
+  box-shadow: 0 6px 28px rgba(0,0,5,0.65), 0 0 0 1px rgba(0,216,255,0.06);
+  animation: iaiToolbarIn 0.14s cubic-bezier(0.2,0,0.2,1);
+  pointer-events: auto;
+  user-select: none;
+}
+@keyframes iaiToolbarIn {
+  from { opacity: 0; transform: translateY(4px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+.iai-btn {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.78);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  padding: 5px 11px;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+  line-height: 1;
+}
+.iai-btn:hover {
+  background: rgba(0,216,255,0.13);
+  color: #00d8ff;
+}
+.iai-sep {
+  width: 1px;
+  height: 16px;
+  background: rgba(255,255,255,0.1);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+.iai-copy-btn {
+  color: rgba(255,255,255,0.45);
+}
+.iai-copy-btn:hover {
+  color: rgba(255,255,255,0.85);
+  background: rgba(255,255,255,0.07);
+}
+
+/* ── Inline AI Result Card ───────────────────────────────────────────────── */
+.inline-ai-card {
+  position: fixed;
+  z-index: 3099;
+  width: 360px;
+  max-height: 340px;
+  background: var(--bg-elevated, #1a1f2e);
+  border: 1px solid rgba(0,216,255,0.18);
+  border-radius: 14px;
+  box-shadow: 0 10px 48px rgba(0,0,5,0.7), 0 0 0 1px rgba(0,216,255,0.05);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: iaiToolbarIn 0.15s cubic-bezier(0.2,0,0.2,1);
+}
+.iai-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+.iai-card-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #00d8ff;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.iai-card-close {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.35);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  border-radius: 4px;
+  transition: color 0.12s;
+}
+.iai-card-close:hover { color: rgba(255,255,255,0.9); }
+.iai-card-body {
+  padding: 12px 14px 14px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: rgba(255,255,255,0.88);
+  overflow-y: auto;
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* Loading spinner shown while body is empty */
+.iai-card-body:empty::after {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(0,216,255,0.25);
+  border-top-color: #00d8ff;
+  border-radius: 50%;
+  animation: iaiSpin 0.7s linear infinite;
+  vertical-align: middle;
+}
+@keyframes iaiSpin { to { transform: rotate(360deg); } }
