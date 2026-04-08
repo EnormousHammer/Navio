@@ -488,8 +488,20 @@ class SettingsManagerClass {
 
     let html = '';
     for (const p of providers) {
-      const cfgKey = p.configKey;
-      const currentVal = this.config[cfgKey] || '';
+      const cfgKey    = p.configKey;
+      const secretKey = p.secretKey || null;
+      const currentId  = this.config[cfgKey] || '';
+      const currentSec = secretKey ? (this.config[secretKey] || '') : '';
+      const secretField = secretKey ? `
+          <input
+            type="password"
+            class="oauth-client-secret-input"
+            data-key="${secretKey}"
+            placeholder="${p.name} Client Secret"
+            value="${currentSec}"
+            spellcheck="false"
+            autocomplete="off"
+          >` : '';
       html += `
         <div class="oauth-provider-row" id="oauth-row-${p.id}">
           <div class="oauth-provider-label">
@@ -497,21 +509,23 @@ class SettingsManagerClass {
             <span class="oauth-provider-services">${p.serviceIds.join(', ')}</span>
           </div>
           <div class="oauth-provider-input-row">
-            <input
-              type="text"
-              class="oauth-client-id-input"
-              data-key="${cfgKey}"
-              placeholder="${p.name} Client ID"
-              value="${currentVal}"
-              spellcheck="false"
-              autocomplete="off"
-            >
-            <button class="oauth-client-id-save-btn" data-key="${cfgKey}" data-provider="${p.id}">Save</button>
+            <div class="oauth-credentials-fields">
+              <input
+                type="text"
+                class="oauth-client-id-input"
+                data-key="${cfgKey}"
+                placeholder="${p.name} Client ID"
+                value="${currentId}"
+                spellcheck="false"
+                autocomplete="off"
+              >${secretField}
+            </div>
+            <button class="oauth-client-id-save-btn" data-key="${cfgKey}" data-secret-key="${secretKey || ''}" data-provider="${p.id}">Save</button>
           </div>
           <div class="oauth-provider-hint">
             <a class="oauth-console-link" href="${p.consoleUrl}" target="_blank" data-href="${p.consoleUrl}">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-              Get ${p.name} Client ID
+              Get ${p.name} Client ID &amp; Secret
             </a>
             <span class="oauth-console-hint">${p.consoleHint}</span>
           </div>
@@ -523,19 +537,26 @@ class SettingsManagerClass {
     // Bind save buttons
     container.querySelectorAll('.oauth-client-id-save-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        const key      = btn.dataset.key;
-        const provider = btn.dataset.provider;
-        const input    = container.querySelector(`input[data-key="${key}"]`);
-        const val      = (input?.value || '').trim();
-        btn.disabled   = true;
+        const key       = btn.dataset.key;
+        const secretKey = btn.dataset.secretKey || '';
+        const provider  = btn.dataset.provider;
+        const input     = container.querySelector(`input[data-key="${key}"]`);
+        const secretInput = secretKey ? container.querySelector(`input[data-key="${secretKey}"]`) : null;
+        const val       = (input?.value || '').trim();
+        const secretVal = secretInput ? (secretInput.value || '').trim() : '';
+        btn.disabled    = true;
         btn.textContent = 'Saving…';
         try {
-          await window.navio.saveConfig({ [key]: val });
+          const savePayload = { [key]: val };
+          if (secretKey) savePayload[secretKey] = secretVal;
+          await window.navio.saveConfig(savePayload);
           this.config[key] = val;
+          if (secretKey) this.config[secretKey] = secretVal;
 
-          if (val) {
-            // Client ID saved — immediately open the OAuth sign-in popup so the
-            // user doesn't have to find the "Sign in" button in the Connectors Hub.
+          // Only open sign-in if both Client ID and Client Secret (if required) are present
+          const readyToSignIn = val && (!secretKey || secretVal);
+          if (readyToSignIn) {
+            // Client ID (+ Secret) saved — immediately open the OAuth sign-in popup.
             btn.textContent = 'Signing in…';
             const result = await window.navio.oauthConnect(provider);
             if (result && result.error) {

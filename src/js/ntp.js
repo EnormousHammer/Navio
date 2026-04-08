@@ -681,9 +681,11 @@ const NTP = (() => {
         // a direct "Sign in with Google" button instead of sending the user
         // to the Connectors Hub to hunt for the right button themselves.
         let hasGoogleClientId = false;
+        let hasGoogleSecret   = false;
         try {
           const cfg = await window.navio.getConfig();
           hasGoogleClientId = !!(cfg.oauthGoogleClientId || '').trim();
+          hasGoogleSecret   = !!(cfg.oauthGoogleClientSecret || '').trim();
         } catch {}
 
         // Check if Google OAuth is already connected (tokens exist)
@@ -694,12 +696,16 @@ const NTP = (() => {
         } catch {}
 
         if (hasGoogleClientId && !googleAlreadyConnected) {
-          // Client ID is configured but user hasn't signed in yet — go straight to OAuth
+          // Client ID is configured but not yet signed in
+          const missingSecret = !hasGoogleSecret;
+          const statusMsg = missingSecret
+            ? 'Client ID saved. Also add your <strong>Client Secret</strong> in Settings → Integrations, then sign in.'
+            : 'Your Google credentials are ready. Sign in to connect Gmail.';
           emailList.innerHTML = `
             <div class="ntp-email-empty">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-              <p>Your Google Client ID is ready. Sign in to connect Gmail.</p>
-              <button class="ntp-connect-email-btn" id="ntp-connect-email">Sign in with Google</button>
+              <p>${statusMsg}</p>
+              <button class="ntp-connect-email-btn" id="ntp-connect-email" ${missingSecret ? 'disabled style="opacity:0.5"' : ''}>Sign in with Google</button>
             </div>`;
           document.getElementById('ntp-connect-email')?.addEventListener('click', async (e) => {
             const btn = e.currentTarget;
@@ -711,8 +717,13 @@ const NTP = (() => {
                 btn.textContent = '✓ Connected!';
                 setTimeout(() => _loadInbox(), 1000);
               } else {
-                btn.textContent = result?.error || 'Sign-in failed';
-                setTimeout(() => { btn.textContent = 'Sign in with Google'; btn.disabled = false; }, 3000);
+                // Show friendly error, not the raw Google API message
+                const errMsg = (result?.error || '').toLowerCase().includes('client_secret')
+                  ? 'Add Client Secret in Settings → Integrations'
+                  : (result?.error || 'Sign-in failed');
+                btn.textContent = errMsg;
+                btn.disabled = false;
+                setTimeout(() => { btn.textContent = 'Sign in with Google'; }, 4000);
               }
             } catch {
               btn.textContent = 'Sign-in failed';

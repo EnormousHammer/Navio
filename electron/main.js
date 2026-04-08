@@ -1972,6 +1972,7 @@ const OAUTH_PROVIDERS = {
     ],
     serviceIds: ['gmail', 'gdrive', 'gcalendar'],
     configKey: 'oauthGoogleClientId',
+    secretKey: 'oauthGoogleClientSecret',
     consoleUrl: 'https://console.cloud.google.com/apis/credentials',
     consoleHint: 'Create an OAuth 2.0 Client ID (Desktop app type). Add redirect URI: http://127.0.0.1:56789/oauth/callback'
   },
@@ -1987,6 +1988,7 @@ const OAUTH_PROVIDERS = {
     scopes: ['offline_access', 'openid', 'profile', 'email', 'Mail.Read', 'Files.Read', 'Calendars.Read'],
     serviceIds: ['outlook', 'onedrive'],
     configKey: 'oauthMicrosoftClientId',
+    secretKey: 'oauthMicrosoftClientSecret',
     consoleUrl: 'https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/CreateApplicationBlade',
     consoleHint: 'Register a new app, select "Personal Microsoft accounts only", add redirect URI http://127.0.0.1:56789/oauth/callback (type: Web)'
   },
@@ -2002,6 +2004,7 @@ const OAUTH_PROVIDERS = {
     scopes: ['files.metadata.read', 'files.content.read'],
     serviceIds: ['dropbox'],
     configKey: 'oauthDropboxAppKey',
+    secretKey: 'oauthDropboxAppSecret',
     consoleUrl: 'https://www.dropbox.com/developers/apps',
     consoleHint: 'Create an app, choose "Scoped access" + "Full Dropbox", add http://127.0.0.1:56789/oauth/callback as redirect URI'
   },
@@ -2017,6 +2020,7 @@ const OAUTH_PROVIDERS = {
     scopes: ['channels:read', 'search:read', 'users:read'],
     serviceIds: ['slack'],
     configKey: 'oauthSlackClientId',
+    secretKey: 'oauthSlackClientSecret',
     consoleUrl: 'https://api.slack.com/apps',
     consoleHint: 'Create an app, add OAuth redirect URL http://127.0.0.1:56789/oauth/callback, request scopes: channels:read, search:read'
   },
@@ -2032,6 +2036,7 @@ const OAUTH_PROVIDERS = {
     scopes: ['repo', 'read:user'],
     serviceIds: ['github'],
     configKey: 'oauthGithubClientId',
+    secretKey: 'oauthGithubClientSecret',
     consoleUrl: 'https://github.com/settings/applications/new',
     consoleHint: 'Register a new OAuth App. Homepage URL: http://localhost, Callback URL: http://127.0.0.1:56789/oauth/callback'
   },
@@ -2048,6 +2053,7 @@ const OAUTH_PROVIDERS = {
     scopes: [],
     serviceIds: ['notion'],
     configKey: 'oauthNotionClientId',
+    secretKey: 'oauthNotionClientSecret',
     consoleUrl: 'https://www.notion.so/my-integrations',
     consoleHint: 'Create an integration, set type to "Public", add redirect URI http://127.0.0.1:56789/oauth/callback'
   }
@@ -2206,6 +2212,7 @@ ipcMain.handle('oauth-connect', async (event, { providerId }) => {
 
   const cfg = loadConfig();
   const clientId = (cfg[provider.configKey] || '').trim();
+  const clientSecret = provider.secretKey ? (cfg[provider.secretKey] || '').trim() : '';
   if (!clientId) {
     return {
       error: `No client ID configured for ${provider.name}.`,
@@ -2288,6 +2295,8 @@ ipcMain.handle('oauth-connect', async (event, { providerId }) => {
           client_id: clientId,
           code_verifier: verifier
         });
+        // Include client_secret when configured (required by Google, GitHub, Slack, Dropbox, Microsoft)
+        if (clientSecret) tokenParams.set('client_secret', clientSecret);
 
         let tokenRes, tokenData;
         if (providerId === 'github') {
@@ -2298,11 +2307,12 @@ ipcMain.handle('oauth-connect', async (event, { providerId }) => {
           });
         } else if (providerId === 'notion') {
           // Notion uses Basic auth with client_id:client_secret (no PKCE)
+          const notionSecret = clientSecret || '';
           tokenRes = await fetch(provider.tokenUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              Authorization: `Basic ${Buffer.from(`${clientId}:`).toString('base64')}`
+              Authorization: `Basic ${Buffer.from(`${clientId}:${notionSecret}`).toString('base64')}`
             },
             body: JSON.stringify({ grant_type: 'authorization_code', code, redirect_uri: OAUTH_REDIRECT_URI })
           });
@@ -2422,7 +2432,9 @@ ipcMain.handle('oauth-providers-config', () => {
     buttonBorder: p.buttonBorder || null,
     serviceIds: p.serviceIds,
     configKey: p.configKey,
+    secretKey: p.secretKey || null,
     hasClientId: !!(cfg[p.configKey] || '').trim(),
+    hasClientSecret: p.secretKey ? !!(cfg[p.secretKey] || '').trim() : false,
     consoleUrl: p.consoleUrl,
     consoleHint: p.consoleHint
   }));

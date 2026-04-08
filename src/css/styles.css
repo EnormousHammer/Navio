@@ -6478,10 +6478,18 @@ body.onboarding-active #app {
 .oauth-provider-input-row {
   display: flex;
   gap: 8px;
+  align-items: flex-start;
   margin-bottom: 6px;
 }
-.oauth-client-id-input {
+.oauth-credentials-fields {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.oauth-client-id-input,
+.oauth-client-secret-input {
+  width: 100%;
   background: var(--bg-surface, #1a2540);
   border: 1px solid var(--glass-border, rgba(255,255,255,0.1));
   border-radius: 7px;
@@ -6489,8 +6497,10 @@ body.onboarding-active #app {
   font-size: 12px;
   color: var(--text-primary);
   font-family: 'Courier New', monospace;
+  box-sizing: border-box;
 }
-.oauth-client-id-input:focus {
+.oauth-client-id-input:focus,
+.oauth-client-secret-input:focus {
   outline: none;
   border-color: var(--text-accent, #00d8ff);
 }
