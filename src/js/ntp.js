@@ -17,6 +17,7 @@ const NTP = (() => {
   let _weatherData = null; // cached for AI brief
   let _newsHeadlines = []; // cached for AI brief
   let _stockData = [];     // cached for AI brief
+  let _tickerMode = 'markets'; // 'markets' | 'sports' | 'news'
 
   // ── Init ──────────────────────────────────────────────────────────────────
 
@@ -26,6 +27,7 @@ const NTP = (() => {
     _bindSearchInput();
     _bindShortcuts();
     _bindAIBrief();
+    _bindTickerTabs();
 
     const observer = new MutationObserver(() => {
       const isActive = document.getElementById('new-tab-page')?.classList.contains('active');
@@ -54,7 +56,7 @@ const NTP = (() => {
     _loadWorldNews();
     _loadServicesBar();
     _loadInbox();
-    _loadStockTicker();
+    _loadTickerForMode();
     _bindResultsPanel();
   }
 
@@ -224,16 +226,114 @@ const NTP = (() => {
     }
   }
 
+  // ── Bottom Ticker — Tab Switching ─────────────────────────────────────────
+
+  function _bindTickerTabs() {
+    const tabs = document.getElementById('ntp-ticker-tabs');
+    if (!tabs) return;
+    tabs.addEventListener('click', e => {
+      const btn = e.target.closest('.ntp-ticker-tab');
+      if (!btn) return;
+      const tab = btn.dataset.tab;
+      if (tab === _tickerMode) return;
+      _tickerMode = tab;
+      tabs.querySelectorAll('.ntp-ticker-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+      _loadTickerForMode();
+    });
+  }
+
+  function _loadTickerForMode() {
+    if (_tickerMode === 'markets') _loadStockTicker();
+    else if (_tickerMode === 'sports') _loadSportsTicker();
+    else if (_tickerMode === 'news') _loadNewsTicker();
+  }
+
+  // ── Sports Ticker (ESPN free API via main process) ─────────────────────────
+
+  async function _loadSportsTicker(retried = false) {
+    const track = document.getElementById('ntp-ticker-track');
+    if (!track) return;
+
+    try {
+      const result = await window.navio.ntpFetchSports();
+      if (!result || result.error || !Array.isArray(result) || result.length === 0) {
+        if (!retried && result?.error) { setTimeout(() => _loadSportsTicker(true), 3000); return; }
+        track.innerHTML = '<span class="ntp-ticker-loading">No games scheduled today</span>';
+        return;
+      }
+
+      const html = result.map(g => {
+        const hasScore = g.homeScore !== '' && g.awayScore !== '';
+        const matchup = hasScore
+          ? `${g.away} <span class="ts-score">${g.awayScore}</span> · ${g.home} <span class="ts-score">${g.homeScore}</span>`
+          : `${g.away} vs ${g.home}`;
+        return `
+          <div class="ntp-ticker-sport">
+            <span class="ts-league">${g.league}</span>
+            <span class="ts-matchup">${matchup}</span>
+            ${g.live ? '<span class="ts-live">● LIVE</span>' : `<span class="ts-status">${_esc(g.status)}</span>`}
+          </div>
+          <div class="ntp-ticker-sep">◆</div>
+        `;
+      }).join('');
+
+      _setTickerTrack(html);
+    } catch (e) {
+      track.innerHTML = '<span class="ntp-ticker-loading">Sports data unavailable</span>';
+    }
+  }
+
+  // ── News Ticker (reuses cached Reddit/HN headlines) ────────────────────────
+
+  function _loadNewsTicker() {
+    const track = document.getElementById('ntp-ticker-track');
+    if (!track) return;
+
+    const render = (headlines) => {
+      if (!headlines || headlines.length === 0) {
+        track.innerHTML = '<span class="ntp-ticker-loading">No headlines yet</span>';
+        return;
+      }
+      const html = headlines.slice(0, 20).map(h => `
+        <div class="ntp-ticker-news">
+          <span class="tn-source">NEWS</span>
+          <span class="tn-title">${_esc(h)}</span>
+        </div>
+        <div class="ntp-ticker-sep">◆</div>
+      `).join('');
+      _setTickerTrack(html);
+    };
+
+    if (_newsHeadlines.length > 0) {
+      render(_newsHeadlines);
+    } else {
+      track.innerHTML = '<span class="ntp-ticker-loading">Loading headlines…</span>';
+      // Wait briefly for _loadWorldNews to finish, then try again
+      setTimeout(() => render(_newsHeadlines), 3500);
+    }
+  }
+
+  // Helper: set ticker track content with seamless scroll duplication
+  function _setTickerTrack(html) {
+    const track = document.getElementById('ntp-ticker-track');
+    if (!track) return;
+    track.style.animation = 'none';
+    track.innerHTML = html + html; // duplicate for seamless loop
+    // Force reflow then re-enable animation
+    void track.offsetWidth;
+    track.style.animation = '';
+  }
+
   // ── Stock Market Ticker ────────────────────────────────────────────────────
 
   async function _loadStockTicker(retried = false) {
     const track = document.getElementById('ntp-ticker-track');
     if (!track) return;
+    if (_tickerMode !== 'markets') return; // don't overwrite another mode's content
 
     try {
       const result = await window.navio.ntpFetchStocks();
       if (!result || result.error || !Array.isArray(result) || result.length === 0) {
-        // If main process busted the crumb cache, retry once after a short delay
         if (!retried && result?.error) {
           setTimeout(() => _loadStockTicker(true), 3000);
           return;
@@ -241,6 +341,8 @@ const NTP = (() => {
         track.innerHTML = '<span class="ntp-ticker-loading">Market data unavailable</span>';
         return;
       }
+
+      if (_tickerMode !== 'markets') return; // mode may have changed while awaiting
 
       _stockData = result;
 
@@ -270,8 +372,7 @@ const NTP = (() => {
         `;
       }).join('');
 
-      // Duplicate content for seamless loop
-      track.innerHTML = html + html;
+      _setTickerTrack(html);
 
     } catch (e) {
       track.innerHTML = '<span class="ntp-ticker-loading">Market data unavailable</span>';

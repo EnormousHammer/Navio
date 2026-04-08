@@ -90,6 +90,7 @@ contextBridge.exposeInMainWorld('navio', {
   imapCreateDraft: (serviceId, opts) => ipcRenderer.invoke('imap-create-draft', { serviceId, ...opts }),
   imapGetEmailBody: (serviceId, uid) => ipcRenderer.invoke('imap-get-email-body', { serviceId, uid }),
   ntpFetchStocks: () => ipcRenderer.invoke('ntp-stocks'),
+  ntpFetchSports: () => ipcRenderer.invoke('ntp-sports'),
 
   setAdBlocker: (enabled) => ipcRenderer.invoke('set-ad-blocker', { enabled }),
   getAdBlockStats: () => ipcRenderer.invoke('get-ad-block-stats'),

@@ -3185,6 +3185,51 @@ ipcMain.handle('ntp-stocks', async () => {
   }
 });
 
+// ── NTP: Sports scores (ESPN unofficial API — free, no key required) ──────
+ipcMain.handle('ntp-sports', async () => {
+  const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+  const leagues = [
+    { id: 'NFL',  url: 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard' },
+    { id: 'NBA',  url: 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard' },
+    { id: 'MLB',  url: 'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard' },
+    { id: 'NHL',  url: 'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard' },
+    { id: 'MLS',  url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/scoreboard' },
+  ];
+  try {
+    const results = await Promise.allSettled(leagues.map(async ({ id, url }) => {
+      const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept': 'application/json' } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      const events = (data?.events || []).slice(0, 6);
+      return events.map(ev => {
+        const comp = ev.competitions?.[0];
+        const teams = comp?.competitors || [];
+        const home = teams.find(t => t.homeAway === 'home');
+        const away = teams.find(t => t.homeAway === 'away');
+        const stateType = comp?.status?.type?.state || 'pre';
+        const statusText = comp?.status?.type?.shortDetail || comp?.status?.type?.description || '';
+        return {
+          league: id,
+          home: home?.team?.abbreviation || '',
+          homeScore: home?.score ?? '',
+          away: away?.team?.abbreviation || '',
+          awayScore: away?.score ?? '',
+          status: statusText,
+          live: stateType === 'in',
+          final: stateType === 'post',
+        };
+      });
+    }));
+    const games = results
+      .filter(r => r.status === 'fulfilled')
+      .flatMap(r => r.value)
+      .filter(g => g.home && g.away);
+    return games.length > 0 ? games : { error: 'No games scheduled today' };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
 // Update connector-get-keys to also include IMAP-connected services
 // (already done above, but also update connector-query to use IMAP)
 

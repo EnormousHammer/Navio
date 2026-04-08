@@ -1611,20 +1611,39 @@ body.tabstrip-hidden .tab-strip-show {
   pointer-events: auto;
   transform: translateY(0);
 }
-.ntp-ticker-label {
+.ntp-ticker-tabs {
   flex-shrink: 0;
-  padding: 0 16px;
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  border-right: 1px solid rgba(0, 212, 255, 0.18);
+  background: rgba(0, 0, 0, 0.25);
+}
+.ntp-ticker-tab {
+  padding: 0 13px;
   font-size: 10px;
   font-weight: 900;
-  letter-spacing: 1.8px;
-  color: #00d8ff;
-  border-right: 1px solid rgba(0, 212, 255, 0.18);
+  letter-spacing: 1.6px;
+  color: rgba(255, 255, 255, 0.35);
+  background: transparent;
+  border: none;
+  border-right: 1px solid rgba(255,255,255,0.06);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.18s ease, background 0.18s ease;
   height: 100%;
   display: flex;
   align-items: center;
-  background: rgba(0, 0, 0, 0.25);
+}
+.ntp-ticker-tab:last-child { border-right: none; }
+.ntp-ticker-tab:hover {
+  color: rgba(0, 216, 255, 0.75);
+  background: rgba(0, 212, 255, 0.05);
+}
+.ntp-ticker-tab.active {
+  color: #00d8ff;
   text-shadow: 0 0 12px rgba(0, 212, 255, 0.7);
-  white-space: nowrap;
+  background: rgba(0, 212, 255, 0.07);
 }
 .ntp-ticker-viewport {
   flex: 1;
@@ -1705,6 +1724,72 @@ body.tabstrip-hidden .tab-strip-show {
   font-size: 13px;
   color: rgba(255,255,255,0.4);
   font-style: italic;
+}
+/* Sports ticker items */
+.ntp-ticker-sport {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  height: 100%;
+  white-space: nowrap;
+}
+.ts-league {
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 1.2px;
+  color: #00d8ff;
+  opacity: 0.8;
+}
+.ts-matchup {
+  color: rgba(255,255,255,0.9);
+  font-size: 13px;
+  font-weight: 600;
+}
+.ts-score {
+  color: #fff;
+  font-weight: 800;
+}
+.ts-status {
+  font-size: 11px;
+  color: rgba(255,255,255,0.45);
+}
+.ts-live {
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: #f87171;
+  text-shadow: 0 0 8px rgba(248,113,113,0.6);
+  animation: ts-pulse 1.4s ease-in-out infinite;
+}
+@keyframes ts-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+/* News ticker items */
+.ntp-ticker-news {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 20px;
+  font-size: 13px;
+  height: 100%;
+  white-space: nowrap;
+  max-width: 520px;
+}
+.tn-source {
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 1.2px;
+  color: #a78bfa;
+  flex-shrink: 0;
+}
+.tn-title {
+  color: rgba(255,255,255,0.82);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── NTP Shortcuts (updated for new layout) ───────────────────────────── */

@@ -306,12 +306,16 @@
       </div>
     </main>
 
-    <!-- Stock market ticker — fixed to bottom of viewport, shown only on NTP -->
+    <!-- Bottom ticker bar — fixed to viewport, shown only on NTP -->
     <div class="ntp-stock-ticker" id="ntp-stock-ticker">
-      <div class="ntp-ticker-label">MARKETS</div>
+      <div class="ntp-ticker-tabs" id="ntp-ticker-tabs">
+        <button class="ntp-ticker-tab active" data-tab="markets">MARKETS</button>
+        <button class="ntp-ticker-tab" data-tab="sports">SPORTS</button>
+        <button class="ntp-ticker-tab" data-tab="news">NEWS</button>
+      </div>
       <div class="ntp-ticker-viewport">
         <div class="ntp-ticker-track" id="ntp-ticker-track">
-          <span class="ntp-ticker-loading">Loading market data…</span>
+          <span class="ntp-ticker-loading">Loading…</span>
         </div>
       </div>
     </div>
