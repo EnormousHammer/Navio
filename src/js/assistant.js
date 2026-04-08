@@ -1274,7 +1274,7 @@ PERSONALITY:
   }
 
   async _smartFollowUp() {
-    const MAX_AUTO_STEPS = 10;
+    const MAX_AUTO_STEPS = 20;
     if (this.isProcessing || this._autoFollowCount >= MAX_AUTO_STEPS) {
       if (this._autoFollowCount >= MAX_AUTO_STEPS) {
         this._addContinuePill('Reached step limit. Tell me what to do next.');
@@ -1314,6 +1314,29 @@ PERSONALITY:
       ? `\n\n⚠️ GOOGLE EDITOR DETECTED — CRITICAL INSTRUCTION:\nYou are on a ${isGoogleDoc ? 'Google Doc' : 'Google Sheet'} page. The editor is ready.\nDO NOT output a <navio-plan> or a description. DO NOT say "I will paste" or "I'll now paste".\nYOU MUST output a <navio-actions> block RIGHT NOW with the insertText: action containing the FULL content.\nInclude every section, detail, price, and itinerary you found earlier in the conversation.\nThe content goes directly after "insertText:" on the same or following lines.\nIf you have already composed the content, output it. If not, generate it now from what you know.\nDo it. Don't plan it.`
       : '';
 
+    // Detect developer console / setup pages so AI fills forms confidently
+    const isDevConsolePage = /console\.cloud\.google\.com|portal\.azure\.com|github\.com\/settings\/applications|dropbox\.com\/developers|api\.slack\.com\/apps|notion\.so\/my-integrations|developers\.notion\.com|learn\.microsoft\.com.*entra|developers\.google\.com/.test(pageUrl);
+    const isOfficialDocsPage = /developers\.google\.com|learn\.microsoft\.com|docs\.github\.com|dropbox\.com\/developers\/documentation|api\.slack\.com\/start|developers\.notion\.com/.test(pageUrl);
+    const devConsoleDirective = isDevConsolePage
+      ? `\n\n⚠️ DEVELOPER CONSOLE PAGE DETECTED:\nYou are on a developer console or configuration page. Your job is to fill in the required fields and complete this step of the setup.\n- USE the page snapshot elements below to find exact field labels, button text, and aria-labels\n- FILL every visible required field using type:text=LABEL:VALUE — do not ask permission, just do it\n- For dropdowns: click the dropdown first, then click the option\n- For radio buttons/checkboxes: click:text=OPTION_LABEL\n- After filling all fields on this page, click the Save/Continue/Create/Next button\n- Report what you filled in and what button you clicked\n- If a required field label differs from what you expected, use the snapshot to find the real label`
+      : isOfficialDocsPage
+        ? `\n\n📄 OFFICIAL DOCUMENTATION PAGE DETECTED:\nYou are reading official documentation. Extract the current, correct steps from this page.\nLook for numbered steps, setup instructions, or configuration requirements.\nAfter reading, output the complete verified steps to the user, then begin executing them.`
+        : '';
+
+    const setupContinuationRule = (isDevConsolePage || isOfficialDocsPage)
+      ? `\n\nSETUP TASK — VERIFY THEN CONTINUE (MANDATORY):
+1. VERIFY: Look at the page content above. Did the previous action actually succeed?
+   - API enabling: Is the "Enable" button gone? Does the page show a management dashboard or "Disable" button? → ✓ done. Does the page still show "Enable"? → retry.
+   - API enabling follow-up: Does the page now show a "Create credentials" prompt? → that is REQUIRED next — do it before moving on.
+   - Form save: Does the page show a confirmation banner, advance to next step, or show "Saved"? → ✓ done. Still on the same form with no change? → check for errors, fix, resubmit.
+   - Credential creation: Is a Client ID or App Key string now visible on the page? → ✓ EXTRACT IT and tell the user immediately.
+   - OAuth consent screen step: Did the page advance to the next wizard section? → ✓ done.
+2. IF VERIFIED: Do NOT write a summary. Do NOT pause. IMMEDIATELY output the next <navio-actions> block for the next step.
+3. IF NOT VERIFIED: Report exactly what you see, what you expected, and retry or ask.
+4. NEVER stop between steps unless you hit a genuine blocker (error, CAPTCHA, unexpected page).
+5. The task is NOT complete until the credential is pasted into Navio Settings and the user can connect.`
+      : '';
+
     const followUpText = `[Action completed. Current page state follows.
 
 IMPORTANT AGENT RULES:
@@ -1322,7 +1345,7 @@ IMPORTANT AGENT RULES:
 - If the data looks incomplete or the page didn't fully load, navigate to the same URL again or try an alternate source.
 - If steps remain in the plan, continue executing them. If all steps are done, give a final summary with the best option found and why.
 - NEVER make up prices or results — only report what is actually in the page text above.
-${googleEditorDirective}
+${googleEditorDirective}${devConsoleDirective}${setupContinuationRule}
 
 ${pageInfo}${snapText}`;
     await this.processMessage(followUpText, true, null);
