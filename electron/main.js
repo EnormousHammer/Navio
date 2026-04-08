@@ -2678,21 +2678,35 @@ ipcMain.handle('imap-get-email-body', async (event, { serviceId, uid }) => {
 
 // ── NTP: Stock market data (fetched from main process — no CORS) ──────────
 ipcMain.handle('ntp-stocks', async () => {
-  const symbols = 'AAPL,GOOGL,MSFT,AMZN,TSLA,META,NVDA,BTC-USD,ETH-USD,%5EGSPC,%5EDJI,%5EIXIC';
-  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}&fields=symbol,shortName,regularMarketPrice,regularMarketChange,regularMarketChangePercent`;
+  // Yahoo Finance v7 batch is now gated. Use v8/chart per-symbol (query2 works).
+  const symbols = ['^GSPC', '^DJI', '^IXIC', 'AAPL', 'GOOGL', 'MSFT', 'NVDA', 'TSLA', 'BTC-USD', 'ETH-USD'];
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    'Accept': 'application/json'
+  };
   try {
-    const r = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
-    });
-    if (!r.ok) return { error: `HTTP ${r.status}` };
-    const data = await r.json();
-    return (data.quoteResponse?.result || []).map(q => ({
-      symbol: (q.symbol || '').replace('^', ''),
-      name: q.shortName || q.longName || q.symbol,
-      price: q.regularMarketPrice,
-      change: q.regularMarketChange,
-      pct: q.regularMarketChangePercent
+    const results = await Promise.allSettled(symbols.map(async sym => {
+      const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=2d`;
+      const r = await fetch(url, { headers });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      const meta = data?.chart?.result?.[0]?.meta;
+      if (!meta) throw new Error('No meta');
+      const price = meta.regularMarketPrice ?? meta.chartPreviousClose ?? null;
+      const prev  = meta.chartPreviousClose ?? meta.previousClose ?? price;
+      const change = (price != null && prev != null) ? (price - prev) : 0;
+      const pct    = prev ? (change / prev) * 100 : 0;
+      return {
+        symbol: sym.replace('^', ''),
+        name: meta.shortName || meta.longName || sym,
+        price,
+        change,
+        pct
+      };
     }));
+    return results
+      .filter(r => r.status === 'fulfilled' && r.value?.price != null)
+      .map(r => r.value);
   } catch (e) {
     return { error: e.message };
   }

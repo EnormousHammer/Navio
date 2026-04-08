@@ -1642,8 +1642,9 @@ body.tabstrip-hidden .tab-strip-show {
   gap: 0;
   height: 100%;
   white-space: nowrap;
-  animation: ntp-ticker-scroll 40s linear infinite;
+  animation: ntp-ticker-scroll 28s linear infinite;
   width: max-content;
+  will-change: transform;
 }
 .ntp-ticker-track:hover { animation-play-state: paused; }
 @keyframes ntp-ticker-scroll {
@@ -1896,12 +1897,49 @@ body.tabstrip-hidden .tab-strip-show {
 .user-message { align-self: flex-end; }
 .assistant-message { align-self: flex-start; }
 
+.message {
+  position: relative;
+}
+.message:hover .msg-copy-btn { opacity: 1; }
+
+.msg-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s, border-color 0.15s;
+  z-index: 2;
+  padding: 0;
+}
+.msg-copy-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+.msg-copy-btn.msg-copy-ok {
+  color: #48bb78;
+  border-color: #48bb78;
+  opacity: 1;
+}
+
 .message-content {
   padding: 11px 15px;
   border-radius: var(--radius-md);
   font-size: 13px;
   line-height: 1.65;
   word-wrap: break-word;
+  user-select: text !important;
+  -webkit-user-select: text !important;
 }
 
 .user-message .message-content {
