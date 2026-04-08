@@ -1415,20 +1415,40 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
         const res = await wc.executeJavaScript(`
           new Promise((resolve) => {
             const raw = ${cSel};
-            // Multi-strategy element finder (accessibility-first, CSS fallback)
+
+            // Multi-strategy element finder — accessibility-first, broad candidate net,
+            // CSS fallback. Searches shadow DOM roots one level deep as well.
             function findEl(sel) {
               if (!sel) return null;
+
               if (sel.startsWith('text=')) {
                 const q = sel.slice(5).trim().toLowerCase();
+                // Cast a wide net: standard buttons + role="button" + MDC/Angular divs/spans
                 const candidates = document.querySelectorAll(
-                  'a,button,input[type="submit"],input[type="button"],[role="button"],[role="link"],[role="menuitem"],[role="tab"]'
+                  'a,button,input[type="submit"],input[type="button"],' +
+                  '[role="button"],[role="link"],[role="menuitem"],[role="tab"],' +
+                  '[role="option"],[role="radio"],[role="checkbox"],' +
+                  'div[class*="button"],span[class*="button"],div[class*="btn"],span[class*="btn"],' +
+                  'li[class*="item"],div[class*="item"],div[class*="option"]'
                 );
                 for (const el of candidates) {
                   const lbl = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim().toLowerCase();
                   if (lbl.includes(q)) return el;
                 }
+                // Shadow DOM fallback — one level deep
+                for (const host of document.querySelectorAll('*')) {
+                  if (!host.shadowRoot) continue;
+                  const shadowCandidates = host.shadowRoot.querySelectorAll(
+                    'a,button,[role="button"],[role="menuitem"]'
+                  );
+                  for (const el of shadowCandidates) {
+                    const lbl = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim().toLowerCase();
+                    if (lbl.includes(q)) return el;
+                  }
+                }
                 return null;
               }
+
               if (sel.startsWith('aria=')) {
                 const q = sel.slice(5).trim().toLowerCase();
                 for (const el of document.querySelectorAll('[aria-label]')) {
@@ -1436,16 +1456,51 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
                 }
                 return null;
               }
+
               try { return document.querySelector(sel); } catch { return null; }
             }
+
+            // Fire the full pointer + mouse event sequence that Angular/React/Material
+            // components actually listen for. A bare el.click() is often swallowed by
+            // frameworks that require real pointer events to activate their handlers.
+            function fireFullClick(el) {
+              el.scrollIntoView({ block: 'center', behavior: 'instant' });
+              el.focus();
+
+              const rect = el.getBoundingClientRect();
+              const cx = Math.round(rect.left + rect.width  / 2);
+              const cy = Math.round(rect.top  + rect.height / 2);
+
+              const base = {
+                bubbles: true, cancelable: true, view: window,
+                clientX: cx, clientY: cy, screenX: cx, screenY: cy,
+                buttons: 1, button: 0
+              };
+              const ptr = { ...base, pointerId: 1, isPrimary: true, pointerType: 'mouse' };
+
+              el.dispatchEvent(new PointerEvent('pointerover',   { ...ptr }));
+              el.dispatchEvent(new PointerEvent('pointerenter',  { ...ptr, bubbles: false }));
+              el.dispatchEvent(new MouseEvent  ('mouseover',     base));
+              el.dispatchEvent(new MouseEvent  ('mouseenter',    { ...base, bubbles: false }));
+              el.dispatchEvent(new PointerEvent('pointermove',   { ...ptr }));
+              el.dispatchEvent(new MouseEvent  ('mousemove',     base));
+              el.dispatchEvent(new PointerEvent('pointerdown',   { ...ptr }));
+              el.dispatchEvent(new MouseEvent  ('mousedown',     base));
+              el.dispatchEvent(new PointerEvent('pointerup',     { ...ptr }));
+              el.dispatchEvent(new MouseEvent  ('mouseup',       base));
+              el.dispatchEvent(new MouseEvent  ('click',         base));
+              // Native DOM click as belt-and-suspenders
+              el.click();
+
+              return { cx, cy };
+            }
+
             let tries = 0;
             const attempt = () => {
               const el = findEl(raw);
               if (el) {
-                el.scrollIntoView({ block: 'center', behavior: 'instant' });
-                el.focus();
-                el.click();
-                resolve({ ok: true });
+                const { cx, cy } = fireFullClick(el);
+                resolve({ ok: true, cx, cy });
               } else if (++tries < 14) {
                 setTimeout(attempt, 250);
               } else {
@@ -1456,6 +1511,19 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
           })
         `);
         if (!res.ok) return { error: res.error };
+
+        // Native Electron input events — fires real OS-level mouse events at the element's
+        // center coordinates. Works even when JavaScript event dispatch is swallowed by the
+        // page (e.g. Google Cloud Console Material buttons, shadow DOM components, iframes).
+        if (res.cx != null && res.cy != null) {
+          const { cx, cy } = res;
+          wc.sendInputEvent({ type: 'mouseMove',  x: cx, y: cy });
+          await new Promise(r => setTimeout(r, 40));
+          wc.sendInputEvent({ type: 'mouseDown',  x: cx, y: cy, button: 'left', clickCount: 1 });
+          await new Promise(r => setTimeout(r, 60));
+          wc.sendInputEvent({ type: 'mouseUp',    x: cx, y: cy, button: 'left', clickCount: 1 });
+        }
+
         return { success: true };
       }
 
