@@ -91,6 +91,7 @@ contextBridge.exposeInMainWorld('navio', {
   imapGetEmailBody: (serviceId, uid) => ipcRenderer.invoke('imap-get-email-body', { serviceId, uid }),
   ntpFetchStocks: () => ipcRenderer.invoke('ntp-stocks'),
   ntpFetchSports: () => ipcRenderer.invoke('ntp-sports'),
+  ntpGmailInbox: () => ipcRenderer.invoke('ntp-gmail-inbox'),
 
   setAdBlocker: (enabled) => ipcRenderer.invoke('set-ad-blocker', { enabled }),
   getAdBlockStats: () => ipcRenderer.invoke('get-ad-block-stats'),

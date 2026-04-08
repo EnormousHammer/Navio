@@ -676,10 +676,50 @@ const NTP = (() => {
       const imapSt = await window.navio.imapStatus();
       const connectedServices = Object.keys(imapSt || {});
 
+      // ── Check OAuth Google connection first ───────────────────────────────
+      let googleAlreadyConnected = false;
+      try {
+        const oauthSt = await window.navio.oauthStatus();
+        googleAlreadyConnected = !!(oauthSt?.google?.connected);
+      } catch {}
+
+      if (googleAlreadyConnected) {
+        // Signed in via Google OAuth — read inbox from Gmail API
+        emailList.innerHTML = '<div class="ntp-widget-loading"><span></span><span></span><span></span></div>';
+        const gmailResult = await window.navio.ntpGmailInbox();
+        if (gmailResult?.error && gmailResult.error === 'not_signed_in') {
+          // Token was invalidated, fall through to sign-in prompt
+          googleAlreadyConnected = false;
+        } else if (gmailResult?.error) {
+          emailList.innerHTML = `<p class="ntp-widget-empty">Gmail error: ${_esc(gmailResult.error)}</p>`;
+          return;
+        } else {
+          const messages  = gmailResult?.messages || [];
+          const unreadCount = gmailResult?.unreadCount || 0;
+          if (unreadBadge) {
+            unreadBadge.textContent = unreadCount;
+            unreadBadge.style.display = unreadCount > 0 ? 'inline-flex' : 'none';
+          }
+          if (messages.length === 0) {
+            emailList.innerHTML = '<p class="ntp-widget-empty">Inbox is empty.</p>';
+            return;
+          }
+          emailList.innerHTML = messages.map(msg => `
+            <div class="ntp-email-item ${msg.unread ? 'unread' : ''}">
+              <div class="ntp-email-header">
+                <span class="ntp-email-sender">${_esc(msg.senderName || msg.sender || '')}</span>
+                <span class="ntp-email-date">${_esc(_formatEmailDate(msg.date))}</span>
+              </div>
+              <div class="ntp-email-subject">${_esc(msg.subject)}</div>
+              <div class="ntp-email-preview">${_esc(msg.snippet || '')}</div>
+            </div>
+          `).join('');
+          return;
+        }
+      }
+
       if (connectedServices.length === 0) {
-        // Check if a Google OAuth Client ID is already saved — if so, offer
-        // a direct "Sign in with Google" button instead of sending the user
-        // to the Connectors Hub to hunt for the right button themselves.
+        // ── No IMAP and no OAuth — show setup prompt ──────────────────────
         let hasGoogleClientId = false;
         let hasGoogleSecret   = false;
         try {
@@ -688,15 +728,8 @@ const NTP = (() => {
           hasGoogleSecret   = !!(cfg.oauthGoogleClientSecret || '').trim();
         } catch {}
 
-        // Check if Google OAuth is already connected (tokens exist)
-        let googleAlreadyConnected = false;
-        try {
-          const oauthSt = await window.navio.oauthStatus();
-          googleAlreadyConnected = !!(oauthSt?.google?.connected);
-        } catch {}
-
-        if (hasGoogleClientId && !googleAlreadyConnected) {
-          // Client ID is configured but not yet signed in
+        if (hasGoogleClientId) {
+          // Credentials configured but not yet signed in
           const missingSecret = !hasGoogleSecret;
           const statusMsg = missingSecret
             ? 'Client ID saved. Also add your <strong>Client Secret</strong> in Settings → Integrations, then sign in.'
@@ -717,7 +750,6 @@ const NTP = (() => {
                 btn.textContent = '✓ Connected!';
                 setTimeout(() => _loadInbox(), 1000);
               } else {
-                // Show friendly error, not the raw Google API message
                 const errMsg = (result?.error || '').toLowerCase().includes('client_secret')
                   ? 'Add Client Secret in Settings → Integrations'
                   : (result?.error || 'Sign-in failed');
@@ -731,11 +763,11 @@ const NTP = (() => {
             }
           });
         } else {
-          // No Client ID configured — open the Connectors Hub for full setup
+          // No credentials at all — open the Connectors Hub
           emailList.innerHTML = `
             <div class="ntp-email-empty">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-              <p>Connect Gmail or Outlook in the Connectors Hub to see your inbox here.</p>
+              <p>Connect Gmail or Outlook to see your inbox here.</p>
               <button class="ntp-connect-email-btn" id="ntp-connect-email">Connect email</button>
             </div>`;
           document.getElementById('ntp-connect-email')?.addEventListener('click', () => {
@@ -745,6 +777,7 @@ const NTP = (() => {
         return;
       }
 
+      // ── IMAP fallback ─────────────────────────────────────────────────────
       emailList.innerHTML = '<div class="ntp-widget-loading"><span></span><span></span><span></span></div>';
 
       const svcId = connectedServices[0];
@@ -908,6 +941,19 @@ const NTP = (() => {
     if (d < 3600000) return `${Math.round(d / 60000)}m ago`;
     if (d < 86400000) return `${Math.round(d / 3600000)}h ago`;
     return `${Math.round(d / 86400000)}d ago`;
+  }
+
+  function _formatEmailDate(dateStr) {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      const diff = Date.now() - d.getTime();
+      if (diff < 60000) return 'just now';
+      if (diff < 3600000) return `${Math.round(diff / 60000)}m`;
+      if (diff < 86400000) return `${Math.round(diff / 3600000)}h`;
+      if (diff < 604800000) return `${Math.round(diff / 86400000)}d`;
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } catch { return dateStr; }
   }
 
   return { init };

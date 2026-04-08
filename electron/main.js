@@ -2132,6 +2132,7 @@ async function refreshOAuthToken(providerId) {
   const cfg = loadConfig();
   const clientId = cfg[provider.configKey] || '';
   if (!clientId) return null;
+  const clientSecret = provider.secretKey ? (cfg[provider.secretKey] || '') : '';
 
   try {
     const params = new URLSearchParams({
@@ -2139,6 +2140,7 @@ async function refreshOAuthToken(providerId) {
       refresh_token: refreshToken,
       client_id: clientId
     });
+    if (clientSecret) params.set('client_secret', clientSecret);
     const res = await fetch(provider.tokenUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -3217,6 +3219,56 @@ ipcMain.handle('ntp-sports', async () => {
       .flatMap(r => r.value)
       .filter(g => g.home && g.away);
     return games.length > 0 ? games : { error: 'No games scheduled today' };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
+// ── NTP: Gmail inbox via OAuth (used by NTP inbox widget) ─────────────────
+ipcMain.handle('ntp-gmail-inbox', async () => {
+  try {
+    const token = await getValidOAuthToken('google');
+    if (!token) return { error: 'not_signed_in' };
+
+    // Fetch inbox message IDs
+    const listResp = await fetch(
+      'https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds=INBOX&maxResults=15',
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const listData = await listResp.json();
+    if (!listResp.ok) return { error: listData.error?.message || 'Gmail API error' };
+    if (!listData.messages?.length) return { messages: [], unreadCount: 0 };
+
+    // Fetch metadata for each message in parallel
+    const msgs = await Promise.all(
+      listData.messages.slice(0, 10).map(async (m) => {
+        try {
+          const r = await fetch(
+            `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          const d = await r.json();
+          const headers = d.payload?.headers || [];
+          const get = (name) => headers.find(h => h.name === name)?.value || '';
+          const fromRaw = get('From');
+          const senderName = fromRaw.replace(/<[^>]+>/, '').trim() || fromRaw;
+          const senderEmail = (fromRaw.match(/<([^>]+)>/) || [])[1] || fromRaw;
+          return {
+            subject: get('Subject') || '(no subject)',
+            sender: senderEmail,
+            senderName: senderName || senderEmail,
+            date: get('Date'),
+            snippet: d.snippet || '',
+            unread: (d.labelIds || []).includes('UNREAD'),
+            id: m.id
+          };
+        } catch { return null; }
+      })
+    );
+
+    const messages = msgs.filter(Boolean);
+    const unreadCount = messages.filter(m => m.unread).length;
+    return { messages, unreadCount };
   } catch (e) {
     return { error: e.message };
   }
