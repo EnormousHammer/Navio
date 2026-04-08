@@ -3116,46 +3116,14 @@ ipcMain.handle('imap-get-email-body', async (event, { serviceId, uid }) => {
 });
 
 // ── NTP: Stock market data (fetched from main process — no CORS) ──────────
-// Yahoo Finance now requires a session cookie + crumb for all chart API calls.
-// Flow: 1) visit finance.yahoo.com to get A3/A1 cookies  2) fetch /v1/test/getcrumb
-//       3) pass both cookie header and ?crumb= to each v8 chart request.
-let _yfCrumbCache = null; // { crumb, cookie, ts } — refreshed every 30 min
-async function _getYahooCrumb() {
-  const now = Date.now();
-  if (_yfCrumbCache && (now - _yfCrumbCache.ts) < 30 * 60 * 1000) return _yfCrumbCache;
-
-  const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-
-  // Step 1 — establish session, collect cookies
-  const homeRes = await fetch('https://finance.yahoo.com/', {
-    headers: { 'User-Agent': UA, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' },
-    redirect: 'follow'
-  });
-  const rawCookies = homeRes.headers.getSetCookie?.() ?? [];
-  const cookie = rawCookies.map(c => c.split(';')[0]).join('; ');
-
-  // Step 2 — get crumb (requires the cookies we just obtained)
-  const crumbRes = await fetch('https://query1.finance.yahoo.com/v1/test/getcrumb', {
-    headers: { 'User-Agent': UA, 'Cookie': cookie }
-  });
-  if (!crumbRes.ok) throw new Error(`Crumb HTTP ${crumbRes.status}`);
-  const crumb = (await crumbRes.text()).trim();
-  if (!crumb || crumb.includes('<')) throw new Error('Invalid crumb response');
-
-  _yfCrumbCache = { crumb, cookie, ts: now };
-  return _yfCrumbCache;
-}
-
+// query1.finance.yahoo.com/v8/finance/chart works without crumb or cookies.
 ipcMain.handle('ntp-stocks', async () => {
   const symbols = ['^GSPC', '^DJI', '^IXIC', 'AAPL', 'GOOGL', 'MSFT', 'NVDA', 'TSLA', 'BTC-USD', 'ETH-USD'];
   const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
   try {
-    const { crumb, cookie } = await _getYahooCrumb();
     const results = await Promise.allSettled(symbols.map(async sym => {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=2d&crumb=${encodeURIComponent(crumb)}`;
-      const r = await fetch(url, {
-        headers: { 'User-Agent': UA, 'Accept': 'application/json', 'Cookie': cookie }
-      });
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=2d`;
+      const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept': 'application/json' } });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
       const meta = data?.chart?.result?.[0]?.meta;
@@ -3173,14 +3141,8 @@ ipcMain.handle('ntp-stocks', async () => {
       };
     }));
     const good = results.filter(r => r.status === 'fulfilled' && r.value?.price != null).map(r => r.value);
-    if (good.length === 0) {
-      // Crumb may have expired mid-session — bust cache and surface error so client retries
-      _yfCrumbCache = null;
-      return { error: 'No data returned — crumb refreshed, retry shortly' };
-    }
-    return good;
+    return good.length > 0 ? good : { error: 'No data returned' };
   } catch (e) {
-    _yfCrumbCache = null; // force fresh crumb on next call
     return { error: e.message };
   }
 });

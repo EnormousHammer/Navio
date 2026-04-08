@@ -326,7 +326,7 @@ const NTP = (() => {
 
   // ── Stock Market Ticker ────────────────────────────────────────────────────
 
-  async function _loadStockTicker(retried = false) {
+  async function _loadStockTicker() {
     const track = document.getElementById('ntp-ticker-track');
     if (!track) return;
     if (_tickerMode !== 'markets') return; // don't overwrite another mode's content
@@ -334,10 +334,6 @@ const NTP = (() => {
     try {
       const result = await window.navio.ntpFetchStocks();
       if (!result || result.error || !Array.isArray(result) || result.length === 0) {
-        if (!retried && result?.error) {
-          setTimeout(() => _loadStockTicker(true), 3000);
-          return;
-        }
         track.innerHTML = '<span class="ntp-ticker-loading">Market data unavailable</span>';
         return;
       }
