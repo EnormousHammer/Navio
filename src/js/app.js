@@ -469,6 +469,131 @@ class NavioApp {
 
 const App = new NavioApp();
 
+// Module-level toast (used by ReadingListManager and PasswordManager)
+function _showAppToast(msg, type = 'info') {
+  const stack = document.getElementById('live-notif-stack');
+  if (!stack) return;
+  const icons = { success: '✓', info: 'ℹ', error: '✗', warning: '⚠' };
+  const el = document.createElement('div');
+  el.className = `live-notification live-toast live-toast-${type}`;
+  el.innerHTML = `<span class="live-toast-icon">${icons[type] || '•'}</span><span class="live-toast-msg">${msg}</span><button class="live-notif-x">×</button>`;
+  el.querySelector('.live-notif-x').addEventListener('click', () => el.remove());
+  stack.prepend(el);
+  setTimeout(() => el.remove(), 5000);
+}
+
+// ── Reading List Manager ───────────────────────────────────────────────────
+const ReadingListManager = (() => {
+  const _panel  = () => document.getElementById('reading-list-panel');
+  const _list   = () => document.getElementById('rl-list');
+  const _count  = () => document.getElementById('rl-count');
+  const _badge  = () => document.getElementById('rl-badge');
+
+  function _esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function _host(url) {
+    try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
+  }
+
+  async function refresh() {
+    const r = await window.navio.readingListGet().catch(() => null);
+    if (!r?.ok) return;
+    const unread = r.list.filter(e => !e.read).length;
+    const badge = _badge();
+    if (badge) { badge.textContent = unread; badge.hidden = unread === 0; }
+    const count = _count();
+    if (count) count.textContent = r.list.length;
+    _render(r.list);
+  }
+
+  function _render(list) {
+    const el = _list();
+    if (!el) return;
+    if (!list.length) {
+      el.innerHTML = '<p class="rl-empty">No saved pages yet.<br>Click the bookmark icon while browsing to save a page.</p>';
+      return;
+    }
+    el.innerHTML = list.map(e => `
+      <div class="rl-item${e.read ? ' rl-read' : ''}" data-url="${_esc(e.url)}">
+        ${e.favicon
+          ? `<img class="rl-favicon" src="${_esc(e.favicon)}" alt="" onerror="this.style.display='none'">`
+          : `<div class="rl-favicon-ph"></div>`}
+        <div class="rl-item-body">
+          <div class="rl-item-title">${_esc(e.title || e.url)}</div>
+          <div class="rl-item-host">${_esc(_host(e.url))}</div>
+        </div>
+        <div class="rl-item-btns">
+          ${!e.read ? `<button class="rl-btn rl-btn-read" data-url="${_esc(e.url)}" title="Mark as read">✓</button>` : ''}
+          <button class="rl-btn rl-btn-del" data-url="${_esc(e.url)}" title="Remove">×</button>
+        </div>
+      </div>`).join('');
+
+    el.querySelectorAll('.rl-item-title').forEach(titleEl => {
+      titleEl.addEventListener('click', async () => {
+        const url = titleEl.closest('.rl-item').dataset.url;
+        if (url && typeof TabManager !== 'undefined') TabManager.navigateActive(url);
+        await window.navio.readingListMarkRead(url);
+        close();
+        refresh();
+      });
+    });
+    el.querySelectorAll('.rl-btn-read').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await window.navio.readingListMarkRead(btn.dataset.url);
+        refresh();
+      });
+    });
+    el.querySelectorAll('.rl-btn-del').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await window.navio.readingListRemove(btn.dataset.url);
+        refresh();
+      });
+    });
+  }
+
+  function open() {
+    const p = _panel();
+    if (p) { p.hidden = false; p.classList.add('rl-open'); }
+    refresh();
+  }
+
+  function close() {
+    const p = _panel();
+    if (p) { p.hidden = true; p.classList.remove('rl-open'); }
+  }
+
+  function toggle() {
+    const p = _panel();
+    p && !p.hidden ? close() : open();
+  }
+
+  async function saveCurrent() {
+    if (typeof TabManager === 'undefined') return;
+    const tab = TabManager.getActiveTab();
+    if (!tab?.url || tab.url === 'about:blank') {
+      _showAppToast('No page to save', 'error'); return;
+    }
+    const r = await window.navio.readingListAdd(tab.url, tab.title, tab.favicon);
+    if (r.ok && r.added) {
+      _showAppToast('Saved for later', 'success');
+      refresh();
+    } else if (r.ok && !r.added) {
+      _showAppToast('Already in reading list', 'info');
+    }
+  }
+
+  // Wire buttons once DOM is ready
+  document.getElementById('btn-read-later')?.addEventListener('click', toggle);
+  document.getElementById('btn-close-reading-list')?.addEventListener('click', close);
+  refresh();
+
+  return { open, close, toggle, saveCurrent, refresh };
+})();
+
 // ── Password Manager ───────────────────────────────────────────────────────
 // Handles the save-password prompt bar, autofill offer bar, and the secure
 // credential vault (persisted in main via safeStorage).

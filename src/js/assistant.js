@@ -88,6 +88,7 @@ PERSONALITY:
     this.inputEl.addEventListener('input', () => {
       this.inputEl.style.height = 'auto';
       this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + 'px';
+      this._handleAtMention();
     });
 
     document.querySelectorAll('.quick-action').forEach((btn) => {
@@ -190,6 +191,98 @@ PERSONALITY:
       const v = cfg.aiDataScope || (cfg.aiIncludePageContext === false ? 'none' : 'excerpt');
       this.scopeSelect.value = ['none', 'selection', 'excerpt', 'full'].includes(v) ? v : 'excerpt';
     }
+  }
+
+  // ── @tab mention picker ───────────────────────────────────────────────
+  // Typing "@" in the input shows a list of open tabs. Clicking one inserts
+  // @[Tab Title] into the input. These references are resolved before sending,
+  // injecting each tab's content as a system message into the AI context.
+
+  _handleAtMention() {
+    const val = this.inputEl.value;
+    const cursorPos = this.inputEl.selectionStart || val.length;
+    // Find the last @ before cursor without a closing ]
+    const before = val.slice(0, cursorPos);
+    const atIdx = before.lastIndexOf('@');
+    if (atIdx === -1 || before.slice(atIdx).includes(']')) {
+      this._hideMentionPicker();
+      return;
+    }
+    const query = before.slice(atIdx + 1).toLowerCase();
+    const tabs = typeof TabManager !== 'undefined'
+      ? TabManager.tabs.filter(t => t.url && t.url !== 'about:blank')
+      : [];
+    const matches = query
+      ? tabs.filter(t => t.title.toLowerCase().includes(query) || (t.url || '').toLowerCase().includes(query))
+      : tabs;
+    if (!matches.length) { this._hideMentionPicker(); return; }
+    this._showMentionPicker(matches, atIdx);
+  }
+
+  _showMentionPicker(tabs, atIdx) {
+    let picker = document.getElementById('at-mention-picker');
+    if (!picker) {
+      picker = document.createElement('div');
+      picker.id = 'at-mention-picker';
+      picker.className = 'at-mention-picker';
+      this.inputEl.parentElement.appendChild(picker);
+    }
+    picker.innerHTML = tabs.slice(0, 8).map((t, i) => `
+      <div class="at-mention-item" data-idx="${i}" data-title="${t.title.replace(/"/g,'&quot;')}">
+        ${t.favicon ? `<img class="at-mention-favicon" src="${t.favicon}" alt="">` : '<div class="at-mention-favicon-ph"></div>'}
+        <div class="at-mention-label">
+          <span class="at-mention-title">${t.title || t.url}</span>
+          <span class="at-mention-url">${(t.url || '').replace(/^https?:\/\//, '').slice(0, 40)}</span>
+        </div>
+      </div>`).join('');
+    picker.hidden = false;
+    picker.querySelectorAll('.at-mention-item').forEach((item, i) => {
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const title = item.dataset.title;
+        // Replace the @query with @[Tab Title]
+        const val = this.inputEl.value;
+        const cursor = this.inputEl.selectionStart || val.length;
+        const before = val.slice(0, cursor);
+        const atIdx2 = before.lastIndexOf('@');
+        const newVal = val.slice(0, atIdx2) + `@[${title}]` + val.slice(cursor);
+        this.inputEl.value = newVal;
+        this.inputEl.style.height = 'auto';
+        this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + 'px';
+        this._hideMentionPicker();
+        this.inputEl.focus();
+      });
+    });
+  }
+
+  _hideMentionPicker() {
+    const picker = document.getElementById('at-mention-picker');
+    if (picker) picker.hidden = true;
+  }
+
+  // Resolve @[Tab Title] references → fetch page content for each → build system messages
+  async _resolveAtMentions(text) {
+    const matches = [...text.matchAll(/@\[([^\]]+)\]/g)];
+    if (!matches.length) return [];
+    const tabs = typeof TabManager !== 'undefined' ? TabManager.tabs : [];
+    const contextMessages = [];
+    for (const m of matches) {
+      const title = m[1];
+      const tab = tabs.find(t => t.title === title || t.title.toLowerCase() === title.toLowerCase());
+      if (!tab || !tab.webview) continue;
+      try {
+        const wc = tab.webview.getWebContentsId();
+        const content = await window.navio.extractPageContent(wc);
+        if (content && !content.error) {
+          const body = (content.text || '').slice(0, 6000);
+          contextMessages.push({
+            role: 'system',
+            content: `[Referenced tab: "${title}"]\nURL: ${content.url}\nTitle: ${content.title}\n\n${body}`
+          });
+        }
+      } catch {}
+    }
+    return contextMessages;
   }
 
   toggle() {
@@ -423,6 +516,13 @@ PERSONALITY:
       if (titles) {
         messages.push({ role: 'system', content: `[Pinned tabs in workspace]\n${titles}` });
       }
+    }
+
+    // Resolve @[Tab Title] mentions — inject referenced tabs' content
+    const mentionMsgs = await this._resolveAtMentions(text);
+    if (mentionMsgs.length) {
+      messages.push({ role: 'system', content: `[Multi-tab context — ${mentionMsgs.length} tab(s) referenced by the user]` });
+      messages.push(...mentionMsgs);
     }
 
     // Inject connected service context when the query seems to target them

@@ -59,6 +59,7 @@ const NTP = (() => {
     _loadInbox();
     _loadTickerForMode();
     _bindResultsPanel();
+    _loadPrivacyStats();
   }
 
   // ── Clock + Greeting ──────────────────────────────────────────────────────
@@ -1080,6 +1081,35 @@ const NTP = (() => {
       if (diff < 604800000) return `${Math.round(diff / 86400000)}d`;
       return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     } catch { return dateStr; }
+  }
+
+  // ── Privacy Stats Widget ──────────────────────────────────────────────────
+
+  async function _loadPrivacyStats() {
+    const widget = document.getElementById('ntp-widget-privacy');
+    if (!widget) return;
+    try {
+      const stats = await window.navio.getAdBlockStats();
+      const blocked = stats?.blocked ?? 0;
+      const saved   = stats?.bytesSaved ?? 0;
+      const kbSaved = saved > 0 ? (saved / 1024).toFixed(0) : null;
+      const el = widget.querySelector('.ntp-privacy-body');
+      if (!el) return;
+      el.innerHTML = `
+        <div class="ntp-privacy-stat">
+          <div class="ntp-privacy-number" id="ntp-privacy-count">${blocked.toLocaleString()}</div>
+          <div class="ntp-privacy-label">trackers blocked</div>
+        </div>
+        ${kbSaved ? `
+        <div class="ntp-privacy-stat">
+          <div class="ntp-privacy-number">${kbSaved} <span style="font-size:14px">KB</span></div>
+          <div class="ntp-privacy-label">data saved</div>
+        </div>` : ''}
+        <div class="ntp-privacy-bar-wrap">
+          <div class="ntp-privacy-bar-fill" style="width:${Math.min(100, blocked / 10)}%"></div>
+        </div>
+        <div class="ntp-privacy-status">${blocked > 0 ? '🛡 Navio is protecting you' : 'Ad blocker active'}</div>`;
+    } catch {}
   }
 
   return { init };

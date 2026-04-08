@@ -33,6 +33,33 @@ class TabManagerClass {
     this._containerObserver.observe(this.browserContainer);
   }
 
+  // ── Passive Memory Capture ────────────────────────────────────────────
+  // After the user spends ≥20 s on a real http/https page, silently store a
+  // one-liner memory entry so the AI can later answer "what was that page about?"
+  // A session-level Set prevents duplicate entries for the same URL per session.
+  _passiveMemorySeen = new Set();
+
+  _schedulePassiveMemory(tab, wv) {
+    // Cancel any previous timer for this tab
+    if (tab._memTimer) { clearTimeout(tab._memTimer); tab._memTimer = null; }
+    const url = tab.url || '';
+    if (!url.startsWith('http') || this._passiveMemorySeen.has(url)) return;
+
+    tab._memTimer = setTimeout(async () => {
+      // Double-check the tab hasn't navigated away
+      if (tab.url !== url) return;
+      try {
+        const content = await window.navio.extractPageContent(wv.getWebContentsId());
+        if (!content || content.error || !content.title || content.title === 'about:blank') return;
+        const desc = content.description
+          ? ` — ${content.description.slice(0, 120)}`
+          : content.text ? ` — ${content.text.slice(0, 100).replace(/\s+/g,' ')}` : '';
+        await window.navio.memoryAdd(`[Browsed] ${content.title} (${url})${desc}`);
+        this._passiveMemorySeen.add(url);
+      } catch { /* memory save failures are non-critical */ }
+    }, 20000); // 20 seconds dwell time
+  }
+
   _syncWebviewSizes() {
     const { width, height } = this.browserContainer.getBoundingClientRect();
     if (!width || !height) return;
@@ -208,6 +235,7 @@ class TabManagerClass {
 
     wv.addEventListener('did-finish-load', () => {
       this.applyZoomToWebview(wv);
+      this._schedulePassiveMemory(tab, wv);
     });
 
     wv.addEventListener('context-menu', (e) => {
@@ -509,19 +537,118 @@ class TabManagerClass {
   }
 
   addTabToGroup(tabId, groupId) {
-    // Remove from any current group first
     this.removeTabFromGroup(tabId);
     const tab = this.tabs.find(t => t.id === tabId);
     if (!tab || !this.groups[groupId]) return;
     tab.groupId = groupId;
-    this.updateTabUI(tab);
+    this._reRenderTabList();
   }
 
   removeTabFromGroup(tabId) {
     const tab = this.tabs.find(t => t.id === tabId);
     if (!tab || !tab.groupId) return;
     tab.groupId = null;
-    this.updateTabUI(tab);
+    this._reRenderTabList();
+  }
+
+  // ── Rebuild the tab strip with group headers ───────────────────────────
+  _reRenderTabList() {
+    // Remove all existing tab items and group headers from the strip
+    this.tabListEl.querySelectorAll('.tab-item, .tab-group-header').forEach(el => el.remove());
+
+    // Separate tabs: ungrouped first, then groups
+    const ungrouped = this.tabs.filter(t => !t.groupId);
+    const byGroup = {};
+    this.tabs.forEach(t => {
+      if (t.groupId) {
+        if (!byGroup[t.groupId]) byGroup[t.groupId] = [];
+        byGroup[t.groupId].push(t);
+      }
+    });
+
+    // Render ungrouped tabs
+    ungrouped.forEach(t => this._appendTabItem(t));
+
+    // Render grouped tabs with a header row per group
+    for (const [groupId, groupTabs] of Object.entries(byGroup)) {
+      const group = this.groups[groupId];
+      if (!group) continue;
+      const collapsed = group.collapsed || false;
+      const header = this._buildGroupHeader(group, groupTabs.length, collapsed);
+      this.tabListEl.appendChild(header);
+      if (!collapsed) groupTabs.forEach(t => this._appendTabItem(t));
+    }
+  }
+
+  _buildGroupHeader(group, tabCount, collapsed) {
+    const el = document.createElement('div');
+    el.className = `tab-group-header${collapsed ? ' collapsed' : ''}`;
+    el.dataset.groupId = group.id;
+    el.style.setProperty('--tg-color', group.color);
+    el.innerHTML = `
+      <span class="tgh-dot" style="background:${group.color}"></span>
+      <span class="tgh-name">${this.escapeHtml(group.name)}</span>
+      <span class="tgh-count">${tabCount}</span>
+      <svg class="tgh-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+    `;
+    el.addEventListener('click', () => {
+      group.collapsed = !group.collapsed;
+      this._reRenderTabList();
+    });
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      this._showGroupContextMenu(group.id, e.clientX, e.clientY);
+    });
+    return el;
+  }
+
+  _appendTabItem(tab) {
+    const existing = document.getElementById(`tabitem-${tab.id}`);
+    if (existing) {
+      // Move existing element to correct position
+      this.tabListEl.appendChild(existing);
+      this.updateTabUI(tab);
+    } else {
+      this.renderTabItem(tab);
+    }
+  }
+
+  _showGroupContextMenu(groupId, x, y) {
+    this._hideTabContextMenu();
+    const group = this.groups[groupId];
+    if (!group) return;
+    const menu = document.createElement('div');
+    menu.id = 'tab-ctx-menu';
+    menu.className = 'tab-ctx-menu';
+    menu.innerHTML = `
+      <div class="tcm-label" style="color:${group.color}">${this.escapeHtml(group.name)}</div>
+      <div class="tcm-sep"></div>
+      <button class="tcm-item" data-action="rename-group">Rename group</button>
+      <button class="tcm-item tcm-danger" data-action="ungroup-all">Ungroup all tabs</button>
+      <button class="tcm-item tcm-danger" data-action="close-group">Close all tabs in group</button>
+    `;
+    document.body.appendChild(menu);
+    menu.style.left = `${Math.min(x, window.innerWidth - 230)}px`;
+    menu.style.top  = `${Math.min(y, window.innerHeight - 140)}px`;
+    menu.querySelectorAll('[data-action]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.dataset.action === 'ungroup-all') {
+          this.tabs.filter(t => t.groupId === groupId).forEach(t => { t.groupId = null; });
+          delete this.groups[groupId];
+          this._reRenderTabList();
+        } else if (btn.dataset.action === 'close-group') {
+          [...this.tabs.filter(t => t.groupId === groupId)].forEach(t => this.closeTab(t.id));
+        } else if (btn.dataset.action === 'rename-group') {
+          const name = window.prompt('Group name:', group.name);
+          if (name?.trim()) { group.name = name.trim(); this._reRenderTabList(); }
+        }
+        this._hideTabContextMenu();
+      });
+    });
+    const closeOutside = (e) => {
+      if (!menu.contains(e.target)) { this._hideTabContextMenu(); document.removeEventListener('mousedown', closeOutside); }
+    };
+    setTimeout(() => document.addEventListener('mousedown', closeOutside), 10);
   }
 
   // ── Tab Context Menu ───────────────────────────────────────────────────

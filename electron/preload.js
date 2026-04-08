@@ -108,6 +108,12 @@ contextBridge.exposeInMainWorld('navio', {
   // Reveal a downloaded file in the OS file manager (Explorer / Finder)
   showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),
 
+  // Reading List ("save for later")
+  readingListAdd:      (url, title, favicon) => ipcRenderer.invoke('reading-list-add', { url, title, favicon }),
+  readingListGet:      ()                    => ipcRenderer.invoke('reading-list-get'),
+  readingListRemove:   (url)                 => ipcRenderer.invoke('reading-list-remove', { url }),
+  readingListMarkRead: (url)                 => ipcRenderer.invoke('reading-list-mark-read', { url }),
+
   // Password manager (safeStorage-encrypted vault)
   passwordsSave:      (url, username, password) => ipcRenderer.invoke('passwords-save', { url, username, password }),
   passwordsList:      ()                        => ipcRenderer.invoke('passwords-list'),
