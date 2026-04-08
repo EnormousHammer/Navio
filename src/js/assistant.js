@@ -1223,6 +1223,11 @@ PERSONALITY:
         params = colonIdx >= 0
           ? { selector: paramsStr.slice(0, colonIdx), text: paramsStr.slice(colonIdx + 1) }
           : { selector: paramsStr, text: '' };
+      } else if (action === 'insertText') {
+        // paramsStr IS the full content (may be multi-line)
+        params = { text: paramsStr };
+      } else if (action === 'pressKey') {
+        params = { key: paramsStr };
       } else if (action === 'scroll') {
         params = { direction: paramsStr || 'down' };
       }
@@ -1278,6 +1283,16 @@ PERSONALITY:
 
     // Append accessibility snapshot so AI uses real element labels, not guessed selectors
     const snapText = await this._getPageSnapshotText();
+
+    // Detect Google editor pages so we can give a targeted directive
+    let pageUrl = '';
+    try { pageUrl = (await TabManager.getActivePageContent())?.url || ''; } catch { /* ignore */ }
+    const isGoogleDoc   = /docs\.google\.com\/document/.test(pageUrl);
+    const isGoogleSheet = /docs\.google\.com\/spreadsheets/.test(pageUrl);
+    const googleEditorDirective = (isGoogleDoc || isGoogleSheet)
+      ? `\n\n⚠️ GOOGLE EDITOR DETECTED — CRITICAL INSTRUCTION:\nYou are on a ${isGoogleDoc ? 'Google Doc' : 'Google Sheet'} page. The editor is ready.\nDO NOT output a <navio-plan> or a description. DO NOT say "I will paste" or "I'll now paste".\nYOU MUST output a <navio-actions> block RIGHT NOW with the insertText: action containing the FULL content.\nInclude every section, detail, price, and itinerary you found earlier in the conversation.\nThe content goes directly after "insertText:" on the same or following lines.\nIf you have already composed the content, output it. If not, generate it now from what you know.\nDo it. Don't plan it.`
+      : '';
+
     const followUpText = `[Action completed. Current page state follows.
 
 IMPORTANT AGENT RULES:
@@ -1285,8 +1300,8 @@ IMPORTANT AGENT RULES:
 - If multiple options are visible, rank them by price and identify the cheapest with a clear callout.
 - If the data looks incomplete or the page didn't fully load, navigate to the same URL again or try an alternate source.
 - If steps remain in the plan, continue executing them. If all steps are done, give a final summary with the best option found and why.
-- Use [[ACTION:type:params]] format for any new browser actions.
 - NEVER make up prices or results — only report what is actually in the page text above.
+${googleEditorDirective}
 
 ${pageInfo}${snapText}`;
     await this.processMessage(followUpText, true, null);

@@ -282,40 +282,60 @@ DOCUMENTS & PRODUCTIVITY:
 - Create Google Slides: https://docs.google.com/presentation/create
 
 GOOGLE DOCS — HOW TO TYPE CONTENT (CRITICAL — READ CAREFULLY):
-Google Docs uses a canvas editor. Standard type: or click-to-focus approaches do NOT work.
-The ONLY reliable way is: insertText: which writes to clipboard and pastes via Ctrl+V.
+Google Docs uses a canvas editor. Standard type: approaches do NOT work.
+The ONLY reliable way is insertText: which writes to clipboard and pastes via Ctrl+V.
+
+⚠️ WHEN YOU ARE ON A GOOGLE DOC PAGE AND THE EDITOR IS FOCUSED:
+DO NOT output a <navio-plan>. DO NOT say "I will paste...". JUST DO IT IMMEDIATELY.
+Output the insertText: action right now with ALL the content.
+
+⚠️ IMPORTANT: When outputting insertText for long content, put the ENTIRE content on lines
+after "insertText:" — the parser will collect everything until the next action keyword.
+Use \n in the content for newlines if needed, OR just put real line breaks.
 
 Exact sequence for Google Docs:
-1. navigate:https://docs.google.com/document/create
-2. After the page loads, click anywhere in the white document body to give the editor focus.
-   The best selector for this is: click:.kix-appview-editor
-   If that fails try: click:aria=Document content
-3. Then immediately call insertText: with ALL the content you want in the doc.
-   insertText puts the full text on the clipboard and pastes it — do NOT call it multiple times.
-   Example: insertText:Vancouver Trip Plan\n\nFlight: Air Canada CA$356\nHotel: Best Western CA$143/night\n\nDay 1: ...
+<navio-actions>
+navigate:https://docs.google.com/document/create
+</navio-actions>
+
+After page loads, in the SAME response or next follow-up:
+<navio-actions>
+click:.kix-appview-editor
+insertText:Full document title and content here
+Line 2 of content
+Line 3 of content
+...all content goes here...
+</navio-actions>
+
+DO NOT split into separate messages: navigate in one action, then click+insertText in one action.
 
 GOOGLE SHEETS — HOW TO FILL CELLS (CRITICAL — READ CAREFULLY):
-Google Sheets cells are also canvas-based. insertText: uses clipboard paste, which fills one cell at a time.
+Google Sheets cells are also canvas-based. insertText: uses clipboard paste.
 
 Exact sequence for Google Sheets:
-1. navigate:https://docs.google.com/spreadsheets/create
-2. Click cell A1 to give it focus: click:aria=A1
-3. Use insertText: then pressKey:Tab to move right, pressKey:Enter to move down:
-   insertText:Category
-   pressKey:Tab
-   insertText:Detail
-   pressKey:Tab
-   insertText:Cost
-   pressKey:Enter
-   insertText:Flight
-   pressKey:Tab
-   insertText:Air Canada YYZ→YVR non-stop
-   pressKey:Tab
-   insertText:CA$356
-   pressKey:Enter
-   ... continue for every row
+<navio-actions>
+navigate:https://docs.google.com/spreadsheets/create
+</navio-actions>
+
+After page loads:
+<navio-actions>
+click:aria=A1
+insertText:Category
+pressKey:Tab
+insertText:Detail
+pressKey:Tab
+insertText:Cost
+pressKey:Enter
+insertText:Flight
+pressKey:Tab
+insertText:Air Canada YYZ→YVR non-stop
+pressKey:Tab
+insertText:CA$356
+pressKey:Enter
+</navio-actions>
 
 NEVER use type:text=Rich Text Area, type:text=Document, or type:text=Body — these always fail in Google editors.
+NEVER output a plan card when you already have content ready to paste — paste it directly.
 
 JOBS & PROFESSIONAL:
 - Job search: https://www.linkedin.com/jobs/search/?keywords=QUERY
@@ -432,19 +452,47 @@ function convertNavioActionsBlock(text) {
     return `[[PLAN:${encoded}]]`;
   });
 
-  // Convert <navio-actions> block into [[ACTION:type:params]] tokens
+  // Convert <navio-actions> block into [[ACTION:type:params]] tokens.
+  // insertText is special: its content may span many lines, so we collect
+  // everything after "insertText:" until the next action keyword or end of block.
   text = text.replace(/<navio-actions>([\s\S]*?)<\/navio-actions>/gi, (_, body) => {
-    const lines = body.split('\n').map(l => l.trim()).filter(Boolean);
-    return lines.map(line => {
+    const valid = new Set(['navigate', 'click', 'type', 'inserttext', 'scroll', 'goback', 'goforward', 'presskey']);
+    const normMap = { goback: 'goBack', goforward: 'goForward', inserttext: 'insertText', presskey: 'pressKey' };
+
+    const tokens = [];
+    const lines = body.split('\n');
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i].trim();
+      if (!line) { i++; continue; }
       const colon = line.indexOf(':');
-      if (colon < 0) return '';
-      const type = line.slice(0, colon).trim().toLowerCase();
-      const params = line.slice(colon + 1).trim();
-      const valid = ['navigate', 'click', 'type', 'insertText', 'scroll', 'goback', 'goforward', 'pressKey'];
-      const normType = type === 'goback' ? 'goBack' : type === 'goforward' ? 'goForward' : type;
-      if (!valid.includes(type)) return '';
-      return `[[ACTION:${normType}:${params}]]`;
-    }).filter(Boolean).join('\n');
+      if (colon < 0) { i++; continue; }
+      const rawType = line.slice(0, colon).trim().toLowerCase();
+      if (!valid.has(rawType)) { i++; continue; }
+      const type = normMap[rawType] || rawType;
+
+      if (rawType === 'inserttext') {
+        // Collect first-line content + all following lines that are NOT a new action keyword
+        const contentLines = [line.slice(colon + 1)];
+        i++;
+        while (i < lines.length) {
+          const next = lines[i].trim();
+          const nc = next.indexOf(':');
+          // Stop if this looks like a new action line (keyword:...)
+          if (nc > 0 && valid.has(next.slice(0, nc).toLowerCase())) break;
+          contentLines.push(lines[i]); // preserve original indentation
+          i++;
+        }
+        // Decode literal \n sequences from AI output, then join real lines with \n
+        const raw = contentLines.join('\n').replace(/\\n/g, '\n').replace(/\\t/g, '\t').trim();
+        tokens.push(`[[ACTION:${type}:${raw}]]`);
+      } else {
+        const params = line.slice(colon + 1).trim();
+        tokens.push(`[[ACTION:${type}:${params}]]`);
+        i++;
+      }
+    }
+    return tokens.join('\n');
   });
 
   return text;
