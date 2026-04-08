@@ -6,6 +6,11 @@ out/
 .DS_Store
 Thumbs.db
 
+# Local credentials and personal config — never commit these
+*.local.md
+*.local.json
+*.local.env
+
 # Launch intro: track only the file the app loads (others stay local)
 public/intro_video/*
 !public/intro_video/.gitkeep
