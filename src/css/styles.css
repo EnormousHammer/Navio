@@ -7348,12 +7348,17 @@ body.onboarding-active #app {
   background: var(--bg-base);
   border: 1px solid #a78bfa;
   border-radius: 5px;
-  padding: 2px 8px;
+  padding: 4px 8px;
   font-size: 12.5px;
   color: var(--text-primary);
   font-family: var(--font-sans);
   outline: none;
   width: 100%;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.45;
+  min-height: 26px;
+  box-shadow: 0 0 0 2px rgba(167,139,250,0.18);
 }
 
 .navio-plan-step.navio-plan-editing .navio-plan-num {

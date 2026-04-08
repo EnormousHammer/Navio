@@ -840,82 +840,44 @@ PERSONALITY:
     if (!textEl || step.classList.contains('navio-plan-editing')) return;
     const clone = textEl.cloneNode(true);
     textEl.replaceWith(clone);
-    clone.addEventListener('click', () => clone.dispatchEvent(new MouseEvent('click')));
-    // Let _wireActions handle it — just re-attach the main listener
     clone.title = 'Click to edit';
     clone.style.cursor = 'pointer';
     clone.addEventListener('click', () => {
       if (step.classList.contains('navio-plan-editing')) return;
       step.classList.add('navio-plan-editing');
-      const original = clone.textContent;
-      const input = document.createElement('input');
-      input.className = 'navio-plan-edit-input';
-      input.type = 'text';
-      input.value = original;
-      input.spellcheck = false;
-      clone.replaceWith(input);
-      input.focus(); input.select();
+      const original = clone.textContent.trim();
+      const ta = document.createElement('textarea');
+      ta.className = 'navio-plan-edit-input';
+      ta.value = original;
+      ta.spellcheck = false;
+      ta.rows = 1;
+      clone.replaceWith(ta);
+      // Auto-resize to fit content
+      const resize = () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
+      ta.addEventListener('input', resize);
+      resize();
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
       const finish = (keep) => {
         step.classList.remove('navio-plan-editing');
         const span = document.createElement('span');
         span.className = 'navio-plan-text';
-        span.textContent = keep ? (input.value.trim() || original) : original;
-        input.replaceWith(span);
+        span.textContent = keep ? (ta.value.trim() || original) : original;
+        ta.replaceWith(span);
         this._wirePlanStep(step);
       };
-      input.addEventListener('blur', () => finish(true));
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-        if (e.key === 'Escape') { e.preventDefault(); input.removeEventListener('blur', () => finish(true)); finish(false); }
+      ta.addEventListener('blur', () => finish(true));
+      ta.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ta.blur(); }
+        if (e.key === 'Escape') { e.preventDefault(); ta.removeEventListener('blur', () => finish(true)); finish(false); }
       });
     });
   }
 
   async _wireActions(contentEl) {
-    // ── Wire plan card steps — click any step text to edit it ──────────────
-    contentEl.querySelectorAll('.navio-plan-step').forEach((step, idx) => {
-      const textEl = step.querySelector('.navio-plan-text');
-      if (!textEl) return;
-      textEl.title = 'Click to edit this step';
-      textEl.addEventListener('click', () => {
-        if (step.classList.contains('navio-plan-editing')) return;
-        step.classList.add('navio-plan-editing');
-        const original = textEl.textContent;
-        const input = document.createElement('input');
-        input.className = 'navio-plan-edit-input';
-        input.type = 'text';
-        input.value = original;
-        input.spellcheck = false;
-        textEl.replaceWith(input);
-        input.focus();
-        input.select();
-
-        const save = () => {
-          step.classList.remove('navio-plan-editing');
-          const newText = document.createElement('span');
-          newText.className = 'navio-plan-text';
-          newText.textContent = input.value.trim() || original;
-          newText.title = 'Click to edit this step';
-          input.replaceWith(newText);
-          newText.addEventListener('click', () => newText.click());
-          // Re-wire so it's editable again
-          this._wirePlanStep(step);
-        };
-        const cancel = () => {
-          step.classList.remove('navio-plan-editing');
-          const newText = document.createElement('span');
-          newText.className = 'navio-plan-text';
-          newText.textContent = original;
-          newText.title = 'Click to edit this step';
-          input.replaceWith(newText);
-          this._wirePlanStep(step);
-        };
-        input.addEventListener('blur', save);
-        input.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-          if (e.key === 'Escape') { e.preventDefault(); input.removeEventListener('blur', save); cancel(); }
-        });
-      });
+    // ── Wire plan card steps — click text to edit inline ──────────────────
+    contentEl.querySelectorAll('.navio-plan-step').forEach((step) => {
+      this._wirePlanStep(step);
     });
 
     // Wire task chain approval gates
@@ -1191,7 +1153,7 @@ PERSONALITY:
     try {
       const page = await TabManager.getActivePageContent();
       if (page && !page.error) {
-        pageInfo = `Title: ${page.title}\nURL: ${page.url}\n\nPage content:\n${(page.text || '').slice(0, 3000)}`;
+        pageInfo = `Title: ${page.title}\nURL: ${page.url}\n\nPage content:\n${(page.text || '').slice(0, 10000)}`;
       }
     } catch { /* ignore */ }
 
@@ -1204,7 +1166,17 @@ PERSONALITY:
 
     // Append accessibility snapshot so AI uses real element labels, not guessed selectors
     const snapText = await this._getPageSnapshotText();
-    const followUpText = `[Action completed. Current page state follows. Continue task if steps remain, or give a clean summary if done. Use [[ACTION:type:params]] format for any new actions.]\n\n${pageInfo}${snapText}`;
+    const followUpText = `[Action completed. Current page state follows.
+
+IMPORTANT AGENT RULES:
+- If this is a price/deal/flight/hotel/product research page: EXTRACT all visible prices, options, and dates from the page text above. List them clearly. Do NOT just say "I found results" — show the actual data.
+- If multiple options are visible, rank them by price and identify the cheapest with a clear callout.
+- If the data looks incomplete or the page didn't fully load, navigate to the same URL again or try an alternate source.
+- If steps remain in the plan, continue executing them. If all steps are done, give a final summary with the best option found and why.
+- Use [[ACTION:type:params]] format for any new browser actions.
+- NEVER make up prices or results — only report what is actually in the page text above.
+
+${pageInfo}${snapText}`;
     await this.processMessage(followUpText, true, null);
     document.getElementById('navio-continue-pill')?.remove();
     // _wireActions (called inside processMessage → addMessage) now handles auto-execution
