@@ -5066,25 +5066,22 @@ body.onboarding-active #app {
   align-items: center;
   gap: 7px;
   margin: 10px 0 2px;
-  padding: 10px 16px;
+  padding: 9px 16px;
   width: 100%;
-  background: var(--gradient-primary);
-  border: none;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.13);
   border-radius: var(--radius-sm);
-  color: white;
-  font-size: 13px;
-  font-weight: 700;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 600;
   font-family: var(--font-sans);
   cursor: pointer;
-  transition: opacity var(--duration) var(--ease), transform var(--duration) var(--ease);
-  box-shadow: 0 4px 16px rgba(0, 216, 255, 0.2);
+  transition: background 0.15s, border-color 0.15s;
   justify-content: center;
 }
-
 .navio-allow-btn:hover {
-  opacity: 0.88;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 22px rgba(0, 216, 255, 0.32);
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.22);
 }
 
 /* ── Action format warning (model used ACTION0 instead of [[ACTION:...]]) ── */
@@ -5243,31 +5240,34 @@ body.onboarding-active #app {
 }
 
 .bac-run {
-  padding: 4px 12px;
-  background: var(--gradient-primary);
-  color: white;
-  border: none;
+  padding: 4px 11px;
+  background: rgba(255,255,255,0.1);
+  color: var(--text-primary);
+  border: 1px solid rgba(255,255,255,0.16);
   border-radius: var(--radius-full);
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity var(--duration) var(--ease);
+  transition: background 0.15s, border-color 0.15s;
 }
 
-.bac-run:hover { opacity: 0.85; }
+.bac-run:hover {
+  background: rgba(255,255,255,0.16);
+  border-color: rgba(255,255,255,0.28);
+}
 
 .bac-skip {
   padding: 4px 10px;
   background: transparent;
   color: var(--text-tertiary);
-  border: 1px solid var(--glass-border);
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: var(--radius-full);
   font-size: 11.5px;
   cursor: pointer;
-  transition: all var(--duration) var(--ease);
+  transition: color 0.15s, border-color 0.15s;
 }
 
-.bac-skip:hover { border-color: var(--text-secondary); color: var(--text-secondary); }
+.bac-skip:hover { color: var(--text-secondary); border-color: rgba(255,255,255,0.15); }
 
 .bac-status {
   font-size: 11.5px;
@@ -5276,7 +5276,7 @@ body.onboarding-active #app {
 }
 
 .bac-status.bac-ok { color: #4ade80; font-style: normal; font-weight: 600; }
-.bac-status.bac-running { color: var(--accent); }
+.bac-status.bac-running { color: var(--text-secondary); font-style: italic; }
 
 .browser-action-card.bac-done {
   border-left-color: #4ade80;
@@ -7451,38 +7451,37 @@ body.onboarding-active #app {
 /* ── Navio Plan Card ── */
 .navio-plan-card {
   margin: 8px 0 4px;
-  padding: 11px 14px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-left: 3px solid #a78bfa;
+  padding: 10px 13px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.09);
   border-radius: 8px;
 }
 
 .navio-plan-header {
   display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: 11px;
-  font-weight: 700;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: #a78bfa;
-  margin-bottom: 10px;
+  letter-spacing: 0.7px;
+  color: var(--text-tertiary);
+  margin-bottom: 9px;
 }
 
 .navio-plan-steps {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 5px;
 }
 
 .navio-plan-step {
   display: flex;
   align-items: flex-start;
-  gap: 7px;
-  border-radius: 6px;
-  padding: 2px 4px;
-  margin: 0 -4px;
+  gap: 8px;
+  border-radius: 5px;
+  padding: 2px 3px;
+  margin: 0 -3px;
   transition: background 0.12s;
   cursor: default;
 }
@@ -7520,29 +7519,27 @@ body.onboarding-active #app {
   transition: opacity 0.12s, background 0.12s, color 0.12s;
 }
 .navio-plan-del:hover {
-  background: rgba(252, 129, 129, 0.15);
-  color: #fc8181;
+  background: rgba(248,113,113,0.12);
+  color: #f87171;
 }
 
-.navio-plan-step.navio-plan-dragging {
-  opacity: 0.35;
-}
+.navio-plan-step.navio-plan-dragging { opacity: 0.35; }
 .navio-plan-step.navio-plan-drag-over {
-  background: rgba(167, 139, 250, 0.10);
-  border-radius: 6px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 5px;
 }
 
 .navio-plan-add-btn {
   display: flex;
   align-items: center;
   gap: 5px;
-  margin-top: 10px;
+  margin-top: 8px;
   padding: 5px 10px;
   width: 100%;
   background: transparent;
-  border: 1px dashed rgba(167, 139, 250, 0.35);
+  border: 1px dashed rgba(255,255,255,0.12);
   border-radius: 6px;
-  color: rgba(167, 139, 250, 0.7);
+  color: var(--text-tertiary);
   font-size: 12px;
   font-family: var(--font-sans);
   cursor: pointer;
@@ -7550,91 +7547,77 @@ body.onboarding-active #app {
   justify-content: center;
 }
 .navio-plan-add-btn:hover {
-  border-color: #a78bfa;
-  color: #a78bfa;
-  background: rgba(167, 139, 250, 0.06);
+  border-color: rgba(255,255,255,0.22);
+  color: var(--text-secondary);
+  background: rgba(255,255,255,0.04);
 }
 
 [data-theme="light"] .navio-plan-add-btn {
-  border-color: rgba(124, 58, 237, 0.25);
-  color: rgba(124, 58, 237, 0.6);
+  border-color: rgba(0,0,0,0.12);
+  color: var(--text-tertiary);
 }
 [data-theme="light"] .navio-plan-add-btn:hover {
-  border-color: #7c3aed;
-  color: #7c3aed;
-  background: rgba(124, 58, 237, 0.05);
+  border-color: rgba(0,0,0,0.22);
+  background: rgba(0,0,0,0.03);
 }
 
 .navio-plan-num {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: rgba(167, 139, 250, 0.12);
-  border: 1px solid rgba(167, 139, 250, 0.30);
-  color: #a78bfa;
-  font-size: 10.5px;
-  font-weight: 700;
+  min-width: 18px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  margin-top: 1px;
+  margin-top: 2px;
+  line-height: 1;
 }
 
 .navio-plan-text {
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--text-secondary);
-  line-height: 1.45;
+  line-height: 1.5;
   flex: 1;
   cursor: pointer;
   border-radius: 4px;
   padding: 1px 4px;
   margin: -1px -4px;
-  transition: background 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
 
 .navio-plan-text:hover {
-  background: rgba(167, 139, 250, 0.10);
+  background: rgba(255,255,255,0.06);
   color: var(--text-primary);
-  text-decoration: underline;
-  text-decoration-style: dashed;
-  text-underline-offset: 2px;
 }
 
 .navio-plan-edit-input {
   flex: 1;
   background: var(--bg-base);
-  border: 1px solid #a78bfa;
+  border: 1px solid rgba(255,255,255,0.18);
   border-radius: 5px;
   padding: 4px 8px;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--text-primary);
   font-family: var(--font-sans);
   outline: none;
   width: 100%;
   resize: none;
   overflow: hidden;
-  line-height: 1.45;
+  line-height: 1.5;
   min-height: 26px;
-  box-shadow: 0 0 0 2px rgba(167,139,250,0.18);
 }
 
 .navio-plan-step.navio-plan-editing .navio-plan-num {
-  border-color: rgba(167, 139, 250, 0.5);
+  color: var(--text-secondary);
 }
 
 [data-theme="light"] .navio-plan-card {
-  background: #f5f3ff;
-  border-color: rgba(124, 58, 237, 0.12);
-  border-left-color: #7c3aed;
+  background: rgba(0,0,0,0.03);
+  border-color: rgba(0,0,0,0.08);
 }
-
-[data-theme="light"] .navio-plan-header { color: #7c3aed; }
-[data-theme="light"] .navio-plan-num {
-  background: rgba(124, 58, 237, 0.08);
-  border-color: rgba(124, 58, 237, 0.22);
-  color: #7c3aed;
-}
+[data-theme="light"] .navio-plan-header { color: var(--text-tertiary); }
+[data-theme="light"] .navio-plan-num { color: var(--text-tertiary); }
 
 /* ── Edit button on action cards ── */
 .bac-edit {
@@ -7707,30 +7690,25 @@ body.onboarding-active #app {
 .browser-action-card {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin: 4px 0;
-  padding: 8px 11px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--glass-border);
-  border-left: 3px solid var(--accent);
-  border-radius: 8px;
+  gap: 9px;
+  margin: 3px 0;
+  padding: 7px 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 7px;
   font-size: 12.5px;
   flex-wrap: wrap;
-  transition: background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+  transition: background 0.15s, opacity 0.15s;
 }
 
 .bac-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: rgba(0, 216, 255, 0.10);
-  border: 1px solid rgba(0, 216, 255, 0.20);
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--accent);
-  transition: background 0.2s, border-color 0.2s, color 0.2s;
+  color: var(--text-tertiary);
 }
 
 .bac-desc {
@@ -7744,21 +7722,20 @@ body.onboarding-active #app {
 }
 
 .bac-desc strong {
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 12.5px;
+  font-weight: 600;
   color: var(--text-primary);
-  transition: color 0.2s;
 }
 
 .bac-param {
-  font-size: 11px;
-  color: var(--accent);
-  background: rgba(0, 216, 255, 0.08);
-  border: 1px solid rgba(0, 216, 255, 0.15);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.11);
   padding: 1px 7px;
   border-radius: 4px;
   font-family: var(--font-mono);
-  max-width: 160px;
+  max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -7767,11 +7744,8 @@ body.onboarding-active #app {
 }
 
 .bac-param:hover {
-  background: rgba(0, 216, 255, 0.16);
-  border-color: rgba(0, 216, 255, 0.45);
-  text-decoration: underline;
-  text-decoration-style: dashed;
-  text-underline-offset: 2px;
+  background: rgba(255,255,255,0.11);
+  border-color: rgba(255,255,255,0.2);
 }
 
 .bac-param::after {
@@ -7781,59 +7755,39 @@ body.onboarding-active #app {
   transition: opacity 0.15s;
 }
 
-.bac-param:hover::after {
-  opacity: 0.6;
-}
+.bac-param:hover::after { opacity: 0.5; }
 
 .browser-action-card.bac-editing {
-  border-left-color: var(--accent);
-  background: rgba(0, 216, 255, 0.04);
+  background: rgba(255,255,255,0.06);
 }
 
 /* Hide the pencil icon button — clicking the chip is the way to edit */
-.bac-edit {
-  display: none;
-}
+.bac-edit { display: none; }
 
-/* ── Done state: green accent ── */
+/* ── Done state ── */
 .browser-action-card.bac-done {
-  border-left-color: #22c55e;
-  background: rgba(34, 197, 94, 0.04);
-  opacity: 1;
+  opacity: 0.55;
 }
 
-.browser-action-card.bac-done .bac-icon {
-  background: rgba(34, 197, 94, 0.12);
-  border-color: rgba(34, 197, 94, 0.28);
-  color: #22c55e;
-}
-
-.browser-action-card.bac-done .bac-desc strong {
-  color: var(--text-secondary);
-}
-
+.browser-action-card.bac-done .bac-icon { color: #4ade80; }
+.browser-action-card.bac-done .bac-desc strong { color: var(--text-secondary); }
 .browser-action-card.bac-done .bac-param {
   color: var(--text-tertiary);
   background: transparent;
-  border-color: var(--border);
+  border-color: rgba(255,255,255,0.07);
 }
 
 /* ── Error state ── */
 .browser-action-card.bac-error {
-  border-left-color: #f87171;
-  background: rgba(248, 113, 113, 0.04);
+  background: rgba(248,113,113,0.06);
+  border-color: rgba(248,113,113,0.2);
 }
-
-.browser-action-card.bac-error .bac-icon {
-  background: rgba(248, 113, 113, 0.12);
-  border-color: rgba(248, 113, 113, 0.25);
-  color: #f87171;
-}
+.browser-action-card.bac-error .bac-icon { color: #f87171; }
 
 /* ── Skipped state ── */
 .browser-action-card.bac-skipped {
-  opacity: 0.38;
-  border-left-color: var(--border);
+  opacity: 0.32;
+  border-color: rgba(255,255,255,0.06);
 }
 
 /* ── Status badges ── */
