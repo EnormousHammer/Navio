@@ -378,21 +378,10 @@ class NavioApp {
   }
 
   bindNewTabPage() {
-    const ntpSearchInput = document.getElementById('ntp-search-input');
-    ntpSearchInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        this.navigateTo(ntpSearchInput.value.trim());
-        ntpSearchInput.value = '';
-      }
-    });
-
-    document.querySelectorAll('.ntp-shortcut').forEach((shortcut) => {
-      shortcut.addEventListener('click', () => {
-        const url = shortcut.getAttribute('data-url');
-        if (url) this.navigateTo(url);
-      });
-    });
+    // Intentionally empty — ntp.js owns all NTP input/shortcut handlers.
+    // Duplicate handlers here caused a race: app.js set tab.url before
+    // ntp.js ran its check, making ntp.js open a second tab instead of
+    // navigating the current one (the "ghost NTP tab" bug).
   }
 
   updateUrlBar(url) {

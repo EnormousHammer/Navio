@@ -766,14 +766,10 @@ const NTP = (() => {
     document.querySelectorAll('#ntp-shortcuts .ntp-shortcut').forEach(btn => {
       btn.addEventListener('click', () => {
         const url = btn.dataset.url;
-        if (url && typeof TabManager !== 'undefined') {
-          const activeTab = TabManager.getActiveTab();
-          if (activeTab && !activeTab.url) {
-            if (typeof App !== 'undefined') App.handleSearch(url);
-          } else {
-            TabManager.createTab(url);
-          }
-        }
+        if (!url) return;
+        // Shortcuts are only visible when NTP is active, meaning the current
+        // tab has no URL — always navigate in-place rather than opening new tab.
+        if (typeof App !== 'undefined') App.handleSearch(url);
       });
     });
   }
