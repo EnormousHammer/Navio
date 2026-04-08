@@ -1423,32 +1423,80 @@ body.tabstrip-hidden .tab-strip-show {
   margin-top: 4px;
 }
 .ntp-email-item {
-  padding: 9px 16px;
-  border-bottom: 1px solid var(--glass-border, rgba(255,255,255,0.04));
+  padding: 10px 14px 10px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.045);
   position: relative;
-  cursor: default;
+  cursor: pointer;
+  transition: background 0.12s;
+  border-left: 2px solid transparent;
 }
 .ntp-email-item:last-child { border-bottom: none; }
-.ntp-email-item:hover { background: rgba(255,255,255,0.03); }
-.ntp-email-from {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-primary);
+.ntp-email-item:hover { background: rgba(255,255,255,0.04); }
+.ntp-email-item.unread {
+  border-left-color: rgba(0,216,255,0.55);
+}
+/* Row 1: sender + time */
+.ntp-email-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.ntp-email-sender {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.ntp-email-item.unread .ntp-email-sender {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.ntp-email-date {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+/* Row 2: subject */
 .ntp-email-subject {
   font-size: 12px;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-top: 2px;
+  margin-bottom: 2px;
+  opacity: 0.8;
+}
+.ntp-email-item.unread .ntp-email-subject {
+  color: var(--text-primary);
+  font-weight: 600;
+  opacity: 1;
+}
+/* Row 3: snippet */
+.ntp-email-preview {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  line-height: 1.4;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* Legacy classes kept for IMAP path */
+.ntp-email-from {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ntp-email-meta {
   font-size: 10px;
-  color: var(--text-tertiary, rgba(255,255,255,0.3));
+  color: var(--text-tertiary);
   margin-top: 2px;
 }
 .ntp-email-draft-btn {
@@ -1567,15 +1615,75 @@ body.tabstrip-hidden .tab-strip-show {
   to { transform: rotate(360deg); }
 }
 .ntp-brief-content {
-  padding: 12px 16px;
+  padding: 14px 16px;
   font-size: 12.5px;
-  line-height: 1.65;
+  line-height: 1.7;
   color: var(--text-secondary);
   overflow-y: auto;
   height: 100%;
 }
-.ntp-brief-content p { margin: 0 0 10px; }
+.ntp-brief-content p { margin: 0 0 9px; }
 .ntp-brief-content p:last-child { margin-bottom: 0; }
+.ntp-brief-content h2 {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin: 14px 0 6px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.ntp-brief-content h2:first-child { margin-top: 0; }
+.ntp-brief-content h3 {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 10px 0 3px;
+}
+.ntp-brief-content h4 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 8px 0 2px;
+}
+.ntp-brief-content strong { color: var(--text-primary); font-weight: 600; }
+.ntp-brief-content ul,
+.ntp-brief-content ol {
+  padding-left: 18px;
+  margin: 4px 0 8px;
+}
+.ntp-brief-content li {
+  margin-bottom: 3px;
+  line-height: 1.55;
+}
+.ntp-brief-content hr {
+  border: none;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  margin: 10px 0;
+}
+/* Pop-out button on widget headers */
+.ntp-widget-popout {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  padding: 0;
+  flex-shrink: 0;
+}
+.ntp-widget:hover .ntp-widget-popout { opacity: 1; }
+.ntp-widget-popout:hover {
+  background: rgba(255,255,255,0.08);
+  color: var(--text-secondary);
+}
 .ntp-brief-error {
   padding: 16px;
   font-size: 12px;

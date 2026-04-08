@@ -28,6 +28,7 @@ const NTP = (() => {
     _bindShortcuts();
     _bindAIBrief();
     _bindTickerTabs();
+    _bindWidgetPopouts();
 
     const observer = new MutationObserver(() => {
       const isActive = document.getElementById('new-tab-page')?.classList.contains('active');
@@ -224,6 +225,99 @@ const NTP = (() => {
         list.innerHTML = '<p class="ntp-widget-empty">Could not load news. Check your connection.</p>';
       }
     }
+  }
+
+  // ── Widget Pop-out — open any widget as a full new tab ────────────────────
+
+  function _bindWidgetPopouts() {
+    document.querySelectorAll('.ntp-widget-popout').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        _popoutWidget(btn.dataset.widget);
+      });
+    });
+  }
+
+  function _popoutWidget(widgetKey) {
+    const configs = {
+      news:    { bodyId: 'ntp-news-list',   title: 'World News' },
+      inbox:   { bodyId: 'ntp-email-list',  title: 'Inbox' },
+      aibrief: { bodyId: 'ntp-brief-body',  title: 'AI Brief' },
+    };
+    const cfg = configs[widgetKey];
+    if (!cfg) return;
+
+    const bodyEl = document.getElementById(cfg.bodyId);
+    if (!bodyEl) return;
+
+    // Grab relevant CSS from the page's stylesheets for the widget classes
+    const styles = Array.from(document.styleSheets)
+      .flatMap(s => { try { return Array.from(s.cssRules); } catch { return []; } })
+      .filter(r => r.cssText && /ntp-email|ntp-news|ntp-brief|ntp-widget-body/.test(r.cssText))
+      .map(r => r.cssText)
+      .join('\n');
+
+    const baseCSS = `
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: -apple-system, 'Segoe UI', sans-serif;
+        background: #0f1117;
+        color: #e2e8f0;
+        padding: 32px;
+        min-height: 100vh;
+      }
+      h1 {
+        font-size: 18px;
+        font-weight: 600;
+        color: rgba(226,232,248,0.6);
+        letter-spacing: 0.4px;
+        margin-bottom: 20px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+      }
+      .content { max-width: 760px; margin: 0 auto; }
+      a { color: #00d8ff; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      --text-primary: #e2e8f0;
+      --text-secondary: rgba(226,232,248,0.65);
+      --text-tertiary: rgba(226,232,248,0.35);
+    `;
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${cfg.title} — Navio</title>
+  <style>
+    ${baseCSS}
+    :root {
+      --text-primary: #e2e8f0;
+      --text-secondary: rgba(226,232,248,0.65);
+      --text-tertiary: rgba(226,232,248,0.35);
+      --glass-border: rgba(255,255,255,0.07);
+    }
+    ${styles}
+    /* Override fixed height for full-page view */
+    .ntp-widget-body { height: auto; overflow: visible; padding: 0; }
+    .ntp-brief-content { height: auto; overflow: visible; }
+    .ntp-email-item { cursor: default; }
+  </style>
+</head>
+<body>
+  <div class="content">
+    <h1>${cfg.title}</h1>
+    <div class="ntp-widget-body">
+      ${bodyEl.innerHTML}
+    </div>
+  </div>
+</body>
+</html>`;
+
+    try {
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      if (typeof TabManager !== 'undefined') TabManager.createTab(url);
+    } catch {}
   }
 
   // ── Bottom Ticker — Tab Switching ─────────────────────────────────────────
