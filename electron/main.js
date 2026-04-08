@@ -2331,13 +2331,31 @@ ipcMain.handle('oauth-connect', async (event, { providerId }) => {
       return true;
     };
 
+    // Only block/intercept navigations that are going to the redirect URI.
+    // Do NOT call ev.preventDefault() on other URLs — that was freezing the Google login flow.
     authWin.webContents.on('will-navigate', (ev, url) => {
-      if (interceptCallback(url)) ev.preventDefault();
+      if (url.startsWith(OAUTH_REDIRECT_URI)) {
+        ev.preventDefault();
+        interceptCallback(url);
+      }
     });
     authWin.webContents.on('will-redirect', (ev, url) => {
       if (url.startsWith(OAUTH_REDIRECT_URI)) {
-        interceptCallback(url);
         ev.preventDefault();
+        interceptCallback(url);
+      }
+    });
+    // Fallback: if the redirect URI navigation fails (ERR_CONNECTION_REFUSED because
+    // no local server is running on port 56789), the URL is still available here.
+    authWin.webContents.on('did-fail-load', (ev, errCode, errDesc, validatedURL) => {
+      if (validatedURL && validatedURL.startsWith(OAUTH_REDIRECT_URI)) {
+        interceptCallback(validatedURL);
+      }
+    });
+    // Final safety net: catch the code if the page actually navigates to the callback URL
+    authWin.webContents.on('did-navigate', (ev, url) => {
+      if (url.startsWith(OAUTH_REDIRECT_URI)) {
+        interceptCallback(url);
       }
     });
     authWin.on('closed', () => settle({ error: 'Login window closed by user.' }));
