@@ -570,15 +570,60 @@ const NTP = (() => {
       const connectedServices = Object.keys(imapSt || {});
 
       if (connectedServices.length === 0) {
-        emailList.innerHTML = `
-          <div class="ntp-email-empty">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-            <p>Connect Gmail or Outlook in the Connectors Hub to see your inbox here.</p>
-            <button class="ntp-connect-email-btn" id="ntp-connect-email">Connect email</button>
-          </div>`;
-        document.getElementById('ntp-connect-email')?.addEventListener('click', () => {
-          document.getElementById('btn-connectors-full')?.click();
-        });
+        // Check if a Google OAuth Client ID is already saved — if so, offer
+        // a direct "Sign in with Google" button instead of sending the user
+        // to the Connectors Hub to hunt for the right button themselves.
+        let hasGoogleClientId = false;
+        try {
+          const cfg = await window.navio.getConfig();
+          hasGoogleClientId = !!(cfg.oauthGoogleClientId || '').trim();
+        } catch {}
+
+        // Check if Google OAuth is already connected (tokens exist)
+        let googleAlreadyConnected = false;
+        try {
+          const oauthSt = await window.navio.oauthStatus();
+          googleAlreadyConnected = !!(oauthSt?.google?.connected);
+        } catch {}
+
+        if (hasGoogleClientId && !googleAlreadyConnected) {
+          // Client ID is configured but user hasn't signed in yet — go straight to OAuth
+          emailList.innerHTML = `
+            <div class="ntp-email-empty">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              <p>Your Google Client ID is ready. Sign in to connect Gmail.</p>
+              <button class="ntp-connect-email-btn" id="ntp-connect-email">Sign in with Google</button>
+            </div>`;
+          document.getElementById('ntp-connect-email')?.addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            btn.textContent = 'Signing in…';
+            btn.disabled = true;
+            try {
+              const result = await window.navio.oauthConnect('google');
+              if (result?.ok) {
+                btn.textContent = '✓ Connected!';
+                setTimeout(() => _loadInbox(), 1000);
+              } else {
+                btn.textContent = result?.error || 'Sign-in failed';
+                setTimeout(() => { btn.textContent = 'Sign in with Google'; btn.disabled = false; }, 3000);
+              }
+            } catch {
+              btn.textContent = 'Sign-in failed';
+              setTimeout(() => { btn.textContent = 'Sign in with Google'; btn.disabled = false; }, 3000);
+            }
+          });
+        } else {
+          // No Client ID configured — open the Connectors Hub for full setup
+          emailList.innerHTML = `
+            <div class="ntp-email-empty">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              <p>Connect Gmail or Outlook in the Connectors Hub to see your inbox here.</p>
+              <button class="ntp-connect-email-btn" id="ntp-connect-email">Connect email</button>
+            </div>`;
+          document.getElementById('ntp-connect-email')?.addEventListener('click', () => {
+            document.getElementById('btn-connectors-full')?.click();
+          });
+        }
         return;
       }
 
