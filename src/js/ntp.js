@@ -22,6 +22,16 @@ const NTP = (() => {
 
   // ── Init ──────────────────────────────────────────────────────────────────
 
+  function _applyTickerBottomReserve() {
+    const ntp = document.getElementById('new-tab-page');
+    const ticker = document.getElementById('ntp-stock-ticker');
+    if (!ntp || !ticker) return;
+    const h = ticker.getBoundingClientRect().height;
+    const extra = 24;
+    const reserve = Math.max(80, Math.ceil(h + extra));
+    ntp.style.setProperty('--ntp-ticker-reserve', `${reserve}px`);
+  }
+
   function init() {
     _startClock();
     _bindModeTabs();
@@ -31,12 +41,20 @@ const NTP = (() => {
     _bindTickerTabs();
     _bindWidgetPopouts();
 
+    const tickerEl = document.getElementById('ntp-stock-ticker');
+    if (tickerEl && typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => _applyTickerBottomReserve());
+      ro.observe(tickerEl);
+      _applyTickerBottomReserve();
+    }
+
     const observer = new MutationObserver(() => {
       const isActive = document.getElementById('new-tab-page')?.classList.contains('active');
       const ticker = document.getElementById('ntp-stock-ticker');
       if (isActive && !_ntpVisible) {
         _ntpVisible = true;
         if (ticker) ticker.classList.add('visible');
+        requestAnimationFrame(() => _applyTickerBottomReserve());
         _onShow();
       } else if (!isActive) {
         _ntpVisible = false;

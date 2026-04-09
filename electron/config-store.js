@@ -38,7 +38,10 @@ const DEFAULT_CONFIG = {
   lastProactiveSuggestionAt: 0,
   showBookmarkBar: true,
   tabLayout: 'horizontal',
-  memoryRetentionDays: 0
+  memoryRetentionDays: 0,
+  aiAutoExecute: false,
+  aiAutoScreenshotAfterNavigate: false,
+  aiAgentStepMode: false
 };
 
 function readConfigFile() {

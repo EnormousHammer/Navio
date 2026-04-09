@@ -55,8 +55,19 @@ function redactPII(text) {
   return t;
 }
 
+function messageContentToPlainString(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .map((p) => (p && p.type === 'text' ? String(p.text || '') : p && p.type === 'image_url' ? '[image]' : ''))
+    .join('\n');
+}
+
 function hashContext(messages) {
-  const sys = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n');
+  const sys = messages
+    .filter((m) => m.role === 'system')
+    .map((m) => messageContentToPlainString(m.content))
+    .join('\n');
   return crypto.createHash('sha256').update(sys.slice(0, 4000)).digest('hex').slice(0, 20);
 }
 
@@ -199,8 +210,26 @@ function convertNavioActionsBlock(text) {
   // insertText is special: its content may span many lines, so we collect
   // everything after "insertText:" until the next action keyword or end of block.
   text = text.replace(/<navio-actions>([\s\S]*?)<\/navio-actions>/gi, (_, body) => {
-    const valid = new Set(['navigate', 'click', 'type', 'inserttext', 'scroll', 'goback', 'goforward', 'presskey']);
-    const normMap = { goback: 'goBack', goforward: 'goForward', inserttext: 'insertText', presskey: 'pressKey' };
+    const valid = new Set([
+      'navigate',
+      'click',
+      'type',
+      'inserttext',
+      'scroll',
+      'goback',
+      'goforward',
+      'presskey',
+      'screenshot',
+      'gmailcreatereplydraft'
+    ]);
+    const normMap = {
+      goback: 'goBack',
+      goforward: 'goForward',
+      inserttext: 'insertText',
+      presskey: 'pressKey',
+      screenshot: 'screenshot',
+      gmailcreatereplydraft: 'gmailCreateReplyDraft'
+    };
 
     const tokens = [];
     const lines = body.split('\n');
@@ -229,6 +258,20 @@ function convertNavioActionsBlock(text) {
         // Decode literal \n sequences from AI output, then join real lines with \n
         const raw = contentLines.join('\n').replace(/\\n/g, '\n').replace(/\\t/g, '\t').trim();
         tokens.push(`[[ACTION:${type}:${raw}]]`);
+      } else if (rawType === 'gmailcreatereplydraft') {
+        const msgId = line.slice(colon + 1).trim();
+        const bodyLines = [];
+        i++;
+        while (i < lines.length) {
+          const next = lines[i].trim();
+          const nc = next.indexOf(':');
+          if (nc > 0 && valid.has(next.slice(0, nc).toLowerCase())) break;
+          bodyLines.push(lines[i]);
+          i++;
+        }
+        const bodyText = bodyLines.join('\n').replace(/\\n/g, '\n').replace(/\\t/g, '\t').trim();
+        const payload = Buffer.from(JSON.stringify({ id: msgId, body: bodyText }), 'utf8').toString('base64');
+        tokens.push(`[[ACTION:gmailCreateReplyDraft:${payload}]]`);
       } else {
         const params = line.slice(colon + 1).trim();
         tokens.push(`[[ACTION:${type}:${params}]]`);
@@ -577,16 +620,35 @@ async function performAiFetch(cfg, apiKey, messages, useStream) {
     if (useStream) return { error: 'Streaming not implemented for this provider; disable stream in settings.' };
     url = `https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemini-2.0-flash'}:generateContent?key=${apiKey}`;
     headers = { 'Content-Type': 'application/json' };
+    function toGeminiParts(content) {
+      if (typeof content === 'string') return [{ text: content }];
+      if (!Array.isArray(content)) return [{ text: '' }];
+      const parts = [];
+      for (const part of content) {
+        if (!part) continue;
+        if (part.type === 'text') parts.push({ text: part.text || '' });
+        else if (part.type === 'image_url' && part.image_url?.url) {
+          const u = part.image_url.url;
+          const m = u.match(/^data:([^;]+);base64,(.+)$/);
+          if (m) {
+            parts.push({ inlineData: { mimeType: m[1], data: m[2] } });
+          }
+        }
+      }
+      return parts.length ? parts : [{ text: '' }];
+    }
     const contents = messages
       .filter((m) => m.role !== 'system')
       .map((m) => ({
         role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }]
+        parts: toGeminiParts(m.content)
       }));
     const systemInstruction = messages.find((m) => m.role === 'system');
     body = JSON.stringify({
       contents,
-      systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction.content }] } : undefined
+      systemInstruction: systemInstruction
+        ? { parts: toGeminiParts(systemInstruction.content) }
+        : undefined
     });
   } else {
     return { error: `Unknown provider: ${provider}` };
@@ -632,9 +694,18 @@ ipcMain.handle('ai-request', async (event, { messages }) => {
   let processed = Array.isArray(messages) ? messages.map((m) => ({ ...m })) : [];
   processed = injectSystemPrompt(processed);
   if (cfg.aiRedactPII !== false) {
-    processed = processed.map((m) =>
-      typeof m.content === 'string' ? { ...m, content: redactPII(m.content) } : m
-    );
+    processed = processed.map((m) => {
+      if (typeof m.content === 'string') return { ...m, content: redactPII(m.content) };
+      if (Array.isArray(m.content)) {
+        return {
+          ...m,
+          content: m.content.map((part) =>
+            part && part.type === 'text' ? { ...part, text: redactPII(part.text || '') } : part
+          )
+        };
+      }
+      return m;
+    });
   }
 
   if (store) {
@@ -692,9 +763,18 @@ ipcMain.handle('ai-request-stream', async (event, { messages }) => {
   let processed = Array.isArray(messages) ? messages.map((m) => ({ ...m })) : [];
   processed = injectSystemPrompt(processed);
   if (cfg.aiRedactPII !== false) {
-    processed = processed.map((m) =>
-      typeof m.content === 'string' ? { ...m, content: redactPII(m.content) } : m
-    );
+    processed = processed.map((m) => {
+      if (typeof m.content === 'string') return { ...m, content: redactPII(m.content) };
+      if (Array.isArray(m.content)) {
+        return {
+          ...m,
+          content: m.content.map((part) =>
+            part && part.type === 'text' ? { ...part, text: redactPII(part.text || '') } : part
+          )
+        };
+      }
+      return m;
+    });
   }
 
   if (store) {
@@ -889,6 +969,106 @@ ipcMain.handle('page-snapshot', async (event, webContentsId) => {
   }
 });
 
+/** CDP fallback for Gmail when top-frame + same-origin iframe search misses (isolated iframes). */
+async function tryGmailClickViaDebugger(wc, selectorRaw) {
+  const rawJson = JSON.stringify(selectorRaw || '');
+  const expression = `
+    (function() {
+      const raw = ${rawJson};
+      function findElInDoc(doc) {
+        if (!raw || !doc) return null;
+        if (raw.startsWith('text=')) {
+          const q = raw.slice(5).trim().toLowerCase();
+          const candidates = doc.querySelectorAll(
+            'a,button,[role="button"],[role="link"],[role="menuitem"],[role="tab"]'
+          );
+          for (const el of candidates) {
+            const lbl = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim().toLowerCase();
+            if (lbl.includes(q)) return el;
+          }
+        }
+        if (raw.startsWith('aria=')) {
+          const q = raw.slice(5).trim().toLowerCase();
+          for (const el of doc.querySelectorAll('[aria-label]')) {
+            if ((el.getAttribute('aria-label') || '').toLowerCase().includes(q)) return el;
+          }
+        }
+        try { return doc.querySelector(raw); } catch (e) { return null; }
+      }
+      const el = findElInDoc(document);
+      if (!el) return { ok: false };
+      el.scrollIntoView({ block: 'center', behavior: 'instant' });
+      el.focus();
+      el.click();
+      const r = el.getBoundingClientRect();
+      let cx = r.left + r.width / 2;
+      let cy = r.top + r.height / 2;
+      let w = el.ownerDocument.defaultView;
+      while (w && w !== w.top) {
+        const fe = w.frameElement;
+        if (!fe) break;
+        const fr = fe.getBoundingClientRect();
+        cx += fr.left;
+        cy += fr.top;
+        w = fe.ownerDocument.defaultView;
+      }
+      return { ok: true, cx: Math.round(cx), cy: Math.round(cy) };
+    })()
+  `;
+  let attachedHere = false;
+  try {
+    if (!wc.debugger.isAttached()) {
+      wc.debugger.attach('1.3');
+      attachedHere = true;
+    }
+    await wc.debugger.sendCommand('Page.enable');
+    const { frameTree } = await wc.debugger.sendCommand('Page.getFrameTree');
+    const frames = [];
+    const walk = (n) => {
+      if (n.frame) frames.push(n.frame);
+      (n.childFrames || []).forEach(walk);
+    };
+    walk(frameTree);
+    for (const frame of frames) {
+      if (!frame.id) continue;
+      let ctxId;
+      try {
+        const iso = await wc.debugger.sendCommand('Page.createIsolatedWorld', {
+          frameId: frame.id,
+          worldName: 'navio_cdp_click',
+          grantUniverseAccess: false
+        });
+        ctxId = iso.executionContextId;
+      } catch (e) {
+        continue;
+      }
+      try {
+        const ev = await wc.debugger.sendCommand('Runtime.evaluate', {
+          expression,
+          contextId: ctxId,
+          awaitPromise: true,
+          returnByValue: true
+        });
+        const val = ev.result?.value;
+        if (val && val.ok) return val;
+      } catch (e) {
+        /* next frame */
+      }
+    }
+    return { ok: false, error: 'Element not found (CDP frame scan)' };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  } finally {
+    if (attachedHere) {
+      try {
+        wc.debugger.detach();
+      } catch (e) {
+        /* ignore */
+      }
+    }
+  }
+}
+
 ipcMain.handle('browser-action', async (event, { webContentsId, action, params, userConfirmed }) => {
   try {
     if (RISKY_BROWSER_ACTIONS.has(action) && !userConfirmed) {
@@ -953,35 +1133,47 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
       }
 
       case 'click': {
+        const selRaw = (params.selector || '').trim();
+        if (selRaw.toLowerCase().startsWith('xy=')) {
+          const rest = selRaw.slice(3).trim();
+          const parts = rest.split(/[,;\s]+/).filter(Boolean).map((x) => parseFloat(x));
+          const cx = parts[0];
+          const cy = parts[1];
+          if (Number.isFinite(cx) && Number.isFinite(cy)) {
+            wc.sendInputEvent({ type: 'mouseMove', x: cx, y: cy });
+            await new Promise((r) => setTimeout(r, 40));
+            wc.sendInputEvent({ type: 'mouseDown', x: cx, y: cy, button: 'left', clickCount: 1 });
+            await new Promise((r) => setTimeout(r, 60));
+            wc.sendInputEvent({ type: 'mouseUp', x: cx, y: cy, button: 'left', clickCount: 1 });
+            return { success: true };
+          }
+          return { error: 'Invalid xy= coordinates — use e.g. click:xy=400,520' };
+        }
+
         const cSel = JSON.stringify(params.selector || '');
-        const res = await wc.executeJavaScript(`
+        let res = await wc.executeJavaScript(`
           new Promise((resolve) => {
             const raw = ${cSel};
 
-            // Multi-strategy element finder — accessibility-first, broad candidate net,
-            // CSS fallback. Searches shadow DOM roots one level deep as well.
-            function findEl(sel) {
-              if (!sel) return null;
-
+            function findElInDoc(doc, sel) {
+              if (!sel || !doc) return null;
               if (sel.startsWith('text=')) {
                 const q = sel.slice(5).trim().toLowerCase();
-                // Cast a wide net: standard buttons + role="button" + MDC/Angular divs/spans
-                const candidates = document.querySelectorAll(
+                const candidates = doc.querySelectorAll(
                   'a,button,input[type="submit"],input[type="button"],' +
                   '[role="button"],[role="link"],[role="menuitem"],[role="tab"],' +
                   '[role="option"],[role="radio"],[role="checkbox"],' +
                   'div[class*="button"],span[class*="button"],div[class*="btn"],span[class*="btn"],' +
-                  'li[class*="item"],div[class*="item"],div[class*="option"]'
+                  'li[class*="item"],div[class*="item"],div[class*="option"],span[role="link"]'
                 );
                 for (const el of candidates) {
                   const lbl = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim().toLowerCase();
                   if (lbl.includes(q)) return el;
                 }
-                // Shadow DOM fallback — one level deep
-                for (const host of document.querySelectorAll('*')) {
+                for (const host of doc.querySelectorAll('*')) {
                   if (!host.shadowRoot) continue;
                   const shadowCandidates = host.shadowRoot.querySelectorAll(
-                    'a,button,[role="button"],[role="menuitem"]'
+                    'a,button,[role="button"],[role="menuitem"],[role="link"]'
                   );
                   for (const el of shadowCandidates) {
                     const lbl = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim().toLowerCase();
@@ -990,58 +1182,84 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
                 }
                 return null;
               }
-
               if (sel.startsWith('aria=')) {
                 const q = sel.slice(5).trim().toLowerCase();
-                for (const el of document.querySelectorAll('[aria-label]')) {
-                  if (el.getAttribute('aria-label').toLowerCase().includes(q)) return el;
+                for (const el of doc.querySelectorAll('[aria-label]')) {
+                  if ((el.getAttribute('aria-label') || '').toLowerCase().includes(q)) return el;
                 }
                 return null;
               }
-
-              try { return document.querySelector(sel); } catch { return null; }
+              try { return doc.querySelector(sel); } catch (e) { return null; }
             }
 
-            // Fire the full pointer + mouse event sequence that Angular/React/Material
-            // components actually listen for. A bare el.click() is often swallowed by
-            // frameworks that require real pointer events to activate their handlers.
+            function absCenter(el) {
+              const r = el.getBoundingClientRect();
+              let cx = r.left + r.width / 2;
+              let cy = r.top + r.height / 2;
+              let w = el.ownerDocument.defaultView;
+              while (w && w !== w.top) {
+                const fe = w.frameElement;
+                if (!fe) break;
+                const fr = fe.getBoundingClientRect();
+                cx += fr.left;
+                cy += fr.top;
+                w = fe.ownerDocument.defaultView;
+              }
+              return { cx: Math.round(cx), cy: Math.round(cy) };
+            }
+
             function fireFullClick(el) {
+              const VW = el.ownerDocument.defaultView;
               el.scrollIntoView({ block: 'center', behavior: 'instant' });
               el.focus();
-
               const rect = el.getBoundingClientRect();
-              const cx = Math.round(rect.left + rect.width  / 2);
-              const cy = Math.round(rect.top  + rect.height / 2);
-
               const base = {
-                bubbles: true, cancelable: true, view: window,
-                clientX: cx, clientY: cy, screenX: cx, screenY: cy,
-                buttons: 1, button: 0
+                bubbles: true, cancelable: true, view: VW,
+                clientX: rect.left + rect.width / 2,
+                clientY: rect.top + rect.height / 2,
+                screenX: 0,
+                screenY: 0,
+                buttons: 1,
+                button: 0
               };
               const ptr = { ...base, pointerId: 1, isPrimary: true, pointerType: 'mouse' };
-
-              el.dispatchEvent(new PointerEvent('pointerover',   { ...ptr }));
-              el.dispatchEvent(new PointerEvent('pointerenter',  { ...ptr, bubbles: false }));
-              el.dispatchEvent(new MouseEvent  ('mouseover',     base));
-              el.dispatchEvent(new MouseEvent  ('mouseenter',    { ...base, bubbles: false }));
-              el.dispatchEvent(new PointerEvent('pointermove',   { ...ptr }));
-              el.dispatchEvent(new MouseEvent  ('mousemove',     base));
-              el.dispatchEvent(new PointerEvent('pointerdown',   { ...ptr }));
-              el.dispatchEvent(new MouseEvent  ('mousedown',     base));
-              el.dispatchEvent(new PointerEvent('pointerup',     { ...ptr }));
-              el.dispatchEvent(new MouseEvent  ('mouseup',       base));
-              el.dispatchEvent(new MouseEvent  ('click',         base));
-              // Native DOM click as belt-and-suspenders
+              el.dispatchEvent(new VW.PointerEvent('pointerover', { ...ptr }));
+              el.dispatchEvent(new VW.PointerEvent('pointerenter', { ...ptr, bubbles: false }));
+              el.dispatchEvent(new VW.MouseEvent('mouseover', base));
+              el.dispatchEvent(new VW.MouseEvent('mouseenter', { ...base, bubbles: false }));
+              el.dispatchEvent(new VW.PointerEvent('pointermove', { ...ptr }));
+              el.dispatchEvent(new VW.MouseEvent('mousemove', base));
+              el.dispatchEvent(new VW.PointerEvent('pointerdown', { ...ptr }));
+              el.dispatchEvent(new VW.MouseEvent('mousedown', base));
+              el.dispatchEvent(new VW.PointerEvent('pointerup', { ...ptr }));
+              el.dispatchEvent(new VW.MouseEvent('mouseup', base));
+              el.dispatchEvent(new VW.MouseEvent('click', base));
               el.click();
+            }
 
-              return { cx, cy };
+            function searchDeep(win, depth) {
+              if (!win || depth > 14) return null;
+              const doc = win.document;
+              const el = findElInDoc(doc, raw);
+              if (el) return el;
+              const iframes = doc.querySelectorAll('iframe');
+              for (let i = 0; i < iframes.length; i++) {
+                try {
+                  const iw = iframes[i].contentWindow;
+                  if (!iw || !iw.document) continue;
+                  const hit = searchDeep(iw, depth + 1);
+                  if (hit) return hit;
+                } catch (e) { /* cross-origin */ }
+              }
+              return null;
             }
 
             let tries = 0;
             const attempt = () => {
-              const el = findEl(raw);
+              const el = searchDeep(window, 0);
               if (el) {
-                const { cx, cy } = fireFullClick(el);
+                fireFullClick(el);
+                const { cx, cy } = absCenter(el);
                 resolve({ ok: true, cx, cy });
               } else if (++tries < 14) {
                 setTimeout(attempt, 250);
@@ -1052,18 +1270,20 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
             attempt();
           })
         `);
+
+        if (!res.ok && /mail\\.google\\.com/.test(wc.getURL?.() || '')) {
+          res = await tryGmailClickViaDebugger(wc, params.selector || '');
+        }
+
         if (!res.ok) return { error: res.error };
 
-        // Native Electron input events — fires real OS-level mouse events at the element's
-        // center coordinates. Works even when JavaScript event dispatch is swallowed by the
-        // page (e.g. Google Cloud Console Material buttons, shadow DOM components, iframes).
         if (res.cx != null && res.cy != null) {
           const { cx, cy } = res;
-          wc.sendInputEvent({ type: 'mouseMove',  x: cx, y: cy });
-          await new Promise(r => setTimeout(r, 40));
-          wc.sendInputEvent({ type: 'mouseDown',  x: cx, y: cy, button: 'left', clickCount: 1 });
-          await new Promise(r => setTimeout(r, 60));
-          wc.sendInputEvent({ type: 'mouseUp',    x: cx, y: cy, button: 'left', clickCount: 1 });
+          wc.sendInputEvent({ type: 'mouseMove', x: cx, y: cy });
+          await new Promise((r) => setTimeout(r, 40));
+          wc.sendInputEvent({ type: 'mouseDown', x: cx, y: cy, button: 'left', clickCount: 1 });
+          await new Promise((r) => setTimeout(r, 60));
+          wc.sendInputEvent({ type: 'mouseUp', x: cx, y: cy, button: 'left', clickCount: 1 });
         }
 
         return { success: true };
@@ -1076,33 +1296,61 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
           new Promise((resolve) => {
             const raw = ${tSel};
             const text = ${tVal};
-            function findEl(sel) {
-              if (!sel) return null;
+            function findElInDoc(doc, sel) {
+              if (!sel || !doc) return null;
               if (sel.startsWith('text=') || sel.startsWith('aria=')) {
                 const prefix = sel.startsWith('text=') ? 'text=' : 'aria=';
                 const q = sel.slice(prefix.length).trim().toLowerCase();
-                for (const el of document.querySelectorAll('input,textarea,select,[contenteditable]')) {
+                for (const el of doc.querySelectorAll('input,textarea,select,[contenteditable]')) {
                   const lbl = (el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.getAttribute('name') || '').toLowerCase();
                   if (lbl.includes(q)) return el;
                 }
                 return null;
               }
-              try { return document.querySelector(sel); } catch { return null; }
+              try { return doc.querySelector(sel); } catch (e) { return null; }
+            }
+            function searchTypeDeep(win, depth) {
+              if (!win || depth > 14) return null;
+              const doc = win.document;
+              const el = findElInDoc(doc, raw);
+              if (el) return el;
+              for (const iframe of doc.querySelectorAll('iframe')) {
+                try {
+                  const iw = iframe.contentWindow;
+                  if (!iw || !iw.document) continue;
+                  const hit = searchTypeDeep(iw, depth + 1);
+                  if (hit) return hit;
+                } catch (e) { /* cross-origin */ }
+              }
+              return null;
             }
             let tries = 0;
             const attempt = () => {
-              const el = findEl(raw);
+              const el = searchTypeDeep(window, 0);
               if (el) {
                 el.focus();
                 el.scrollIntoView({ block: 'center', behavior: 'instant' });
-                // Native input setter so React/Vue controlled inputs detect change
-                const proto = el.tagName === 'TEXTAREA'
-                  ? window.HTMLTextAreaElement.prototype
-                  : window.HTMLInputElement.prototype;
-                const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-                if (setter) setter.call(el, text); else el.value = text;
-                el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
+                const tag = el.tagName;
+                const isCE = el.isContentEditable || el.getAttribute('contenteditable') === 'true';
+                if (isCE) {
+                  el.focus();
+                  const doc = el.ownerDocument;
+                  if (doc.execCommand) {
+                    doc.execCommand('selectAll', false, null);
+                    doc.execCommand('insertText', false, text);
+                  } else {
+                    el.textContent = text;
+                  }
+                  el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text }));
+                } else {
+                  const proto = tag === 'TEXTAREA'
+                    ? window.HTMLTextAreaElement.prototype
+                    : window.HTMLInputElement.prototype;
+                  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+                  if (setter) setter.call(el, text); else el.value = text;
+                  el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text }));
+                  el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
                 resolve({ ok: true });
               } else if (++tries < 14) {
                 setTimeout(attempt, 250);
@@ -1188,6 +1436,7 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
         // we paste.  Always click .kix-appview-editor first to guarantee focus.
         const insertUrl = wc.getURL?.() || '';
         const isGoogleDocInsert = /docs\.google\.com\/document/.test(insertUrl);
+        const isGmailInsert = /mail\.google\.com/.test(insertUrl);
         if (isGoogleDocInsert) {
           await wc.executeJavaScript(`
             (function() {
@@ -1196,6 +1445,31 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
             })()
           `).catch(() => {});
           await new Promise(r => setTimeout(r, 200));
+        }
+        if (isGmailInsert) {
+          await wc.executeJavaScript(`
+            (function() {
+              function focusComposeBody(win, depth) {
+                if (!win || depth > 14) return false;
+                const doc = win.document;
+                const cand = doc.querySelector(
+                  '[contenteditable="true"][g_editable="true"], ' +
+                  'div[aria-label="Message Body"][contenteditable="true"], ' +
+                  '[contenteditable="true"].Am.Al.editable, ' +
+                  'div[contenteditable="true"][role="textbox"]'
+                );
+                if (cand) { cand.focus(); cand.click(); return true; }
+                for (const iframe of doc.querySelectorAll('iframe')) {
+                  try {
+                    if (iframe.contentWindow && focusComposeBody(iframe.contentWindow, depth + 1)) return true;
+                  } catch (e) {}
+                }
+                return false;
+              }
+              focusComposeBody(window, 0);
+            })()
+          `).catch(() => {});
+          await new Promise(r => setTimeout(r, 220));
         }
         // 1. Write to clipboard — use HTML for Google Docs so formatting is preserved
         //    (headings, bold, bullets from markdown are rendered as real Doc styles).
@@ -1252,7 +1526,7 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
 
       case 'screenshot': {
         const image = await wc.capturePage();
-        return { screenshot: image.toDataURL() };
+        return { success: true, screenshot: image.toDataURL() };
       }
 
       default:
@@ -1462,6 +1736,7 @@ const OAUTH_PROVIDERS = {
     scopes: [
       'openid', 'email', 'profile',
       'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.compose',
       'https://www.googleapis.com/auth/drive.readonly',
       'https://www.googleapis.com/auth/calendar.readonly'
     ],
@@ -2810,6 +3085,100 @@ ipcMain.handle('gmail-get-message-body', async (_, { id }) => {
       snippet: d.snippet || '',
     };
   } catch (e) { return { error: e.message }; }
+});
+
+function gmailBase64UrlEncode(str) {
+  return Buffer.from(str, 'utf8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+function parseEmailAddressFromHeader(fromVal) {
+  if (!fromVal) return '';
+  const m = fromVal.match(/<([^>]+)>/);
+  if (m) return m[1].trim();
+  const m2 = fromVal.match(/[\w.+-]+@[\w.-]+\.[A-Za-z0-9-]+/);
+  return m2 ? m2[0] : fromVal.trim();
+}
+
+// ── Gmail API: create a threaded reply draft (no UI automation) ─────────────
+ipcMain.handle('gmail-create-reply-draft', async (_, { messageId, body: replyBody }) => {
+  try {
+    const token = await getValidOAuthToken('google');
+    if (!token) return { error: 'not_signed_in' };
+
+    const mid = (messageId || '').trim();
+    if (!mid) return { error: 'Missing Gmail message id' };
+
+    const text = (replyBody || '').trim();
+    if (!text) return { error: 'Empty reply body' };
+
+    const r = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(mid)}?format=full`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const d = await r.json();
+    if (!r.ok) return { error: d.error?.message || 'Gmail API error' };
+
+    const threadId = d.threadId;
+    const headers = d.payload?.headers || [];
+    const get = (name) =>
+      headers.find((h) => h.name && h.name.toLowerCase() === name.toLowerCase())?.value || '';
+
+    const from = get('From');
+    const replyTo = get('Reply-To');
+    const subject = get('Subject');
+    const msgIdHdr = get('Message-ID') || get('Message-Id');
+    const prevRefs = (get('References') || '').trim();
+
+    const toAddr = parseEmailAddressFromHeader(replyTo || from);
+    if (!toAddr) return { error: 'Could not determine reply recipient' };
+
+    let subjOut = subject || '(no subject)';
+    if (!/^re:\s/i.test(subjOut)) subjOut = 'Re: ' + subjOut;
+
+    const refs = [prevRefs, msgIdHdr].filter(Boolean).join(' ').trim();
+
+    const mimeLines = [
+      `To: ${toAddr}`,
+      `Subject: ${subjOut}`,
+      msgIdHdr ? `In-Reply-To: ${msgIdHdr}` : '',
+      refs ? `References: ${refs}` : '',
+      'MIME-Version: 1.0',
+      'Content-Type: text/plain; charset=UTF-8',
+      'Content-Transfer-Encoding: 8bit',
+      '',
+      text.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')
+    ].filter((line) => line !== '');
+    const mime = mimeLines.join('\r\n');
+    const raw = gmailBase64UrlEncode(mime);
+
+    const draftRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: threadId ? { raw, threadId } : { raw }
+      })
+    });
+    const draftData = await draftRes.json();
+    if (!draftRes.ok) {
+      return { error: draftData.error?.message || 'Failed to create Gmail draft' };
+    }
+
+    return {
+      success: true,
+      draftId: draftData.id,
+      messageId: draftData.message?.id,
+      threadId: draftData.message?.threadId || threadId
+    };
+  } catch (e) {
+    return { error: e.message };
+  }
 });
 
 // Update connector-get-keys to also include IMAP-connected services

@@ -16,6 +16,8 @@ class AssistantManagerClass {
     this._streamUnsubs = [];
     this._autoFollowCount = 0;
     this._emailRefs = new Map();
+    this._pendingScreenshotDataUrl = null;
+    this._takeoverAbort = null;
 
     this.systemPrompt = `You are Navio, an intelligent AI assistant built into the Navio Browser. You help users browse the web, understand content, and automate tasks.
 
@@ -110,6 +112,16 @@ PERSONALITY:
       this.scopeSelect.addEventListener('change', () => this.persistScopeFromUI());
     }
 
+    const stepToggle = document.getElementById('assistant-step-mode-toggle');
+    if (stepToggle) {
+      stepToggle.addEventListener('change', async () => {
+        const cfg = await window.navio.getConfig();
+        cfg.aiAgentStepMode = !!stepToggle.checked;
+        await window.navio.saveConfig(cfg);
+        if (typeof App !== 'undefined') App.config = cfg;
+      });
+    }
+
     const pinBtn = document.getElementById('btn-pin-tab');
     if (pinBtn) {
       pinBtn.addEventListener('click', () => this.pinActiveTab());
@@ -199,6 +211,8 @@ PERSONALITY:
       const v = cfg.aiDataScope || (cfg.aiIncludePageContext === false ? 'none' : 'excerpt');
       this.scopeSelect.value = ['none', 'selection', 'excerpt', 'full'].includes(v) ? v : 'excerpt';
     }
+    const stepToggle = document.getElementById('assistant-step-mode-toggle');
+    if (stepToggle) stepToggle.checked = !!cfg.aiAgentStepMode;
   }
 
   // ── @tab mention picker ───────────────────────────────────────────────
@@ -554,7 +568,21 @@ PERSONALITY:
 
     const recentHistory = this.conversationHistory.slice(-20);
     messages.push(...recentHistory);
-    messages.push({ role: 'user', content: text });
+    let userContent = text;
+    if (this._pendingScreenshotDataUrl) {
+      const shot = this._pendingScreenshotDataUrl;
+      this._pendingScreenshotDataUrl = null;
+      userContent = [
+        {
+          type: 'text',
+          text:
+            text +
+            '\n\n[Attached: screenshot of the active tab after the last action. Use it to choose precise click:xy= coordinates or verify UI state.]'
+        },
+        { type: 'image_url', image_url: { url: shot } }
+      ];
+    }
+    messages.push({ role: 'user', content: userContent });
     const userHistory = historyUserLabel || text;
 
     const useStream = config.aiStreamResponses !== false && (config.aiProvider === 'openai' || config.aiProvider === 'custom');
@@ -899,11 +927,23 @@ PERSONALITY:
         type:     `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>`,
         scroll:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>`,
         goBack:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
-        goForward:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`
+        goForward:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`,
+        insertText: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`,
+        pressKey: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h8"/></svg>`,
+        screenshot: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
+        gmailCreateReplyDraft: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`
       };
       const VERBS = {
-        navigate: 'Navigate to', click: 'Click', type: 'Type into',
-        scroll: 'Scroll', goBack: 'Go back', goForward: 'Go forward'
+        navigate: 'Navigate to',
+        click: 'Click',
+        type: 'Type into',
+        scroll: 'Scroll',
+        goBack: 'Go back',
+        goForward: 'Go forward',
+        insertText: 'Paste text',
+        pressKey: 'Key',
+        screenshot: 'Screenshot',
+        gmailCreateReplyDraft: 'Gmail reply draft'
       };
 
       const EDIT_ICON = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
@@ -959,6 +999,17 @@ PERSONALITY:
               paramDisplay = u.hostname + (u.pathname !== '/' ? u.pathname : '') + (u.search ? '…' : '');
               paramDisplay = paramDisplay.replace(/^www\./, '');
             } catch (_) {}
+          } else if (type === 'gmailCreateReplyDraft') {
+            try {
+              const raw = params.replace(/\s/g, '');
+              const p = JSON.parse(atob(raw));
+              const id = (p.id || '').toString();
+              paramDisplay = id.length > 12 ? `…${id.slice(-10)}` : id || 'message';
+            } catch (_) {
+              paramDisplay = 'Gmail message + body';
+            }
+          } else if (type === 'insertText') {
+            paramDisplay = params.length > 80 ? params.slice(0, 77) + '…' : params;
           }
           card = `<div class="browser-action-card" data-action="${type}" data-params="${safeParams}">
             <span class="bac-icon">${icon}</span>
@@ -980,6 +1031,7 @@ PERSONALITY:
   // ── Takeover mode ────────────────────────────────────────────────────────
   enableTakeover() {
     this._takeoverMode = true;
+    this._takeoverAbort = new AbortController();
     // Banner above the input area
     if (!document.getElementById('navio-takeover-banner')) {
       const banner = document.createElement('div');
@@ -988,8 +1040,10 @@ PERSONALITY:
       banner.innerHTML = `
         <span class="ntb-dot"></span>
         <span class="ntb-label">Navio is in control</span>
+        <button class="ntb-undo" type="button">Undo</button>
         <button class="ntb-stop" type="button">Stop</button>`;
       banner.querySelector('.ntb-stop').addEventListener('click', () => this.disableTakeover());
+      banner.querySelector('.ntb-undo').addEventListener('click', () => this._undoLastNavigation());
       const inputArea = this.panel.querySelector('.assistant-input-area');
       if (inputArea) this.panel.insertBefore(banner, inputArea);
     }
@@ -998,7 +1052,14 @@ PERSONALITY:
   disableTakeover() {
     this._takeoverMode = false;
     this._autoFollowCount = 0;
+    try {
+      this._takeoverAbort?.abort();
+    } catch {
+      /* ignore */
+    }
+    this._takeoverAbort = null;
     document.getElementById('navio-takeover-banner')?.remove();
+    document.getElementById('navio-step-pause-pill')?.remove();
     this._addContinuePill('Navio stopped. You\'re back in control.');
   }
 
@@ -1416,28 +1477,120 @@ PERSONALITY:
       contentEl.querySelectorAll('.browser-action-card:not(.bac-done):not(.bac-skipped):not(.bac-error)')
     );
     for (const card of cards) {
-      if (!this._takeoverMode) break;
+      if (!this._takeoverMode || this._takeoverAbort?.signal.aborted) break;
       await this._executeAction(card.dataset.action, card.dataset.params, card, true);
-      // Stop the chain if an action genuinely failed (element not found, etc.)
       if (card.classList.contains('bac-error')) break;
-      // Navigate already waits for page load internally; still give a short gap for paint
+      if (!this._takeoverMode || this._takeoverAbort?.signal.aborted) break;
+      let stepMode = false;
+      try {
+        const cfg = await window.navio.getConfig();
+        stepMode = !!cfg.aiAgentStepMode;
+      } catch {
+        /* ignore */
+      }
+      if (stepMode) await this._waitStepContinueOrStop();
+      if (!this._takeoverMode) break;
       const gap = card.dataset.action === 'navigate' ? 400 : 600;
       if (this._takeoverMode) await new Promise((r) => setTimeout(r, gap));
     }
-    // After all cards in this message are done, trigger the agent loop
-    if (this._takeoverMode) {
+    if (this._takeoverMode && !this._takeoverAbort?.signal.aborted) {
       setTimeout(() => this._smartFollowUp(), 1000);
     }
   }
 
+  _waitStepContinueOrStop() {
+    return new Promise((resolve) => {
+      document.getElementById('navio-step-pause-pill')?.remove();
+      const pill = document.createElement('div');
+      pill.id = 'navio-step-pause-pill';
+      pill.className = 'navio-step-pause-pill';
+      pill.innerHTML =
+        '<span>Step paused</span>' +
+        '<button type="button" class="nsp-continue">Continue</button>' +
+        '<button type="button" class="nsp-stop">Stop</button>';
+      const finish = () => {
+        pill.remove();
+        resolve();
+      };
+      pill.querySelector('.nsp-continue').addEventListener('click', finish);
+      pill.querySelector('.nsp-stop').addEventListener('click', () => {
+        this.disableTakeover();
+        finish();
+      });
+      this.messagesEl.appendChild(pill);
+      this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+    });
+  }
+
+  async _undoLastNavigation() {
+    try {
+      const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
+      if (!wv) {
+        this._addContinuePill('No active tab to go back in.');
+        return;
+      }
+      await window.navio.browserAction({
+        webContentsId: wv.getWebContentsId(),
+        action: 'goBack',
+        params: {},
+        userConfirmed: true
+      });
+      this._addContinuePill('Went back one page.');
+    } catch (e) {
+      this._addContinuePill('Could not go back: ' + (e.message || String(e)));
+    }
+  }
+
   async _executeAction(action, paramsStr, card, fromTakeover = false) {
+    const btns = card.querySelector('.bac-btns');
+    if (btns) btns.innerHTML = '<span class="bac-status bac-running">Running…</span>';
+
+    if (action === 'gmailCreateReplyDraft') {
+      let payload;
+      try {
+        const raw = (paramsStr || '').replace(/\s/g, '');
+        payload = JSON.parse(atob(raw));
+      } catch (e) {
+        card.classList.add('bac-error');
+        if (btns) btns.innerHTML = '<span class="bac-status">Invalid draft data</span>';
+        return;
+      }
+      try {
+        const result = await window.navio.gmailCreateReplyDraft({
+          messageId: payload.id,
+          body: payload.body || ''
+        });
+        if (result && result.success) {
+          card.classList.add('bac-done');
+          if (btns) {
+            btns.innerHTML =
+              '<span class="bac-status bac-ok"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>Gmail draft</span>';
+          }
+          if (!fromTakeover) {
+            const msgEl = card.closest('.message');
+            const pending = msgEl
+              ? msgEl.querySelectorAll('.browser-action-card:not(.bac-done):not(.bac-skipped):not(.bac-error)')
+                  .length
+              : 0;
+            if (pending === 0) setTimeout(() => this._smartFollowUp(), 1800);
+          }
+        } else {
+          card.classList.add('bac-error');
+          if (btns) btns.innerHTML = `<span class="bac-status">${result?.error || 'Failed'}</span>`;
+        }
+      } catch (err) {
+        card.classList.add('bac-error');
+        if (btns) btns.innerHTML = `<span class="bac-status">${err.message || 'Error'}</span>`;
+      }
+      return;
+    }
+
     const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
     if (!wv) {
       card.classList.add('bac-error');
-      card.querySelector('.bac-btns').innerHTML = '<span class="bac-status">No active tab</span>';
+      if (btns) btns.innerHTML = '<span class="bac-status">No active tab</span>';
       return;
     }
-    card.querySelector('.bac-btns').innerHTML = '<span class="bac-status bac-running">Running…</span>';
 
     // ── Navigate: use TabManager.navigateActive() in the renderer ─────────────
     // This correctly hides the Navio new-tab overlay and updates all tab state.
@@ -1475,6 +1628,22 @@ PERSONALITY:
 
         card.classList.add('bac-done');
         card.querySelector('.bac-btns').innerHTML = '<span class="bac-status bac-ok"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>Done</span>';
+
+        try {
+          const cfg = await window.navio.getConfig();
+          if (cfg.aiAutoScreenshotAfterNavigate) {
+            const cap = await window.navio.browserAction({
+              webContentsId: wv.getWebContentsId(),
+              action: 'screenshot',
+              params: {},
+              userConfirmed: true
+            });
+            if (cap && cap.screenshot) this._pendingScreenshotDataUrl = cap.screenshot;
+          }
+        } catch {
+          /* ignore */
+        }
+
         if (!fromTakeover) {
           const msgEl = card.closest('.message');
           const pending = msgEl
@@ -1507,9 +1676,14 @@ PERSONALITY:
         params = { key: paramsStr };
       } else if (action === 'scroll') {
         params = { direction: paramsStr || 'down' };
+      } else if (action === 'screenshot') {
+        params = {};
       }
       const result = await window.navio.browserAction({ webContentsId, action, params, userConfirmed: true });
       if (result && result.success) {
+        if (action === 'screenshot' && result.screenshot) {
+          this._pendingScreenshotDataUrl = result.screenshot;
+        }
         card.classList.add('bac-done');
         card.querySelector('.bac-btns').innerHTML = '<span class="bac-status bac-ok"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>Done</span>';
         if (!fromTakeover) {

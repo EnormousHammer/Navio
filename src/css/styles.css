@@ -957,9 +957,9 @@ body.tabstrip-hidden .tab-strip-show {
   overflow-x: hidden;
   z-index: 2;
   color: #e2e8f8;
-  /* Fixed `.ntp-stock-ticker` (~44px) sits on the viewport bottom — reserve space so
-     dashboard widgets (World News, Inbox, AI Brief) can scroll fully above it */
-  --ntp-ticker-reserve: calc(44px + 20px + env(safe-area-inset-bottom, 0px));
+  /* Fixed `.ntp-stock-ticker` at viewport bottom — reserve space so widgets scroll above it.
+     Minimum 80px; exact value set at runtime by ntp.js ResizeObserver on the ticker. */
+  --ntp-ticker-reserve: 80px;
   padding-bottom: var(--ntp-ticker-reserve);
   scroll-padding-bottom: var(--ntp-ticker-reserve);
   --ntp-accent: #00d8ff;
@@ -5502,6 +5502,24 @@ body.onboarding-active #app {
   letter-spacing: 0.2px;
 }
 
+.ntb-undo {
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-full);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+}
+
+.ntb-undo:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+}
+
 .ntb-stop {
   padding: 4px 12px;
   background: transparent;
@@ -5519,6 +5537,55 @@ body.onboarding-active #app {
   background: rgba(255, 100, 100, 0.1);
   border-color: #ff6b6b;
   color: #ff6b6b;
+}
+
+.navio-step-pause-pill {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 14px;
+  margin: 8px 0;
+  background: rgba(0, 216, 255, 0.06);
+  border: 1px solid rgba(0, 216, 255, 0.12);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.navio-step-pause-pill .nsp-continue,
+.navio-step-pause-pill .nsp-stop {
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+
+.navio-step-pause-pill .nsp-stop {
+  border-color: rgba(255, 100, 100, 0.45);
+  color: #ff8080;
+}
+
+.assistant-step-mode-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.assistant-step-mode-label input {
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 .bac-status.bac-pending {

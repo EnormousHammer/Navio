@@ -58,6 +58,8 @@ class SettingsManagerClass {
       aiRedact: document.getElementById('setting-ai-redact'),
       aiStream: document.getElementById('setting-ai-stream'),
       aiAutoExecute: document.getElementById('setting-ai-auto-execute'),
+      aiAutoScreenshot: document.getElementById('setting-ai-auto-screenshot'),
+      aiAgentStepMode: document.getElementById('setting-ai-agent-step-mode'),
       aiProactivity: document.getElementById('setting-ai-proactivity'),
       mcpEnabled: document.getElementById('setting-mcp-enabled'),
       mcpToolsHint: document.getElementById('setting-mcp-tools-hint'),
@@ -343,6 +345,12 @@ class SettingsManagerClass {
     if (this.elements.aiRedact) this.elements.aiRedact.checked = this.config.aiRedactPII !== false;
     if (this.elements.aiStream) this.elements.aiStream.checked = this.config.aiStreamResponses !== false;
     if (this.elements.aiAutoExecute) this.elements.aiAutoExecute.checked = !!this.config.aiAutoExecute;
+    if (this.elements.aiAutoScreenshot) {
+      this.elements.aiAutoScreenshot.checked = !!this.config.aiAutoScreenshotAfterNavigate;
+    }
+    if (this.elements.aiAgentStepMode) {
+      this.elements.aiAgentStepMode.checked = !!this.config.aiAgentStepMode;
+    }
     if (this.elements.aiProactivity) {
       this.elements.aiProactivity.value = this.config.aiProactivity || 'off';
     }
@@ -920,6 +928,8 @@ class SettingsManagerClass {
       aiRedactPII: !!(this.elements.aiRedact && this.elements.aiRedact.checked),
       aiStreamResponses: !!(this.elements.aiStream && this.elements.aiStream.checked),
       aiAutoExecute: !!(this.elements.aiAutoExecute && this.elements.aiAutoExecute.checked),
+      aiAutoScreenshotAfterNavigate: !!(this.elements.aiAutoScreenshot && this.elements.aiAutoScreenshot.checked),
+      aiAgentStepMode: !!(this.elements.aiAgentStepMode && this.elements.aiAgentStepMode.checked),
       aiProactivity: this.elements.aiProactivity ? this.elements.aiProactivity.value : 'off',
       mcpEnabled: !!(this.elements.mcpEnabled && this.elements.mcpEnabled.checked),
       syncEnabled: !!(this.elements.syncEnabled && this.elements.syncEnabled.checked),

@@ -90,6 +90,7 @@ contextBridge.exposeInMainWorld('navio', {
   imapCreateDraft: (serviceId, opts) => ipcRenderer.invoke('imap-create-draft', { serviceId, ...opts }),
   imapGetEmailBody:     (serviceId, uid) => ipcRenderer.invoke('imap-get-email-body', { serviceId, uid }),
   gmailGetMessageBody:  (id)             => ipcRenderer.invoke('gmail-get-message-body', { id }),
+  gmailCreateReplyDraft: (payload)      => ipcRenderer.invoke('gmail-create-reply-draft', payload),
   ntpFetchStocks: () => ipcRenderer.invoke('ntp-stocks'),
   ntpFetchSports: () => ipcRenderer.invoke('ntp-sports'),
   ntpGmailInbox: () => ipcRenderer.invoke('ntp-gmail-inbox'),

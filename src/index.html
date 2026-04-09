@@ -503,6 +503,10 @@
           Pin tab
         </button>
         <span class="assistant-context-receipt" id="assistant-context-receipt"></span>
+        <label class="assistant-step-mode-label" title="Pause after each action when Navio is in control">
+          <input type="checkbox" id="assistant-step-mode-toggle">
+          <span>Step</span>
+        </label>
       </div>
 
       <div class="assistant-quick-actions">
@@ -887,6 +891,14 @@
               <label class="setting-toggle-row">
                 <input type="checkbox" id="setting-ai-auto-execute">
                 <span>Auto-execute browser actions (takeover mode — Navio acts without asking)</span>
+              </label>
+              <label class="setting-toggle-row">
+                <input type="checkbox" id="setting-ai-auto-screenshot">
+                <span>After each navigate action, attach a screenshot to the next AI step (vision — OpenAI / Gemini)</span>
+              </label>
+              <label class="setting-toggle-row">
+                <input type="checkbox" id="setting-ai-agent-step-mode">
+                <span>Agent step mode — pause after each browser action until you click Continue</span>
               </label>
               <div class="setting-row">
                 <label for="setting-ai-proactivity">Proactive tips</label>
