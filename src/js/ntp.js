@@ -1449,6 +1449,56 @@ const NTP = (() => {
 
   // ── AI inbox analysis (unanswered emails + action items) ─────────────────
 
+  /**
+   * Converts a markdown-style AI analysis response into clean structured HTML.
+   * Produces section headers, bullet lists, and paragraphs — no flat wall of text.
+   */
+  function _markdownToHtml(text) {
+    const fmt = (s) =>
+      _esc(s)
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+    const lines = text.split('\n');
+    const parts = [];
+    let listItems = [];
+
+    const flushList = () => {
+      if (listItems.length) {
+        parts.push('<ul class="ntp-brief-bullets">' + listItems.map(i => `<li>${i}</li>`).join('') + '</ul>');
+        listItems = [];
+      }
+    };
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) { flushList(); continue; }
+
+      // Section header: ### Header, **Header:**, or 1. **Header:**
+      const h =
+        line.match(/^#{1,3}\s+(.+)/) ||
+        line.match(/^\*\*([^*]+)\*\*\s*:?\s*$/) ||
+        line.match(/^\d+\.\s+\*\*([^*]+)\*\*\s*:?\s*$/);
+      if (h) {
+        flushList();
+        const title = h[1].replace(/\*\*/g, '').replace(/:$/, '').trim();
+        parts.push(`<div class="ntp-brief-section-head">${_esc(title)}</div>`);
+        continue;
+      }
+
+      // Bullet / numbered list item
+      const b = line.match(/^[-*•]\s+(.+)/) || line.match(/^\d+\.\s+(.+)/);
+      if (b) { listItems.push(fmt(b[1])); continue; }
+
+      // Plain paragraph
+      flushList();
+      parts.push(`<p>${fmt(line)}</p>`);
+    }
+
+    flushList();
+    return parts.join('');
+  }
+
   async function _analyzeInbox(btn) {
     if (!_inboxMessages.length) {
       alert('No emails loaded yet. Please wait for the inbox to load first.');
@@ -1485,20 +1535,14 @@ const NTP = (() => {
         messages: [
           { role: 'system', content: 'You are a smart email assistant helping the user triage their inbox. Be concise, practical, and list the most important items first. No fluff.' },
           { role: 'user',   content: prompt }
-        ]
+        ],
+        ntpBrief: true
       });
       if (result.error) throw new Error(result.error);
 
       const briefBody = document.getElementById('ntp-brief-body');
       if (briefBody) {
-        const html = result.content
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-          .replace(/\*(.+?)\*/g, '<em>$1</em>')
-          .replace(/^#{1,3} (.+)$/gm, '<strong>$1</strong>')
-          .replace(/\n/g, '<br>');
+        const html = _markdownToHtml(result.content || '');
         const stamp = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
         briefBody.innerHTML = `<div class="ntp-brief-content">
           <div class="ntp-brief-datestamp">Inbox analysis <span class="ntp-brief-time">· ${_esc(stamp)}</span></div>

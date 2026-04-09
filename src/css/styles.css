@@ -1789,34 +1789,36 @@ body.tabstrip-hidden .tab-strip-show {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 22px 20px;
+  padding: 28px 20px;
   text-align: center;
-  gap: 12px;
+  gap: 14px;
   height: 100%;
 }
 .ntp-brief-orb {
-  width: 42px; height: 42px;
+  width: 36px; height: 36px;
   border-radius: 50%;
   background: conic-gradient(from 0deg, #00d4ff, #7c3aed, #f472b6, #00d4ff);
   animation: ntp-orb-spin 4s linear infinite;
-  box-shadow: 0 0 24px rgba(0,212,255,0.35), 0 0 50px rgba(124,58,237,0.2);
-  opacity: 0.8;
+  box-shadow: 0 0 20px rgba(0,212,255,0.4), 0 0 40px rgba(124,58,237,0.25);
+  opacity: 0.85;
+  flex-shrink: 0;
 }
 @keyframes ntp-orb-spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
 .ntp-brief-idle p {
-  font-size: 12.5px;
-  color: rgba(226,232,248,0.6);
+  font-size: 12px;
+  color: rgba(226,232,248,0.45);
   line-height: 1.55;
   margin: 0;
+  letter-spacing: 0.1px;
 }
 .ntp-brief-meta {
   list-style: none;
   padding: 0; margin: 0;
   font-size: 11px;
-  color: rgba(226,232,248,0.35);
+  color: rgba(226,232,248,0.3);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1830,75 +1832,122 @@ body.tabstrip-hidden .tab-strip-show {
   gap: 10px;
   padding: 30px 16px;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: rgba(226,232,248,0.45);
 }
 .ntp-brief-spinner {
-  width: 24px; height: 24px;
+  width: 22px; height: 22px;
   border-radius: 50%;
-  border: 2px solid rgba(0,212,255,0.2);
+  border: 2px solid rgba(0,212,255,0.15);
   border-top-color: #00d4ff;
-  animation: ntp-spin 0.8s linear infinite;
+  animation: ntp-spin 0.75s linear infinite;
 }
 @keyframes ntp-spin {
   to { transform: rotate(360deg); }
 }
+
+/* ── Brief content (generated output) ── */
 .ntp-brief-content {
-  padding: 14px 16px 16px;
+  padding: 14px 16px 18px;
   font-size: 13px;
-  line-height: 1.75;
-  color: rgba(226,232,248,0.82);
-  overflow-y: auto;
-  height: 100%;
+  line-height: 1.65;
+  color: rgba(210, 218, 240, 0.82);
 }
 .ntp-brief-content p {
   margin: 0 0 10px;
   font-size: 13px;
-  line-height: 1.75;
+  line-height: 1.7;
 }
 .ntp-brief-content p:last-child { margin-bottom: 0; }
-.ntp-brief-content strong { color: rgba(226,232,248,0.96); font-weight: 600; }
-.ntp-brief-content em { color: rgba(0,216,255,0.85); font-style: normal; }
+.ntp-brief-content strong { color: rgba(240,244,255,0.95); font-weight: 600; }
+.ntp-brief-content em { color: rgba(0,216,255,0.88); font-style: normal; }
 
+/* Opening sentence — most prominent element */
 .ntp-brief-opening {
-  margin: 0 0 12px !important;
-  font-size: 14px !important;
+  margin: 0 0 14px !important;
+  font-size: 14.5px !important;
   line-height: 1.5 !important;
-  font-weight: 500;
-  color: rgba(248, 250, 252, 0.94) !important;
+  font-weight: 600 !important;
+  color: rgba(242, 246, 255, 0.97) !important;
+  letter-spacing: -0.1px;
 }
+
+/* Bullet list — custom dot marker, no default browser bullets */
 .ntp-brief-bullets {
-  margin: 0 0 12px;
-  padding-left: 1.15rem;
-  color: rgba(226, 232, 248, 0.82);
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
 .ntp-brief-bullets li {
-  margin-bottom: 8px;
+  font-size: 13px;
   line-height: 1.5;
-  font-size: 12.5px;
+  color: rgba(212, 220, 242, 0.88);
+  padding-left: 14px;
+  position: relative;
+  margin-bottom: 0;
+}
+.ntp-brief-bullets li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 7px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(0, 212, 255, 0.5);
+  flex-shrink: 0;
 }
 .ntp-brief-bullets li:last-child { margin-bottom: 0; }
+
+/* Markets and Next-step footer pills */
 .ntp-brief-foot {
-  margin: 10px 0 0 !important;
-  font-size: 12px !important;
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  margin: 8px 0 0 !important;
+  padding: 7px 10px !important;
+  font-size: 11.5px !important;
   line-height: 1.5 !important;
-  color: rgba(226, 232, 248, 0.65) !important;
+  color: rgba(180, 192, 220, 0.65) !important;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.055);
 }
 .ntp-brief-foot.ntp-brief-next {
-  margin-top: 12px !important;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  color: rgba(0, 216, 255, 0.88) !important;
+  margin-top: 6px !important;
+  padding: 7px 10px !important;
+  border-top: none !important;
+  color: rgba(0, 216, 255, 0.92) !important;
+  background: rgba(0, 212, 255, 0.055);
+  border: 1px solid rgba(0, 212, 255, 0.14) !important;
 }
 .ntp-brief-tag {
   display: inline-block;
-  margin-right: 6px;
+  margin-right: 5px;
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(0, 216, 255, 0.55);
+  color: rgba(0, 216, 255, 0.65);
   vertical-align: middle;
+  flex-shrink: 0;
+  padding-top: 1px;
 }
+
+/* Section headers inside inbox analysis */
+.ntp-brief-section-head {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: rgba(0, 216, 255, 0.72);
+  margin: 12px 0 6px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(0, 216, 255, 0.1);
+}
+.ntp-brief-section-head:first-child { margin-top: 0; }
 
 .ntp-brief-block {
   margin-bottom: 14px;
@@ -1924,11 +1973,17 @@ body.tabstrip-hidden .tab-strip-show {
   line-height: 1.55;
   color: rgba(226, 232, 248, 0.88);
 }
+
+/* Inbox analysis rendered output */
 .ntp-brief-analysis {
   font-size: 13px;
-  line-height: 1.55;
-  color: rgba(226, 232, 248, 0.88);
+  line-height: 1.6;
+  color: rgba(212, 220, 242, 0.88);
 }
+.ntp-brief-analysis p {
+  margin: 0 0 8px;
+}
+.ntp-brief-analysis p:last-child { margin-bottom: 0; }
 
 .ntp-related-label {
   font-size: 9.5px;
@@ -1961,19 +2016,19 @@ body.tabstrip-hidden .tab-strip-show {
 
 /* Date stamp at the top of every generated brief */
 .ntp-brief-datestamp {
-  font-size: 9.5px;
+  font-size: 9px;
   font-weight: 800;
   letter-spacing: 1.2px;
   text-transform: uppercase;
-  color: rgba(0,216,255,0.75);
+  color: rgba(0,216,255,0.6);
   margin-bottom: 12px;
-  padding-bottom: 9px;
-  border-bottom: 1px solid rgba(0,216,255,0.15);
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(0,216,255,0.1);
 }
 .ntp-brief-time {
-  font-weight: 600;
-  opacity: 0.7;
-  letter-spacing: 0.4px;
+  font-weight: 500;
+  opacity: 0.65;
+  letter-spacing: 0.3px;
   text-transform: none;
 }
 /* Pop-out button on widget headers */
@@ -7952,14 +8007,31 @@ body.onboarding-active #app {
 [data-theme="light"] .ntp-brief-block-title { color: #0070d8; }
 [data-theme="light"] .ntp-brief-block-text,
 [data-theme="light"] .ntp-brief-analysis { color: #16172a; }
+[data-theme="light"] .ntp-brief-analysis p { color: #1e293b; }
 [data-theme="light"] .ntp-related-label { color: rgba(0, 112, 216, 0.7); }
 [data-theme="light"] .ntp-news-item-compact { border-bottom-color: rgba(50, 70, 160, 0.08); }
 
+[data-theme="light"] .ntp-brief-content { color: #1e293b; }
 [data-theme="light"] .ntp-brief-opening { color: #0f172a !important; }
-[data-theme="light"] .ntp-brief-bullets { color: #1e293b; }
-[data-theme="light"] .ntp-brief-foot { color: #475569 !important; }
-[data-theme="light"] .ntp-brief-foot.ntp-brief-next { color: #0070d8 !important; border-top-color: rgba(50, 70, 160, 0.12); }
+[data-theme="light"] .ntp-brief-bullets li { color: #334155; }
+[data-theme="light"] .ntp-brief-bullets li::before { background: rgba(0, 100, 200, 0.5); }
+[data-theme="light"] .ntp-brief-foot {
+  color: #475569 !important;
+  background: rgba(50, 70, 160, 0.04);
+  border-color: rgba(50, 70, 160, 0.1) !important;
+}
+[data-theme="light"] .ntp-brief-foot.ntp-brief-next {
+  color: #0070d8 !important;
+  background: rgba(0, 112, 216, 0.06);
+  border-color: rgba(0, 112, 216, 0.18) !important;
+}
 [data-theme="light"] .ntp-brief-tag { color: rgba(0, 112, 216, 0.65); }
+[data-theme="light"] .ntp-brief-section-head {
+  color: #0070d8;
+  border-bottom-color: rgba(0, 112, 216, 0.15);
+}
+[data-theme="light"] .ntp-brief-datestamp { color: rgba(0, 112, 216, 0.65); }
+[data-theme="light"] .ntp-brief-idle p { color: rgba(22, 23, 42, 0.45); }
 
 /* Light NTP — same structure, softer contrast */
 [data-theme="light"] .ntp-bg-layer {
