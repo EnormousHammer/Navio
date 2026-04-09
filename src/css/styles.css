@@ -973,38 +973,90 @@ body.tabstrip-hidden .tab-strip-show {
 }
 .new-tab-page.active { display: flex; }
 
-/* Full-page animated background — must be absolute (not fixed) so it stays
-   within #browser-container and never bleeds over the tab-strip / navbar */
+/* Full-page background — aurora mesh + masked grid + noise (absolute: stays in #browser-container) */
 .ntp-bg-layer {
   position: absolute;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background:
-    radial-gradient(ellipse 100% 70% at 50% -10%, rgba(124,58,237,0.18) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 40% at 80% 80%, rgba(0,212,255,0.06) 0%, transparent 50%),
-    #05080f;
+  overflow: hidden;
+  background-color: #03050c;
+  background-image:
+    radial-gradient(ellipse 90% 55% at 50% -15%, rgba(99, 102, 241, 0.20), transparent 58%),
+    radial-gradient(ellipse 55% 42% at 108% 8%, rgba(0, 212, 255, 0.10), transparent 52%),
+    radial-gradient(ellipse 50% 38% at -8% 92%, rgba(168, 85, 247, 0.11), transparent 55%),
+    radial-gradient(ellipse 75% 50% at 50% 108%, rgba(0, 180, 200, 0.14), transparent 48%);
+  animation: ntp-aurora-shift 28s ease-in-out infinite alternate;
 }
+/* Fine tech grid — vignette-masked so edges stay calm, center stays “holographic” */
 .ntp-bg-layer::before {
+  content: '';
+  position: absolute;
+  inset: -30%;
+  opacity: 0.55;
+  background-image:
+    linear-gradient(rgba(0, 212, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 212, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(rgba(124, 58, 237, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 58, 237, 0.028) 1px, transparent 1px);
+  background-size: 56px 56px, 56px 56px, 14px 14px, 14px 14px;
+  background-position: 0 0, 0 0, 7px 7px, 7px 7px;
+  animation: ntp-grid-drift 72s linear infinite;
+  -webkit-mask-image: radial-gradient(ellipse 82% 72% at 50% 42%, #000 0%, transparent 72%);
+  mask-image: radial-gradient(ellipse 82% 72% at 50% 42%, #000 0%, transparent 72%);
+}
+/* Subtle scan + film grain + bottom read zone */
+.ntp-bg-layer::after {
   content: '';
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
-  background-size: 60px 60px;
-  animation: ntp-grid-drift 40s linear infinite;
-}
-.ntp-bg-layer::after {
-  content: '';
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  height: 200px;
-  background: linear-gradient(transparent, rgba(5,8,15,0.8));
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.03) 2px,
+      rgba(0, 0, 0, 0.03) 3px
+    ),
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E"),
+    linear-gradient(105deg, transparent 0%, rgba(0, 212, 255, 0.04) 42%, transparent 64%),
+    linear-gradient(transparent 55%, rgba(3, 5, 12, 0.75));
+  background-size:
+    100% 100%,
+    180px 180px,
+    200% 200%,
+    100% 100%;
+  background-position: 0 0, 0 0, 0% 0%, 0 100%;
+  animation: ntp-shimmer 14s ease-in-out infinite alternate;
+  opacity: 0.9;
+  mix-blend-mode: normal;
 }
 @keyframes ntp-grid-drift {
-  from { background-position: 0 0; }
-  to   { background-position: 60px 60px; }
+  from { background-position: 0 0, 0 0, 7px 7px, 7px 7px; }
+  to   { background-position: 56px 56px, 56px 56px, 63px 63px, 63px 63px; }
+}
+@keyframes ntp-aurora-shift {
+  0% {
+    filter: hue-rotate(0deg) saturate(1);
+    transform: scale(1);
+  }
+  100% {
+    filter: hue-rotate(12deg) saturate(1.08);
+    transform: scale(1.02);
+  }
+}
+@keyframes ntp-shimmer {
+  0% { background-position: 0 0, 0 0, 0% 30%, 0 100%; }
+  100% { background-position: 0 0, 40px 20px, 100% 50%, 0 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ntp-bg-layer,
+  .ntp-bg-layer::before,
+  .ntp-bg-layer::after {
+    animation: none !important;
+  }
+  .ntp-bg-layer { transform: none; filter: none; }
 }
 
 /* ── NTP Topbar ────────────────────────────────────────────────────────── */
@@ -1806,6 +1858,47 @@ body.tabstrip-hidden .tab-strip-show {
 .ntp-brief-content p:last-child { margin-bottom: 0; }
 .ntp-brief-content strong { color: rgba(226,232,248,0.96); font-weight: 600; }
 .ntp-brief-content em { color: rgba(0,216,255,0.85); font-style: normal; }
+
+.ntp-brief-opening {
+  margin: 0 0 12px !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 500;
+  color: rgba(248, 250, 252, 0.94) !important;
+}
+.ntp-brief-bullets {
+  margin: 0 0 12px;
+  padding-left: 1.15rem;
+  color: rgba(226, 232, 248, 0.82);
+}
+.ntp-brief-bullets li {
+  margin-bottom: 8px;
+  line-height: 1.5;
+  font-size: 12.5px;
+}
+.ntp-brief-bullets li:last-child { margin-bottom: 0; }
+.ntp-brief-foot {
+  margin: 10px 0 0 !important;
+  font-size: 12px !important;
+  line-height: 1.5 !important;
+  color: rgba(226, 232, 248, 0.65) !important;
+}
+.ntp-brief-foot.ntp-brief-next {
+  margin-top: 12px !important;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  color: rgba(0, 216, 255, 0.88) !important;
+}
+.ntp-brief-tag {
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(0, 216, 255, 0.55);
+  vertical-align: middle;
+}
 
 .ntp-brief-block {
   margin-bottom: 14px;
@@ -7862,20 +7955,40 @@ body.onboarding-active #app {
 [data-theme="light"] .ntp-related-label { color: rgba(0, 112, 216, 0.7); }
 [data-theme="light"] .ntp-news-item-compact { border-bottom-color: rgba(50, 70, 160, 0.08); }
 
-/* Background layer — soft daylight gradient + very faint cool grid */
+[data-theme="light"] .ntp-brief-opening { color: #0f172a !important; }
+[data-theme="light"] .ntp-brief-bullets { color: #1e293b; }
+[data-theme="light"] .ntp-brief-foot { color: #475569 !important; }
+[data-theme="light"] .ntp-brief-foot.ntp-brief-next { color: #0070d8 !important; border-top-color: rgba(50, 70, 160, 0.12); }
+[data-theme="light"] .ntp-brief-tag { color: rgba(0, 112, 216, 0.65); }
+
+/* Light NTP — same structure, softer contrast */
 [data-theme="light"] .ntp-bg-layer {
-  background:
-    radial-gradient(ellipse 90% 60% at 50% -5%, rgba(100,120,255,0.10) 0%, transparent 55%),
-    radial-gradient(ellipse 55% 35% at 80% 85%, rgba(0,120,220,0.06) 0%, transparent 50%),
-    linear-gradient(160deg, #eef2ff 0%, #f4f0ff 45%, #e8f4ff 100%);
+  background-color: #f0f4ff;
+  background-image:
+    radial-gradient(ellipse 88% 52% at 50% -12%, rgba(99, 102, 241, 0.14), transparent 58%),
+    radial-gradient(ellipse 50% 40% at 102% 6%, rgba(0, 120, 220, 0.08), transparent 52%),
+    radial-gradient(ellipse 48% 36% at -6% 94%, rgba(139, 92, 246, 0.07), transparent 54%),
+    radial-gradient(ellipse 72% 48% at 50% 105%, rgba(56, 189, 248, 0.10), transparent 50%);
+  animation: ntp-aurora-shift 32s ease-in-out infinite alternate;
 }
 [data-theme="light"] .ntp-bg-layer::before {
+  opacity: 0.4;
   background-image:
-    linear-gradient(rgba(80,100,200,0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(80,100,200,0.04) 1px, transparent 1px);
+    linear-gradient(rgba(50, 80, 180, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(50, 80, 180, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(100, 120, 200, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(100, 120, 200, 0.04) 1px, transparent 1px);
+  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 15%, transparent 75%);
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 15%, transparent 75%);
 }
 [data-theme="light"] .ntp-bg-layer::after {
-  background: linear-gradient(transparent, rgba(238,242,255,0.70));
+  background-image:
+    repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(80, 100, 180, 0.04) 3px, rgba(80, 100, 180, 0.04) 4px),
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E"),
+    linear-gradient(100deg, transparent 0%, rgba(0, 120, 220, 0.05) 45%, transparent 68%),
+    linear-gradient(transparent 50%, rgba(240, 244, 255, 0.92));
+  background-size: 100% 100%, 160px 160px, 200% 200%, 100% 100%;
+  opacity: 0.85;
 }
 
 /* Clock */

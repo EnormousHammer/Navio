@@ -671,10 +671,11 @@ ipcMain.handle('open-devtools-active', (event, webContentsId) => {
   return { ok: false, error: 'WebContents not found' };
 });
 
-async function performAiFetch(cfg, apiKey, messages, useStream) {
+async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) {
   const provider = cfg.aiProvider || 'openai';
   const model = cfg.aiModel || 'gpt-4o';
   const endpoint = cfg.customEndpoint || '';
+  const ntpBrief = !!fetchOpts.ntpBrief;
 
   let url;
   let headers;
@@ -693,12 +694,14 @@ async function performAiFetch(cfg, apiKey, messages, useStream) {
     const bodyObj = {
       model: model || 'gpt-4o',
       messages,
-      max_completion_tokens: 4096,
+      max_completion_tokens: ntpBrief ? 900 : 4096,
       stream: !!useStream
     };
     if (isOSeries) {
       // o-series fixes temperature at 1 internally; sending it causes a 400 error
       delete bodyObj.temperature;
+    } else if (ntpBrief) {
+      bodyObj.temperature = 0.55;
     }
     body = JSON.stringify(bodyObj);
   } else if (provider === 'anthropic') {
@@ -713,7 +716,7 @@ async function performAiFetch(cfg, apiKey, messages, useStream) {
     };
     body = JSON.stringify({
       model: model || 'claude-opus-4-5',
-      max_tokens: 4096,
+      max_tokens: ntpBrief ? 900 : 4096,
       system: systemMsg?.content || '',
       messages: chatMsgs
     });
@@ -745,12 +748,16 @@ async function performAiFetch(cfg, apiKey, messages, useStream) {
         parts: toGeminiParts(m.content)
       }));
     const systemInstruction = messages.find((m) => m.role === 'system');
-    body = JSON.stringify({
+    const geminiBody = {
       contents,
       systemInstruction: systemInstruction
         ? { parts: toGeminiParts(systemInstruction.content) }
         : undefined
-    });
+    };
+    if (ntpBrief) {
+      geminiBody.generationConfig = { maxOutputTokens: 900, temperature: 0.55 };
+    }
+    body = JSON.stringify(geminiBody);
   } else {
     return { error: `Unknown provider: ${provider}` };
   }
@@ -782,7 +789,8 @@ async function performAiFetch(cfg, apiKey, messages, useStream) {
   return { content };
 }
 
-ipcMain.handle('ai-request', async (event, { messages }) => {
+ipcMain.handle('ai-request', async (event, payload) => {
+  const { messages, ntpBrief } = payload || {};
   const cfg = loadConfig();
   if (cfg.aiKillSwitch) {
     return { error: 'AI is turned off (kill switch). Enable it in Settings → AI.' };
@@ -793,7 +801,9 @@ ipcMain.handle('ai-request', async (event, { messages }) => {
   }
 
   let processed = Array.isArray(messages) ? messages.map((m) => ({ ...m })) : [];
-  processed = injectSystemPrompt(processed);
+  if (!ntpBrief) {
+    processed = injectSystemPrompt(processed);
+  }
   if (cfg.aiRedactPII !== false) {
     processed = processed.map((m) => {
       if (typeof m.content === 'string') return { ...m, content: redactPII(m.content) };
@@ -820,26 +830,27 @@ ipcMain.handle('ai-request', async (event, { messages }) => {
   }
 
   try {
-    let result = await performAiFetch(cfg, apiKey, processed, false);
+    let result = await performAiFetch(cfg, apiKey, processed, false, { ntpBrief });
     if (result.stream) return { error: 'Internal error: unexpected stream' };
 
-    // Convert <navio-actions> block to [[ACTION:...]] tokens
-    if (!result.error && result.content) {
-      result = { ...result, content: convertNavioActionsBlock(result.content) };
-    }
-
-    // Fallback: if model still wrote ACTION0/ACTION1 placeholders, silently retry once
-    if (!result.error && aiResponseHasBrokenActions(result.content)) {
-      console.log('[navio] ACTION0 pattern detected — auto-retrying with format fix');
-      const fixed = await performAiFetch(cfg, apiKey, buildActionFixMessages(processed, result.content), false);
-      if (!fixed.error && fixed.content) {
-        result = { ...fixed, content: convertNavioActionsBlock(fixed.content) };
+    if (!ntpBrief) {
+      // Convert <navio-actions> block to [[ACTION:...]] tokens
+      if (!result.error && result.content) {
+        result = { ...result, content: convertNavioActionsBlock(result.content) };
       }
-    }
 
-    // Extract and persist any <navio-memory> blocks from the response
-    if (!result.error && result.content) {
-      extractAndSaveMemory(result.content);
+      // Fallback: if model still wrote ACTION0/ACTION1 placeholders, silently retry once
+      if (!result.error && aiResponseHasBrokenActions(result.content)) {
+        console.log('[navio] ACTION0 pattern detected — auto-retrying with format fix');
+        const fixed = await performAiFetch(cfg, apiKey, buildActionFixMessages(processed, result.content), false);
+        if (!fixed.error && fixed.content) {
+          result = { ...fixed, content: convertNavioActionsBlock(fixed.content) };
+        }
+      }
+
+      if (!result.error && result.content) {
+        extractAndSaveMemory(result.content);
+      }
     }
 
     return result;
@@ -4073,7 +4084,7 @@ registerSyncIpc(ipcMain, { app, loadConfig });
 registerProfilesIpc(ipcMain, { profilesBase: NAVIO_PROFILES_BASE });
 
 app.whenReady().then(async () => {
-  console.log('[navio] ✅ main.js v7 loaded — system prompt is injected from main process');
+  console.log('[navio] main.js v7 loaded; system prompt injected from main process');
   // Clear V8 code caches so every launch picks up the latest renderer JS source files.
   // We use both the Electron session API (in-memory cache) AND the filesystem folder
   // (persistent cache) to guarantee a clean slate.

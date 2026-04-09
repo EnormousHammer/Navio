@@ -11,7 +11,16 @@ const fs = require('fs');
 function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig }) {
   const navioSession = session.fromPartition('persist:navio');
 
-  navioSession.setPreloads([path.join(__dirname, 'webview-preload.js')]);
+  const webviewPreloadAbs = path.resolve(__dirname, 'webview-preload.js');
+  try {
+    navioSession.registerPreloadScript({
+      id: 'navio-webview-preload',
+      type: 'frame',
+      filePath: webviewPreloadAbs
+    });
+  } catch (e) {
+    console.error('[navio] registerPreloadScript failed:', e.message);
+  }
 
   function applySessionFixes(ses) {
     const ua = ses

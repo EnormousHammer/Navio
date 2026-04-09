@@ -589,11 +589,16 @@ const NTP = (() => {
   }
 
   // ── AI Brief ──────────────────────────────────────────────────────────────
+  const BRIEF_CACHE_KEY = 'navio-brief-cache-v2';
 
   function _bindAIBrief() {
     document.getElementById('ntp-brief-gen-btn')?.addEventListener('click', () => {
-      // Force-refresh: clear cache then regenerate
-      try { localStorage.removeItem('navio-brief-cache'); } catch {}
+      try {
+        localStorage.removeItem(BRIEF_CACHE_KEY);
+        localStorage.removeItem('navio-brief-cache');
+      } catch {
+        /* ignore */
+      }
       _generateAIBrief();
     });
   }
@@ -606,7 +611,7 @@ const NTP = (() => {
     const today = new Date().toDateString();
     const fpNow = _briefContextFingerprint();
     try {
-      const raw = localStorage.getItem('navio-brief-cache');
+      const raw = localStorage.getItem(BRIEF_CACHE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         const { date, html, fingerprint } = parsed;
@@ -630,58 +635,68 @@ const NTP = (() => {
     setTimeout(_generateAIBrief, 400);
   }
 
-  // Convert any stray markdown to clean HTML (safety net in case AI ignores instructions)
-  function _renderBriefHtml(raw) {
-    let text = raw
-      .replace(/^#{1,4}\s*/gm, '')                         // strip # headers
-      .replace(/\*\*(.*?)\*\*/gs, '<strong>$1</strong>')  // **bold**
-      .replace(/__(.*?)__/gs, '<strong>$1</strong>')      // __bold__
-      .replace(/\*(.*?)\*/gs, '<em>$1</em>')              // *italic*
-      .replace(/_(.*?)_/gs, '<em>$1</em>')                // _italic_
-      .replace(/^[-*•]\s+/gm, '')                         // strip bullet chars
-      .replace(/^\d+\.\s+/gm, '')                         // strip numbered lists
-      .trim();
-    const paras = text.split(/\n{2,}/).map(p => p.replace(/\n/g, ' ').trim()).filter(Boolean);
-    return paras.map(p => `<p>${p}</p>`).join('');
+  /** Strip markdown fences and isolate `{...}` for JSON.parse */
+  function _stripBriefJson(raw) {
+    let t = String(raw || '').trim();
+    const fence = /^```(?:json)?\s*([\s\S]*?)```$/im.exec(t);
+    if (fence) t = fence[1].trim();
+    const start = t.indexOf('{');
+    const end = t.lastIndexOf('}');
+    if (start >= 0 && end > start) t = t.slice(start, end + 1);
+    return t;
   }
 
-  const _BRIEF_LABELS = {
-    SUMMARY: 'At a glance',
-    INBOX: 'Inbox',
-    WORLD: 'World pulse',
-    MARKETS: 'Markets',
-    DO_NEXT: 'Do this next'
-  };
-
-  /** Prefer labeled sections from the model; fallback to plain paragraphs. */
-  function _renderBriefStructured(raw) {
-    const text = String(raw || '').trim();
-    if (!text) return '';
-    const sections = {};
-    let current = null;
-    const lines = text.split(/\n/);
-    for (const line of lines) {
-      const m = /^(SUMMARY|INBOX|WORLD|MARKETS|DO_NEXT)\s*:\s*(.*)$/i.exec(line.trim());
-      if (m) {
-        current = m[1].toUpperCase();
-        sections[current] = (sections[current] || '') + (m[2] ? m[2].trim() + ' ' : '');
-      } else if (current && line.trim()) {
-        sections[current] = (sections[current] || '') + line.trim() + ' ';
+  /**
+   * Preferred renderer: model returns JSON (see system prompt). Falls back to plain paragraphs.
+   */
+  function _renderBriefFromJson(raw) {
+    try {
+      const parsed = JSON.parse(_stripBriefJson(raw));
+      const opening = String(parsed.opening || '').trim();
+      let bullets = Array.isArray(parsed.bullets) ? parsed.bullets.map((x) => String(x).trim()).filter(Boolean) : [];
+      if (!bullets.length && Array.isArray(parsed.highlights)) {
+        bullets = parsed.highlights.map((x) => String(x).trim()).filter(Boolean);
       }
+      bullets = bullets.slice(0, 6);
+      const markets = String(parsed.markets_line || parsed.markets || '').trim();
+      const next = String(parsed.next_step || parsed.next || '').trim();
+      const fmt = (s) =>
+        _esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\*(.+?)\*/g, '<em>$1</em>');
+      const parts = [];
+      if (opening) parts.push(`<p class="ntp-brief-opening">${fmt(opening)}</p>`);
+      if (bullets.length) {
+        parts.push(
+          '<ul class="ntp-brief-bullets">' +
+            bullets.map((b) => `<li>${fmt(b)}</li>`).join('') +
+            '</ul>'
+        );
+      }
+      if (markets) {
+        parts.push(
+          `<p class="ntp-brief-foot"><span class="ntp-brief-tag">Markets</span> ${fmt(markets)}</p>`
+        );
+      }
+      if (next) {
+        parts.push(`<p class="ntp-brief-foot ntp-brief-next"><span class="ntp-brief-tag">Next</span> ${fmt(next)}</p>`);
+      }
+      return parts.length ? parts.join('') : '';
+    } catch {
+      return '';
     }
-    const keys = Object.keys(sections).filter((k) => (sections[k] || '').trim());
-    if (keys.length < 2) return '';
-    const escLine = (s) =>
-      _esc(s.trim())
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>');
-    return keys
-      .map((k) => {
-        const title = _BRIEF_LABELS[k] || k;
-        const body = escLine(sections[k]);
-        return `<section class="ntp-brief-block"><h3 class="ntp-brief-block-title">${_esc(title)}</h3><p class="ntp-brief-block-text">${body}</p></section>`;
-      })
-      .join('');
+  }
+
+  function _renderBriefHtml(raw) {
+    let text = raw
+      .replace(/^#{1,4}\s*/gm, '')
+      .replace(/\*\*(.*?)\*\*/gs, '<strong>$1</strong>')
+      .replace(/__(.*?)__/gs, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/gs, '<em>$1</em>')
+      .replace(/_(.*?)_/gs, '<em>$1</em>')
+      .replace(/^[-*•]\s+/gm, '')
+      .replace(/^\d+\.\s+/gm, '')
+      .trim();
+    const paras = text.split(/\n{2,}/).map((p) => p.replace(/\n/g, ' ').trim()).filter(Boolean);
+    return paras.map((p) => `<p>${p}</p>`).join('');
   }
 
   async function _generateAIBrief() {
@@ -700,97 +715,115 @@ const NTP = (() => {
       btn.textContent = '…';
       body.innerHTML = `<div class="ntp-brief-generating">
         <div class="ntp-brief-spinner"></div>
-        <p>Generating your brief…</p>
+        <p>Building your brief…</p>
       </div>`;
 
-      // Gather context
-      const sections = [];
-      const hour = new Date().getHours();
-      const greet = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
-      sections.push(`${greet} brief for ${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}.`);
+      const lines = [];
+      const now = new Date();
+      lines.push(
+        `WHEN: ${now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })} · local time ${now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`
+      );
 
       if (_weatherData) {
-        sections.push(`Weather: ${_weatherData.icon} ${_weatherData.temp}°C, ${_weatherData.desc}.`);
+        lines.push(
+          `WEATHER: ${_weatherData.icon} ${Math.round(_weatherData.temp)}°C, ${_weatherData.desc} (user location)`
+        );
+      } else {
+        lines.push('WEATHER: not available (location off or still loading).');
       }
 
-      // ── Emails ────────────────────────────────────────────────────────────
       if (_inboxMessages.length > 0) {
-        const unread = _inboxMessages.filter(m => m.unread);
-        const pool   = unread.length > 0 ? unread : _inboxMessages;
-        const top5   = pool.slice(0, 5)
-          .map(m => `  • From ${m.senderName || 'Unknown'}: "${m.subject}"${m.snippet ? ' — ' + m.snippet.slice(0, 60) : ''}`)
-          .join('\n');
-        sections.push(`Inbox (${unread.length} unread of ${_inboxMessages.length}):\n${top5}`);
+        const unread = _inboxMessages.filter((m) => m.unread);
+        const pool = unread.length > 0 ? unread : _inboxMessages;
+        lines.push(`INBOX: ${unread.length} unread of ${_inboxMessages.length} messages shown.`);
+        pool.slice(0, 6).forEach((m, i) => {
+          const snip = m.snippet ? ` — preview: ${String(m.snippet).slice(0, 90)}` : '';
+          lines.push(`  ${i + 1}. From ${m.senderName || m.sender || '?'} | Subject: ${m.subject || '(no subject)'}${snip}`);
+        });
       } else {
         try {
           const imapSt = await window.navio.imapStatus();
           const connected = Object.keys(imapSt || {});
           if (connected.length > 0) {
             const unreadResults = await Promise.all(
-              connected.map(svc => window.navio.imapGetUnread(svc, 3).catch(() => null))
+              connected.map((svc) => window.navio.imapGetUnread(svc, 5).catch(() => null))
             );
-            const allMsgs = unreadResults.flatMap(r => r?.messages || []);
+            const allMsgs = unreadResults.flatMap((r) => r?.messages || []);
             if (allMsgs.length > 0) {
-              const top = allMsgs.slice(0, 5).map(m => `  • From ${m.fromName || m.from}: "${m.subject}"`).join('\n');
-              sections.push(`Inbox (${allMsgs.length}+ unread):\n${top}`);
+              lines.push(`INBOX (IMAP): at least ${allMsgs.length} unread.`);
+              allMsgs.slice(0, 5).forEach((m, i) => {
+                lines.push(`  ${i + 1}. From ${m.fromName || m.from} | ${m.subject || '(no subject)'}`);
+              });
             } else {
-              sections.push('Inbox: all caught up.');
+              lines.push('INBOX (IMAP): connected, no unread in sample.');
             }
+          } else {
+            lines.push('INBOX: not connected (no Gmail/IMAP in this snapshot).');
           }
-        } catch {}
-      }
-
-      // ── News ──────────────────────────────────────────────────────────────
-      if (_newsHeadlines.length > 0) {
-        sections.push(`Breaking news:\n${_newsHeadlines.slice(0, 6).map((h, i) => `  ${i + 1}. ${h}`).join('\n')}`);
-      }
-
-      // ── Markets ───────────────────────────────────────────────────────────
-      if (_stockData.length > 0) {
-        const indices = _stockData
-          .filter(s => ['GSPC', 'DJI', 'IXIC'].includes(s.symbol))
-          .map(s => `${s.symbol === 'GSPC' ? 'S&P 500' : s.symbol === 'DJI' ? 'DOW' : 'NASDAQ'} ${(s.pct || 0) >= 0 ? '+' : ''}${(s.pct || 0).toFixed(2)}%`)
-          .join(', ');
-        if (indices) {
-          const btc = _stockData.find(s => s.symbol === 'BTC-USD');
-          const btcStr = btc ? ` | BTC $${btc.price?.toLocaleString('en-US', { maximumFractionDigits: 0 })} (${(btc.pct || 0) >= 0 ? '+' : ''}${(btc.pct || 0).toFixed(2)}%)` : '';
-          sections.push(`Markets: ${indices}${btcStr}.`);
+        } catch {
+          lines.push('INBOX: could not read status.');
         }
       }
+
+      if (_newsHeadlines.length > 0) {
+        lines.push('HEADLINES (public feed):');
+        _newsHeadlines.slice(0, 8).forEach((h, i) => {
+          lines.push(`  ${i + 1}. ${h}`);
+        });
+      } else {
+        lines.push('HEADLINES: none loaded.');
+      }
+
+      if (_stockData.length > 0) {
+        const bits = _stockData.map((s) => {
+          const nm =
+            { GSPC: 'S&P 500', DJI: 'Dow', IXIC: 'Nasdaq', 'BTC-USD': 'BTC', 'ETH-USD': 'ETH' }[s.symbol] ||
+            s.symbol;
+          const p = s.pct != null ? `${(s.pct >= 0 ? '+' : '')}${Number(s.pct).toFixed(2)}%` : '';
+          return `${nm} ${p}`.trim();
+        });
+        lines.push(`MARKETS: ${bits.join(' · ')}`);
+      } else {
+        lines.push('MARKETS: no quote data in this snapshot.');
+      }
+
+      const dashboardFacts = lines.join('\n');
 
       const aiMessages = [
         {
           role: 'system',
           content:
-            'You write an executive morning brief like top AI browsers (concise, scannable, actionable). ' +
-            'You MUST answer using EXACTLY five lines. Each line starts with one of these labels (uppercase), a colon, a space, then 1–2 sentences. Plain text only — no markdown, no bullets, no # headers.\n\n' +
-            'SUMMARY: One sentence tying together what matters today for this user.\n' +
-            'INBOX: Specific email signal — who wrote, what topics, what needs attention — or say inbox is quiet / not connected.\n' +
-            'WORLD: The most important thread from the headlines provided, or say no headlines.\n' +
-            'MARKETS: Indices/crypto mood in one short sentence from the data, or say no data.\n' +
-            'DO_NEXT: One concrete next action the user should take now, inferred ONLY from the data (not generic platitudes).\n\n' +
-            'Under 240 words total. If data for a section is missing, write one honest short sentence for that line.',
+            'You write the short "AI Brief" card in the Navio browser new tab. ' +
+            'Reply with ONLY a single JSON object — no markdown code fences, no text before or after the JSON.\n\n' +
+            'Schema (all string values, escape quotes inside strings):\n' +
+            '{"opening":"<one sentence, friendly second-person>","bullets":["<string>",...],"markets_line":"<one short line or empty string>","next_step":"<one concrete action>"}\n\n' +
+            'Rules:\n' +
+            '- "bullets": 2 to 5 items. Each bullet is ONE line under 200 characters. Pull facts only from the user message (inbox, headlines, markets, weather). Do not invent senders, numbers, or events.\n' +
+            '- If a data area is missing, say so in a bullet (e.g. "Headlines did not load yet.") rather than guessing.\n' +
+            '- "markets_line": copy the mood from MARKETS facts in one line, or "" if none.\n' +
+            '- "next_step": one specific thing to do next based on the data (open an email topic, read a headline theme, check a ticker) — not generic self-help.\n' +
+            '- Tone: clear, calm, professional. No emojis.',
         },
         {
           role: 'user',
-          content: `Here is my live dashboard data:\n\n${sections.join('\n\n')}\n\nWrite the five labeled lines now.`,
+          content: `Dashboard facts (authoritative; do not invent beyond this):\n\n${dashboardFacts}`,
         },
       ];
 
-      const result = await window.navio.aiRequest({ messages: aiMessages });
+      const result = await window.navio.aiRequest({ messages: aiMessages, ntpBrief: true });
       if (result.error) throw new Error(result.error);
 
       const briefDate = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
       const briefTime = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
       const rawContent = result.content || '';
-      const structured = _renderBriefStructured(rawContent);
-      const briefInner = structured || _renderBriefHtml(rawContent);
+      const fromJson = _renderBriefFromJson(rawContent);
+      const briefInner = fromJson || _renderBriefHtml(rawContent);
       const fullHtml = `<div class="ntp-brief-content"><div class="ntp-brief-datestamp">${_esc(briefDate)} <span class="ntp-brief-time">· ${_esc(briefTime)}</span></div>${briefInner}</div>`;
       body.innerHTML = fullHtml;
 
       try {
         localStorage.setItem(
-          'navio-brief-cache',
+          BRIEF_CACHE_KEY,
           JSON.stringify({
             date: new Date().toDateString(),
             html: fullHtml,
