@@ -8,6 +8,9 @@ const { ipcMain, webContents: electronWebContents } = require('electron');
  */
 function registerAgentPlanIpc(ipcMain, { store }) {
   ipcMain.handle('agent-run-plan', async (event, { webContentsId, steps, userConfirmed }) => {
+    if (!userConfirmed) {
+      return { ok: false, error: 'User confirmation required before running agent plan.' };
+    }
     if (!Array.isArray(steps) || steps.length === 0) {
       return { ok: false, error: 'No steps' };
     }

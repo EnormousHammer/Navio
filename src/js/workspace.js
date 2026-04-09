@@ -46,7 +46,9 @@ class WorkspaceManagerClass {
   }
 
   async render() {
-    const r = await window.navio.workspace({ op: 'get' });
+    let r;
+    try { r = await window.navio.workspace({ op: 'get' }); }
+    catch (e) { console.error('[Workspace] IPC error:', e); return; }
     const w = r.workspace || { tasks: [], projects: [], notes: [] };
 
     if (this.taskList) {

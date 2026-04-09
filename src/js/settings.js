@@ -90,7 +90,7 @@ class SettingsManagerClass {
     this.panelIds = ['general', 'ai', 'appearance', 'browser', 'privacy', 'integrations', 'passwords', 'about'];
 
     this.bindEvents();
-    this.loadConfig();
+    this.loadConfig().catch(() => { /* pre-warm failure is non-critical; open() will retry */ });
   }
 
   bindEvents() {

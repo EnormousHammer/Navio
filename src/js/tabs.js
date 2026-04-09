@@ -419,6 +419,9 @@ class TabManagerClass {
       return;
     }
 
+    // Cancel any pending passive-memory timer so it doesn't fire on a dead tab
+    if (tab._memTimer) { clearTimeout(tab._memTimer); tab._memTimer = null; }
+
     // Remove webview from DOM
     if (tab.webview && tab.webview.parentNode) {
       tab.webview.parentNode.removeChild(tab.webview);
@@ -849,7 +852,12 @@ class TabManagerClass {
           `Group these browser tabs by topic. Reply with ONLY a JSON array like [{"name":"Work","indexes":[0,2]},{"name":"Read","indexes":[1]}] using 0-based indexes from the list below. Use at most 8 groups. Tabs:\n${lines}`
       }
     ];
-    const r = await window.navio.aiRequest({ messages });
+    let r;
+    try { r = await window.navio.aiRequest({ messages }); }
+    catch (e) {
+      if (typeof _showAppToast === 'function') _showAppToast('AI request failed.', 'error');
+      return;
+    }
     if (r.error) {
       if (typeof _showAppToast === 'function') _showAppToast(r.error, 'error');
       return;
@@ -895,7 +903,12 @@ class TabManagerClass {
           `Find duplicate or near-duplicate tabs (same URL or trivial variants). Reply with ONLY a JSON array of tab indexes to CLOSE, e.g. [2,5]. Prefer keeping the oldest index when duplicates exist. If none, reply with []. Tabs:\n${lines}`
       }
     ];
-    const r = await window.navio.aiRequest({ messages });
+    let r;
+    try { r = await window.navio.aiRequest({ messages }); }
+    catch (e) {
+      if (typeof _showAppToast === 'function') _showAppToast('AI request failed.', 'error');
+      return;
+    }
     if (r.error) {
       if (typeof _showAppToast === 'function') _showAppToast(r.error, 'error');
       return;

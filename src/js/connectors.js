@@ -391,19 +391,19 @@ class ConnectorsManagerClass {
   bindEvents() {
     const btnMini = document.getElementById('btn-connectors');
     if (btnMini) btnMini.addEventListener('click', () => this.toggleHub());
-    document.getElementById('btn-connectors-full').addEventListener('click', () => this.toggleHub());
-    document.getElementById('connectors-hub-close').addEventListener('click', () => this.hideHub());
+    document.getElementById('btn-connectors-full')?.addEventListener('click', () => this.toggleHub());
+    document.getElementById('connectors-hub-close')?.addEventListener('click', () => this.hideHub());
 
     const hubOverlay = document.getElementById('connectors-hub');
-    hubOverlay.addEventListener('click', (e) => {
+    hubOverlay?.addEventListener('click', (e) => {
       if (e.target === hubOverlay) this.hideHub();
     });
 
-    document.getElementById('connectors-search').addEventListener('input', (e) => {
+    document.getElementById('connectors-search')?.addEventListener('input', (e) => {
       this.filterServices(e.target.value.trim());
     });
 
-    document.getElementById('connectors-search').addEventListener('keydown', (e) => {
+    document.getElementById('connectors-search')?.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         if (e.target.value) {
           e.target.value = '';

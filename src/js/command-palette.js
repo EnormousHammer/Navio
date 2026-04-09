@@ -160,7 +160,7 @@ class CommandPaletteClass {
       const workflows = wl.workflows || [];
       workflows.forEach((wf) => {
         const name = (wf.name || 'Workflow').toLowerCase();
-        if (!q || name.includes(q) || 'workflow'.includes(q)) {
+        if (!q || name.includes(q)) {
           this.items.push({
             id: `wf-${wf.id}`,
             label: `Run workflow: ${wf.name || 'Untitled'}`,

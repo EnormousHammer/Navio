@@ -217,7 +217,13 @@ function isEmailWriteAction(action, params) {
 }
 
 // ── Authoritative system prompt (file: electron/navio-system-prompt.txt)
-const NAVIO_SYSTEM_PROMPT = fs.readFileSync(path.join(__dirname, 'navio-system-prompt.txt'), 'utf8');
+let NAVIO_SYSTEM_PROMPT = '';
+try {
+  NAVIO_SYSTEM_PROMPT = fs.readFileSync(path.join(__dirname, 'navio-system-prompt.txt'), 'utf8');
+} catch (e) {
+  console.error('[Navio] Could not load navio-system-prompt.txt:', e.message);
+  NAVIO_SYSTEM_PROMPT = 'You are Navio, a helpful AI browser assistant.';
+}
 
 // ── Markdown → HTML converter (used for Google Docs rich-text paste) ─────────
 // Converts simple markdown (headings, bold, italic, bullets, hr) to HTML so that

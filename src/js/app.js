@@ -516,7 +516,10 @@ const ReadingListManager = (() => {
 
   async function refresh() {
     const r = await window.navio.readingListGet().catch(() => null);
-    if (!r?.ok) return;
+    if (!r?.ok) {
+      if (!r) _showAppToast('Could not load reading list.', 'error');
+      return;
+    }
     const unread = r.list.filter(e => !e.read).length;
     const badge = _badge();
     if (badge) { badge.textContent = unread; badge.hidden = unread === 0; }
@@ -594,14 +597,18 @@ const ReadingListManager = (() => {
     if (!tab?.url || tab.url === 'about:blank') {
       _showAppToast('No page to save', 'error'); return;
     }
-    const r = await window.navio.readingListAdd(tab.url, tab.title, tab.favicon);
-    if (r.ok && r.added) {
+    const r = await window.navio.readingListAdd(tab.url, tab.title, tab.favicon).catch(() => null);
+    if (!r) {
+      _showAppToast('Could not save page.', 'error');
+    } else if (r.ok && r.added) {
       _showAppToast('Saved for later', 'success');
       open(); // always show the panel after saving so user sees the item
       refresh();
     } else if (r.ok && !r.added) {
       _showAppToast('Already saved', 'info');
       open();
+    } else {
+      _showAppToast('Could not save page.', 'error');
     }
   }
 
@@ -822,15 +829,9 @@ const InlineAI = (() => {
       const prompt = PROMPTS[action]?.(_text);
       if (!prompt) return;
 
-      // Use streaming so the result appears word-by-word
+      // Register listeners BEFORE starting the stream to avoid a race
+      // where fast responses deliver chunks before handlers are attached.
       let result = '';
-      await window.navio.aiRequestStream({
-        messages: [
-          { role: 'system', content: 'You are a helpful writing assistant. Be concise. Reply in plain text only — no markdown, no bullet points.' },
-          { role: 'user',   content: prompt },
-        ],
-      });
-
       _unsubs.push(window.navio.onAiStreamChunk(chunk => {
         result += chunk;
         if (body) body.textContent = result;
@@ -845,6 +846,13 @@ const InlineAI = (() => {
         _cancelStream();
         if (repBtn && action === 'rewrite') repBtn.disabled = true;
       }));
+
+      await window.navio.aiRequestStream({
+        messages: [
+          { role: 'system', content: 'You are a helpful writing assistant. Be concise. Reply in plain text only — no markdown, no bullet points.' },
+          { role: 'user',   content: prompt },
+        ],
+      });
     } catch (err) {
       if (body) body.textContent = 'Error: ' + err.message;
     }

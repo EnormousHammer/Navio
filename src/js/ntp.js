@@ -188,7 +188,9 @@ const NTP = (() => {
       _updateGreeting();
     };
     tick();
-    setInterval(tick, 1000);
+    const _clockInterval = setInterval(tick, 1000);
+    // Expose for cleanup if the NTP page is ever torn down
+    if (typeof window !== 'undefined') window._ntpClockInterval = _clockInterval;
   }
 
   function _updateGreeting() {
@@ -392,9 +394,6 @@ const NTP = (() => {
       .content { max-width: 760px; margin: 0 auto; }
       a { color: #00d8ff; text-decoration: none; }
       a:hover { text-decoration: underline; }
-      --text-primary: #e2e8f0;
-      --text-secondary: rgba(226,232,248,0.65);
-      --text-tertiary: rgba(226,232,248,0.35);
     `;
 
     const html = `<!DOCTYPE html>
@@ -1233,19 +1232,22 @@ const NTP = (() => {
 
       if (draftAllBtn && messages.length > 0) {
         draftAllBtn.style.display = 'inline-flex';
-        draftAllBtn.addEventListener('click', () => {
-          if (typeof LiveConnectorManager !== 'undefined') {
-            const tab = TabManager?.tabs?.find(t => {
-              const url = t.webview?.src || t.url || '';
-              return url.includes(svcId === 'gmail' ? 'mail.google.com' : 'outlook.live.com');
-            });
-            if (tab) {
-              LiveConnectorManager._startBatchDraft(svcId, tab.id);
-            } else {
-              _imapBatchDraft(svcId, messages);
+        if (!draftAllBtn._navioWired) {
+          draftAllBtn._navioWired = true;
+          draftAllBtn.addEventListener('click', () => {
+            if (typeof LiveConnectorManager !== 'undefined') {
+              const tab = TabManager?.tabs?.find(t => {
+                const url = t.webview?.src || t.url || '';
+                return url.includes(svcId === 'gmail' ? 'mail.google.com' : 'outlook.live.com');
+              });
+              if (tab) {
+                LiveConnectorManager._startBatchDraft(svcId, tab.id);
+              } else {
+                _imapBatchDraft(svcId, messages);
+              }
             }
-          }
-        });
+          });
+        }
       }
 
       if (messages.length === 0) {

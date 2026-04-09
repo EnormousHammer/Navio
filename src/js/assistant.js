@@ -695,7 +695,10 @@ PERSONALITY:
       this._clearStreamListeners();
       this.removeTypingIndicator();
 
-      if (!buffer) return;
+      if (!buffer) {
+        this.addMessage('assistant', 'No response received. Please try again.', 'error');
+        return;
+      }
 
       if (streamingMsg) {
         const contentEl = streamingMsg.querySelector('.message-content');
@@ -915,7 +918,12 @@ PERSONALITY:
     html = html.replace(/_([^_\s][^_]*)_/g, '<em>$1</em>');
 
     // ── 9. Links ──────────────────────────────────────────────────────────────
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
+      // Block dangerous schemes to prevent XSS / open-redirect via model output
+      const safe = /^https?:\/\//i.test(url.trim()) || /^mailto:/i.test(url.trim());
+      if (!safe) return label;
+      return `<a href="${url.replace(/"/g, '&quot;')}" target="_blank" rel="noopener">${label}</a>`;
+    });
 
     // ── 9b. Gmail links → professional email reference chips ─────────────────
     // Matches links pointing to mail.google.com and replaces them with rich cards
@@ -1434,7 +1442,10 @@ PERSONALITY:
       resize();
       ta.focus();
       ta.setSelectionRange(ta.value.length, ta.value.length);
+      let finished = false;
       const finish = (keep) => {
+        if (finished) return;
+        finished = true;
         step.classList.remove('navio-plan-editing');
         const span = document.createElement('span');
         span.className = 'navio-plan-text';
@@ -1442,10 +1453,12 @@ PERSONALITY:
         ta.replaceWith(span);
         this._wirePlanStep(step);
       };
-      ta.addEventListener('blur', () => finish(true));
+      // Use a named reference so Escape can remove the blur listener correctly
+      const onBlur = () => finish(true);
+      ta.addEventListener('blur', onBlur);
       ta.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ta.blur(); }
-        if (e.key === 'Escape') { e.preventDefault(); ta.removeEventListener('blur', () => finish(true)); finish(false); }
+        if (e.key === 'Escape') { e.preventDefault(); ta.removeEventListener('blur', onBlur); finish(false); }
       });
     });
   }
