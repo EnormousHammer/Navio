@@ -3012,9 +3012,11 @@ async function queryLinear(apiKey, query, options = {}) {
 }
 async function queryGmail(token, query, options = {}) {
   const maxResults = options.maxResults || 5;
+  // Default to unread inbox when query is empty or too vague
+  const effectiveQuery = (!query || query.trim().length < 3) ? 'in:inbox is:unread' : query.trim();
   // Search emails
   const searchResp = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=${maxResults}`,
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(effectiveQuery)}&maxResults=${maxResults}`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   const searchData = await searchResp.json();
@@ -3141,18 +3143,26 @@ async function querySlack(token, query, options = {}) {
 }
 
 async function queryOutlook(token, query, options = {}) {
-  const top = options.top || 5;
-  const resp = await fetch(
-    `https://graph.microsoft.com/v1.0/me/messages?$search="${encodeURIComponent(query)}"&$top=${top}&$select=subject,from,receivedDateTime,bodyPreview`,
-    { headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: 'eventual' } }
-  );
+  const top = options.top || 6;
+  // Detect unread/inbox requests and use $filter instead of $search
+  const isUnreadRequest = !query || query.trim().length < 3 || /isRead:false/i.test(query);
+  let url;
+  if (isUnreadRequest) {
+    url = `https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$filter=isRead eq false&$orderby=receivedDateTime desc&$top=${top}&$select=subject,from,receivedDateTime,bodyPreview,isRead`;
+  } else {
+    url = `https://graph.microsoft.com/v1.0/me/messages?$search="${encodeURIComponent(query)}"&$top=${top}&$select=subject,from,receivedDateTime,bodyPreview,isRead`;
+  }
+  const resp = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: 'eventual' }
+  });
   const data = await resp.json();
   if (!resp.ok) return { error: data.error?.message || 'Outlook API error' };
   const results = (data.value || []).map((m) => ({
     subject: m.subject || '(no subject)',
     from: m.from?.emailAddress?.address || '',
     date: m.receivedDateTime,
-    snippet: m.bodyPreview || ''
+    snippet: m.bodyPreview || '',
+    isRead: m.isRead
   }));
   return { results, total: results.length };
 }

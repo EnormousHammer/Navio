@@ -548,6 +548,17 @@ PERSONALITY:
 
     const messages = [{ role: 'system', content: this.systemPrompt }];
 
+    // ── Always inject active tab so the AI knows what page the user is on ──
+    if (!isQuickAction && typeof TabManager !== 'undefined') {
+      const activeTab = TabManager.getActiveTab();
+      if (activeTab && activeTab.url && !activeTab.url.startsWith('about:')) {
+        messages.push({
+          role: 'system',
+          content: `[Active tab]\nTitle: ${activeTab.title || '(untitled)'}\nURL: ${activeTab.url}`
+        });
+      }
+    }
+
     const ctxMsg = await this.buildPageContextSystemMessage(config, isQuickAction);
     if (ctxMsg) messages.push(ctxMsg);
 
@@ -565,6 +576,15 @@ PERSONALITY:
           role: 'system',
           content: `[Page form metadata — do not submit forms unless user asks]\n${short}`
         });
+      }
+    }
+
+    // ── Inject all open tabs (awareness like Arc/Comet) ─────────────────────
+    if (!isQuickAction && typeof TabManager !== 'undefined') {
+      const allTabs = TabManager.tabs.filter(t => t.url && !t.url.startsWith('about:')).slice(0, 20);
+      if (allTabs.length > 1) {
+        const tabList = allTabs.map((t, i) => `${i + 1}. ${t.title || t.url} — ${t.url}`).join('\n');
+        messages.push({ role: 'system', content: `[Open tabs (${allTabs.length})]\n${tabList}` });
       }
     }
 
@@ -594,7 +614,7 @@ PERSONALITY:
     }
 
     // Inject accessibility snapshot when user is likely requesting browser control
-    const browserIntent = /\b(click|go to|open|navigate|visit|search|type|fill|scroll|find|press|submit|play|watch|buy|book|login|sign)\b/i.test(text);
+    const browserIntent = /\b(click|go to|open|navigate|visit|search|type|fill|scroll|find|press|submit|play|watch|buy|book|login|sign|email|mail|inbox)\b/i.test(text);
     if (browserIntent && !isQuickAction) {
       const snapText = await this._getPageSnapshotText();
       if (snapText) messages.push({ role: 'system', content: snapText });
@@ -2293,45 +2313,58 @@ ${pageInfo}${snapText}`;
       // ── Gmail ──────────────────────────────────────────────────────────
       const gmailIntent = /\b(email|gmail|mail|inbox|message|sent|unread|thread|attachment)\b/i.test(text);
       if (has('gmail') && gmailIntent) {
-        const q = clean(/\b(email|gmail|mail|inbox|message|sent|unread|thread)\b/gi);
-        if (q.length > 2) {
-          try {
-            const res = await ConnectorsManager.queryConnector('gmail', q, { maxResults: 6 });
-            if (res?.results?.length) {
-              const lines = res.results.map((r) => {
-                const gmailUrl = r.id ? `https://mail.google.com/mail/u/0/#inbox/${r.id}` : '';
-                if (r.id) {
-                  this._emailRefs.set(r.id, {
-                    subject: r.subject || '(no subject)',
-                    from: r.from || '',
-                    snippet: r.snippet || '',
-                    url: gmailUrl
-                  });
-                }
-                const snippet = r.snippet ? `\n  "${r.snippet.slice(0, 120)}"` : '';
-                return gmailUrl
-                  ? `- [${r.subject || '(no subject)'}](${gmailUrl}) — From: ${r.from || '?'}${snippet}`
-                  : `- From: ${r.from || '?'} · Subject: ${r.subject || '(no subject)'}${snippet}`;
-              }).join('\n');
-              results.push(`[Gmail — ${res.total} result(s) for "${q}"]\n${lines}`);
-            }
-          } catch (_) {}
+        const wantsUnread = /\bunread\b/i.test(text);
+        const rawQ = clean(/\b(email|gmail|mail|inbox|message|sent|unread|thread)\b/gi);
+        // Build a proper Gmail search query — always anchor to inbox, add is:unread when asked
+        let gmailQuery;
+        if (wantsUnread) {
+          gmailQuery = rawQ.length > 2 ? `in:inbox is:unread ${rawQ}` : 'in:inbox is:unread';
+        } else if (rawQ.length > 2) {
+          gmailQuery = `in:inbox ${rawQ}`;
+        } else {
+          gmailQuery = 'in:inbox is:unread';
         }
+        try {
+          const res = await ConnectorsManager.queryConnector('gmail', gmailQuery, { maxResults: 6 });
+          if (res?.results?.length) {
+            const lines = res.results.map((r) => {
+              const gmailUrl = r.id ? `https://mail.google.com/mail/u/0/#inbox/${r.id}` : '';
+              if (r.id) {
+                this._emailRefs.set(r.id, {
+                  subject: r.subject || '(no subject)',
+                  from: r.from || '',
+                  snippet: r.snippet || '',
+                  url: gmailUrl
+                });
+              }
+              const snippet = r.snippet ? `\n  "${r.snippet.slice(0, 120)}"` : '';
+              return gmailUrl
+                ? `- [${r.subject || '(no subject)'}](${gmailUrl}) — From: ${r.from || '?'}${snippet}`
+                : `- From: ${r.from || '?'} · Subject: ${r.subject || '(no subject)'}${snippet}`;
+            }).join('\n');
+            results.push(`[Gmail — ${res.total} result(s) for "${gmailQuery}"]\n${lines}`);
+          }
+        } catch (_) {}
       }
 
       // ── Outlook ────────────────────────────────────────────────────────
       const outlookIntent = /\b(outlook|email|mail|inbox|message|exchange)\b/i.test(text);
       if (has('outlook') && outlookIntent && !has('gmail')) {
-        const q = clean(/\b(outlook|email|mail|inbox|message)\b/gi);
-        if (q.length > 2) {
-          try {
-            const res = await ConnectorsManager.queryConnector('outlook', q, { top: 4 });
-            if (res?.results?.length) {
-              const lines = res.results.map((r) => `- From: ${r.from || '?'} · Subject: ${r.subject}`).join('\n');
-              results.push(`[Outlook — ${res.total} result(s) for "${q}"]\n${lines}`);
-            }
-          } catch (_) {}
-        }
+        const wantsUnreadOutlook = /\bunread\b/i.test(text);
+        const rawOutlookQ = clean(/\b(outlook|email|mail|inbox|message)\b/gi);
+        // Build Outlook search — default to unread inbox when no specific terms
+        const outlookQuery = rawOutlookQ.length > 2 ? rawOutlookQ
+          : wantsUnreadOutlook ? 'isRead:false' : 'isRead:false';
+        try {
+          const res = await ConnectorsManager.queryConnector('outlook', outlookQuery, { top: 6 });
+          if (res?.results?.length) {
+            const lines = res.results.map((r) => {
+              const unreadFlag = r.isRead === false ? ' 🔵' : '';
+              return `- From: ${r.from || '?'} · Subject: ${r.subject || '(no subject)'}${unreadFlag}`;
+            }).join('\n');
+            results.push(`[Outlook — ${res.total} result(s)]\n${lines}`);
+          }
+        } catch (_) {}
       }
 
       // ── Google Drive ───────────────────────────────────────────────────
