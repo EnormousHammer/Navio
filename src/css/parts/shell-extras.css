@@ -4,20 +4,37 @@
   --tabstrip-side-width: 240px;
 }
 
+/* One row like Chrome — scroll horizontally instead of wrapping into a tall wall */
 .bookmark-bar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
   padding: 4px 10px 6px;
   background: var(--bg-deep);
   border-bottom: 1px solid var(--border);
   min-height: 32px;
+  max-height: 40px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.bookmark-bar::-webkit-scrollbar {
+  height: 6px;
+}
+.bookmark-bar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+.bookmark-bar::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
 }
 .bookmark-bar[hidden] {
   display: none !important;
 }
 .bookmark-bar-item {
+  flex: 0 0 auto;
   max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -33,6 +50,14 @@
 .bookmark-bar-item:hover {
   color: var(--accent);
   border-color: var(--border-accent);
+}
+
+/* Bookmark bar visibility toggle (navbar) */
+#btn-toggle-bookmark-bar[aria-pressed='false'] {
+  opacity: 0.55;
+}
+#btn-toggle-bookmark-bar[aria-pressed='true'] {
+  color: var(--accent);
 }
 
 .url-bookmark-star {

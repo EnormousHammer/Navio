@@ -957,6 +957,11 @@ body.tabstrip-hidden .tab-strip-show {
   overflow-x: hidden;
   z-index: 2;
   color: #e2e8f8;
+  /* Fixed `.ntp-stock-ticker` (~44px) sits on the viewport bottom — reserve space so
+     dashboard widgets (World News, Inbox, AI Brief) can scroll fully above it */
+  --ntp-ticker-reserve: calc(44px + 20px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: var(--ntp-ticker-reserve);
+  scroll-padding-bottom: var(--ntp-ticker-reserve);
   --ntp-accent: #00d8ff;
   --ntp-purple: #7c3aed;
   --ntp-text: #e2e8f8;
@@ -1310,7 +1315,8 @@ body.tabstrip-hidden .tab-strip-show {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 14px;
-  padding: 4px 22px 24px;
+  /* Extra bottom gap above page scroll padding so the grid doesn’t hug the ticker */
+  padding: 4px 22px max(20px, calc(var(--ntp-ticker-reserve, 64px) - 24px));
   position: relative;
   z-index: 1;
   max-width: 1420px;

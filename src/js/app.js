@@ -75,6 +75,9 @@ class NavioApp {
     }
     const bb = document.getElementById('bookmark-bar');
     if (bb) bb.hidden = config && config.showBookmarkBar === false;
+    if (typeof window.__navioSyncBookmarkBarToggleButton === 'function') {
+      window.__navioSyncBookmarkBarToggleButton();
+    }
   }
 
   bindThemeToggle() {

@@ -132,6 +132,39 @@
     if (q) q.focus();
   };
 
+  function syncBookmarkBarToggleButton() {
+    const btn = document.getElementById('btn-toggle-bookmark-bar');
+    const bar = document.getElementById('bookmark-bar');
+    if (!btn || !bar) return;
+    const on = !bar.hidden;
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.title = on ? 'Hide bookmark bar (saved)' : 'Show bookmark bar (saved)';
+  }
+  window.__navioSyncBookmarkBarToggleButton = syncBookmarkBarToggleButton;
+
+  async function setBookmarkBarVisible(show) {
+    const bar = document.getElementById('bookmark-bar');
+    if (bar) bar.hidden = !show;
+    await window.navio.saveConfig({ showBookmarkBar: !!show });
+    if (typeof App !== 'undefined' && App.config) {
+      App.config.showBookmarkBar = !!show;
+    }
+    if (typeof SettingsManager !== 'undefined' && SettingsManager.config) {
+      SettingsManager.config.showBookmarkBar = !!show;
+      if (SettingsManager.elements && SettingsManager.elements.bookmarkBar) {
+        SettingsManager.elements.bookmarkBar.checked = !!show;
+      }
+    }
+    syncBookmarkBarToggleButton();
+  }
+
+  async function toggleBookmarkBar() {
+    const bar = document.getElementById('bookmark-bar');
+    const currentlyOn = bar && !bar.hidden;
+    await setBookmarkBarVisible(!currentlyOn);
+  }
+  window.__navioToggleBookmarkBar = toggleBookmarkBar;
+
   async function initBookmarkBar() {
     const bar = document.getElementById('bookmark-bar');
     if (!bar || !window.navio.bookmarksGet) return;
@@ -158,6 +191,14 @@
     }
     await render();
     window.addEventListener('bookmarks-changed', render);
+    syncBookmarkBarToggleButton();
+  }
+
+  function bindBookmarkBarToggle() {
+    const btn = document.getElementById('btn-toggle-bookmark-bar');
+    if (!btn || btn._navioBound) return;
+    btn._navioBound = true;
+    btn.addEventListener('click', () => toggleBookmarkBar());
   }
 
   function bindFindInPage() {
@@ -561,6 +602,7 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     initBookmarkBar();
+    bindBookmarkBarToggle();
     bindFindInPage();
     bindPrintZoomFullscreen();
     bindDownloadsDrawer();

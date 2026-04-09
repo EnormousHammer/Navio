@@ -94,6 +94,11 @@ class CommandPaletteClass {
         run: () => window.__navioOpenBookmarksOverlay?.()
       },
       {
+        id: 'toggle-bookmark-bar',
+        label: 'Toggle bookmark bar',
+        run: () => window.__navioToggleBookmarkBar?.()
+      },
+      {
         id: 'ai-organize-tabs',
         label: 'AI: Organize tabs into groups',
         run: () => TabManager.autoOrganizeTabsWithAi?.()
