@@ -25,11 +25,20 @@ const NTP = (() => {
   function _applyTickerBottomReserve() {
     const ntp = document.getElementById('new-tab-page');
     const ticker = document.getElementById('ntp-stock-ticker');
-    if (!ntp || !ticker) return;
-    const h = ticker.getBoundingClientRect().height;
-    const extra = 24;
-    const reserve = Math.max(80, Math.ceil(h + extra));
-    ntp.style.setProperty('--ntp-ticker-reserve', `${reserve}px`);
+    if (!ticker || !document.documentElement) return;
+    const show =
+      !!ntp?.classList.contains('active') && ticker.classList.contains('visible');
+    let reservePx = 0;
+    if (show) {
+      const h = ticker.offsetHeight || ticker.getBoundingClientRect().height || 44;
+      const extra = 20;
+      reservePx = Math.max(60, Math.ceil(h + extra));
+    }
+    document.documentElement.style.setProperty('--ntp-ticker-reserve', `${reservePx}px`);
+  }
+
+  if (typeof window !== 'undefined') {
+    window.__navioApplyNtpTickerReserve = _applyTickerBottomReserve;
   }
 
   function init() {
@@ -40,6 +49,8 @@ const NTP = (() => {
     _bindAIBrief();
     _bindTickerTabs();
     _bindWidgetPopouts();
+    _bindResultsPanel();
+    _bindNtpSlashFocus();
 
     const tickerEl = document.getElementById('ntp-stock-ticker');
     if (tickerEl && typeof ResizeObserver !== 'undefined') {
@@ -59,6 +70,7 @@ const NTP = (() => {
       } else if (!isActive) {
         _ntpVisible = false;
         if (ticker) ticker.classList.remove('visible');
+        _applyTickerBottomReserve();
       }
     });
     const ntp = document.getElementById('new-tab-page');
@@ -66,20 +78,86 @@ const NTP = (() => {
     if (ntp?.classList.contains('active')) {
       _ntpVisible = true;
       document.getElementById('ntp-stock-ticker')?.classList.add('visible');
+      requestAnimationFrame(() => _applyTickerBottomReserve());
       _onShow();
     }
   }
 
   function _onShow() {
     _updateGreeting();
-    _loadWeather();
-    _loadWorldNews();
-    _loadServicesBar();
-    _loadInbox();
-    _loadTickerForMode();
-    _bindResultsPanel();
-    _loadPrivacyStats();
-    _maybeAutoGenerateBrief();
+    (async () => {
+      await Promise.all([
+        _loadWeather().catch(() => {}),
+        _loadWorldNews().catch(() => {}),
+        _loadServicesBar().catch(() => {}),
+        _loadInbox().catch(() => {}),
+        _loadTickerForMode().catch(() => {}),
+        _loadPrivacyStats().catch(() => {})
+      ]);
+      await _updateSmartRow();
+      _maybeAutoGenerateBrief();
+    })();
+  }
+
+  function _bindNtpSlashFocus() {
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+        const ntp = document.getElementById('new-tab-page');
+        if (!ntp?.classList.contains('active')) return;
+        const t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+        e.preventDefault();
+        document.getElementById('ntp-search-input')?.focus();
+      },
+      true
+    );
+  }
+
+  function _briefContextFingerprint() {
+    const newsSig = _newsHeadlines.slice(0, 4).join('\u001f');
+    const unread = _inboxMessages.filter((m) => m.unread).length;
+    const inboxSig = `${_inboxMessages.length}:${unread}`;
+    const wx = _weatherData ? `${_weatherData.temp}:${_weatherData.desc}` : '';
+    const mk = _stockData.length
+      ? _stockData
+          .filter((s) => ['GSPC', 'BTC-USD'].includes(s.symbol))
+          .map((s) => `${s.symbol}:${(s.pct || 0).toFixed(2)}`)
+          .join(',')
+      : '';
+    return `${newsSig}|${inboxSig}|${wx}|${mk}`;
+  }
+
+  async function _updateSmartRow() {
+    const el = document.getElementById('ntp-smart-row');
+    if (!el) return;
+    const parts = [];
+    try {
+      const cfg = await window.navio.getConfig();
+      if (cfg.hasApiKey) parts.push('AI connected');
+      const keys = await window.navio.connectorGetKeys().catch(() => ({}));
+      if (keys && keys.perplexity) parts.push('Perplexity · cited answers');
+    } catch {
+      /* ignore */
+    }
+    if (_newsHeadlines.length) parts.push(`${_newsHeadlines.length} headlines`);
+    if (_inboxMessages.length) {
+      const u = _inboxMessages.filter((m) => m.unread).length;
+      parts.push(u ? `${u} unread` : 'Inbox checked');
+    }
+    if (_stockData.length) {
+      const sp = _stockData.find((s) => s.symbol === 'GSPC');
+      if (sp && typeof sp.pct === 'number') {
+        const a = sp.pct >= 0 ? 'up' : 'down';
+        parts.push(`S&P ${a} ${Math.abs(sp.pct).toFixed(1)}%`);
+      }
+    }
+    if (_weatherData) parts.push(`${_weatherData.icon} ${_weatherData.temp}°`);
+    el.textContent =
+      parts.length > 0
+        ? parts.join(' · ')
+        : 'Tip: connect email for inbox + brief · Perplexity connector adds citations in Ask AI';
   }
 
   // ── Clock + Greeting ──────────────────────────────────────────────────────
@@ -171,10 +249,25 @@ const NTP = (() => {
       });
       if (!r.ok) throw new Error(`Reddit ${r.status}`);
       const data = await r.json();
-      const posts = (data?.data?.children || [])
-        .map(c => c.data)
-        .filter(p => p && p.title && !p.stickied)
-        .slice(0, 10);
+      const rawPosts = (data?.data?.children || [])
+        .map((c) => c.data)
+        .filter(
+          (p) =>
+            p &&
+            p.title &&
+            !p.stickied &&
+            !/^\[removed\]/i.test(p.title.trim()) &&
+            !/megathread/i.test(p.title)
+        );
+      const seen = new Set();
+      const posts = [];
+      for (const p of rawPosts) {
+        const key = p.title.toLowerCase().replace(/\s+/g, ' ').slice(0, 96);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        posts.push(p);
+        if (posts.length >= 10) break;
+      }
 
       if (posts.length === 0) throw new Error('No posts');
 
@@ -511,21 +604,30 @@ const NTP = (() => {
     if (!body) return;
 
     const today = new Date().toDateString();
+    const fpNow = _briefContextFingerprint();
     try {
       const raw = localStorage.getItem('navio-brief-cache');
       if (raw) {
-        const { date, html } = JSON.parse(raw);
-        if (date === today && html) {
+        const parsed = JSON.parse(raw);
+        const { date, html, fingerprint } = parsed;
+        if (date === today && html && fingerprint === fpNow) {
           body.innerHTML = html;
           const btn = document.getElementById('ntp-brief-gen-btn');
-          if (btn) { btn.disabled = false; btn.textContent = '↺ Refresh'; }
-          return; // cached — no API call needed
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = '↺ Refresh';
+          }
+          return;
+        }
+        if (date === today && html && fingerprint !== fpNow) {
+          body.innerHTML = `<div class="ntp-brief-generating"><div class="ntp-brief-spinner"></div><p>Updating brief for new headlines & inbox…</p></div>`;
         }
       }
-    } catch {}
+    } catch {
+      /* ignore cache parse errors */
+    }
 
-    // No cache for today — auto-generate after a short delay so inbox/news load first
-    setTimeout(_generateAIBrief, 1800);
+    setTimeout(_generateAIBrief, 400);
   }
 
   // Convert any stray markdown to clean HTML (safety net in case AI ignores instructions)
@@ -541,6 +643,45 @@ const NTP = (() => {
       .trim();
     const paras = text.split(/\n{2,}/).map(p => p.replace(/\n/g, ' ').trim()).filter(Boolean);
     return paras.map(p => `<p>${p}</p>`).join('');
+  }
+
+  const _BRIEF_LABELS = {
+    SUMMARY: 'At a glance',
+    INBOX: 'Inbox',
+    WORLD: 'World pulse',
+    MARKETS: 'Markets',
+    DO_NEXT: 'Do this next'
+  };
+
+  /** Prefer labeled sections from the model; fallback to plain paragraphs. */
+  function _renderBriefStructured(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return '';
+    const sections = {};
+    let current = null;
+    const lines = text.split(/\n/);
+    for (const line of lines) {
+      const m = /^(SUMMARY|INBOX|WORLD|MARKETS|DO_NEXT)\s*:\s*(.*)$/i.exec(line.trim());
+      if (m) {
+        current = m[1].toUpperCase();
+        sections[current] = (sections[current] || '') + (m[2] ? m[2].trim() + ' ' : '');
+      } else if (current && line.trim()) {
+        sections[current] = (sections[current] || '') + line.trim() + ' ';
+      }
+    }
+    const keys = Object.keys(sections).filter((k) => (sections[k] || '').trim());
+    if (keys.length < 2) return '';
+    const escLine = (s) =>
+      _esc(s.trim())
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>');
+    return keys
+      .map((k) => {
+        const title = _BRIEF_LABELS[k] || k;
+        const body = escLine(sections[k]);
+        return `<section class="ntp-brief-block"><h3 class="ntp-brief-block-title">${_esc(title)}</h3><p class="ntp-brief-block-text">${body}</p></section>`;
+      })
+      .join('');
   }
 
   async function _generateAIBrief() {
@@ -620,11 +761,19 @@ const NTP = (() => {
       const aiMessages = [
         {
           role: 'system',
-          content: 'You are a personalized AI briefing assistant. Write a concise, intelligent daily brief covering ALL of the data provided — emails, breaking news, and markets. Organize it naturally into 3-5 short paragraphs covering: (1) email highlights — mention specific senders and topics, (2) most important world news stories, (3) market snapshot. Use PLAIN TEXT ONLY — no markdown, no asterisks, no bullets, no hashes. Just clean flowing prose. Keep under 200 words. Be warm but businesslike.',
+          content:
+            'You write an executive morning brief like top AI browsers (concise, scannable, actionable). ' +
+            'You MUST answer using EXACTLY five lines. Each line starts with one of these labels (uppercase), a colon, a space, then 1–2 sentences. Plain text only — no markdown, no bullets, no # headers.\n\n' +
+            'SUMMARY: One sentence tying together what matters today for this user.\n' +
+            'INBOX: Specific email signal — who wrote, what topics, what needs attention — or say inbox is quiet / not connected.\n' +
+            'WORLD: The most important thread from the headlines provided, or say no headlines.\n' +
+            'MARKETS: Indices/crypto mood in one short sentence from the data, or say no data.\n' +
+            'DO_NEXT: One concrete next action the user should take now, inferred ONLY from the data (not generic platitudes).\n\n' +
+            'Under 240 words total. If data for a section is missing, write one honest short sentence for that line.',
         },
         {
           role: 'user',
-          content: `Here is my data for today:\n\n${sections.join('\n\n')}\n\nWrite my daily brief.`,
+          content: `Here is my live dashboard data:\n\n${sections.join('\n\n')}\n\nWrite the five labeled lines now.`,
         },
       ];
 
@@ -633,17 +782,24 @@ const NTP = (() => {
 
       const briefDate = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
       const briefTime = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-      const briefHtml = _renderBriefHtml(result.content || '');
-      const fullHtml = `<div class="ntp-brief-content"><div class="ntp-brief-datestamp">${_esc(briefDate)} <span class="ntp-brief-time">· ${_esc(briefTime)}</span></div>${briefHtml}</div>`;
+      const rawContent = result.content || '';
+      const structured = _renderBriefStructured(rawContent);
+      const briefInner = structured || _renderBriefHtml(rawContent);
+      const fullHtml = `<div class="ntp-brief-content"><div class="ntp-brief-datestamp">${_esc(briefDate)} <span class="ntp-brief-time">· ${_esc(briefTime)}</span></div>${briefInner}</div>`;
       body.innerHTML = fullHtml;
 
-      // Cache so it re-displays instantly when the NTP is opened again today
       try {
-        localStorage.setItem('navio-brief-cache', JSON.stringify({
-          date: new Date().toDateString(),
-          html: fullHtml,
-        }));
-      } catch {}
+        localStorage.setItem(
+          'navio-brief-cache',
+          JSON.stringify({
+            date: new Date().toDateString(),
+            html: fullHtml,
+            fingerprint: _briefContextFingerprint(),
+          })
+        );
+      } catch {
+        /* ignore quota */
+      }
 
     } catch (e) {
       body.innerHTML = `<div class="ntp-brief-error">Could not generate brief: ${_esc(e.message)}</div>`;
@@ -687,14 +843,18 @@ const NTP = (() => {
     aiContent.innerHTML = '<div class="ntp-brief-generating"><div class="ntp-brief-spinner"></div><p>Asking AI...</p></div>';
 
     if (newsContent && _newsHeadlines.length > 0) {
-      const q = query.toLowerCase();
-      const words = q.split(/\s+/).filter(w => w.length > 3);
-      const related = _newsHeadlines
-        .filter(h => words.some(w => h.toLowerCase().includes(w)))
-        .slice(0, 6);
-      newsContent.innerHTML = related.length
-        ? related.map(h => '<div class="ntp-news-item"><div class="ntp-news-title">' + _esc(h) + '</div></div>').join('')
-        : '<p class="ntp-widget-empty">No related headlines found.</p>';
+      const related = _rankHeadlinesForQuery(query, 6);
+      const label = related.fromQuery ? 'Related headlines' : 'Trending now';
+      newsContent.innerHTML =
+        related.list.length > 0
+          ? `<p class="ntp-related-label">${_esc(label)}</p>` +
+            related.list
+              .map(
+                (h) =>
+                  '<div class="ntp-news-item ntp-news-item-compact"><div class="ntp-news-title">' + _esc(h) + '</div></div>'
+              )
+              .join('')
+          : '<p class="ntp-widget-empty">No headlines loaded yet.</p>';
     }
 
     try {
@@ -756,9 +916,9 @@ const NTP = (() => {
         const input = document.getElementById('ntp-search-input');
         if (input) {
           const placeholders = {
-            search: 'Search the web…',
-            ai: 'Ask Navio AI anything…',
-            task: 'Give Navio a task to complete…'
+            search: 'Search the web or paste a URL…',
+            ai: 'Ask anything — Perplexity adds sources when connected…',
+            task: 'Describe a multi-step task for the assistant…'
           };
           input.placeholder = placeholders[_mode] || 'Search…';
           input.focus();
@@ -1296,21 +1456,22 @@ const NTP = (() => {
       });
       if (result.error) throw new Error(result.error);
 
-      // Show analysis in the AI Brief panel (repurpose it temporarily)
-      const briefArea = document.getElementById('ntp-brief-content');
-      const briefWidget = document.querySelector('.ntp-brief-widget');
-      if (briefArea && briefWidget) {
+      const briefBody = document.getElementById('ntp-brief-body');
+      if (briefBody) {
         const html = result.content
-          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
           .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
           .replace(/\*(.+?)\*/g, '<em>$1</em>')
           .replace(/^#{1,3} (.+)$/gm, '<strong>$1</strong>')
           .replace(/\n/g, '<br>');
-        briefArea.innerHTML = `
-          <div style="font-size:11px;color:var(--ntp-text-muted);margin-bottom:6px">Inbox Analysis · ${new Date().toLocaleTimeString()}</div>
-          <div style="line-height:1.6">${html}</div>`;
-        briefWidget.classList.add('ntp-brief-expanded');
-        briefWidget.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        const stamp = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        briefBody.innerHTML = `<div class="ntp-brief-content">
+          <div class="ntp-brief-datestamp">Inbox analysis <span class="ntp-brief-time">· ${_esc(stamp)}</span></div>
+          <div class="ntp-brief-analysis">${html}</div>
+        </div>`;
+        document.getElementById('ntp-widget-aibrief')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       } else {
         // Fallback: show in a simple modal-style overlay on the NTP
         const overlay = document.createElement('div');
@@ -1354,6 +1515,35 @@ const NTP = (() => {
   function _domain(url) {
     if (!url) return '';
     try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
+  }
+
+  const _HEADLINE_STOP = new Set([
+    'what', 'when', 'where', 'which', 'about', 'that', 'this', 'with', 'from', 'have', 'does', 'your',
+    'how', 'why', 'they', 'them', 'their', 'been', 'will', 'would', 'could', 'should', 'just', 'like',
+    'into', 'than', 'then', 'some', 'also', 'very', 'make', 'know', 'take', 'each'
+  ]);
+
+  /** Rank headlines by token overlap with query; fall back to top stories. */
+  function _rankHeadlinesForQuery(query, limit) {
+    const lim = Math.min(12, Math.max(3, limit || 6));
+    const q = (query || '').toLowerCase().trim();
+    const qw = q.split(/\W+/).filter((w) => w.length > 2 && !_HEADLINE_STOP.has(w));
+    if (qw.length === 0 || !_newsHeadlines.length) {
+      return { list: _newsHeadlines.slice(0, lim), fromQuery: false };
+    }
+    const scored = _newsHeadlines.map((h) => {
+      const hl = h.toLowerCase();
+      let s = 0;
+      for (const w of qw) {
+        if (hl.includes(w)) s += w.length + 2;
+      }
+      return { h, s };
+    });
+    const hit = scored.filter((x) => x.s > 0).sort((a, b) => b.s - a.s);
+    if (hit.length === 0) {
+      return { list: _newsHeadlines.slice(0, lim), fromQuery: false };
+    }
+    return { list: hit.slice(0, lim).map((x) => x.h), fromQuery: true };
   }
 
   function _timeAgo(iso) {
@@ -1411,5 +1601,5 @@ const NTP = (() => {
 })();
 
 document.addEventListener('DOMContentLoaded', () => {
-  setTimeout(() => NTP.init(), 500);
+  NTP.init();
 });

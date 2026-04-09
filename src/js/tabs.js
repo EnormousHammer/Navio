@@ -463,12 +463,23 @@ class TabManagerClass {
 
   showNewTabPage() {
     this.newTabPage.classList.add('active');
+    const ticker = document.getElementById('ntp-stock-ticker');
+    if (ticker) ticker.classList.add('visible');
+    const apply = typeof window.__navioApplyNtpTickerReserve === 'function'
+      ? window.__navioApplyNtpTickerReserve
+      : null;
+    if (apply) requestAnimationFrame(() => apply());
     const activeWv = this.getActiveWebview();
     if (activeWv) activeWv.classList.remove('active');
   }
 
   hideNewTabPage() {
     this.newTabPage.classList.remove('active');
+    const ticker = document.getElementById('ntp-stock-ticker');
+    if (ticker) ticker.classList.remove('visible');
+    if (typeof window.__navioApplyNtpTickerReserve === 'function') {
+      window.__navioApplyNtpTickerReserve();
+    }
     const activeWv = this.getActiveWebview();
     if (activeWv) activeWv.classList.add('active');
   }

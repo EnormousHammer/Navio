@@ -33,6 +33,8 @@
   --danger: #ef4444;
   --success: #22c55e;
   --warning: #f59e0b;
+  /* NTP bottom ticker: ntp.js sets px when new tab + ticker visible; insets webview/NTP above strip */
+  --ntp-ticker-reserve: 0px;
 }
 
 /* ── DARK THEME (default) — Deep Space AI: deep navy strata, blue-tinted surfaces ── */
@@ -924,7 +926,7 @@ body.tabstrip-hidden .tab-strip-show {
   top: 0;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: var(--ntp-ticker-reserve, 0px);
   /* visibility:hidden keeps the layout box intact so Electron always knows the
      correct viewport size. display:none collapses the box to 0x0, which causes
      pages to load at a zero-size viewport and never reflow to fill the screen. */
@@ -948,8 +950,10 @@ body.tabstrip-hidden .tab-strip-show {
 
 .new-tab-page {
   position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: var(--ntp-ticker-reserve, 0px);
   display: none;
   flex-direction: column;
   background: #05080f;
@@ -957,11 +961,8 @@ body.tabstrip-hidden .tab-strip-show {
   overflow-x: hidden;
   z-index: 2;
   color: #e2e8f8;
-  /* Fixed `.ntp-stock-ticker` at viewport bottom — reserve space so widgets scroll above it.
-     Minimum 80px; exact value set at runtime by ntp.js ResizeObserver on the ticker. */
-  --ntp-ticker-reserve: 80px;
-  padding-bottom: var(--ntp-ticker-reserve);
-  scroll-padding-bottom: var(--ntp-ticker-reserve);
+  /* Bottom inset matches fixed ticker via :root --ntp-ticker-reserve (ntp.js). */
+  scroll-padding-bottom: 12px;
   --ntp-accent: #00d8ff;
   --ntp-purple: #7c3aed;
   --ntp-text: #e2e8f8;
@@ -1011,7 +1012,7 @@ body.tabstrip-hidden .tab-strip-show {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 28px 0;
+  padding: 6px 24px 0;
   position: relative;
   z-index: 1;
   flex-shrink: 0;
@@ -1073,7 +1074,7 @@ body.tabstrip-hidden .tab-strip-show {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 10px 20px 4px;
+  padding: 2px 18px 2px;
   position: relative;
   z-index: 1;
   flex: 0 0 auto;
@@ -1082,12 +1083,12 @@ body.tabstrip-hidden .tab-strip-show {
 /* ── Big Clock ─────────────────────────────────────────────────────────── */
 .ntp-clock-block {
   text-align: center;
-  margin-bottom: 16px;
+  margin-bottom: 6px;
 }
 .ntp-clock {
-  font-size: clamp(64px, 9vw, 96px);
+  font-size: clamp(38px, 5.5vw, 64px);
   font-weight: 300;
-  letter-spacing: -3px;
+  letter-spacing: -2px;
   color: #fff;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -1120,8 +1121,8 @@ body.tabstrip-hidden .tab-strip-show {
 .ntp-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 .ntp-title {
   font-size: 18px !important;
@@ -1153,7 +1154,7 @@ body.tabstrip-hidden .tab-strip-show {
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 20px;
   padding: 3px;
-  margin-bottom: 14px;
+  margin-bottom: 8px;
 }
 .ntp-mode-tab {
   display: flex;
@@ -1245,12 +1246,12 @@ body.tabstrip-hidden .tab-strip-show {
 .ntp-search {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 15px 20px;
+  gap: 10px;
+  padding: 11px 18px;
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.1);
   border-radius: 50px;
-  margin-bottom: 28px;
+  margin-bottom: 14px;
   transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
   position: relative;
   width: 100%;
@@ -1310,13 +1311,43 @@ body.tabstrip-hidden .tab-strip-show {
 }
 .ntp-search-send:hover { opacity: 0.85; transform: scale(1.05); }
 
+.ntp-smart-row {
+  width: 100%;
+  max-width: 640px;
+  margin: 8px auto 0;
+  padding: 0 8px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: rgba(226, 232, 248, 0.42);
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+.ntp-search-hint {
+  margin: 6px 0 0;
+  font-size: 10.5px;
+  color: rgba(226, 232, 248, 0.28);
+  text-align: center;
+  letter-spacing: 0.04em;
+}
+.ntp-search-hint kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  margin: 0 2px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: rgba(0, 216, 255, 0.75);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(0, 216, 255, 0.15);
+  border-radius: 4px;
+}
+
 /* ── NTP Widgets ──────────────────────────────────────────────────────── */
 .ntp-widgets {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 14px;
-  /* Extra bottom gap above page scroll padding so the grid doesn’t hug the ticker */
-  padding: 4px 22px max(20px, calc(var(--ntp-ticker-reserve, 64px) - 24px));
+  gap: 12px;
+  padding: 0 20px 16px;
   position: relative;
   z-index: 1;
   max-width: 1420px;
@@ -1338,8 +1369,8 @@ body.tabstrip-hidden .tab-strip-show {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  min-height: 260px;
-  max-height: min(500px, 52vh);
+  min-height: 200px;
+  max-height: min(400px, 42vh);
   position: relative;
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
@@ -1776,6 +1807,51 @@ body.tabstrip-hidden .tab-strip-show {
 .ntp-brief-content strong { color: rgba(226,232,248,0.96); font-weight: 600; }
 .ntp-brief-content em { color: rgba(0,216,255,0.85); font-style: normal; }
 
+.ntp-brief-block {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.ntp-brief-block:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.ntp-brief-block-title {
+  margin: 0 0 6px;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(0, 216, 255, 0.72);
+}
+.ntp-brief-block-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: rgba(226, 232, 248, 0.88);
+}
+.ntp-brief-analysis {
+  font-size: 13px;
+  line-height: 1.55;
+  color: rgba(226, 232, 248, 0.88);
+}
+
+.ntp-related-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(0, 216, 255, 0.55);
+  margin: 0 0 8px;
+}
+.ntp-news-item-compact {
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  cursor: default;
+}
+.ntp-news-item-compact:last-child { border-bottom: none; }
+
 .ntp-ai-citations {
   display: flex;
   flex-wrap: wrap;
@@ -2050,12 +2126,12 @@ body.tabstrip-hidden .tab-strip-show {
 .ntp-shortcuts {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
   justify-content: center;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
   position: relative;
   z-index: 1;
-  padding: 0 20px;
+  padding: 0 18px;
 }
 
 .ntp-shortcut {
@@ -7771,6 +7847,20 @@ body.onboarding-active #app {
   --border-hover: rgba(50,70,160,0.20);
   --glass-border: rgba(50,70,160,0.10);
 }
+
+[data-theme="light"] .ntp-smart-row { color: rgba(22, 23, 42, 0.48); }
+[data-theme="light"] .ntp-search-hint { color: rgba(22, 23, 42, 0.38); }
+[data-theme="light"] .ntp-search-hint kbd {
+  color: #0070d8;
+  background: rgba(0, 112, 216, 0.08);
+  border-color: rgba(0, 112, 216, 0.22);
+}
+[data-theme="light"] .ntp-brief-block { border-bottom-color: rgba(50, 70, 160, 0.1); }
+[data-theme="light"] .ntp-brief-block-title { color: #0070d8; }
+[data-theme="light"] .ntp-brief-block-text,
+[data-theme="light"] .ntp-brief-analysis { color: #16172a; }
+[data-theme="light"] .ntp-related-label { color: rgba(0, 112, 216, 0.7); }
+[data-theme="light"] .ntp-news-item-compact { border-bottom-color: rgba(50, 70, 160, 0.08); }
 
 /* Background layer — soft daylight gradient + very faint cool grid */
 [data-theme="light"] .ntp-bg-layer {
