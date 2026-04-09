@@ -12,6 +12,7 @@ function getConfigPath() {
 const DEFAULT_CONFIG = {
   aiProvider: 'openai',
   aiModel: 'gpt-4o',
+  aiPlannerModel: 'gpt-4o-mini',
   customEndpoint: '',
   theme: 'dark',
   searchEngine: 'https://www.google.com/search?q=',

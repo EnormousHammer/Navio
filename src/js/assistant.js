@@ -3,6 +3,10 @@
  * Policy-scoped context, streaming (OpenAI), context receipt, pin tab / graph.
  */
 
+/** Same pattern as main process — login / OAuth URLs where the agent should pause. */
+const NAVIO_AUTH_GATE_URL_RE =
+  /\/(login|signin|sign-in|auth|account\/login|session\/new|oauth|sso)\b|accounts\.google\.com\/(signin|ServiceLogin)|login\.microsoftonline\.com|login\.live\.com|signin\.aws\.amazon\.com/i;
+
 class AssistantManagerClass {
   constructor() {
     this.panel = document.getElementById('assistant-panel');
@@ -18,6 +22,10 @@ class AssistantManagerClass {
     this._emailRefs = new Map();
     this._pendingScreenshotDataUrl = null;
     this._takeoverAbort = null;
+    /** @type {(() => void) | null} */
+    this._takeoverAuthResume = null;
+    this._agentLogEntries = [];
+    this._lastProactiveUrlKey = '';
 
     this.systemPrompt = `You are Navio, an intelligent AI assistant built into the Navio Browser. You help users browse the web, understand content, and automate tasks.
 
@@ -350,6 +358,19 @@ PERSONALITY:
     const text = this.inputEl.value.trim();
     if (!text || this.isProcessing) return;
 
+    if (text.startsWith('>>')) {
+      const q = text.slice(2).trim();
+      this.inputEl.value = '';
+      this.inputEl.style.height = 'auto';
+      if (!q) {
+        this.addMessage('assistant', 'Add a topic after **>>** in the omnibar or assistant (e.g. `>> best CRM for small business`).');
+        return;
+      }
+      this.addMessage('user', `>> ${q}`);
+      await this.runDeepResearch(q);
+      return;
+    }
+
     // Task chain intake mode
     if (this._awaitingTaskChain) {
       this._awaitingTaskChain = false;
@@ -378,6 +399,11 @@ PERSONALITY:
     if (this.isProcessing) return;
     if (!this.isOpen) this.open();
 
+    if (action === 'all-tabs') {
+      await this.handleQuickActionAllTabs();
+      return;
+    }
+
     const pageContent = await TabManager.getActivePageContent();
     if (!pageContent || pageContent.error) {
       this.addMessage('user', `[${action}]`);
@@ -387,6 +413,14 @@ PERSONALITY:
 
     let prompt;
     switch (action) {
+      case 'deep-research': {
+        this.addMessage('user', 'Deep research');
+        const seed = `Topic context from current page:\nTitle: ${pageContent.title}\nURL: ${pageContent.url}\n\n${(pageContent.text || '').slice(0, 4000)}`;
+        await this.runDeepResearch(
+          `Produce a multi-source research report. User started from this page:\n\n${seed}`
+        );
+        return;
+      }
       case 'summarize':
         prompt = `Summarize this web page concisely:\n\nTitle: ${pageContent.title}\nURL: ${pageContent.url}\n\nContent:\n${pageContent.text?.substring(0, 8000)}`;
         break;
@@ -931,7 +965,11 @@ PERSONALITY:
         insertText: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`,
         pressKey: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h8"/></svg>`,
         screenshot: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
-        gmailCreateReplyDraft: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`
+        gmailCreateReplyDraft: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`,
+        wait: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+        waitForText: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="14" y2="11"/></svg>`,
+        select: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 3 7-7"/></svg>`,
+        appendText: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/><line x1="9" y1="12" x2="15" y2="12"/></svg>`
       };
       const VERBS = {
         navigate: 'Navigate to',
@@ -943,7 +981,11 @@ PERSONALITY:
         insertText: 'Paste text',
         pressKey: 'Key',
         screenshot: 'Screenshot',
-        gmailCreateReplyDraft: 'Gmail reply draft'
+        gmailCreateReplyDraft: 'Gmail reply draft',
+        wait: 'Wait',
+        waitForText: 'Wait for text',
+        select: 'Select option',
+        appendText: 'Append text'
       };
 
       const EDIT_ICON = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
@@ -1032,6 +1074,8 @@ PERSONALITY:
   enableTakeover() {
     this._takeoverMode = true;
     this._takeoverAbort = new AbortController();
+    this._agentLogEntries = [];
+    this._renderAgentLog();
     // Banner above the input area
     if (!document.getElementById('navio-takeover-banner')) {
       const banner = document.createElement('div');
@@ -1052,6 +1096,14 @@ PERSONALITY:
   disableTakeover() {
     this._takeoverMode = false;
     this._autoFollowCount = 0;
+    if (typeof this._takeoverAuthResume === 'function') {
+      try {
+        this._takeoverAuthResume();
+      } catch {
+        /* ignore */
+      }
+    }
+    this._takeoverAuthResume = null;
     try {
       this._takeoverAbort?.abort();
     } catch {
@@ -1060,7 +1112,283 @@ PERSONALITY:
     this._takeoverAbort = null;
     document.getElementById('navio-takeover-banner')?.remove();
     document.getElementById('navio-step-pause-pill')?.remove();
+    document.getElementById('navio-auth-gate-pill')?.remove();
+    const logPanel = document.getElementById('assistant-agent-log');
+    if (logPanel) {
+      logPanel.hidden = true;
+      const body = logPanel.querySelector('.assistant-agent-log-body');
+      if (body) body.innerHTML = '';
+    }
     this._addContinuePill('Navio stopped. You\'re back in control.');
+  }
+
+  _renderAgentLog() {
+    const panel = document.getElementById('assistant-agent-log');
+    const body = panel?.querySelector('.assistant-agent-log-body');
+    if (!panel || !body) return;
+    if (!this._takeoverMode) {
+      panel.hidden = true;
+      body.innerHTML = '';
+      return;
+    }
+    panel.hidden = false;
+    if (!this._agentLogEntries.length) {
+      body.innerHTML = '<div class="aal-line aal-muted">Waiting for first action…</div>';
+    } else {
+      body.innerHTML = this._agentLogEntries
+        .map(
+          (e) =>
+            `<div class="aal-line${e.ok === false ? ' aal-err' : ''}"><span class="aal-time">${e.t}</span> <span class="aal-act">${e.action}</span> — ${String(e.detail || '')
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')}</div>`
+        )
+        .join('');
+    }
+    const sum = panel.querySelector('.assistant-agent-log-summary');
+    if (sum) sum.textContent = `${this._agentLogEntries.length} step(s)`;
+  }
+
+  _pushAgentLog(action, detail, ok = true) {
+    if (!this._takeoverMode) return;
+    const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    this._agentLogEntries.push({ t, action, detail: String(detail || '').slice(0, 200), ok });
+    this._renderAgentLog();
+  }
+
+  async _maybeAutoScreenshotTakeover(wv) {
+    if (!this._takeoverMode || !wv) return;
+    try {
+      const cfg = await window.navio.getConfig();
+      if (!cfg.aiAutoScreenshotAfterNavigate) return;
+      const cap = await window.navio.browserAction({
+        webContentsId: wv.getWebContentsId(),
+        action: 'screenshot',
+        params: {},
+        userConfirmed: true
+      });
+      if (cap && cap.screenshot) this._pendingScreenshotDataUrl = cap.screenshot;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  _finishAuthGateContinue() {
+    document.getElementById('navio-auth-gate-pill')?.remove();
+    const fn = this._takeoverAuthResume;
+    this._takeoverAuthResume = null;
+    if (typeof fn === 'function') fn();
+  }
+
+  _showAuthGatePill(hostname) {
+    document.getElementById('navio-auth-gate-pill')?.remove();
+    const pill = document.createElement('div');
+    pill.id = 'navio-auth-gate-pill';
+    pill.className = 'navio-auth-gate-pill';
+    pill.innerHTML =
+      '<span class="nag-text">Blocked by login page at <strong>' +
+      hostname.replace(/</g, '') +
+      '</strong> — sign in, then continue.</span>' +
+      '<button type="button" class="nag-continue">Continue</button>';
+    pill.querySelector('.nag-continue').addEventListener('click', () => this._finishAuthGateContinue());
+    this.messagesEl.appendChild(pill);
+    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+  }
+
+  async runDeepResearch(query) {
+    const q = (query || '').trim();
+    if (!q) return;
+    const prevBusy = this.isProcessing;
+    this.isProcessing = true;
+    this.showTypingIndicator();
+    try {
+      const r = await window.navio.deepResearch({ query: q });
+      if (r.error) {
+        this.addMessage('assistant', r.error, 'error');
+        return;
+      }
+      let body = r.content || '';
+      if (r.sources && r.sources.length) {
+        body +=
+          '\n\n## Sources\n' +
+          r.sources
+            .map((s) => {
+              const title = (s.title || s.url || 'Source').replace(/\]/g, '');
+              const url = (s.url || '').trim();
+              return url ? `- [${title}](${url})` : `- ${title}`;
+            })
+            .join('\n');
+      }
+      this.addMessage('assistant', body);
+    } catch (e) {
+      this.addMessage('assistant', e.message || String(e), 'error');
+    } finally {
+      this.removeTypingIndicator();
+      this.isProcessing = prevBusy;
+    }
+  }
+
+  async handleQuickActionAllTabs() {
+    if (typeof TabManager === 'undefined' || !TabManager.tabs) {
+      this.addMessage('assistant', 'No tabs available.');
+      return;
+    }
+    const parts = [];
+    for (const t of TabManager.tabs) {
+      const url = t.url || '';
+      if (!url || url === 'about:blank' || url.startsWith('data:')) continue;
+      if (!t.webview) continue;
+      try {
+        const content = await window.navio.extractPageContent(t.webview.getWebContentsId());
+        if (content && !content.error) {
+          parts.push(
+            `### Tab: ${t.title || url}\nURL: ${content.url || url}\n\n${(content.text || '').slice(0, 4000)}`
+          );
+        }
+      } catch {
+        /* skip tab */
+      }
+    }
+    if (!parts.length) {
+      this.addMessage('assistant', 'No loaded pages found in open tabs.');
+      return;
+    }
+    const blob = parts.join('\n\n---\n\n').slice(0, 28000);
+    this.addMessage('user', 'Summarize / compare all open tabs');
+    await this.processMessage(
+      `You have extracts from ALL open browser tabs below. Summarize each briefly, then note overlaps, contradictions, or themes across tabs. Be concise.\n\n${blob}`,
+      true,
+      'Multi-tab summary'
+    );
+  }
+
+  maybeProactivePageLoadHint(tab, wv) {
+    try {
+      const url = (tab && tab.url) || (wv && wv.src) || '';
+      if (!url || url === 'about:blank' || url.startsWith('data:')) return;
+      const u = url.toLowerCase();
+      const title = ((tab && tab.title) || '').toLowerCase();
+      let offer = '';
+      if (/amazon\.|shopify|\/product\/|\/dp\/|\/item\//i.test(url)) {
+        offer = 'Looks like a product page — want me to find lower prices or compare reviews?';
+      } else if (/linkedin\.com\/jobs|indeed\.com\/(viewjob|jobs)/i.test(u)) {
+        offer = 'Job listing detected — want me to summarize requirements or suggest talking points?';
+      } else if (/google\.com\/travel\/flights|kayak\.com\/flights|expedia\.com\/.*[Ff]light/i.test(u)) {
+        offer = 'Flight results — want me to compare options or suggest next steps?';
+      } else if (/(bbc\.com\/news|reuters\.com|nytimes\.com|theguardian\.com)/i.test(u) && title.length > 8) {
+        offer = 'Long article — want a quick summary or key takeaways?';
+      }
+      if (!offer) return;
+      const key = url.slice(0, 160);
+      if (this._lastProactiveUrlKey === key) return;
+      this._lastProactiveUrlKey = key;
+      document.getElementById('navio-proactive-agent-pill')?.remove();
+      const pill = document.createElement('div');
+      pill.id = 'navio-proactive-agent-pill';
+      pill.className = 'navio-proactive-agent-pill';
+      const span = document.createElement('span');
+      span.className = 'npa-text';
+      span.textContent = offer;
+      const go = document.createElement('button');
+      go.type = 'button';
+      go.className = 'npa-go';
+      go.textContent = 'Ask Navio';
+      go.addEventListener('click', () => {
+        pill.remove();
+        this.open();
+        this.inputEl.value = offer.replace(/^[^—]+—\s*/, '').replace(/\?$/, '') + ' ';
+        this.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        this.inputEl.focus();
+      });
+      const dismiss = document.createElement('button');
+      dismiss.type = 'button';
+      dismiss.className = 'npa-dismiss';
+      dismiss.textContent = '×';
+      dismiss.addEventListener('click', () => pill.remove());
+      pill.appendChild(span);
+      pill.appendChild(go);
+      pill.appendChild(dismiss);
+      this.messagesEl.appendChild(pill);
+      this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  _showSaveWorkflowOffer(contentEl) {
+    document.getElementById('navio-workflow-save-offer')?.remove();
+    const msg = contentEl?.closest?.('.message');
+    if (!msg) return;
+    const wrap = document.createElement('div');
+    wrap.id = 'navio-workflow-save-offer';
+    wrap.className = 'navio-workflow-save-offer';
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'nwsf-name';
+    inp.placeholder = 'Workflow name';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'nwsf-btn';
+    btn.textContent = 'Save as workflow';
+    btn.addEventListener('click', async () => {
+      const cards = msg.querySelectorAll('.browser-action-card');
+      const steps = [];
+      cards.forEach((c) => {
+        const a = c.dataset.action;
+        const p = c.dataset.params || '';
+        if (!a) return;
+        if (a === 'goBack' || a === 'goForward') steps.push(`${a}:`);
+        else steps.push(`${a}:${p}`);
+      });
+      if (!steps.length) {
+        wrap.querySelector('.nwsf-err')?.remove();
+        const er = document.createElement('span');
+        er.className = 'nwsf-err';
+        er.textContent = 'No actions to save.';
+        wrap.appendChild(er);
+        return;
+      }
+      const name = inp.value.trim() || 'Saved workflow';
+      const r = await window.navio.workflowSave({ name, steps });
+      if (r.error) {
+        wrap.querySelector('.nwsf-err')?.remove();
+        const er = document.createElement('span');
+        er.className = 'nwsf-err';
+        er.textContent = r.error;
+        wrap.appendChild(er);
+        return;
+      }
+      wrap.innerHTML = '<span class="nwsf-saved">Workflow saved.</span>';
+    });
+    wrap.appendChild(inp);
+    wrap.appendChild(btn);
+    this.messagesEl.appendChild(wrap);
+    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+  }
+
+  async runWorkflowFromCommandPalette(workflow) {
+    if (!workflow || !workflow.steps || !workflow.steps.length) return;
+    this.open();
+    this.enableTakeover();
+    const lines = workflow.steps.map((line) => {
+      const i = line.indexOf(':');
+      const raw = i >= 0 ? line.slice(0, i).trim() : line.trim();
+      const params = i >= 0 ? line.slice(i + 1) : '';
+      const low = raw.toLowerCase();
+      const map = {
+        goback: 'goBack',
+        goforward: 'goForward',
+        inserttext: 'insertText',
+        presskey: 'pressKey',
+        waitfortext: 'waitForText',
+        appendtext: 'appendText',
+        gmailcreatereplydraft: 'gmailCreateReplyDraft'
+      };
+      const type = map[low] || raw;
+      return `[[ACTION:${type}:${params}]]`;
+    });
+    const synthetic = lines.join('\n');
+    this.addMessage('user', `Run workflow: ${workflow.name || 'Workflow'}`);
+    this.addMessage('assistant', synthetic);
   }
 
   _wirePlanStep(step) {
@@ -1476,10 +1804,14 @@ PERSONALITY:
     const cards = Array.from(
       contentEl.querySelectorAll('.browser-action-card:not(.bac-done):not(.bac-skipped):not(.bac-error)')
     );
+    let completedAll = true;
     for (const card of cards) {
       if (!this._takeoverMode || this._takeoverAbort?.signal.aborted) break;
       await this._executeAction(card.dataset.action, card.dataset.params, card, true);
-      if (card.classList.contains('bac-error')) break;
+      if (card.classList.contains('bac-error')) {
+        completedAll = false;
+        break;
+      }
       if (!this._takeoverMode || this._takeoverAbort?.signal.aborted) break;
       let stepMode = false;
       try {
@@ -1492,6 +1824,9 @@ PERSONALITY:
       if (!this._takeoverMode) break;
       const gap = card.dataset.action === 'navigate' ? 400 : 600;
       if (this._takeoverMode) await new Promise((r) => setTimeout(r, gap));
+    }
+    if (this._takeoverMode && !this._takeoverAbort?.signal.aborted && completedAll) {
+      this._showSaveWorkflowOffer(contentEl);
     }
     if (this._takeoverMode && !this._takeoverAbort?.signal.aborted) {
       setTimeout(() => this._smartFollowUp(), 1000);
@@ -1553,6 +1888,7 @@ PERSONALITY:
       } catch (e) {
         card.classList.add('bac-error');
         if (btns) btns.innerHTML = '<span class="bac-status">Invalid draft data</span>';
+        if (fromTakeover) this._pushAgentLog('gmailCreateReplyDraft', 'invalid data', false);
         return;
       }
       try {
@@ -1562,6 +1898,7 @@ PERSONALITY:
         });
         if (result && result.success) {
           card.classList.add('bac-done');
+          if (fromTakeover) this._pushAgentLog('gmailCreateReplyDraft', 'draft saved', true);
           if (btns) {
             btns.innerHTML =
               '<span class="bac-status bac-ok"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>Gmail draft</span>';
@@ -1577,10 +1914,12 @@ PERSONALITY:
         } else {
           card.classList.add('bac-error');
           if (btns) btns.innerHTML = `<span class="bac-status">${result?.error || 'Failed'}</span>`;
+          if (fromTakeover) this._pushAgentLog('gmailCreateReplyDraft', result?.error || 'failed', false);
         }
       } catch (err) {
         card.classList.add('bac-error');
         if (btns) btns.innerHTML = `<span class="bac-status">${err.message || 'Error'}</span>`;
+        if (fromTakeover) this._pushAgentLog('gmailCreateReplyDraft', err.message || 'error', false);
       }
       return;
     }
@@ -1626,23 +1965,37 @@ PERSONALITY:
           wv.addEventListener('did-fail-load', onFail);
         });
 
-        card.classList.add('bac-done');
-        card.querySelector('.bac-btns').innerHTML = '<span class="bac-status bac-ok"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>Done</span>';
-
+        let finalUrl = '';
         try {
-          const cfg = await window.navio.getConfig();
-          if (cfg.aiAutoScreenshotAfterNavigate) {
-            const cap = await window.navio.browserAction({
-              webContentsId: wv.getWebContentsId(),
-              action: 'screenshot',
-              params: {},
-              userConfirmed: true
-            });
-            if (cap && cap.screenshot) this._pendingScreenshotDataUrl = cap.screenshot;
-          }
+          const pg = await TabManager.getActivePageContent();
+          finalUrl = pg?.url || '';
         } catch {
           /* ignore */
         }
+        if (!finalUrl) {
+          const tab = TabManager.getActiveTab();
+          finalUrl = tab?.url || '';
+        }
+        if (fromTakeover && NAVIO_AUTH_GATE_URL_RE.test(finalUrl)) {
+          let host = 'this site';
+          try {
+            host = new URL(finalUrl).hostname;
+          } catch {
+            /* ignore */
+          }
+          await new Promise((resolve) => {
+            this._takeoverAuthResume = resolve;
+            this._showAuthGatePill(host);
+          });
+          this._takeoverAuthResume = null;
+        }
+
+        card.classList.add('bac-done');
+        card.querySelector('.bac-btns').innerHTML = '<span class="bac-status bac-ok"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>Done</span>';
+
+        if (fromTakeover) this._pushAgentLog('navigate', finalUrl || paramsStr || 'ok', true);
+
+        await this._maybeAutoScreenshotTakeover(wv);
 
         if (!fromTakeover) {
           const msgEl = card.closest('.message');
@@ -1654,6 +2007,7 @@ PERSONALITY:
       } catch (err) {
         card.classList.add('bac-error');
         card.querySelector('.bac-btns').innerHTML = `<span class="bac-status"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> ${err.message || 'Navigation error'}</span>`;
+        if (fromTakeover) this._pushAgentLog('navigate', err.message || 'error', false);
       }
       return;
     }
@@ -1678,6 +2032,24 @@ PERSONALITY:
         params = { direction: paramsStr || 'down' };
       } else if (action === 'screenshot') {
         params = {};
+      } else if (action === 'wait') {
+        params = { ms: parseInt(paramsStr, 10) || 500 };
+      } else if (action === 'waitForText') {
+        params = { text: paramsStr };
+      } else if (action === 'select') {
+        const pipe = (paramsStr || '').indexOf('|');
+        if (pipe < 0) {
+          card.classList.add('bac-error');
+          if (btns) btns.innerHTML = '<span class="bac-status">select: use field|option</span>';
+          if (fromTakeover) this._pushAgentLog('select', 'bad format', false);
+          return;
+        }
+        params = {
+          selector: paramsStr.slice(0, pipe).trim(),
+          option: paramsStr.slice(pipe + 1).trim()
+        };
+      } else if (action === 'appendText') {
+        params = { text: paramsStr };
       }
       const result = await window.navio.browserAction({ webContentsId, action, params, userConfirmed: true });
       if (result && result.success) {
@@ -1686,6 +2058,12 @@ PERSONALITY:
         }
         card.classList.add('bac-done');
         card.querySelector('.bac-btns').innerHTML = '<span class="bac-status bac-ok"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>Done</span>';
+        if (fromTakeover) {
+          this._pushAgentLog(action, (paramsStr || '').slice(0, 100), true);
+          if (action !== 'screenshot' && action !== 'wait') {
+            await this._maybeAutoScreenshotTakeover(wv);
+          }
+        }
         if (!fromTakeover) {
           const msgEl = card.closest('.message');
           const pending = msgEl
@@ -1696,10 +2074,12 @@ PERSONALITY:
       } else {
         card.classList.add('bac-error');
         card.querySelector('.bac-btns').innerHTML = `<span class="bac-status">${result?.error || 'Failed'}</span>`;
+        if (fromTakeover) this._pushAgentLog(action, result?.error || 'failed', false);
       }
     } catch (err) {
       card.classList.add('bac-error');
       card.querySelector('.bac-btns').innerHTML = `<span class="bac-status">${err.message || 'Error'}</span>`;
+      if (fromTakeover) this._pushAgentLog(action, err.message || 'error', false);
     }
   }
 

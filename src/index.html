@@ -438,6 +438,7 @@
     <div id="inline-ai-card" class="inline-ai-card" hidden>
       <div class="iai-card-header">
         <span class="iai-card-label" id="iai-card-label">Result</span>
+        <button type="button" class="iai-card-replace" id="iai-card-replace" title="Replace selection with this text" hidden>Replace</button>
         <button class="iai-card-close" id="iai-card-close" title="Close">×</button>
       </div>
       <div class="iai-card-body" id="iai-card-body"></div>
@@ -530,7 +531,20 @@
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
           Task Chain
         </button>
+        <button class="quick-action" data-action="deep-research">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Research
+        </button>
+        <button class="quick-action" data-action="all-tabs">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          All tabs
+        </button>
       </div>
+
+      <details id="assistant-agent-log" class="assistant-agent-log" hidden>
+        <summary>Agent log <span class="assistant-agent-log-summary">0 step(s)</span></summary>
+        <div class="assistant-agent-log-body"></div>
+      </details>
 
       <div class="assistant-messages" id="assistant-messages">
         <div class="assistant-welcome">
@@ -860,6 +874,12 @@
                 </div>
               </div>
               <p class="settings-inline-hint" id="setting-model-hint" style="display:none"></p>
+              <div class="setting-row">
+                <label for="setting-ai-planner-model">Research planner model</label>
+                <input type="text" id="setting-ai-planner-model"
+                  placeholder="e.g. gpt-4o-mini (OpenAI / custom endpoint)"
+                  autocomplete="off" spellcheck="false">
+              </div>
               <div class="setting-row" id="custom-endpoint-row" style="display:none">
                 <label for="setting-endpoint">Custom Endpoint</label>
                 <input type="text" id="setting-endpoint" placeholder="https://your-endpoint.com/v1/chat/completions" spellcheck="false" autocomplete="off">

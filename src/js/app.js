@@ -165,6 +165,17 @@ class NavioApp {
       if (e.key === 'Enter') {
         e.preventDefault();
         const raw = urlInput.value.trim();
+        if (raw.startsWith('>>')) {
+          const q = raw.slice(2).trim();
+          urlInput.value = '';
+          urlInput.blur();
+          if (q && typeof AssistantManager !== 'undefined') {
+            AssistantManager.open();
+            AssistantManager.addMessage('user', `>> ${q}`);
+            AssistantManager.runDeepResearch(q);
+          }
+          return;
+        }
         // Explicit AI prefix
         if (raw.startsWith('?')) {
           const q = raw.slice(1).trim();
@@ -378,6 +389,15 @@ class NavioApp {
   handleSearch(input) {
     const raw = (input || '').trim();
     if (!raw) return;
+    if (raw.startsWith('>>')) {
+      const q = raw.slice(2).trim();
+      if (q && typeof AssistantManager !== 'undefined') {
+        AssistantManager.open();
+        AssistantManager.addMessage('user', `>> ${q}`);
+        AssistantManager.runDeepResearch(q);
+      }
+      return;
+    }
     if (raw.startsWith('?')) {
       this._sendToAI(raw.slice(1).trim());
       return;
@@ -697,6 +717,9 @@ const InlineAI = (() => {
 
   let _text   = '';
   let _unsubs = []; // stream unsubscribe callbacks
+  let _targetWv = null;
+  let _lastAiResult = '';
+  let _lastAction = '';
 
   const LABELS = {
     explain:   'Explanation',
@@ -717,8 +740,9 @@ const InlineAI = (() => {
     _unsubs = [];
   }
 
-  function show(text, x, y) {
+  function show(text, x, y, webview) {
     _text = text;
+    _targetWv = webview || null;
     _cancelStream();
 
     const tb = _toolbar();
@@ -747,17 +771,30 @@ const InlineAI = (() => {
     if (tb) tb.hidden = true;
     if (c)  c.hidden  = true;
     _text = '';
+    _targetWv = null;
+    _lastAiResult = '';
+    _lastAction = '';
+    const rep = document.getElementById('iai-card-replace');
+    if (rep) { rep.hidden = true; }
   }
 
   async function _runAction(action) {
     if (!_text) return;
     _cancelStream();
+    _lastAction = action;
+    _lastAiResult = '';
 
     const card  = _card();
     const body  = _body();
     const label = _label();
     const tb    = _toolbar();
+    const repBtn = document.getElementById('iai-card-replace');
     if (!card || !body || !label) return;
+
+    if (repBtn) {
+      repBtn.hidden = action !== 'rewrite';
+      repBtn.disabled = true;
+    }
 
     label.textContent = LABELS[action] || 'Result';
     body.textContent  = ''; // empty → spinner shows via CSS :empty
@@ -797,11 +834,16 @@ const InlineAI = (() => {
       _unsubs.push(window.navio.onAiStreamChunk(chunk => {
         result += chunk;
         if (body) body.textContent = result;
+        _lastAiResult = result;
       }));
-      _unsubs.push(window.navio.onAiStreamDone(() => { _cancelStream(); }));
+      _unsubs.push(window.navio.onAiStreamDone(() => {
+        _cancelStream();
+        if (repBtn && action === 'rewrite') repBtn.disabled = !_lastAiResult.trim();
+      }));
       _unsubs.push(window.navio.onAiStreamError(err => {
         if (body) body.textContent = 'Error: ' + err;
         _cancelStream();
+        if (repBtn && action === 'rewrite') repBtn.disabled = true;
       }));
     } catch (err) {
       if (body) body.textContent = 'Error: ' + err.message;
@@ -826,6 +868,31 @@ const InlineAI = (() => {
   document.getElementById('iai-card-close')?.addEventListener('mousedown', e => {
     e.stopPropagation();
     hide();
+  });
+
+  async function _replaceSelectionWithResult() {
+    const text = (_lastAiResult || '').trim();
+    if (!text || !_targetWv) return;
+    try {
+      const wcId = _targetWv.getWebContentsId();
+      let r = await window.navio.replaceSelectionInPage({ webContentsId: wcId, text });
+      if (!r.ok) {
+        await navigator.clipboard.writeText(text);
+        r = await window.navio.webviewPasteClipboard({ webContentsId: wcId });
+      }
+      if (!r.ok) {
+        if (_body()) _body().textContent += '\n\n(Could not inject — try focusing the field and paste manually.)';
+        return;
+      }
+      hide();
+    } catch (err) {
+      if (_body()) _body().textContent += '\n\n' + (err.message || String(err));
+    }
+  }
+
+  document.getElementById('iai-card-replace')?.addEventListener('mousedown', e => {
+    e.stopPropagation();
+    _replaceSelectionWithResult();
   });
 
   document.getElementById('inline-ai-card')?.addEventListener('mousedown', e => {

@@ -1776,6 +1776,20 @@ body.tabstrip-hidden .tab-strip-show {
 .ntp-brief-content strong { color: rgba(226,232,248,0.96); font-weight: 600; }
 .ntp-brief-content em { color: rgba(0,216,255,0.85); font-style: normal; }
 
+.ntp-ai-citations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 216, 255, 0.12);
+}
+.ntp-ai-citations-note {
+  margin-top: 10px;
+  font-size: 11px;
+  color: rgba(226, 232, 248, 0.45);
+}
+
 /* Date stamp at the top of every generated brief */
 .ntp-brief-datestamp {
   font-size: 9.5px;
@@ -2219,6 +2233,112 @@ body.tabstrip-hidden .tab-strip-show {
 }
 
 .quick-action svg { flex-shrink: 0; }
+
+.assistant-agent-log {
+  margin: 0 16px 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.assistant-agent-log > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-primary);
+  list-style: none;
+}
+.assistant-agent-log > summary::-webkit-details-marker { display: none; }
+.assistant-agent-log-summary {
+  font-weight: 400;
+  color: var(--text-tertiary);
+  margin-left: 6px;
+}
+.assistant-agent-log-body {
+  margin-top: 8px;
+  max-height: 140px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.aal-line { font-family: ui-monospace, monospace; font-size: 10.5px; line-height: 1.35; }
+.aal-line.aal-err { color: #f56565; }
+.aal-muted { opacity: 0.7; font-style: italic; }
+.aal-time { color: var(--text-tertiary); margin-right: 4px; }
+.aal-act { color: var(--accent); font-weight: 600; }
+
+.navio-auth-gate-pill,
+.navio-proactive-agent-pill {
+  align-self: stretch;
+  margin: 4px 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.navio-auth-gate-pill .nag-continue,
+.navio-proactive-agent-pill .npa-go {
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--accent);
+  background: var(--accent-glow);
+  color: var(--accent);
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.navio-proactive-agent-pill .npa-dismiss {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.navio-workflow-save-offer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 16px;
+  padding: 8px 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+}
+.navio-workflow-save-offer .nwsf-name {
+  flex: 1;
+  min-width: 140px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+}
+.navio-workflow-save-offer .nwsf-btn {
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--accent);
+  background: var(--accent-glow);
+  color: var(--accent);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+}
+.navio-workflow-save-offer .nwsf-saved { color: #48bb78; }
+.navio-workflow-save-offer .nwsf-err { color: #f56565; width: 100%; }
 
 /* Messages */
 .assistant-messages {
@@ -8931,10 +9051,23 @@ body.onboarding-active #app {
 .iai-card-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   padding: 10px 14px 8px;
   border-bottom: 1px solid rgba(255,255,255,0.06);
   flex-shrink: 0;
+}
+.iai-card-replace {
+  padding: 3px 10px;
+  font-size: 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 216, 255, 0.45);
+  background: rgba(0, 216, 255, 0.08);
+  color: #00d8ff;
+  cursor: pointer;
+  font-family: inherit;
+}
+.iai-card-replace:hover {
+  background: rgba(0, 216, 255, 0.15);
 }
 .iai-card-label {
   font-size: 11px;
@@ -8944,6 +9077,7 @@ body.onboarding-active #app {
   letter-spacing: 0.07em;
 }
 .iai-card-close {
+  margin-left: auto;
   background: none;
   border: none;
   color: rgba(255,255,255,0.35);

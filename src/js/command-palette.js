@@ -40,7 +40,9 @@ class CommandPaletteClass {
       }
     });
 
-    this.input.addEventListener('input', () => this.refresh());
+    this.input.addEventListener('input', () => {
+      void this.refresh();
+    });
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.visible) {
@@ -56,7 +58,7 @@ class CommandPaletteClass {
     this.overlay.classList.add('visible');
     this.overlay.setAttribute('aria-hidden', 'false');
     this.input.value = '';
-    this.refresh();
+    void this.refresh();
     setTimeout(() => this.input.focus(), 50);
   }
 
@@ -125,7 +127,7 @@ class CommandPaletteClass {
     ];
   }
 
-  refresh() {
+  async refresh() {
     const raw = (this.input.value || '').trim().toLowerCase();
     const isAsk = raw.startsWith('?');
     const q = isAsk ? raw.slice(1).trim() : raw;
@@ -152,6 +154,28 @@ class CommandPaletteClass {
         this.items.push({ ...c, meta: 'command' });
       }
     });
+
+    try {
+      const wl = await window.navio.workflowList();
+      const workflows = wl.workflows || [];
+      workflows.forEach((wf) => {
+        const name = (wf.name || 'Workflow').toLowerCase();
+        if (!q || name.includes(q) || 'workflow'.includes(q)) {
+          this.items.push({
+            id: `wf-${wf.id}`,
+            label: `Run workflow: ${wf.name || 'Untitled'}`,
+            meta: 'workflow',
+            run: () => {
+              if (typeof AssistantManager !== 'undefined') {
+                AssistantManager.runWorkflowFromCommandPalette(wf);
+              }
+            }
+          });
+        }
+      });
+    } catch {
+      /* ignore */
+    }
 
     if (typeof TabManager !== 'undefined' && TabManager.tabs) {
       TabManager.tabs.forEach((tab) => {

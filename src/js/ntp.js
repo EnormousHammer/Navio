@@ -703,14 +703,43 @@ const NTP = (() => {
         aiContent.innerHTML = '<div class="ntp-brief-error">No AI key configured. Add one in <strong>Settings - AI</strong>.</div>';
         return;
       }
-      const result = await window.navio.aiRequest({ messages: [{ role: 'user', content: query }] });
-      if (result.error) throw new Error(result.error);
-      const html = _esc(result.content || '')
+      const keys = await window.navio.connectorGetKeys().catch(() => ({}));
+      let answer = '';
+      let citations = [];
+      if (keys && keys.perplexity) {
+        const pq = await window.navio.connectorQuery('perplexity', query, {});
+        if (pq.error) throw new Error(pq.error);
+        answer = pq.answer || '';
+        citations = Array.isArray(pq.citations) ? pq.citations : [];
+      } else {
+        const result = await window.navio.aiRequest({ messages: [{ role: 'user', content: query }] });
+        if (result.error) throw new Error(result.error);
+        answer = result.content || '';
+      }
+      const html = _esc(answer)
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.*?)\*/g, '<em>$1</em>')
         .replace(/\n\n/g, '</p><p>')
         .replace(/\n/g, '<br>');
-      aiContent.innerHTML = '<div class="ntp-brief-content"><p>' + html + '</p></div>';
+      let chips = '';
+      if (citations.length) {
+        chips =
+          '<div class="ntp-ai-citations">' +
+          citations
+            .map((u, i) => {
+              const url = typeof u === 'string' ? u : u.url || '';
+              if (!url) return '';
+              const safeU = _esc(url);
+              const label = _esc(`[${i + 1}] ${url.replace(/^https?:\/\//, '').split('/')[0] || 'source'}`);
+              return `<a class="email-ref-chip ntp-cite-chip" href="${safeU}" target="_blank" rel="noopener">${label}</a>`;
+            })
+            .join('') +
+          '</div>';
+      } else if (!keys?.perplexity) {
+        chips =
+          '<p class="ntp-ai-citations-note">Connect <strong>Perplexity</strong> in Connectors for cited web answers.</p>';
+      }
+      aiContent.innerHTML = '<div class="ntp-brief-content"><p>' + html + '</p></div>' + chips;
     } catch (e) {
       aiContent.innerHTML = '<div class="ntp-brief-error">Error: ' + _esc(e.message) + '</div>';
     }

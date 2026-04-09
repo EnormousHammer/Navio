@@ -39,6 +39,12 @@ contextBridge.exposeInMainWorld('navio', {
   pageSnapshot: (webContentsId) => ipcRenderer.invoke('page-snapshot', webContentsId),
   browserAction: (params) => ipcRenderer.invoke('browser-action', params),
 
+  deepResearch: (params) => ipcRenderer.invoke('deep-research', params),
+  workflowSave: (params) => ipcRenderer.invoke('workflow-save', params),
+  workflowList: () => ipcRenderer.invoke('workflow-list'),
+  replaceSelectionInPage: (params) => ipcRenderer.invoke('replace-selection-in-page', params),
+  webviewPasteClipboard: (params) => ipcRenderer.invoke('webview-paste-clipboard', params),
+
   contextGraph: (payload) => ipcRenderer.invoke('context-graph', payload),
   workspace: (payload) => ipcRenderer.invoke('workspace', payload),
   mcpConfig: (payload) => ipcRenderer.invoke('mcp-config', payload),

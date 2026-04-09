@@ -33,6 +33,7 @@ class SettingsManagerClass {
       modelSelectRow: document.getElementById('model-select-row'),
       modelCustom: document.getElementById('setting-model-custom'),
       modelCustomRow: document.getElementById('model-custom-row'),
+      aiPlannerModel: document.getElementById('setting-ai-planner-model'),
       endpoint: document.getElementById('setting-endpoint'),
       endpointRow: document.getElementById('custom-endpoint-row'),
       searchEngine: document.getElementById('setting-search-engine'),
@@ -384,6 +385,9 @@ class SettingsManagerClass {
       this.elements.modelCustomRow.style.display = '';
     }
     this.elements.endpoint.value = this.config.customEndpoint || '';
+    if (this.elements.aiPlannerModel) {
+      this.elements.aiPlannerModel.value = this.config.aiPlannerModel || 'gpt-4o-mini';
+    }
     this.elements.searchEngine.value = this.config.searchEngine || 'https://www.google.com/search?q=';
     this.elements.homepage.value = this.config.homepage || 'https://www.google.com';
 
@@ -941,6 +945,9 @@ class SettingsManagerClass {
       aiModel: this.elements.model.value === '__custom__'
         ? (this.elements.modelCustom.value.trim() || 'gpt-4o')
         : this.elements.model.value,
+      aiPlannerModel: this.elements.aiPlannerModel
+        ? (this.elements.aiPlannerModel.value.trim() || 'gpt-4o-mini')
+        : (this.config.aiPlannerModel || 'gpt-4o-mini'),
       customEndpoint: this.elements.endpoint.value.trim(),
       searchEngine: this.elements.searchEngine.value,
       homepage: this.elements.homepage.value.trim() || 'https://www.google.com',

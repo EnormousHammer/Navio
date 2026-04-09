@@ -77,6 +77,10 @@ navigate:https://full-url-here
 click:text=Visible button label
 click:xy=420,380
 type:text=Field label:text to type
+wait:800
+waitForText:Order confirmed
+select:text=Country|United States
+appendText:Additional line to paste into the focused field
 scroll:down
 goBack:
 goForward:
@@ -90,7 +94,12 @@ RULES:
 - Each line inside <navio-actions> must be: actionType:params
 - For navigate, use the FULL URL including https://
 - For click, use: click:text=visible text on the element, OR click:xy=VIEWPORT_X,VIEWPORT_Y when a screenshot is attached (pixel coordinates in the active tab).
+- After a screenshot action or when the UI says a screenshot was attached, look at the image FIRST and prefer click:xy= for elements you can see clearly; use click:text= only when coordinates are unclear.
 - For type, use: type:text=field label:text to type
+- wait:MILLISECONDS — pause up to 10000 ms (e.g. wait:500 after heavy pages).
+- waitForText:substring — polls page text (including same-origin iframes) until substring appears or ~12s timeout.
+- select:fieldSpec|option — fieldSpec is text=Label or aria=… matching a native &lt;select&gt;; option is value or visible text to choose.
+- appendText:text — appends to the currently focused input/textarea/contenteditable (use after clicking the field).
 - screenshot: captures the active tab; the next AI turn may include the image — use it to pick xy= clicks or verify state.
 - NEVER use ACTION0, ACTION1, ACTION2 or any numbered placeholders.
 - NEVER use [[ACTION:...]] tokens — only use the <navio-actions> block.

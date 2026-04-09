@@ -257,11 +257,21 @@ class TabManagerClass {
       }
     });
 
-    wv.addEventListener('did-finish-load', () => {
+    wv.addEventListener('did-finish-load', async () => {
       this.applyZoomToWebview(wv);
       this._schedulePassiveMemory(tab, wv);
       if (tab.id === this.activeTabId && typeof window.__navioUpdateZoomLabel === 'function') {
         window.__navioUpdateZoomLabel();
+      }
+      if (tab.id === this.activeTabId && typeof AssistantManager !== 'undefined' && AssistantManager.maybeProactivePageLoadHint) {
+        try {
+          const cfg = await window.navio.getConfig();
+          if (cfg.aiProactivity === 'active' && cfg.hasApiKey) {
+            AssistantManager.maybeProactivePageLoadHint(tab, wv);
+          }
+        } catch {
+          /* ignore */
+        }
       }
     });
 

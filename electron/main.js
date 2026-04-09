@@ -73,6 +73,101 @@ function hashContext(messages) {
 
 const RISKY_BROWSER_ACTIONS = new Set(['navigate', 'click', 'type']);
 
+/** Detect login / OAuth URLs after navigation (agent should pause for user). */
+const AUTH_GATE_URL_RE =
+  /\/(login|signin|sign-in|auth|account\/login|session\/new|oauth|sso)\b|accounts\.google\.com\/(signin|ServiceLogin)|login\.microsoftonline\.com|login\.live\.com|signin\.aws\.amazon\.com/i;
+
+/** After a click, wait for navigation if it starts within timeoutMs; else resolve when timeout elapses. */
+function waitForOptionalNavigationAfterClick(wc, timeoutMs = 2000) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(t);
+      try {
+        wc.removeListener('did-finish-load', onLoad);
+      } catch {
+        /* ignore */
+      }
+      resolve();
+    };
+    const onLoad = () => {
+      setTimeout(done, 400);
+    };
+    const t = setTimeout(done, timeoutMs);
+    wc.once('did-finish-load', onLoad);
+  });
+}
+
+/** Full navigation + settle (deep research, restore tab URL). */
+function navigateWebContentsAndWait(wc, targetUrl) {
+  return new Promise((resolve, reject) => {
+    const MAX_WAIT = 12000;
+    let settled = false;
+    const settle = (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      wc.removeListener('did-finish-load', onLoad);
+      wc.removeListener('did-fail-load', onFail);
+      if (err) reject(err);
+      else resolve();
+    };
+    const timer = setTimeout(() => settle(), MAX_WAIT);
+    const onLoad = () => setTimeout(() => settle(), 800);
+    const onFail = (_, code, desc) => {
+      if (code === -3) setTimeout(() => settle(), 800);
+      else settle(new Error(`Navigation failed: ${desc} (${code})`));
+    };
+    wc.once('did-finish-load', onLoad);
+    wc.once('did-fail-load', onFail);
+    wc.loadURL(targetUrl).catch((e) => {
+      if (e.message?.includes('ERR_ABORTED') || e.message?.includes('-3')) {
+        /* redirect */
+      } else {
+        settle(e);
+      }
+    });
+  });
+}
+
+/** Hidden window for deep research (persist:navio session); caller must destroy(). */
+function createResearchWindow() {
+  const navioSession = session.fromPartition('persist:navio');
+  const win = new BrowserWindow({
+    show: false,
+    width: 1280,
+    height: 900,
+    webPreferences: {
+      session: navioSession,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false
+    }
+  });
+  return win;
+}
+
+function workflowsJsonPath() {
+  return path.join(app.getPath('userData'), 'navio-workflows.json');
+}
+
+function readWorkflowsFile() {
+  try {
+    const p = workflowsJsonPath();
+    if (!fs.existsSync(p)) return [];
+    const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+    return Array.isArray(j.workflows) ? j.workflows : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeWorkflowsFile(list) {
+  fs.writeFileSync(workflowsJsonPath(), JSON.stringify({ workflows: list }, null, 2), 'utf8');
+}
+
 // ── Email write-action protection ─────────────────────────────────────────────
 // The AI is allowed to READ emails via the connector API (read-only scope tokens)
 // but it must NEVER compose, send, reply to, forward, or delete emails —
@@ -220,7 +315,11 @@ function convertNavioActionsBlock(text) {
       'goforward',
       'presskey',
       'screenshot',
-      'gmailcreatereplydraft'
+      'gmailcreatereplydraft',
+      'wait',
+      'waitfortext',
+      'select',
+      'appendtext'
     ]);
     const normMap = {
       goback: 'goBack',
@@ -228,7 +327,9 @@ function convertNavioActionsBlock(text) {
       inserttext: 'insertText',
       presskey: 'pressKey',
       screenshot: 'screenshot',
-      gmailcreatereplydraft: 'gmailCreateReplyDraft'
+      gmailcreatereplydraft: 'gmailCreateReplyDraft',
+      waitfortext: 'waitForText',
+      appendtext: 'appendText'
     };
 
     const tokens = [];
@@ -901,6 +1002,191 @@ ipcMain.handle('extract-page-content', async (event, webContentsId) => {
   }
 });
 
+ipcMain.handle('deep-research', async (event, { query }) => {
+  const q = (query || '').trim();
+  if (!q) return { error: 'Missing query' };
+
+  const cfg = loadConfig();
+  if (cfg.aiKillSwitch) return { error: 'AI is turned off (kill switch).' };
+  const apiKey = secureConfig.getApiKey(app.getPath('userData'));
+  if (!apiKey) return { error: 'No API key configured.' };
+
+  const plannerCfg = { ...cfg, aiModel: cfg.aiPlannerModel || 'gpt-4o-mini' };
+
+  const planRes = await performAiFetch(
+    plannerCfg,
+    apiKey,
+    [
+      {
+        role: 'system',
+        content:
+          'Reply with ONLY a JSON array of 3 to 5 strings. Each string must be a full https URL useful for researching the user topic (Google search URLs with q= are fine). No markdown fences, no explanation, no other text.'
+      },
+      { role: 'user', content: `Research topic:\n${q}` }
+    ],
+    false
+  );
+  if (planRes.error) return { error: planRes.error };
+
+  let urls = [];
+  try {
+    const m = (planRes.content || '').match(/\[[\s\S]*\]/);
+    if (m) urls = JSON.parse(m[0]);
+  } catch {
+    /* use fallback */
+  }
+  if (!Array.isArray(urls) || urls.length === 0) {
+    urls = [`https://www.google.com/search?q=${encodeURIComponent(q)}`];
+  }
+  urls = urls
+    .filter((u) => typeof u === 'string' && /^https?:\/\//i.test(u.trim()))
+    .slice(0, 5)
+    .map((u) => u.trim());
+
+  const researchWin = createResearchWindow();
+  const wc = researchWin.webContents;
+
+  try {
+    const sources = [];
+    for (const u of urls) {
+      try {
+        await navigateWebContentsAndWait(wc, u);
+        const raw = await wc.executeJavaScript(`(() => JSON.stringify({
+          title: document.title,
+          url: location.href,
+          text: (document.body && document.body.innerText) ? document.body.innerText.substring(0, 12000) : ''
+        }))()`);
+        const page = JSON.parse(raw);
+        sources.push({
+          url: page.url || u,
+          title: page.title || '',
+          text: page.text || ''
+        });
+      } catch (e) {
+        sources.push({ url: u, title: '(load error)', text: '', error: String(e.message || e) });
+      }
+    }
+
+    const blob = sources
+      .map(
+        (s, i) =>
+          `### Source ${i + 1}\nURL: ${s.url}\nTitle: ${s.title}\n\n${(s.text || '').slice(0, 5500)}`
+      )
+      .join('\n\n')
+      .slice(0, 30000);
+
+    const reportRes = await performAiFetch(
+      cfg,
+      apiKey,
+      [
+        {
+          role: 'system',
+          content:
+            'Write a factual research report. Use inline numeric citations like [1], [2] that match source numbers. End with a ## Sources section listing each URL as a markdown link. Use clear markdown headings.'
+        },
+        {
+          role: 'user',
+          content: `Research question: ${q}\n\n--- Compiled extracts from browsed pages ---\n\n${blob}`
+        }
+      ],
+      false
+    );
+    if (reportRes.error) return { error: reportRes.error };
+
+    return { content: reportRes.content || '', sources };
+  } catch (e) {
+    return { error: e.message || String(e) };
+  } finally {
+    try {
+      if (!researchWin.isDestroyed()) researchWin.destroy();
+    } catch {
+      /* ignore */
+    }
+  }
+});
+
+ipcMain.handle('workflow-save', async (event, { name, steps }) => {
+  try {
+    const list = readWorkflowsFile();
+    const id = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    list.push({
+      id,
+      name: (name || 'Workflow').toString().slice(0, 120),
+      steps: Array.isArray(steps) ? steps.map((s) => String(s)) : [],
+      createdAt: new Date().toISOString()
+    });
+    writeWorkflowsFile(list);
+    return { ok: true, id };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
+ipcMain.handle('workflow-list', async () => ({ workflows: readWorkflowsFile() }));
+
+ipcMain.handle('replace-selection-in-page', async (event, { webContentsId, text }) => {
+  try {
+    const wc = electronWebContents.fromId(webContentsId);
+    if (!wc) return { ok: false, error: 'WebContents not found' };
+    const payload = JSON.stringify(text == null ? '' : String(text));
+    const res = await wc.executeJavaScript(`
+      (() => {
+        const replacement = ${payload};
+        function tryInsert() {
+          const ae = document.activeElement;
+          if (!ae) return false;
+          if (ae.isContentEditable || ae.getAttribute('contenteditable') === 'true') {
+            try {
+              if (ae.ownerDocument.execCommand('insertText', false, replacement)) return true;
+            } catch (e) {}
+          }
+          if (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA') {
+            try {
+              const start = ae.selectionStart, end = ae.selectionEnd;
+              if (typeof start === 'number' && typeof end === 'number') {
+                const v = ae.value;
+                const proto = ae.tagName === 'TEXTAREA'
+                  ? window.HTMLTextAreaElement.prototype
+                  : window.HTMLInputElement.prototype;
+                const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+                const next = v.slice(0, start) + replacement + v.slice(end);
+                if (setter) setter.call(ae, next); else ae.value = next;
+                const pos = start + replacement.length;
+                ae.setSelectionRange(pos, pos);
+                ae.dispatchEvent(new InputEvent('input', { bubbles: true, data: replacement }));
+                ae.dispatchEvent(new Event('change', { bubbles: true }));
+                return true;
+              }
+            } catch (e) {}
+          }
+          try {
+            return document.execCommand('insertText', false, replacement);
+          } catch (e) {
+            return false;
+          }
+        }
+        return { ok: tryInsert() };
+      })()
+    `);
+    return { ok: !!(res && res.ok) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('webview-paste-clipboard', async (event, { webContentsId }) => {
+  try {
+    const wc = electronWebContents.fromId(webContentsId);
+    if (!wc) return { ok: false };
+    wc.sendInputEvent({ type: 'keyDown', keyCode: 'V', modifiers: ['control'] });
+    await new Promise((r) => setTimeout(r, 40));
+    wc.sendInputEvent({ type: 'keyUp', keyCode: 'V', modifiers: ['control'] });
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
+});
+
 ipcMain.handle('extract-page-selection', async (event, webContentsId) => {
   try {
     const wc = electronWebContents.fromId(webContentsId);
@@ -1129,6 +1415,58 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
             }
           });
         });
+        const finalUrl = wc.getURL?.() || '';
+        const pageTitle = (await wc.executeJavaScript('document.title').catch(() => '')).toLowerCase();
+        const authGate =
+          AUTH_GATE_URL_RE.test(finalUrl) ||
+          /\bsign.?in\b|log.?in\b|authenticate\b/i.test(pageTitle);
+        return { success: true, authGate, url: finalUrl };
+      }
+
+      case 'wait': {
+        const ms = Math.min(10000, Math.max(0, parseInt(params?.ms ?? params?.delay ?? '500', 10) || 500));
+        await new Promise((r) => setTimeout(r, ms));
+        return { success: true };
+      }
+
+      case 'waitForText': {
+        const needle = (params?.text || params?.substring || '').trim();
+        if (!needle) return { error: 'waitForText: missing text to wait for' };
+        const needleJson = JSON.stringify(needle);
+        const found = await wc.executeJavaScript(`
+          new Promise((resolve) => {
+            const q = ${needleJson}.toLowerCase();
+            function collect(win, depth) {
+              if (!win || depth > 14) return '';
+              let t = '';
+              try {
+                t += (win.document.body && win.document.body.innerText) || '';
+              } catch (e) {}
+              try {
+                for (const iframe of win.document.querySelectorAll('iframe')) {
+                  try {
+                    if (iframe.contentWindow) t += '\\n' + collect(iframe.contentWindow, depth + 1);
+                  } catch (e) {}
+                }
+              } catch (e) {}
+              return t;
+            }
+            let tries = 0;
+            const maxTries = 48;
+            const tick = () => {
+              const blob = collect(window, 0).toLowerCase();
+              if (blob.includes(q)) {
+                resolve({ ok: true });
+              } else if (++tries >= maxTries) {
+                resolve({ ok: false, error: 'waitForText: timeout waiting for: ' + ${needleJson} });
+              } else {
+                setTimeout(tick, 250);
+              }
+            };
+            tick();
+          })
+        `);
+        if (!found.ok) return { error: found.error };
         return { success: true };
       }
 
@@ -1145,6 +1483,7 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
             wc.sendInputEvent({ type: 'mouseDown', x: cx, y: cy, button: 'left', clickCount: 1 });
             await new Promise((r) => setTimeout(r, 60));
             wc.sendInputEvent({ type: 'mouseUp', x: cx, y: cy, button: 'left', clickCount: 1 });
+            await waitForOptionalNavigationAfterClick(wc, 2000);
             return { success: true };
           }
           return { error: 'Invalid xy= coordinates — use e.g. click:xy=400,520' };
@@ -1286,6 +1625,175 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
           wc.sendInputEvent({ type: 'mouseUp', x: cx, y: cy, button: 'left', clickCount: 1 });
         }
 
+        await waitForOptionalNavigationAfterClick(wc, 2000);
+        return { success: true };
+      }
+
+      case 'select': {
+        const spec = (params.selector || params.field || '').trim();
+        const optNeedle = (params.option || params.value || '').trim();
+        if (!spec || !optNeedle) {
+          return { error: 'select: use field selector and option (e.g. text=Country|United States)' };
+        }
+        const sSpec = JSON.stringify(spec);
+        const sOpt = JSON.stringify(optNeedle);
+        const sRes = await wc.executeJavaScript(`
+          new Promise((resolve) => {
+            const fieldSpec = ${sSpec};
+            const want = ${sOpt}.toLowerCase().trim();
+            function findSelectInDoc(doc, sel) {
+              if (!sel || !doc) return null;
+              if (sel.startsWith('text=') || sel.startsWith('aria=')) {
+                const prefix = sel.startsWith('text=') ? 'text=' : 'aria=';
+                const q = sel.slice(prefix.length).trim().toLowerCase();
+                for (const el of doc.querySelectorAll('select')) {
+                  const id = (el.id || '').toLowerCase();
+                  const name = (el.getAttribute('name') || '').toLowerCase();
+                  const lbl = (el.getAttribute('aria-label') || '').toLowerCase();
+                  if (lbl.includes(q) || name.includes(q) || id.includes(q)) return el;
+                }
+                return null;
+              }
+              try { return doc.querySelector(sel); } catch (e) { return null; }
+            }
+            function searchSelectDeep(win, depth) {
+              if (!win || depth > 14) return null;
+              const doc = win.document;
+              const el = findSelectInDoc(doc, fieldSpec);
+              if (el && el.tagName === 'SELECT') return el;
+              for (const iframe of doc.querySelectorAll('iframe')) {
+                try {
+                  const iw = iframe.contentWindow;
+                  if (!iw || !iw.document) continue;
+                  const hit = searchSelectDeep(iw, depth + 1);
+                  if (hit) return hit;
+                } catch (e) {}
+              }
+              return null;
+            }
+            let tries = 0;
+            const attempt = () => {
+              const selEl = searchSelectDeep(window, 0);
+              if (!selEl) {
+                if (++tries < 14) {
+                  setTimeout(attempt, 250);
+                  return;
+                }
+                resolve({ ok: false, error: 'select: <select> not found for ' + fieldSpec });
+                return;
+              }
+              const opts = Array.from(selEl.options || []);
+              let hit = opts.find((o) => (o.value || '').toLowerCase() === want);
+              if (!hit) hit = opts.find((o) => (o.text || '').toLowerCase().trim().includes(want));
+              if (!hit) {
+                if (++tries < 14) {
+                  setTimeout(attempt, 250);
+                  return;
+                }
+                resolve({ ok: false, error: 'select: option not found: ' + want });
+                return;
+              }
+              selEl.value = hit.value;
+              selEl.dispatchEvent(new Event('input', { bubbles: true }));
+              selEl.dispatchEvent(new Event('change', { bubbles: true }));
+              resolve({ ok: true });
+            };
+            attempt();
+          })
+        `);
+        if (!sRes.ok) return { error: sRes.error };
+        return { success: true };
+      }
+
+      case 'appendText': {
+        const aText = params?.text || '';
+        const useFocus = !params?.selector || String(params.selector).trim() === '';
+        const aSel = JSON.stringify(useFocus ? '' : String(params.selector).trim());
+        const aVal = JSON.stringify(aText);
+        const aRes = await wc.executeJavaScript(`
+          new Promise((resolve) => {
+            const raw = ${aSel};
+            const append = ${aVal};
+            const useActive = !raw;
+            function findElInDoc(doc, sel) {
+              if (!sel || !doc) return null;
+              if (sel.startsWith('text=') || sel.startsWith('aria=')) {
+                const prefix = sel.startsWith('text=') ? 'text=' : 'aria=';
+                const q = sel.slice(prefix.length).trim().toLowerCase();
+                for (const el of doc.querySelectorAll('input,textarea,[contenteditable]')) {
+                  const lbl = (el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.getAttribute('name') || '').toLowerCase();
+                  if (lbl.includes(q)) return el;
+                }
+                return null;
+              }
+              try { return doc.querySelector(sel); } catch (e) { return null; }
+            }
+            function searchDeep(win, depth) {
+              if (!win || depth > 14) return null;
+              const doc = win.document;
+              const el = findElInDoc(doc, raw);
+              if (el) return el;
+              for (const iframe of doc.querySelectorAll('iframe')) {
+                try {
+                  const iw = iframe.contentWindow;
+                  if (!iw || !iw.document) continue;
+                  const hit = searchDeep(iw, depth + 1);
+                  if (hit) return hit;
+                } catch (e) {}
+              }
+              return null;
+            }
+            let tries = 0;
+            const attempt = () => {
+              let el = null;
+              if (useActive) {
+                const ae = document.activeElement;
+                if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) el = ae;
+              } else {
+                el = searchDeep(window, 0);
+              }
+              if (el) {
+                el.focus();
+                el.scrollIntoView({ block: 'center', behavior: 'instant' });
+                const isCE = el.isContentEditable || el.getAttribute('contenteditable') === 'true';
+                if (isCE) {
+                  const doc = el.ownerDocument;
+                  const cur = (el.innerText || el.textContent || '').trimEnd();
+                  if (doc.execCommand) {
+                    el.focus();
+                    const range = doc.createRange();
+                    range.selectNodeContents(el);
+                    range.collapse(false);
+                    const sel = doc.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                    doc.execCommand('insertText', false, append);
+                  } else {
+                    el.textContent = cur + append;
+                  }
+                  el.dispatchEvent(new InputEvent('input', { bubbles: true, data: append }));
+                } else {
+                  const tag = el.tagName;
+                  const proto = tag === 'TEXTAREA'
+                    ? window.HTMLTextAreaElement.prototype
+                    : window.HTMLInputElement.prototype;
+                  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+                  const next = (el.value || '') + append;
+                  if (setter) setter.call(el, next); else el.value = next;
+                  el.dispatchEvent(new InputEvent('input', { bubbles: true, data: append }));
+                  el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                resolve({ ok: true });
+              } else if (++tries < 14) {
+                setTimeout(attempt, 250);
+              } else {
+                resolve({ ok: false, error: 'appendText: element not found: ' + raw });
+              }
+            };
+            attempt();
+          })
+        `);
+        if (!aRes.ok) return { error: aRes.error };
         return { success: true };
       }
 
@@ -1493,17 +2001,32 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
       }
 
       case 'pressKey': {
-        // Dispatch a keyboard event on the focused element or document.
-        // Used for navigation within Google Sheets (Tab/Enter) and saving drafts.
+        // OS-level keys for common navigation; JS KeyboardEvent as fallback for others.
         const key = params?.key || 'Escape';
+        const NATIVE_KEYS = new Set(['Tab', 'Enter', 'Escape', 'ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight']);
+        const ELECTRON_KEYCODE = {
+          Tab: 'Tab',
+          Enter: 'Return',
+          Escape: 'Escape',
+          ArrowDown: 'Down',
+          ArrowUp: 'Up',
+          ArrowLeft: 'Left',
+          ArrowRight: 'Right'
+        };
+        if (NATIVE_KEYS.has(key)) {
+          const kc = ELECTRON_KEYCODE[key];
+          wc.sendInputEvent({ type: 'keyDown', keyCode: kc });
+          await new Promise((r) => setTimeout(r, 30));
+          wc.sendInputEvent({ type: 'keyUp', keyCode: kc });
+        }
         const KEY_MAP = {
-          'Tab':    { code: 'Tab',    keyCode: 9  },
-          'Enter':  { code: 'Enter',  keyCode: 13 },
-          'Escape': { code: 'Escape', keyCode: 27 },
-          'ArrowDown':  { code: 'ArrowDown',  keyCode: 40 },
-          'ArrowUp':    { code: 'ArrowUp',    keyCode: 38 },
-          'ArrowLeft':  { code: 'ArrowLeft',  keyCode: 37 },
-          'ArrowRight': { code: 'ArrowRight', keyCode: 39 },
+          Tab: { code: 'Tab', keyCode: 9 },
+          Enter: { code: 'Enter', keyCode: 13 },
+          Escape: { code: 'Escape', keyCode: 27 },
+          ArrowDown: { code: 'ArrowDown', keyCode: 40 },
+          ArrowUp: { code: 'ArrowUp', keyCode: 38 },
+          ArrowLeft: { code: 'ArrowLeft', keyCode: 37 },
+          ArrowRight: { code: 'ArrowRight', keyCode: 39 }
         };
         const km = KEY_MAP[key] || { code: key, keyCode: 0 };
         await wc.executeJavaScript(`
