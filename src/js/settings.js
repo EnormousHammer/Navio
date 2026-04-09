@@ -39,6 +39,14 @@ class SettingsManagerClass {
       homepage: document.getElementById('setting-homepage'),
       assistantWidth: document.getElementById('setting-assistant-width'),
       assistantWidthValue: document.getElementById('setting-assistant-width-value'),
+      tabLayout: document.getElementById('setting-tab-layout'),
+      bookmarkBar: document.getElementById('setting-bookmark-bar'),
+      memorySearchInput: document.getElementById('memory-search-input'),
+      extLoadUnpacked: document.getElementById('btn-ext-load-unpacked'),
+      extensionsListSettings: document.getElementById('extensions-list-settings'),
+      syncExport: document.getElementById('btn-sync-export'),
+      syncImport: document.getElementById('btn-sync-import'),
+      syncPassphrase: document.getElementById('sync-passphrase'),
       toggleKey: document.getElementById('btn-toggle-key'),
       themeOptions: document.getElementById('theme-options'),
       nav: document.getElementById('settings-nav'),
@@ -67,7 +75,13 @@ class SettingsManagerClass {
       memoryAddInput: document.getElementById('memory-add-input'),
       memoryAddBtn: document.getElementById('memory-add-btn'),
       memoryClearBtn: document.getElementById('memory-clear-btn'),
-      aiProfileGrid: document.getElementById('ai-profile-grid')
+      memoryRetention: document.getElementById('setting-memory-retention'),
+      aiProfileGrid: document.getElementById('ai-profile-grid'),
+      extCrxId: document.getElementById('ext-crx-id'),
+      extInstallCrx: document.getElementById('btn-ext-install-crx'),
+      profilesListSettings: document.getElementById('profiles-list-settings'),
+      profileNewId: document.getElementById('profile-new-id'),
+      profileCreateBtn: document.getElementById('btn-profile-create')
     };
 
     this.panelIds = ['general', 'ai', 'appearance', 'browser', 'privacy', 'integrations', 'passwords', 'about'];
@@ -370,6 +384,18 @@ class SettingsManagerClass {
     this.elements.assistantWidth.value = String(width);
     this.syncAssistantWidthLabel();
 
+    if (this.elements.tabLayout) {
+      this.elements.tabLayout.value = this.config.tabLayout === 'vertical' ? 'vertical' : 'horizontal';
+    }
+    if (this.elements.bookmarkBar) {
+      this.elements.bookmarkBar.checked = this.config.showBookmarkBar !== false;
+    }
+    if (this.elements.memoryRetention) {
+      const d = String(Number(this.config.memoryRetentionDays) || 0);
+      const allowed = ['0', '7', '30', '90', '365'];
+      this.elements.memoryRetention.value = allowed.includes(d) ? d : '0';
+    }
+
     this.elements.endpointRow.style.display =
       this.config.aiProvider === 'custom' ? 'block' : 'none';
 
@@ -449,6 +475,12 @@ class SettingsManagerClass {
     this._refreshAdBlockStats();
     this._loadMemoryList();
     this._bindProfileGrid();
+    this._bindMemorySearchFilter();
+    this._bindExtensionsSettings();
+    this._bindProfilesSettings();
+    this._bindSyncButtons();
+    this._refreshExtensionsList();
+    this._refreshProfilesList();
 
     // Live ad-blocker toggle (takes effect immediately without Save)
     if (this.elements.adBlock && !this.elements.adBlock._navioAdBlockBound) {
@@ -474,11 +506,172 @@ class SettingsManagerClass {
   }
 
   // ── Browser Memory ──────────────────────────────────────────────────────
+  _bindMemorySearchFilter() {
+    const inp = this.elements.memorySearchInput;
+    if (!inp || inp._bound) return;
+    inp._bound = true;
+    inp.addEventListener('input', () => this._loadMemoryList());
+  }
+
+  async _refreshExtensionsList() {
+    const wrap = this.elements.extensionsListSettings;
+    if (!wrap || !window.navio.extensionsList) return;
+    try {
+      const r = await window.navio.extensionsList();
+      const loaded = r.loaded || [];
+      const persisted = r.persisted || [];
+      const enabledById = Object.fromEntries(persisted.map((e) => [e.id, e.enabled !== false]));
+      const rows = loaded.map((x) => {
+        const on = enabledById[x.id] !== false;
+        return `<div class="ext-row ext-row-rich" data-id="${_escAttr(x.id)}">
+          <span class="ext-row-title">${_esc(x.name || x.id)}</span>
+          <span class="ext-row-actions">
+            <label class="ext-toggle"><input type="checkbox" class="ext-enabled" data-id="${_escAttr(x.id)}" ${on ? 'checked' : ''}/> On</label>
+            <button type="button" class="btn btn-secondary ext-popup" data-id="${_escAttr(x.id)}">Popup</button>
+            <button type="button" class="btn btn-secondary ext-options" data-id="${_escAttr(x.id)}">Options</button>
+            <button type="button" class="btn btn-secondary ext-remove" data-id="${_escAttr(x.id)}">Remove</button>
+          </span>
+        </div>`;
+      });
+      wrap.innerHTML = rows.length ? rows.join('') : '<p class="settings-inline-hint">No extensions loaded this session.</p>';
+      wrap.querySelectorAll('.ext-remove').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          await window.navio.extensionsRemove(btn.dataset.id);
+          this._refreshExtensionsList();
+          if (typeof window.refreshNavioExtensionToolbar === 'function') window.refreshNavioExtensionToolbar();
+        });
+      });
+      wrap.querySelectorAll('.ext-enabled').forEach((cb) => {
+        cb.addEventListener('change', async () => {
+          await window.navio.extensionsSetEnabled(cb.dataset.id, cb.checked);
+          this._refreshExtensionsList();
+          if (typeof window.refreshNavioExtensionToolbar === 'function') window.refreshNavioExtensionToolbar();
+        });
+      });
+      wrap.querySelectorAll('.ext-popup').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const res = await window.navio.extensionsOpenPopup(btn.dataset.id);
+          if (res && !res.ok && res.error) alert(res.error);
+        });
+      });
+      wrap.querySelectorAll('.ext-options').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const res = await window.navio.extensionsOpenOptions(btn.dataset.id);
+          if (res && !res.ok && res.error) alert(res.error);
+        });
+      });
+    } catch {
+      wrap.innerHTML = '<p class="settings-inline-hint">Could not list extensions.</p>';
+    }
+  }
+
+  async _refreshProfilesList() {
+    const wrap = this.elements.profilesListSettings;
+    if (!wrap || !window.navio.profilesList) return;
+    try {
+      const r = await window.navio.profilesList();
+      const rows = (r.profiles || []).map((p) => {
+        const active = p.active ? ' <em>(active)</em>' : '';
+        return `<div class="ext-row ext-row-rich"><span>${_esc(p.name || p.id)}${active}</span>
+          <button type="button" class="btn btn-secondary profile-switch" data-id="${_escAttr(p.id)}">Switch to…</button></div>`;
+      });
+      wrap.innerHTML = rows.length ? rows.join('') : '<p class="settings-inline-hint">No profiles.</p>';
+      wrap.querySelectorAll('.profile-switch').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Navio will restart to switch profiles. Continue?')) return;
+          const res = await window.navio.profilesSetActive(btn.dataset.id);
+          if (res && !res.ok && res.error) alert(res.error);
+        });
+      });
+    } catch {
+      wrap.innerHTML = '<p class="settings-inline-hint">Could not load profiles.</p>';
+    }
+  }
+
+  _bindExtensionsSettings() {
+    const btn = this.elements.extLoadUnpacked;
+    if (btn && !btn._bound) {
+      btn._bound = true;
+      btn.addEventListener('click', async () => {
+        const r = await window.navio.extensionsLoadUnpacked();
+        if (r && r.ok) {
+          this._refreshExtensionsList();
+          if (typeof window.refreshNavioExtensionToolbar === 'function') window.refreshNavioExtensionToolbar();
+          alert('Extension loaded: ' + (r.extension && r.extension.name));
+        } else if (r && !r.cancelled) {
+          alert(r.error || 'Failed to load extension');
+        }
+      });
+    }
+    const ins = this.elements.extInstallCrx;
+    if (ins && !ins._bound) {
+      ins._bound = true;
+      ins.addEventListener('click', async () => {
+        const id = (this.elements.extCrxId && this.elements.extCrxId.value.trim()) || '';
+        if (!id) {
+          alert('Paste the 32-character extension id from the Chrome Web Store URL.');
+          return;
+        }
+        const r = await window.navio.extensionsInstallCrxId(id);
+        if (r && r.ok) {
+          this._refreshExtensionsList();
+          if (typeof window.refreshNavioExtensionToolbar === 'function') window.refreshNavioExtensionToolbar();
+          alert('Installed: ' + (r.extension && r.extension.name));
+        } else {
+          alert((r && r.error) || 'Install failed');
+        }
+      });
+    }
+  }
+
+  _bindProfilesSettings() {
+    const b = this.elements.profileCreateBtn;
+    if (!b || b._bound) return;
+    b._bound = true;
+    b.addEventListener('click', async () => {
+      const id = (this.elements.profileNewId && this.elements.profileNewId.value.trim()) || '';
+      if (!id) return;
+      const r = await window.navio.profilesCreate(id);
+      if (r && r.ok) {
+        this.elements.profileNewId.value = '';
+        alert('Profile folder created. Use “Switch to…” to open it (restarts Navio).');
+        this._refreshProfilesList();
+      } else {
+        alert((r && r.error) || 'Could not create profile');
+      }
+    });
+  }
+
+  _bindSyncButtons() {
+    const ex = this.elements.syncExport;
+    const im = this.elements.syncImport;
+    const pass = this.elements.syncPassphrase;
+    if (ex && !ex._bound) {
+      ex._bound = true;
+      ex.addEventListener('click', async () => {
+        const p = pass && pass.value.length >= 4 ? pass.value : '';
+        const r = await window.navio.syncExportProfile({ passphrase: p || undefined });
+        if (r && r.ok) alert('Exported to ' + r.path);
+        else if (r && !r.cancelled) alert(r.error || 'Export failed');
+      });
+    }
+    if (im && !im._bound) {
+      im._bound = true;
+      im.addEventListener('click', async () => {
+        const p = pass && pass.value.length >= 4 ? pass.value : '';
+        const r = await window.navio.syncImportProfile({ passphrase: p || undefined });
+        if (r && r.ok) alert(r.message || 'Imported');
+        else if (r && !r.cancelled) alert(r.error || 'Import failed');
+      });
+    }
+  }
+
   async _loadMemoryList() {
     const el = this.elements.memoryList;
     if (!el) return;
     try {
-      const mem = await window.navio.memoryGet();
+      const q = this.elements.memorySearchInput && this.elements.memorySearchInput.value.trim();
+      const mem = q && window.navio.memorySearch ? await window.navio.memorySearch(q) : await window.navio.memoryGet();
       const facts = mem.facts || [];
       if (facts.length === 0) {
         el.innerHTML = '<p class="settings-inline-hint" style="margin:8px 0">No memories saved yet. Navio will learn from your conversations.</p>';
@@ -486,9 +679,17 @@ class SettingsManagerClass {
         el.innerHTML = facts.map(f => `
           <div class="memory-item" data-id="${f.id}">
             <span class="memory-item-text">${this._esc(f.content)}</span>
+            ${f.sourceUrl ? `<div class="memory-item-src"><a href="#" data-url="${_escAttr(f.sourceUrl)}">${this._esc(f.sourceUrl)}</a></div>` : ''}
             <span class="memory-item-type ${f.type === 'auto' ? 'auto' : 'manual'}">${f.type === 'auto' ? 'AI' : 'You'}</span>
             <button class="memory-item-del" data-id="${f.id}" title="Delete">✕</button>
           </div>`).join('');
+        el.querySelectorAll('.memory-item-src a').forEach((a) => {
+          a.addEventListener('click', (e) => {
+            e.preventDefault();
+            const u = a.getAttribute('data-url');
+            if (u && typeof TabManager !== 'undefined') TabManager.createTab(u);
+          });
+        });
         el.querySelectorAll('.memory-item-del').forEach(btn => {
           btn.addEventListener('click', async () => {
             await window.navio.memoryDelete(btn.dataset.id);
@@ -734,7 +935,12 @@ class SettingsManagerClass {
       searchEngine: this.elements.searchEngine.value,
       homepage: this.elements.homepage.value.trim() || 'https://www.google.com',
       theme: this.selectedTheme || 'dark',
-      assistantWidth
+      assistantWidth,
+      tabLayout: this.elements.tabLayout ? this.elements.tabLayout.value : 'horizontal',
+      showBookmarkBar: !!(this.elements.bookmarkBar && this.elements.bookmarkBar.checked),
+      memoryRetentionDays: this.elements.memoryRetention
+        ? parseInt(this.elements.memoryRetention.value, 10) || 0
+        : 0
     };
 
     await window.navio.saveConfig(newConfig);

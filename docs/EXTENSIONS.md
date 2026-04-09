@@ -1,6 +1,13 @@
-# Extension capability model (Phase 7)
+# Extensions in Navio
 
-Navio does not yet load Chrome Web Store extensions. This document defines the **target** manifest so future work stays consistent.
+Navio loads **unpacked Manifest V3** extensions via Electron `session.loadExtension` on the `persist:navio` partition. You can:
+
+- **Load unpacked…** (folder) from **Settings → Browser**.
+- **Install from Chrome Web Store ID** — paste the 32-character id from the store URL; the app downloads the `.crx`, extracts the ZIP payload, and loads it (many extensions still fail in Electron; errors are shown in an alert).
+
+Optional **toolbar** buttons in the navbar open `default_popup` when the manifest defines one; **Options** opens `options_page` / `options_ui.page` when present.
+
+The section below defines a **target** `navio.*` manifest shape for future tighter integration.
 
 ## Principles
 

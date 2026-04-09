@@ -70,6 +70,11 @@ class NavioApp {
     const n = typeof raw === 'number' ? raw : parseInt(raw, 10);
     const w = Number.isFinite(n) ? Math.min(560, Math.max(300, n)) : 420;
     document.documentElement.style.setProperty('--assistant-width', `${w}px`);
+    if (typeof window.applyTabLayoutFromConfig === 'function') {
+      window.applyTabLayoutFromConfig(config || {});
+    }
+    const bb = document.getElementById('bookmark-bar');
+    if (bb) bb.hidden = config && config.showBookmarkBar === false;
   }
 
   bindThemeToggle() {

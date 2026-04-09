@@ -82,7 +82,41 @@ class CommandPaletteClass {
       { id: 'reading', label: 'Toggle reading mode', run: () => ReadingMode.toggle?.() },
       { id: 'screenshot', label: 'Screenshot active tab', run: () => ScreenshotTool.capture?.() },
       { id: 'devtools', label: 'Open DevTools (active tab)', run: () => ScreenshotTool.openDevtools?.() },
-      { id: 'settings', label: 'Open Settings', run: () => SettingsManager.open() }
+      { id: 'settings', label: 'Open Settings', run: () => SettingsManager.open() },
+      {
+        id: 'open-history',
+        label: 'Open history (Ctrl+H)',
+        run: () => window.__navioOpenHistoryOverlay?.()
+      },
+      {
+        id: 'open-bookmarks-manager',
+        label: 'Manage bookmarks (Ctrl+Shift+B)',
+        run: () => window.__navioOpenBookmarksOverlay?.()
+      },
+      {
+        id: 'ai-organize-tabs',
+        label: 'AI: Organize tabs into groups',
+        run: () => TabManager.autoOrganizeTabsWithAi?.()
+      },
+      {
+        id: 'ai-close-dup-tabs',
+        label: 'AI: Suggest closing duplicate tabs',
+        run: () => TabManager.suggestCloseDuplicateTabsWithAi?.()
+      },
+      {
+        id: 'tab-search-palette',
+        label: 'Search open tabs (Ctrl+Shift+O or Ctrl+Shift+E)',
+        run: () => {
+          const o = document.getElementById('tab-search-overlay');
+          const inp = document.getElementById('tab-search-input');
+          if (o && inp) {
+            o.hidden = false;
+            inp.value = '';
+            inp.dispatchEvent(new Event('input'));
+            inp.focus();
+          }
+        }
+      }
     ];
   }
 

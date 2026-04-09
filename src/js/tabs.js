@@ -60,6 +60,24 @@ class TabManagerClass {
     }, 20000); // 20 seconds dwell time
   }
 
+  _historyAdd(tab, wv, url) {
+    try {
+      if (!url || !url.startsWith('http')) return;
+      window.navio.historyAdd({
+        url,
+        title: tab.title || url,
+        favicon: tab.favicon || ''
+      }).catch(() => {});
+    } catch (_) {}
+  }
+
+  _reorderPinnedTabs() {
+    const pinned = this.tabs.filter((t) => t.pinned);
+    const rest = this.tabs.filter((t) => !t.pinned);
+    this.tabs.splice(0, this.tabs.length, ...pinned, ...rest);
+    this._reRenderTabList();
+  }
+
   _syncWebviewSizes() {
     const { width, height } = this.browserContainer.getBoundingClientRect();
     if (!width || !height) return;
@@ -79,7 +97,8 @@ class TabManagerClass {
       url: url || '',
       favicon: null,
       loading: false,
-      webview: null
+      webview: null,
+      pinned: false
     };
 
     // Build a clean user-agent that doesn't expose Electron
@@ -185,6 +204,7 @@ class TabManagerClass {
       // NTP tab's url stays '' (falsy) and showNewTabPage() keeps working.
       if (e.url && e.url !== 'about:blank' && !e.url.startsWith('data:')) {
         tab.url = e.url;
+        this._historyAdd(tab, wv, e.url);
       }
       if (tab.id === this.activeTabId) {
         App.updateUrlBar(tab.url);
@@ -201,6 +221,9 @@ class TabManagerClass {
     wv.addEventListener('did-navigate-in-page', (e) => {
       if (e.isMainFrame) {
         tab.url = e.url;
+        if (e.url && e.url.startsWith('http')) {
+          this._historyAdd(tab, wv, e.url);
+        }
         if (tab.id === this.activeTabId) {
           App.updateUrlBar(e.url);
           // SPA navigation (YouTube, etc.) — ensure NTP stays hidden
@@ -237,6 +260,9 @@ class TabManagerClass {
     wv.addEventListener('did-finish-load', () => {
       this.applyZoomToWebview(wv);
       this._schedulePassiveMemory(tab, wv);
+      if (tab.id === this.activeTabId && typeof window.__navioUpdateZoomLabel === 'function') {
+        window.__navioUpdateZoomLabel();
+      }
     });
 
     wv.addEventListener('context-menu', (e) => {
@@ -365,6 +391,9 @@ class TabManagerClass {
       }
       App.updateNavigationButtons(activeTab.webview);
       this.updateContextTitle(activeTab);
+      if (typeof window.__navioUpdateZoomLabel === 'function') {
+        window.__navioUpdateZoomLabel();
+      }
     }
   }
 
@@ -373,6 +402,12 @@ class TabManagerClass {
     if (index === -1) return;
 
     const tab = this.tabs[index];
+    if (tab.pinned) {
+      if (typeof _showAppToast === 'function') {
+        _showAppToast('Unpin the tab before closing it.', 'warning');
+      }
+      return;
+    }
 
     // Remove webview from DOM
     if (tab.webview && tab.webview.parentNode) {
@@ -451,6 +486,10 @@ class TabManagerClass {
 
     el.querySelector('.tab-close').addEventListener('click', (e) => {
       e.stopPropagation();
+      if (tab.pinned) {
+        if (typeof _showAppToast === 'function') _showAppToast('Unpin the tab before closing.', 'warning');
+        return;
+      }
       this.closeTab(tab.id);
     });
 
@@ -494,6 +533,8 @@ class TabManagerClass {
       el.style.removeProperty('--tg-color');
       el.classList.remove('in-group');
     }
+
+    el.classList.toggle('tab-pinned', !!tab.pinned);
   }
 
   updateContextTitle(tab) {
@@ -693,10 +734,14 @@ class TabManagerClass {
       </button>
       <div class="tcm-sep"></div>` : '';
 
+    const pinLabel = tab.pinned ? 'Unpin tab' : 'Pin tab';
+
     const menu = document.createElement('div');
     menu.id = 'tab-ctx-menu';
     menu.className = 'tab-ctx-menu';
     menu.innerHTML = `
+      <button class="tcm-item" data-action="toggle-pin">${pinLabel}</button>
+      <div class="tcm-sep"></div>
       ${removeItem}
       ${groupItems}
       <div class="tcm-label">New group</div>
@@ -741,7 +786,14 @@ class TabManagerClass {
       btn.addEventListener('click', () => {
         const act = btn.dataset.action;
         if (act === 'close-tab') this.closeTab(tabId);
-        else if (act === 'remove-from-group') this.removeTabFromGroup(tabId);
+        else if (act === 'toggle-pin') {
+          const t = this.tabs.find((x) => x.id === tabId);
+          if (t) {
+            t.pinned = !t.pinned;
+            this._reorderPinnedTabs();
+            this.updateTabUI(t);
+          }
+        } else if (act === 'remove-from-group') this.removeTabFromGroup(tabId);
         else if (act === 'add-to-group') this.addTabToGroup(tabId, btn.dataset.gid);
         this._hideTabContextMenu();
       });
@@ -759,6 +811,96 @@ class TabManagerClass {
 
   _hideTabContextMenu() {
     document.getElementById('tab-ctx-menu')?.remove();
+  }
+
+  async autoOrganizeTabsWithAi() {
+    const cfg = await window.navio.getConfig();
+    if (cfg.aiKillSwitch || !cfg.hasApiKey) {
+      if (typeof _showAppToast === 'function') _showAppToast('Add an API key in Settings → AI.', 'warning');
+      return;
+    }
+    if (this.tabs.length < 2) return;
+    const lines = this.tabs.map((t, i) => `${i}: ${t.title} — ${t.url}`).join('\n');
+    const messages = [
+      {
+        role: 'user',
+        content:
+          `Group these browser tabs by topic. Reply with ONLY a JSON array like [{"name":"Work","indexes":[0,2]},{"name":"Read","indexes":[1]}] using 0-based indexes from the list below. Use at most 8 groups. Tabs:\n${lines}`
+      }
+    ];
+    const r = await window.navio.aiRequest({ messages });
+    if (r.error) {
+      if (typeof _showAppToast === 'function') _showAppToast(r.error, 'error');
+      return;
+    }
+    const m = r.content && r.content.match(/\[[\s\S]*\]/);
+    if (!m) {
+      if (typeof _showAppToast === 'function') _showAppToast('AI did not return JSON groups.', 'error');
+      return;
+    }
+    let groups;
+    try {
+      groups = JSON.parse(m[0]);
+    } catch {
+      if (typeof _showAppToast === 'function') _showAppToast('Invalid JSON from AI.', 'error');
+      return;
+    }
+    if (!Array.isArray(groups)) return;
+    for (const g of groups) {
+      const name = g.name || 'Group';
+      const idxs = Array.isArray(g.indexes) ? g.indexes : Array.isArray(g.tabIndexes) ? g.tabIndexes : [];
+      if (!idxs.length) continue;
+      const gid = this.createGroup(name);
+      for (const idx of idxs) {
+        const t = this.tabs[typeof idx === 'number' ? idx : parseInt(idx, 10)];
+        if (t) this.addTabToGroup(t.id, gid);
+      }
+    }
+    if (typeof _showAppToast === 'function') _showAppToast('Tab groups updated from AI.', 'success');
+  }
+
+  async suggestCloseDuplicateTabsWithAi() {
+    const cfg = await window.navio.getConfig();
+    if (cfg.aiKillSwitch || !cfg.hasApiKey) {
+      if (typeof _showAppToast === 'function') _showAppToast('Add an API key in Settings → AI.', 'warning');
+      return;
+    }
+    if (this.tabs.length < 2) return;
+    const lines = this.tabs.map((t, i) => `${i}: ${t.title} — ${t.url}`).join('\n');
+    const messages = [
+      {
+        role: 'user',
+        content:
+          `Find duplicate or near-duplicate tabs (same URL or trivial variants). Reply with ONLY a JSON array of tab indexes to CLOSE, e.g. [2,5]. Prefer keeping the oldest index when duplicates exist. If none, reply with []. Tabs:\n${lines}`
+      }
+    ];
+    const r = await window.navio.aiRequest({ messages });
+    if (r.error) {
+      if (typeof _showAppToast === 'function') _showAppToast(r.error, 'error');
+      return;
+    }
+    const m = r.content && r.content.match(/\[[\s\S]*?\]/);
+    if (!m) {
+      if (typeof _showAppToast === 'function') _showAppToast('AI did not return a list.', 'error');
+      return;
+    }
+    let idxs;
+    try {
+      idxs = JSON.parse(m[0]);
+    } catch {
+      if (typeof _showAppToast === 'function') _showAppToast('Invalid JSON from AI.', 'error');
+      return;
+    }
+    if (!Array.isArray(idxs) || idxs.length === 0) {
+      if (typeof _showAppToast === 'function') _showAppToast('No duplicate tabs suggested.', 'success');
+      return;
+    }
+    const sorted = [...new Set(idxs.map((i) => parseInt(i, 10)).filter((n) => !Number.isNaN(n)))].sort((a, b) => b - a);
+    for (const idx of sorted) {
+      const t = this.tabs[idx];
+      if (t && !t.pinned) this.closeTab(t.id);
+    }
+    if (typeof _showAppToast === 'function') _showAppToast('Closed suggested duplicate tabs.', 'success');
   }
 }
 

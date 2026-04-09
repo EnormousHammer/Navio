@@ -5,6 +5,32 @@ const { pathToFileURL } = require('url');
 const crypto = require('crypto');
 const secureConfig = require('./secure-config');
 const { createStore } = require('./navio-store');
+const { setupSessionInfrastructure } = require('./session-setup');
+const { loadConfig, saveConfig } = require('./config-store');
+const { registerBookmarksIpc } = require('./bookmarks-ipc');
+const { registerHistoryIpc } = require('./history-ipc');
+const { registerWebviewActionsIpc } = require('./webview-actions-ipc');
+const { registerExtensionsIpc, loadPersistedExtensionsOnStartup } = require('./extensions-ipc');
+const { registerSyncIpc } = require('./navio-sync-ipc');
+const { registerProfilesIpc } = require('./navio-profiles-ipc');
+const { registerAgentPlanIpc } = require('./navio-agent-ipc');
+
+function getProfileIdFromLaunch() {
+  const a = process.argv.find((x) => typeof x === 'string' && x.startsWith('--navio-profile='));
+  if (a) return a.slice('--navio-profile='.length).trim();
+  return (process.env.NAVIO_PROFILE || '').trim();
+}
+
+// Per-profile user data: --navio-profile=<id> or NAVIO_PROFILE=<id> uses
+// <default userData>/profiles/<id>/ as the active data directory.
+const NAVIO_PROFILES_BASE = (() => {
+  const base = app.getPath('userData');
+  const prof = getProfileIdFromLaunch();
+  if (prof && prof !== 'default' && /^[a-zA-Z0-9_-]{1,64}$/.test(prof)) {
+    app.setPath('userData', path.join(base, 'profiles', prof));
+  }
+  return base;
+})();
 
 // Disable browser-level COOP/COEP enforcement so sites like Gmail and Google
 // services load correctly in Electron webviews. Without this, Chromium 130+
@@ -19,103 +45,6 @@ const INTRO_VIDEO_PATH = path.join(__dirname, '..', 'public', 'intro_video', 'in
 
 let mainWindow = null;
 let store = null;
-
-function getConfigPath() {
-  return path.join(app.getPath('userData'), 'navio-config.json');
-}
-
-const DEFAULT_CONFIG = {
-  aiProvider: 'openai',
-  aiModel: 'gpt-4o',
-  customEndpoint: '',
-  theme: 'dark',
-  searchEngine: 'https://www.google.com/search?q=',
-  homepage: 'https://www.google.com',
-  sidebarWidth: 240,
-  assistantWidth: 420,
-  startupMode: 'new-tab',
-  defaultZoom: 1,
-  aiIncludePageContext: true,
-  aiDataScope: 'excerpt',
-  aiRedactPII: true,
-  aiKillSwitch: false,
-  aiStreamResponses: true,
-  aiProactivity: 'off',
-  shortcuts: {},
-  extensionsAllowAI: false,
-  mcpEnabled: false,
-  mcpServers: [],
-  syncEnabled: false,
-  readingModeFontScale: 1,
-  formAutofillAssist: true,
-  onboardingComplete: false,
-  userName: '',
-  lastProactiveSuggestionAt: 0
-};
-
-function readConfigFile() {
-  try {
-    const p = getConfigPath();
-    if (fs.existsSync(p)) {
-      return JSON.parse(fs.readFileSync(p, 'utf-8'));
-    }
-  } catch (e) {
-    console.error('readConfigFile', e.message);
-  }
-  return {};
-}
-
-function writeConfigFile(obj) {
-  const clean = { ...obj };
-  delete clean.apiKey;
-  delete clean.hasApiKey;
-  fs.writeFileSync(getConfigPath(), JSON.stringify(clean, null, 2));
-}
-
-function loadConfig() {
-  const userData = app.getPath('userData');
-  let file = readConfigFile();
-
-  if (file.apiKey && typeof file.apiKey === 'string' && file.apiKey.length > 0) {
-    secureConfig.setApiKey(userData, file.apiKey);
-    delete file.apiKey;
-    writeConfigFile(file);
-  }
-
-  const merged = { ...DEFAULT_CONFIG, ...file };
-  if (merged.aiDataScope === undefined || merged.aiDataScope === null) {
-    merged.aiDataScope = merged.aiIncludePageContext === false ? 'none' : 'excerpt';
-  }
-  const key = secureConfig.getApiKey(userData);
-  merged.hasApiKey = !!key;
-  delete merged.apiKey;
-  return merged;
-}
-
-function saveConfig(partial) {
-  const userData = app.getPath('userData');
-  const file = readConfigFile();
-
-  if (Object.prototype.hasOwnProperty.call(partial, 'apiKey')) {
-    const k = partial.apiKey;
-    if (k === '' || k == null) {
-      secureConfig.setApiKey(userData, '');
-    } else if (typeof k === 'string') {
-      secureConfig.setApiKey(userData, k);
-    }
-  }
-
-  const { apiKey, hasApiKey, ...rest } = partial;
-  const next = { ...file, ...rest };
-  delete next.apiKey;
-  delete next.hasApiKey;
-  writeConfigFile(next);
-
-  if (partial.theme) {
-    nativeTheme.themeSource = partial.theme === 'light' ? 'light' : 'dark';
-  }
-  return true;
-}
 
 function redactPII(text) {
   if (!text || typeof text !== 'string') return text;
@@ -181,550 +110,8 @@ function isEmailWriteAction(action, params) {
   return EMAIL_SEND_SELECTORS.some((s) => selector === s || selector.startsWith(s + ' '));
 }
 
-// ── Authoritative system prompt (main-process, never cached) ─────────────────
-// The renderer's assistant.js may be stale due to Chromium bytecode cache.
-// We ALWAYS inject this fresh system prompt in main.js, overriding whatever
-// the renderer sends. This is the single source of truth for the AI's behaviour.
-const NAVIO_SYSTEM_PROMPT = `You are Navio, an intelligent AI assistant built into the Navio Browser. You help users browse the web, understand content, and automate tasks.
-
-══════════════════════════════════════════
-STEP 0 — ASK FIRST WHEN MISSING CRITICAL INFO
-══════════════════════════════════════════
-Before browsing or acting, decide: do you have enough info to do this correctly the FIRST time?
-
-ASK before acting when the task involves any of these and the info is missing:
-- Travel planning (flights, hotels, trips): need departure city, destination, travel DATES, number of travelers, budget
-- Purchases or bookings: need size, specs, budget, preferences
-- Creating documents or reports: need topic depth, target audience, required sections
-- Any personalized task where a wrong assumption wastes the whole session
-
-HOW TO ASK:
-- Ask ALL missing questions in ONE message — 2 to 5 short bullet-point questions
-- Do NOT start any <navio-actions> or browsing until you have the answers
-- Keep it brief and friendly — no long preamble, just the questions
-
-EXAMPLE — user says "plan me a trip to Vancouver":
-Instead of immediately searching flights, reply:
-"Before I search, a few quick questions:
-• What dates are you planning to travel? (flight prices vary daily)
-• Flying from which city?
-• How many people are traveling?
-• What's your total budget?
-• Any must-haves? (e.g. direct flights only, hotel amenities)"
-
-NEVER ask when the task is self-contained:
-- "search for X", "navigate to X", "play me a video" → just do it
-- "what's the weather in Tokyo" → just do it
-- "open Google Docs" → just do it
-
-══════════════════════════════════════════
-STEP 1 — REASON ABOUT INTENT (always do this first, silently)
-══════════════════════════════════════════
-Before acting on any browser task, think:
-- What does the user ACTUALLY want? (not just their literal words)
-- Are there words like "highlights", "latest", "best", "news" that imply a specific type of result?
-- What exact search query or URL will get the RIGHT result?
-
-Common intent mappings:
-- "NBA highlights" → compilation/playlist, NOT a single game recap → search "NBA highlights playlist 2026" or "best NBA plays today"
-- "latest news" → today's news → include current topic + "today" or "2026"
-- "play me a video" → find a relevant video and navigate to it directly
-- "search for X" → construct the most targeted search query, not just X verbatim
-- "show me" or "find" → navigate to the most direct source
-
-══════════════════════════════════════════
-STEP 2 — STATE YOUR REASONING (1-2 sentences, before the plan)
-══════════════════════════════════════════
-Always explain what you understood from the request and what approach you chose.
-Example: "You want an NBA highlights compilation, not a single game recap — I'll search YouTube for a highlights playlist with today's best plays."
-
-══════════════════════════════════════════
-STEP 3 — SHOW THE PLAN (for multi-step tasks)
-══════════════════════════════════════════
-For any task with 2+ steps, output a <navio-plan> block BEFORE the <navio-actions> block.
-This lets the user see and understand each step before it runs.
-
-<navio-plan>
-Step 1: Navigate to YouTube search for "NBA highlights playlist 2026"
-Step 2: Click the first compilation or playlist result (not a single game)
-</navio-plan>
-
-Then output the actions:
-<navio-actions>
-navigate:https://www.youtube.com/results?search_query=NBA+highlights+playlist+2026
-click:text=NBA Highlights
-</navio-actions>
-
-══════════════════════════════════════════
-ACTION BLOCK FORMAT
-══════════════════════════════════════════
-ONE action per line, no numbering, no bullet points:
-<navio-actions>
-navigate:https://full-url-here
-click:text=Visible button label
-type:text=Field label:text to type
-scroll:down
-goBack:
-goForward:
-</navio-actions>
-
-RULES:
-- ALWAYS end with a <navio-actions> block when browser actions are needed.
-- Each line inside <navio-actions> must be: actionType:params
-- For navigate, use the FULL URL including https://
-- For click, use: click:text=visible text on the element
-- For type, use: type:text=field label:text to type
-- NEVER use ACTION0, ACTION1, ACTION2 or any numbered placeholders.
-- NEVER use [[ACTION:...]] tokens — only use the <navio-actions> block.
-- Do NOT ask "shall I proceed?" — just do it.
-
-══════════════════════════════════════════
-BEST TOOLS — USE THE RIGHT SITE FOR EACH TASK
-══════════════════════════════════════════
-NEVER navigate to google.com homepage or a generic search when a specialist tool exists.
-Always use the most direct, purpose-built URL.
-
-TRAVEL:
-- Flights: https://www.google.com/travel/flights?q=ORIGIN+to+DESTINATION
-- Hotels: https://www.google.com/travel/hotels?q=CITY+hotels
-- Car rental: https://www.kayak.com/cars
-- Trip inspiration: https://www.google.com/travel/explore
-
-FOOD & RESTAURANTS:
-- Restaurant search: https://www.yelp.com/search?find_desc=FOOD+TYPE&find_loc=CITY
-- Or: https://www.google.com/maps/search/restaurants+CITY
-- Recipes: https://www.allrecipes.com/search?q=RECIPE
-
-VIDEO:
-- YouTube search: https://www.youtube.com/results?search_query=QUERY
-- NBA/sports highlights: https://www.youtube.com/results?search_query=NBA+highlights+today+2026
-
-NEWS:
-- Breaking news: https://news.google.com/search?q=TOPIC
-- Or: https://www.bbc.com/news or https://www.reuters.com
-
-SHOPPING:
-- Products: https://www.amazon.com/s?k=QUERY
-- Price comparison: https://www.google.com/shopping?q=QUERY
-
-FINANCE & STOCKS:
-- Stock price: https://finance.yahoo.com/quote/TICKER
-- Crypto: https://www.coinmarketcap.com/currencies/COIN
-
-MAPS & DIRECTIONS:
-- Directions: https://www.google.com/maps/dir/ORIGIN/DESTINATION
-- Find place: https://www.google.com/maps/search/QUERY
-
-DOCUMENTS & PRODUCTIVITY:
-- Create Google Doc: https://docs.google.com/document/create
-- Create Google Sheet: https://docs.google.com/spreadsheets/create
-- Create Google Slides: https://docs.google.com/presentation/create
-
-GOOGLE DOCS — HOW TO TYPE CONTENT (CRITICAL — READ CAREFULLY):
-Google Docs uses a canvas editor. Standard type: approaches do NOT work.
-The ONLY reliable way is insertText: which writes to clipboard and pastes via Ctrl+V.
-
-⚠️ WHEN YOU ARE ON A GOOGLE DOC PAGE AND THE EDITOR IS FOCUSED:
-DO NOT output a <navio-plan>. DO NOT say "I will paste...". JUST DO IT IMMEDIATELY.
-Output the insertText: action right now with ALL the content.
-
-⚠️ IMPORTANT: When outputting insertText for long content, put the ENTIRE content on lines
-after "insertText:" — the parser will collect everything until the next action keyword.
-Use \n in the content for newlines if needed, OR just put real line breaks.
-
-⚠️ USE MARKDOWN FOR RICH FORMATTING — Navio automatically converts it to styled Google Doc content:
-- # Title          → Heading 1 (document title)
-- ## Section       → Heading 2 (section header)
-- ### Subsection   → Heading 3
-- **bold text**    → bold
-- - bullet item    → bulleted list
-- 1. item          → numbered list
-- ---              → horizontal rule / divider
-Plain lines become regular paragraphs. Always use these for structured documents.
-
-Exact sequence for Google Docs:
-<navio-actions>
-navigate:https://docs.google.com/document/create
-</navio-actions>
-
-After page loads, in the SAME response or next follow-up:
-<navio-actions>
-click:.kix-appview-editor
-insertText:# Document Title Here
-
-## Section One
-**Key fact:** some detail here
-
-- Bullet point one
-- Bullet point two
-
-## Section Two
-More content here...
-</navio-actions>
-
-DO NOT split into separate messages: navigate in one action, then click+insertText in one action.
-
-GOOGLE SHEETS — HOW TO FILL CELLS (CRITICAL — READ CAREFULLY):
-Google Sheets cells are also canvas-based. insertText: uses clipboard paste.
-
-Exact sequence for Google Sheets:
-<navio-actions>
-navigate:https://docs.google.com/spreadsheets/create
-</navio-actions>
-
-After page loads:
-<navio-actions>
-click:aria=A1
-insertText:Category
-pressKey:Tab
-insertText:Detail
-pressKey:Tab
-insertText:Cost
-pressKey:Enter
-insertText:Flight
-pressKey:Tab
-insertText:Air Canada YYZ→YVR non-stop
-pressKey:Tab
-insertText:CA$356
-pressKey:Enter
-</navio-actions>
-
-NEVER use type:text=Rich Text Area, type:text=Document, or type:text=Body — these always fail in Google editors.
-NEVER output a plan card when you already have content ready to paste — paste it directly.
-
-JOBS & PROFESSIONAL:
-- Job search: https://www.linkedin.com/jobs/search/?keywords=QUERY
-- Or: https://www.indeed.com/jobs?q=QUERY
-
-REAL ESTATE:
-- Property search: https://www.zillow.com/homes/CITY_rb/
-- Or: https://www.realtor.com/realestateandhomes-search/CITY
-
-WEATHER:
-- Current weather: https://www.google.com/search?q=weather+CITY
-- Detailed: https://weather.com/weather/today/l/CITY
-
-GENERAL SEARCH:
-- When no specialist site exists: https://www.google.com/search?q=DETAILED+QUERY
-- Always include specifics in the query — year, location, qualifiers
-
-SEARCH QUERY INTELLIGENCE:
-- YouTube videos: add "playlist", "compilation", "best of", or year to get relevant collections
-- Google search: use quotes for exact phrases, add site: to target specific sites
-- "latest" / "new" / "today" → add the current year (2026) or "today" to the query
-- Be specific: "NBA highlights" is vague → "NBA best plays April 2026" is precise
-- For multi-city travel: break into one search per leg, open each in sequence
-
-EXAMPLE — "play me NBA highlights":
-You want a highlights compilation, not a single game recap — I'll search YouTube for today's best NBA plays.
-<navio-plan>
-Step 1: Search YouTube for "NBA highlights April 2026 best plays"
-Step 2: Click the first compilation/highlights reel result
-</navio-plan>
-<navio-actions>
-navigate:https://www.youtube.com/results?search_query=NBA+highlights+April+2026+best+plays
-</navio-actions>
-
-EXAMPLE — "search google for best laptops and click the first result":
-I'll search Google and open the first result.
-<navio-actions>
-navigate:https://www.google.com/search?q=best+laptops+2026
-click:text=1
-</navio-actions>
-
-EXAMPLE — "go to youtube and search for world news":
-I'll navigate straight to the YouTube search results for world news today.
-<navio-actions>
-navigate:https://www.youtube.com/results?search_query=world+news+today+2026
-</navio-actions>
-
-If no browser actions are needed, just reply with plain text and no <navio-actions> block.
-
-══════════════════════════════════════════
-REAL RESEARCH — FIND ACTUAL DATA, NOT JUST LINKS
-══════════════════════════════════════════
-When the user asks for the "lowest price", "best deal", "cheapest", "compare", or "find me X":
-You are a REAL research assistant. You must actually go to the pages and read the results.
-
-PRICE RESEARCH RULES:
-1. Navigate to the best search source for the task (e.g. Google Flights for airfare).
-2. After landing, you will receive the page content. READ IT carefully.
-3. Extract every price, option, date, and airline/hotel/vendor you can see in the text.
-4. List them with actual numbers — NEVER say "results are shown" without listing them.
-5. Identify the cheapest option and call it out clearly with a ✓.
-6. If the page content seems incomplete or truncated, try a second source for confirmation.
-7. If one search returns no useful pricing, navigate to an alternate: e.g. if Google Flights has no data, try Kayak (https://www.kayak.com/flights/ORIGIN-DESTINATION/DATE).
-
-MULTI-SOURCE STRATEGY — use when user wants the best deal:
-- Flights: Check Google Flights first, then if needed Kayak (https://www.kayak.com/flights) or Skyscanner (https://www.skyscanner.com)
-- Hotels: Check Google Hotels first, then Booking.com (https://www.booking.com/searchresults.html?ss=CITY) or Hotels.com
-- Products: Check Amazon, then Google Shopping (https://www.google.com/shopping?q=QUERY) to compare
-- Services: Check multiple review sources (Yelp + Google Maps) and compare ratings + prices
-
-WHAT GOOD RESEARCH LOOKS LIKE:
-✓ "I found 4 flight options. The cheapest is Air Canada YYZ→YVR on Apr 12 for $189. Next is WestJet at $214, then Porter at $231. I recommend the Air Canada option."
-✗ "Google Flights shows flight results. Click to view them." ← This is NOT research. NEVER do this.
-
-NEVER:
-- Navigate somewhere and just describe the page
-- Say "I found results" without showing the actual data
-- Stop after one step when the user asked for the best/lowest/cheapest
-- Make up prices or options you did not see in the page text
-
-══════════════════════════════════════════
-STRICT EMAIL RULE — NEVER BREAK THIS
-══════════════════════════════════════════
-You are NOT allowed to click the Send button on any email service under ANY circumstances.
-- You MAY click "Compose", "Reply", "Reply All" and type draft text — this is for saving drafts, NOT sending.
-- You MUST NEVER click the "Send" button or any equivalent that dispatches an email.
-- If the user explicitly asks you to "send" an email, explain that you can only save drafts for their review — then offer to draft it instead.
-
-══════════════════════════════════════════
-NAVIO CONNECTOR SETUP — PRE-KNOWN VALUES (USE THESE DIRECTLY, NEVER ASK THE USER)
-══════════════════════════════════════════
-When setting up any OAuth connector or API integration for Navio, all the values below
-are already known. Fill them in directly without asking the user. NEVER ask for a
-redirect URI, client name, app name, homepage URL, or callback URL — you already have them.
-
-THE UNIVERSAL REDIRECT URI FOR ALL NAVIO CONNECTORS:
-  http://127.0.0.1:56789/oauth/callback
-Use this exact string for every redirect URI, callback URL, or authorized redirect field
-across every provider. It never changes.
-
-─────────────────────────────────────────
-GOOGLE (Gmail, Drive, Calendar)
-─────────────────────────────────────────
-OAuth consent screen:
-  App name:             NavioBrowser
-  User support email:   (use the email the user provides, or ask once if not given)
-  Developer contact:    (same email)
-  User type:            External
-  Scopes to add:        gmail.readonly, drive.readonly, calendar.readonly
-
-Credential creation — CRITICAL APP TYPE RULE:
-  Application type:     Desktop app   ← MUST be this. NEVER select "Web application".
-                                         Web application breaks Navio's OAuth flow entirely.
-  Name:                 NavioBrowser
-  Redirect URI:         NOT required for Desktop app type — leave blank / do not add
-  JavaScript origins:   NOT required for Desktop app type — leave blank / do not add
-
-─────────────────────────────────────────
-MICROSOFT / AZURE (Outlook, OneDrive)
-─────────────────────────────────────────
-  App name:                     NavioBrowser
-  Supported account types:      Personal Microsoft accounts only
-  Redirect URI platform type:   Web
-  Redirect URI:                 http://127.0.0.1:56789/oauth/callback
-
-─────────────────────────────────────────
-GITHUB
-─────────────────────────────────────────
-  App name:        NavioBrowser
-  Homepage URL:    http://localhost
-  Callback URL:    http://127.0.0.1:56789/oauth/callback
-
-─────────────────────────────────────────
-DROPBOX
-─────────────────────────────────────────
-  App name:        NavioBrowser
-  Access type:     Scoped access
-  Access level:    Full Dropbox
-  Redirect URI:    http://127.0.0.1:56789/oauth/callback
-
-─────────────────────────────────────────
-SLACK
-─────────────────────────────────────────
-  App name:        NavioBrowser
-  Redirect URL:    http://127.0.0.1:56789/oauth/callback
-  Scopes:          channels:read, search:read, users:read
-
-─────────────────────────────────────────
-NOTION
-─────────────────────────────────────────
-  Integration name:   NavioBrowser
-  Integration type:   Public
-  Redirect URI:       http://127.0.0.1:56789/oauth/callback
-
-─────────────────────────────────────────
-RULES FOR USING THESE VALUES:
-─────────────────────────────────────────
-1. NEVER ask the user for any value listed above — fill it in directly.
-2. If a form field matches one of these values, type it in without prompting.
-3. If the user has already provided their email earlier in the conversation, use it.
-   Only ask for email if it has not been mentioned at all in the conversation.
-4. If you are unsure which email to use for a support/contact field, use the last
-   email address the user mentioned in this conversation.
-5. For Google credential creation: if the Application type dropdown shows "Web application"
-   as the default or currently selected — CHANGE IT to "Desktop app" before filling anything else.
-   Web application + this redirect URI will fail silently.
-
-══════════════════════════════════════════
-DOCS-FIRST RESEARCH — SETUP & CONFIGURATION TASKS
-══════════════════════════════════════════
-When the user asks to set up any developer console, OAuth integration, API key, or configuration
-for ANY third-party service, ALWAYS follow this sequence — never jump straight to the console:
-
-STEP 1 — ANNOUNCE (say this to the user before acting):
-"🔍 Checking the latest official docs for [service] ([current month + year]) before we start to make sure the steps are current..."
-
-STEP 2 — READ THE OFFICIAL DOCS FIRST:
-Navigate to the official documentation page for the service and read its content.
-After reading, extract the correct, current steps from what you actually see on the page.
-Official docs by service:
-- Google OAuth / Cloud Console:  https://developers.google.com/identity/protocols/oauth2/native-app
-- Microsoft / Azure:             https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app
-- GitHub OAuth Apps:             https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app
-- Dropbox API:                   https://www.dropbox.com/developers/documentation/http/documentation
-- Slack API:                     https://api.slack.com/start/building
-- Notion API:                    https://developers.notion.com/docs/getting-started
-- Any unknown service:           search "SERVICENAME developer OAuth setup documentation [current year]"
-
-STEP 3 — PRESENT VERIFIED STEPS (say this to the user after reading docs):
-"✓ Docs verified ([current month/year]). Here are the complete steps I'll follow:"
-Then list ALL steps numbered from start to finish, including EVERY step required.
-
-CRITICAL — ALWAYS include these final closing steps that bring it back to Navio:
-- For OAuth connectors: "Copy the Client ID" → "Open Navio Settings → Connected Apps → paste the Client ID → Save → click Sign in with [service]"
-- For API key connectors: "Copy the API key" → "Open Navio Settings → paste the API key → Save"
-Never stop the step list at the developer console — always close the loop back into Navio.
-
-STEP 4 — EXECUTE:
-After presenting all steps, execute them one by one using the page snapshot elements to find
-the exact field labels and button text on screen.
-
-WHEN THIS RULE APPLIES:
-- "Set up Google OAuth", "connect Dropbox", "add my Slack", "configure GitHub"
-- "How do I get an API key for [service]"
-- Any task involving developer consoles, admin dashboards, or credential creation
-- Any time the task requires creating a Client ID, App Key, secret, or token
-
-WHY THIS EXISTS:
-Developer console UIs change frequently. Reading the official docs first means you always
-use the latest correct steps — never outdated instructions from training data.
-
-══════════════════════════════════════════
-FORM FILLING — HOW TO TYPE INTO ANY FIELD
-══════════════════════════════════════════
-You CAN and MUST fill in form fields without asking permission.
-When you see a form, fill it. NEVER ask "shall I fill this in?" or "can I type into the fields?" — just do it.
-
-HOW TO TARGET FIELDS — use the field's visible label or placeholder text:
-  type:text=Project name:NavioBrowser
-  type:text=App name:Navio Browser
-  type:text=Support email:user@example.com
-  type:text=Authorized redirect URIs:http://127.0.0.1:56789/oauth/callback
-  type:text=Homepage URL:http://localhost
-  type:aria=Search:my search query
-
-The part after "text=" must match the field's aria-label, placeholder, or visible name attribute.
-If the exact label doesn't work, try a shorter keyword from it (e.g. "name" instead of "Project name").
-
-DROPDOWNS / SELECT FIELDS:
-- First click the dropdown to open it: click:text=Select...  (or whatever the dropdown shows)
-- Then click the option you want:     click:text=Desktop app
-- Example for "Application type" → Desktop app:
-    click:text=Application type
-    click:text=Desktop app
-
-CHECKBOXES & RADIO BUTTONS:
-- Use click:text=LABEL to select them
-- Example: click:text=External   (to select the External radio button on OAuth consent screen)
-- Example: click:text=Full Dropbox  (to select a radio option)
-
-AFTER FILLING EACH FIELD:
-- Use pressKey:Tab to move to the next field when needed
-- After all fields are filled, always click the Save / Continue / Create / Next button
-
-MULTI-STEP FORMS (like Google Cloud OAuth consent screen wizard):
-- Fill every visible field on the current page/step
-- Click Continue or Next to advance
-- Wait for the next step to load, then fill those fields too
-- Do NOT skip steps — complete every section of the wizard
-
-WHEN A FIELD ISN'T FOUND:
-- Check the page snapshot elements list for the exact aria-label of the field
-- Try a shorter version of the label: if "Support email address" fails, try "email"
-- Try the placeholder text visible inside the empty field
-- If still not found after 2 attempts, report the exact field name you tried and what was on screen
-
-NEVER:
-- Ask "can I fill in the fields?" — just do it
-- Leave required fields empty when you have the data needed
-- Skip form steps or wizard pages
-- Use CSS class selectors for form fields — always use text= or aria= with the visible label
-
-══════════════════════════════════════════
-SETUP TASK — STEP VERIFICATION & CONTINUOUS EXECUTION
-══════════════════════════════════════════
-When executing any multi-step setup task (developer console, OAuth, API keys, etc.)
-you must VERIFY each step succeeded before moving on, and NEVER stop mid-flow.
-
-VERIFICATION RULES — check the page content after every action to confirm success:
-
-Google API enabling:
-  ✓ SUCCESS signals: page shows "API enabled", a "Disable API" or "Manage" button, or
-    lands on the API's management/overview dashboard. The "Enable" button is GONE.
-  ✗ INCOMPLETE: "Enable" button is still visible → click it again or check for errors.
-  ⚠️ IMPORTANT: Enabling an API alone is NOT a complete step if credentials are still needed.
-    After enabling, check whether the page prompts "Create credentials" — if so, that is
-    the mandatory next action before this step is truly done.
-
-OAuth consent screen wizard (Google):
-  ✓ SUCCESS signals: page advances to next wizard section, shows "Saved" confirmation,
-    or the section shows a green checkmark / "Complete" status.
-  ✗ INCOMPLETE: Still on the same section with no confirmation → scroll down, check for
-    missing required fields, fill them, then click Save and Continue.
-
-Credential / Client ID creation:
-  ✓ SUCCESS signals: a Client ID string (format: numbers-letters.apps.googleusercontent.com)
-    is NOW VISIBLE on the page. Extract it and show it to the user clearly.
-  ✗ INCOMPLETE: No Client ID visible yet → check if still on a form step, fill remaining
-    fields, and click Create.
-
-App registration / OAuth app creation (GitHub, Azure, Dropbox, Slack, Notion):
-  ✓ SUCCESS signals: page shows the app's detail page with a Client ID or App Key field.
-  ✗ INCOMPLETE: Still on the creation form → fill all fields and submit.
-
-Form save / settings page:
-  ✓ SUCCESS signals: "Saved", "Changes saved", confirmation banner, or page advances.
-  ✗ INCOMPLETE: No confirmation and same page → scroll to check for validation errors,
-    fix them, and resubmit.
-
-CONTINUATION RULES — NEVER stop mid-flow:
-- After VERIFYING a step succeeded → IMMEDIATELY output the next <navio-actions> block.
-  Do NOT write a progress report. Do NOT wait for the user. Just continue.
-- After VERIFYING a step FAILED or is incomplete → report exactly what you see on screen,
-  what you expected, and either retry or ask the user what to do.
-- NEVER declare a step "done" just because you clicked something — confirm the page response.
-- NEVER output plain text and wait for user input mid-flow unless you hit a genuine blocker
-  (unexpected login required, CAPTCHA, error message, or state you don't recognize).
-- The entire task is NOT done until the credential or key has been COPIED and PASTED into
-  Navio Settings and the user can click "Sign in" or "Connect". Keep going until then.
-
-EXAMPLE — correct flow after clicking "Enable" on Gmail API:
-  Page now shows: Gmail API management dashboard with "Disable" button visible.
-  → ✓ Gmail API enabled. Continuing to next API...
-  <navio-actions>
-  navigate:https://console.cloud.google.com/apis/library/drive.googleapis.com
-  </navio-actions>
-
-EXAMPLE — correct flow after credential creation:
-  Page shows: "OAuth client created — Your Client ID: 12345.apps.googleusercontent.com"
-  → ✓ Client ID obtained. Returning to Navio to complete setup.
-  <navio-actions>
-  navigate:navio://settings
-  </navio-actions>
-  (then type the Client ID into the Google Client ID field)
-
-══════════════════════════════════════════
-MEMORY
-══════════════════════════════════════════
-When you learn important facts about the user (name, job, preferences, location, tools they use, etc.), save them by ending your response with:
-<navio-memory>
-save:User is a software developer
-save:User prefers Python
-</navio-memory>
-Only save facts genuinely useful for future sessions. Never save sensitive data. Omit this block if nothing new was learned.`;
+// ── Authoritative system prompt (file: electron/navio-system-prompt.txt)
+const NAVIO_SYSTEM_PROMPT = fs.readFileSync(path.join(__dirname, 'navio-system-prompt.txt'), 'utf8');
 
 // ── Markdown → HTML converter (used for Google Docs rich-text paste) ─────────
 // Converts simple markdown (headings, bold, italic, bullets, hr) to HTML so that
@@ -873,12 +260,36 @@ function saveMemory(data) {
   fs.writeFileSync(memoryPath(), JSON.stringify(data, null, 2), 'utf8');
 }
 
+/** Drop facts older than memoryRetentionDays (from config); 0 = keep forever. */
+function pruneMemoryByRetention() {
+  try {
+    const cfg = loadConfig();
+    const days = Number(cfg.memoryRetentionDays) || 0;
+    if (days <= 0) return;
+    const mem = loadMemory();
+    const facts = mem.facts || [];
+    const cutoff = Date.now() - days * 86400000;
+    const next = facts.filter((f) => {
+      const t = new Date(f.createdAt || f.timestamp || 0).getTime();
+      if (!t || Number.isNaN(t)) return true;
+      return t >= cutoff;
+    });
+    if (next.length !== facts.length) {
+      mem.facts = next;
+      saveMemory(mem);
+    }
+  } catch (e) {
+    console.warn('pruneMemoryByRetention', e.message);
+  }
+}
+
 function buildMemoryBlock() {
   try {
+    pruneMemoryByRetention();
     const mem = loadMemory();
     if (!mem.facts || mem.facts.length === 0) return '';
     return '\n\nBROWSER MEMORY (remembered facts about this user — use naturally):\n' +
-      mem.facts.map(f => `- ${f.content}`).join('\n');
+      mem.facts.map((f) => `- ${f.content}${f.sourceUrl ? ` (source: ${f.sourceUrl})` : ''}`).join('\n');
   } catch { return ''; }
 }
 
@@ -912,8 +323,22 @@ function extractAndSaveMemory(content) {
   if (!mem.facts) mem.facts = [];
   let changed = false;
   for (const fact of facts) {
-    if (!mem.facts.find(f => f.content === fact)) {
-      mem.facts.push({ id: Date.now() + Math.random(), content: fact, type: 'auto', createdAt: new Date().toISOString() });
+    let content = fact;
+    let sourceUrl = '';
+    const urlM = String(fact).match(/\|\s*url\s*=\s*(\S+)/i);
+    if (urlM) {
+      content = String(fact).replace(/\|\s*url\s*=\s*\S+/i, '').trim();
+      sourceUrl = urlM[1];
+    }
+    if (!mem.facts.find(f => f.content === content)) {
+      mem.facts.push({
+        id: Date.now() + Math.random(),
+        content,
+        type: 'auto',
+        category: 'general',
+        sourceUrl: sourceUrl || undefined,
+        createdAt: new Date().toISOString()
+      });
       changed = true;
     }
   }
@@ -921,7 +346,10 @@ function extractAndSaveMemory(content) {
 }
 
 // ── Memory IPC ───────────────────────────────────────────────────────────────
-ipcMain.handle('memory-get', () => loadMemory());
+ipcMain.handle('memory-get', () => {
+  pruneMemoryByRetention();
+  return loadMemory();
+});
 ipcMain.handle('memory-add', (_, { content }) => {
   const mem = loadMemory();
   if (!mem.facts) mem.facts = [];
@@ -939,6 +367,20 @@ ipcMain.handle('memory-delete', (_, { id }) => {
 ipcMain.handle('memory-clear', () => {
   saveMemory({ facts: [] });
   return { ok: true };
+});
+
+ipcMain.handle('memory-search', (_, { query }) => {
+  const q = (query || '').toLowerCase().trim();
+  pruneMemoryByRetention();
+  const mem = loadMemory();
+  const facts = mem.facts || [];
+  if (!q) return { facts };
+  return {
+    facts: facts.filter((f) => {
+      const blob = `${f.content || ''} ${f.sourceUrl || ''} ${f.category || ''}`.toLowerCase();
+      return blob.includes(q);
+    })
+  };
 });
 
 // Replaces ONLY the first system message with NAVIO_SYSTEM_PROMPT + memory + profile.
@@ -3718,6 +3160,10 @@ ipcMain.handle('show-webview-context-menu', (event, { webContentsId, x, y, param
     menu.append(new MenuItem({ label: 'Back', click: () => { if (wc.canGoBack()) wc.goBack(); }, enabled: wc.canGoBack() }));
     menu.append(new MenuItem({ label: 'Forward', click: () => { if (wc.canGoForward()) wc.goForward(); }, enabled: wc.canGoForward() }));
     menu.append(new MenuItem({ label: 'Reload', click: () => wc.reload() }));
+    menu.append(new MenuItem({
+      label: 'Print…',
+      click: () => wc.print({ silent: false, printBackground: true })
+    }));
     menu.append(new MenuItem({ type: 'separator' }));
     menu.append(new MenuItem({ label: 'Inspect Element', click: () => wc.openDevTools({ mode: 'detach' }) }));
 
@@ -3726,6 +3172,13 @@ ipcMain.handle('show-webview-context-menu', (event, { webContentsId, x, y, param
     console.error('context-menu error:', e.message);
   }
 });
+
+registerBookmarksIpc(ipcMain, { app, loadConfig });
+registerHistoryIpc(ipcMain, { app });
+registerWebviewActionsIpc(ipcMain, { getMainWindow: () => mainWindow });
+registerExtensionsIpc(ipcMain, { app, getMainWindow: () => mainWindow });
+registerSyncIpc(ipcMain, { app, loadConfig });
+registerProfilesIpc(ipcMain, { profilesBase: NAVIO_PROFILES_BASE });
 
 app.whenReady().then(async () => {
   console.log('[navio] ✅ main.js v7 loaded — system prompt is injected from main process');
@@ -3750,270 +3203,25 @@ app.whenReady().then(async () => {
 
   createMainWindow();
 
-  // Set up the persist:navio session used by all webview tabs
-  const navioSession = session.fromPartition('persist:navio');
+  setupSessionInfrastructure({
+    app,
+    getMainWindow: () => mainWindow,
+    loadConfig,
+    saveConfig
+  });
 
-  // Inject the webview preload into every page loaded in persist:navio webviews.
-  // This enables password detection, autofill, and future in-page features
-  // without requiring a <preload> attribute on each individual <webview> element.
-  navioSession.setPreloads([path.join(__dirname, 'webview-preload.js')]);
+  registerAgentPlanIpc(ipcMain, { store });
+  await loadPersistedExtensionsOnStartup(app);
 
-  // ── Apply UA + header fixes to a session ─────────────────────────────────
-  // Shared helper so both the main webview session AND the default session
-  // (used by OAuth popup BrowserWindows) get identical treatment.
-  function applySessionFixes(ses) {
-    // Strip "Electron/x.x.x" from the UA — Google and others detect it and
-    // block pages or disable JavaScript features (causing dead buttons).
-    const ua = ses.getUserAgent()
-      .replace(/\s*Electron\/[\d.]+/g, '')
-      .replace(/\s*NavioBrowser\/[\d.]+/g, '')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
-    ses.setUserAgent(ua);
-
-    // Strip security headers that cause ERR_BLOCKED_BY_RESPONSE when Google and
-    // other sites are loaded directly in Electron webviews.
-    ses.webRequest.onHeadersReceived({ urls: ['*://*/*'] }, (details, callback) => {
-      const headers = details.responseHeaders || {};
-      const drop = [
-        'x-frame-options',
-        'cross-origin-opener-policy',
-        'cross-origin-opener-policy-report-only',
-        'cross-origin-embedder-policy',
-        'cross-origin-embedder-policy-report-only',
-        'cross-origin-resource-policy',
-      ];
-      for (const key of Object.keys(headers)) {
-        if (drop.includes(key.toLowerCase())) delete headers[key];
-        // Strip frame-ancestors directive from CSP without removing the entire header
-        if (key.toLowerCase() === 'content-security-policy') {
-          headers[key] = headers[key].map(v =>
-            v.replace(/frame-ancestors[^;]*(;|$)/gi, '').trim()
-          );
-        }
-      }
-      callback({ responseHeaders: headers });
-    });
-  }
-
-  // Apply to the webview tab session
-  applySessionFixes(navioSession);
-
-  // Apply to the default session — this is what OAuth popup BrowserWindows use.
-  // Without this, Google's sign-in page loads but buttons (e.g. Next) are dead
-  // because Google detects Electron via UA and disables its JS handlers.
-  applySessionFixes(session.defaultSession);
-
-  // ── Downloads ─────────────────────────────────────────────────────────────
-  // Without a will-download handler Electron silently drops every download.
-  // We auto-save to the OS downloads folder and push progress events to the UI.
-  function handleDownloads(ses) {
-    ses.on('will-download', (event, item) => {
-      try {
-        // --- Sanitize filename ---
-        // Content-Disposition headers often include timestamps like
-        // "report_2024-01-15T10:23:45.pdf". Colons (:) and other chars are
-        // illegal on Windows; setSavePath silently fails and cancels the download.
-        let filename = item.getFilename() || 'download';
-        filename = filename
-          .replace(/[\\/:*?"<>|\x00-\x1f]/g, '_')  // replace Windows-invalid chars
-          .replace(/\.{2,}/g, '.')                   // collapse consecutive dots
-          .replace(/^[\s.]+|[\s.]+$/g, '')           // strip leading/trailing dots & spaces
-          .slice(0, 200)                              // guard against MAX_PATH overflows
-          .trim();
-        if (!filename) filename = 'download';
-
-        const downloadsDir = app.getPath('downloads');
-        const ext  = path.extname(filename);
-        const base = path.basename(filename, ext) || 'download';
-
-        // --- Handle filename conflicts ---
-        // setSavePath with a path that already exists will fail or corrupt the file.
-        let savePath = path.join(downloadsDir, filename);
-        let counter  = 1;
-        while (fs.existsSync(savePath) && counter <= 99) {
-          savePath = path.join(downloadsDir, `${base} (${counter})${ext}`);
-          counter++;
-        }
-
-        item.setSavePath(savePath);
-
-        const displayName = path.basename(savePath);
-        console.log(`[navio] Download started: ${displayName} → ${savePath}`);
-
-        mainWindow?.webContents.send('download-started', {
-          filename: displayName,
-          savePath,
-          total: item.getTotalBytes()
-        });
-
-        item.on('updated', (_, state) => {
-          mainWindow?.webContents.send('download-progress', {
-            filename: displayName,
-            state,
-            received: item.getReceivedBytes(),
-            total:    item.getTotalBytes()
-          });
-        });
-
-        item.once('done', (_, state) => {
-          console.log(`[navio] Download ${state}: ${displayName}`);
-          mainWindow?.webContents.send('download-done', { filename: displayName, savePath, state });
-          // Reveal the file in Explorer/Finder so the user can always find it.
-          if (state === 'completed') {
-            shell.showItemInFolder(savePath);
-          }
-        });
-
-      } catch (err) {
-        // Log the error — without this, download failures are completely invisible.
-        console.error('[navio] Download handler error:', err.message, err.stack);
-      }
-    });
-  }
-  handleDownloads(navioSession);
-  handleDownloads(session.defaultSession);
-
-  // ── Certificate errors ────────────────────────────────────────────────────
-  // Electron rejects self-signed and corporate proxy certificates by default.
-  // We allow them (matching real-browser "proceed anyway" behaviour) and notify
-  // the UI so the user can see a warning toast for the affected hostname.
-  function handleCertErrors(ses) {
-    ses.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
-      event.preventDefault();
-      callback(true);
-      try {
-        const hostname = new URL(url).hostname;
-        mainWindow?.webContents.send('certificate-warning', { hostname, error });
-      } catch {}
-    });
-  }
-  handleCertErrors(navioSession);
-  handleCertErrors(session.defaultSession);
-
-  // ── External protocols ────────────────────────────────────────────────────
-  // mailto:, tel:, sms: etc. must open the OS default handler, not load in
-  // a webview tab.  The renderer calls this IPC when it detects such a URL.
-  ipcMain.handle('open-external', async (_, url) => {
+  if (app.isPackaged) {
     try {
-      if (/^(mailto|tel|sms|callto|wtai|market|ms-windows-store):/i.test(url)) {
-        await shell.openExternal(url);
-        return { ok: true };
-      }
-      return { error: 'Protocol not permitted for external opening.' };
+      const { autoUpdater } = require('electron-updater');
+      autoUpdater.autoDownload = false;
+      autoUpdater.checkForUpdatesAndNotify().catch(() => {});
     } catch (e) {
-      return { error: e.message };
+      console.warn('[navio] electron-updater not available:', e.message);
     }
-  });
-
-  // Allow all permission requests from web content (camera, mic, notifications, etc.)
-  navioSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    callback(true);
-  });
-
-  // Allow all permission checks (Electron 15+)
-  if (typeof navioSession.setPermissionCheckHandler === 'function') {
-    navioSession.setPermissionCheckHandler(() => true);
   }
-
-  // ── Ad Blocker ────────────────────────────────────────────────────────────
-  // Comprehensive domain/pattern list. Matched as substrings of the full URL.
-  const AD_BLOCK_PATTERNS = [
-    // Core ad networks
-    'doubleclick.net','googlesyndication.com','adservice.google',
-    'googleadservices.com','googletagservices.com','tpc.googlesyndication.com',
-    'pagead2.googlesyndication.com','fundingchoicesmessages.google.com',
-    'amazon-adsystem.com','assoc-amazon.com',
-    'ads.yahoo.com','gemini.yahoo.com','advertising.yahoo.com',
-    'syndication.twitter.com','ads.twitter.com',
-    'ads.linkedin.com','snap.licdn.com',
-    // Tracking pixels & data brokers
-    'facebook.com/tr','connect.facebook.net','analytics.facebook.com',
-    'scorecardresearch.com','quantserve.com','quantcast.com',
-    // DSP / SSP / exchanges
-    'adnxs.com','rubiconproject.com','pubmatic.com',
-    'openx.net','openx.com','casalemedia.com',
-    'criteo.com','criteo.net',
-    'bidswitch.net','sharethrough.com','triplelift.com',
-    'smartadserver.com','smaato.net',
-    'spotxchange.com','spotx.tv',
-    'teads.tv','teads.com',
-    'yieldmo.com','zedo.com','undertone.com','unrulymedia.com',
-    'media.net','outbrain.com','outbrainimg.com',
-    'taboola.com','revcontent.com','mgid.com',
-    'propellerads.com','propellerclick.com',
-    'adzerk.net','adzerk.com',
-    'advertising.com','adtech.de','adform.net',
-    'moatads.com','adsafeprotected.com',
-    'adcolony.com','appsflyer.com','adjust.com','adjust.io',
-    'mopub.com','chartboost.com',
-    'adrollapp.com','buysellads.com','buysellads.net',
-    'pagefair.com',
-    // Analytics / session recording
-    'hotjar.com','fullstory.com','mouseflow.com','crazyegg.com',
-    'mixpanel.com','amplitude.com',
-    'heap.com','heapanalytics.com',
-    // Pop-up / redirect networks
-    'popads.net','popcash.net','exoclick.com',
-    'trafficjunky.net','trafficholder.com',
-    // Malvertising / low-quality
-    'cdnwidget.com','adnium.com','justpremium.com',
-  ];
-
-  const cfg0 = loadConfig();
-  let adBlockEnabled = cfg0.adBlockEnabled !== false; // default ON
-  let adBlockCount   = 0;
-  let adBlockBytes   = 0; // estimated bytes saved (avg ~40 KB per blocked request)
-  const AD_AVG_BYTES = 40 * 1024;
-
-  navioSession.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
-    if (adBlockEnabled) {
-      const url = details.url;
-      if (AD_BLOCK_PATTERNS.some(p => url.includes(p))) {
-        adBlockCount++;
-        adBlockBytes += AD_AVG_BYTES;
-        callback({ cancel: true });
-        return;
-      }
-    }
-    callback({});
-  });
-
-  ipcMain.handle('set-ad-blocker', async (_, { enabled }) => {
-    adBlockEnabled = !!enabled;
-    saveConfig({ adBlockEnabled: adBlockEnabled });
-    return { ok: true, enabled: adBlockEnabled };
-  });
-
-  ipcMain.handle('get-ad-block-stats', () => ({
-    enabled: adBlockEnabled,
-    blocked: adBlockCount,
-    bytesSaved: adBlockBytes,
-    domains: AD_BLOCK_PATTERNS.length
-  }));
-
-  globalShortcut.register('F12', () => {
-    mainWindow?.webContents.openDevTools({ mode: 'detach' });
-  });
-
-  globalShortcut.register('CommandOrControl+T', () => {
-    mainWindow?.webContents.send('shortcut', 'new-tab');
-  });
-  globalShortcut.register('CommandOrControl+W', () => {
-    mainWindow?.webContents.send('shortcut', 'close-tab');
-  });
-  globalShortcut.register('CommandOrControl+L', () => {
-    mainWindow?.webContents.send('shortcut', 'focus-url');
-  });
-  globalShortcut.register('CommandOrControl+Shift+A', () => {
-    mainWindow?.webContents.send('shortcut', 'toggle-assistant');
-  });
-  globalShortcut.register('CommandOrControl+Shift+C', () => {
-    mainWindow?.webContents.send('shortcut', 'toggle-connectors');
-  });
-  globalShortcut.register('CommandOrControl+K', () => {
-    mainWindow?.webContents.send('shortcut', 'command-palette');
-  });
 });
 
 app.on('window-all-closed', () => {

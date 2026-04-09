@@ -935,6 +935,10 @@ PERSONALITY:
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               Add step
             </button>
+            <div class="navio-plan-agent-footer">
+              <button type="button" class="navio-plan-run-agent">Run safe steps (scroll / back / forward / wait)</button>
+            </div>
+            <div class="navio-plan-agent-progress" hidden></div>
           </div>`;
         } else if (type === 'TASK_APPROVE') {
           card = `<div class="tc-approval-gate" data-approval-id="${params}">
@@ -1138,6 +1142,77 @@ PERSONALITY:
         // Auto-open edit on the new step's text
         setTimeout(() => newStep.querySelector('.navio-plan-text')?.click(), 30);
       });
+    }
+
+    const runAgentBtn = card.querySelector('.navio-plan-run-agent');
+    if (runAgentBtn) {
+      runAgentBtn.addEventListener('click', () => this._runAgentPlanFromCard(card));
+    }
+  }
+
+  _parsePlanStepLine(text) {
+    const raw = (text || '').trim();
+    if (!raw) return null;
+    const t = raw.toLowerCase();
+    if (/\bgo\s+back\b|^back$/.test(t)) return { action: 'goBack', params: {} };
+    if (/\bgo\s+forward\b|^forward$/.test(t)) return { action: 'goForward', params: {} };
+    if (/\bscroll\s+up\b|\bup\b/.test(t) && !/\bscroll\s+down\b/.test(t)) {
+      return { action: 'scroll', params: { direction: 'up' } };
+    }
+    if (/\bscroll\b|\bdown\b/.test(t)) {
+      return { action: 'scroll', params: { direction: 'down' } };
+    }
+    const sec = t.match(/wait\s*(?:for\s*)?(\d+)\s*(?:s|sec|secs|seconds)\b/);
+    if (sec) return { action: 'wait', params: { ms: Math.min(60000, parseInt(sec[1], 10) * 1000) } };
+    const ms = t.match(/wait\s*(?:for\s*)?(\d+)\s*(?:ms)?\b/);
+    if (ms) return { action: 'wait', params: { ms: Math.min(60000, parseInt(ms[1], 10)) } };
+    if (/\bwait\b|pause|sleep/.test(t)) return { action: 'wait', params: { ms: 800 } };
+    return null;
+  }
+
+  async _runAgentPlanFromCard(card) {
+    const texts = Array.from(card.querySelectorAll('.navio-plan-text'))
+      .map((el) => el.textContent.trim())
+      .filter(Boolean);
+    const steps = [];
+    for (const line of texts) {
+      const a = this._parsePlanStepLine(line);
+      if (a) steps.push(a);
+    }
+    const prog = card.querySelector('.navio-plan-agent-progress');
+    const showProg = (msg) => {
+      if (!prog) return;
+      prog.hidden = false;
+      prog.textContent = msg;
+    };
+    if (!steps.length) {
+      showProg('No runnable steps — describe steps using scroll, go back, go forward, or wait.');
+      if (typeof _showAppToast === 'function') {
+        _showAppToast('Add steps like “Scroll down” or “Wait 2 seconds”.', 'warning');
+      }
+      return;
+    }
+    const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
+    if (!wv || typeof wv.getWebContentsId !== 'function') {
+      showProg('No active page.');
+      return;
+    }
+    const webContentsId = wv.getWebContentsId();
+    showProg('Running…');
+    try {
+      const r = await window.navio.agentRunPlan({
+        webContentsId,
+        steps,
+        userConfirmed: true
+      });
+      if (!r.ok) {
+        showProg(`Stopped: ${r.error || 'error'}`);
+        return;
+      }
+      const lines = (r.results || []).map((x, i) => `${i + 1}. ${x.action}${x.error ? ' — ' + x.error : ' ✓'}`);
+      showProg(lines.join('\n') || 'Done.');
+    } catch (e) {
+      showProg(String(e.message || e));
     }
   }
 

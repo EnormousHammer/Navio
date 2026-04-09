@@ -45,6 +45,7 @@
     <button class="tab-strip-toggle" id="btn-tabstrip-toggle" title="Hide tab bar">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
     </button>
+    <div id="tab-strip-resize" class="tab-strip-resize" title="Drag to resize tab sidebar" aria-hidden="true"></div>
   </div>
 
   <!-- Show tab bar handle (visible when tab strip hidden) -->
@@ -69,6 +70,7 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
           </button>
         </div>
+        <div id="extension-toolbar" class="extension-toolbar" aria-label="Extension shortcuts"></div>
         <div class="url-bar-container">
           <div class="url-bar">
             <svg class="url-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -77,10 +79,16 @@
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
               Ask AI
             </button>
+            <button type="button" class="url-bookmark-star" id="btn-bookmark-page" title="Bookmark this page">☆</button>
+            <button type="button" class="url-bookmark-star" id="btn-bookmarks-manager" title="Manage bookmarks (Ctrl+Shift+B)">☰</button>
+            <span class="url-zoom-label" id="url-zoom-label" title="Zoom (Ctrl+Plus / Ctrl+Minus)"></span>
             <div class="url-ssl" id="url-ssl" title="Connection info"></div>
           </div>
         </div>
         <div class="nav-actions">
+          <button class="nav-btn" id="btn-downloads-drawer" title="Downloads">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
           <button class="nav-btn" id="btn-workspace" title="Workspace (projects &amp; tasks)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
           </button>
@@ -117,6 +125,56 @@
           </button>
         </div>
       </nav>
+
+      <div id="bookmark-bar" class="bookmark-bar" hidden></div>
+
+      <div id="find-in-page-bar" class="find-in-page-bar" hidden>
+        <span class="find-label">Find</span>
+        <input type="text" id="find-in-page-input" placeholder="Find in page…" autocomplete="off" />
+        <span id="find-in-page-status" class="find-status"></span>
+        <button type="button" class="find-btn" id="find-in-page-prev" title="Previous">‹</button>
+        <button type="button" class="find-btn" id="find-in-page-next" title="Next">›</button>
+        <button type="button" class="find-btn find-close" id="find-in-page-close" title="Close">×</button>
+      </div>
+
+      <div id="downloads-drawer" class="downloads-drawer" hidden>
+        <div class="downloads-drawer-head">Downloads</div>
+        <div id="downloads-drawer-list" class="downloads-drawer-list"></div>
+      </div>
+
+      <div id="history-overlay" class="shell-overlay" hidden>
+        <div class="shell-overlay-panel">
+          <div class="shell-overlay-head">
+            <h2>History</h2>
+            <button type="button" id="history-overlay-close" class="shell-overlay-x">×</button>
+          </div>
+          <input type="search" id="history-overlay-search" class="shell-overlay-search" placeholder="Search history…" />
+          <button type="button" id="history-overlay-clear" class="shell-overlay-danger">Clear all</button>
+          <div id="history-overlay-list" class="shell-overlay-list"></div>
+        </div>
+      </div>
+
+      <div id="bookmarks-overlay" class="shell-overlay" hidden>
+        <div class="shell-overlay-panel">
+          <div class="shell-overlay-head">
+            <h2>Bookmarks</h2>
+            <button type="button" id="bookmarks-overlay-close" class="shell-overlay-x">×</button>
+          </div>
+          <input type="search" id="bookmarks-overlay-search" class="shell-overlay-search" placeholder="Filter bookmarks…" />
+          <div id="bookmarks-overlay-list" class="shell-overlay-list"></div>
+        </div>
+      </div>
+
+      <div id="tab-search-overlay" class="shell-overlay" hidden>
+        <div class="shell-overlay-panel shell-overlay-panel-sm">
+          <div class="shell-overlay-head">
+            <h2>Tabs</h2>
+            <button type="button" id="tab-search-close" class="shell-overlay-x">×</button>
+          </div>
+          <input type="search" id="tab-search-input" class="shell-overlay-search" placeholder="Search open tabs…" />
+          <div id="tab-search-list" class="shell-overlay-list"></div>
+        </div>
+      </div>
 
       <!-- Password save prompt (shown below nav when a login form is submitted) -->
       <div id="pwd-save-bar" class="pwd-save-bar" hidden>
@@ -865,6 +923,17 @@
                 <input type="range" id="setting-assistant-width" min="300" max="560" step="20" value="420" aria-valuetext="">
               </div>
               <p class="settings-inline-hint">Applied when you save. The panel uses this width while open.</p>
+              <div class="setting-row">
+                <label for="setting-tab-layout">Tab layout</label>
+                <select id="setting-tab-layout">
+                  <option value="horizontal">Horizontal (top)</option>
+                  <option value="vertical">Vertical (left sidebar)</option>
+                </select>
+              </div>
+              <label class="setting-toggle-row">
+                <input type="checkbox" id="setting-bookmark-bar" checked>
+                <span>Show bookmark bar</span>
+              </label>
             </div>
           </div>
 
@@ -886,10 +955,39 @@
               </div>
             </div>
             <div class="settings-section">
+              <h3>Extensions (unpacked)</h3>
+              <p class="settings-inline-hint">Load Manifest V3 unpacked folders. Not all Chrome Web Store extensions work in Electron.</p>
+              <button type="button" class="btn btn-secondary" id="btn-ext-load-unpacked">Load unpacked extension…</button>
+              <div class="setting-row" style="margin-top:10px;flex-wrap:wrap;gap:8px;align-items:center">
+                <label for="ext-crx-id" class="settings-inline-hint" style="margin:0">Chrome Web Store ID</label>
+                <input type="text" id="ext-crx-id" placeholder="32-char extension id" spellcheck="false" autocomplete="off" style="max-width:220px;padding:6px 10px" />
+                <button type="button" class="btn btn-secondary" id="btn-ext-install-crx">Download &amp; install</button>
+              </div>
+              <div id="extensions-list-settings" class="extensions-list-settings"></div>
+            </div>
+            <div class="settings-section">
+              <h3>Profiles</h3>
+              <p class="settings-inline-hint">Each profile uses a separate data folder. Switching restarts Navio.</p>
+              <div id="profiles-list-settings" class="profiles-list-settings"></div>
+              <div class="setting-row" style="margin-top:10px;flex-wrap:wrap;gap:8px;align-items:center">
+                <input type="text" id="profile-new-id" placeholder="new-profile-id" spellcheck="false" autocomplete="off" style="max-width:180px;padding:6px 10px" />
+                <button type="button" class="btn btn-secondary" id="btn-profile-create">Create profile folder</button>
+              </div>
+            </div>
+            <div class="settings-section">
               <h3>Import (migration)</h3>
               <p class="settings-inline-hint">Detect Chromium-based profiles and import bookmarks JSON-side (same as onboarding). Full extension migration is not available yet — see docs/EXTENSIONS.md.</p>
               <button type="button" class="btn btn-secondary" id="btn-settings-import-scan">Scan browsers for import</button>
               <p class="settings-inline-hint" id="settings-import-scan-status" style="margin-top:8px;margin-bottom:0"></p>
+            </div>
+            <div class="settings-section">
+              <h3>Profile backup (sync)</h3>
+              <p class="settings-inline-hint">Export or import bookmarks + history. Optional passphrase encrypts the file.</p>
+              <div class="setting-row setting-row-actions">
+                <button type="button" class="btn btn-secondary" id="btn-sync-export">Export backup…</button>
+                <button type="button" class="btn btn-secondary" id="btn-sync-import">Import backup…</button>
+              </div>
+              <input type="password" id="sync-passphrase" placeholder="Optional passphrase (min 4 chars)" autocomplete="off" style="max-width:280px;margin-top:8px" />
             </div>
           </div>
 
@@ -922,12 +1020,23 @@
               <div class="settings-section">
                 <h3>Browser Memory</h3>
                 <p class="settings-inline-hint">Navio remembers facts about you across sessions and uses them to give more personalized answers. You can view, add, or delete any memory entry.</p>
+                <input type="search" id="memory-search-input" class="memory-input" placeholder="Search memories…" style="max-width:100%;margin-bottom:8px" />
                 <div id="memory-list" class="memory-list">
                   <div class="ntp-widget-loading"><span></span><span></span><span></span></div>
                 </div>
                 <div class="memory-add-row" style="margin-top:10px;display:flex;gap:8px">
                   <input type="text" id="memory-add-input" class="memory-input" placeholder="Add a memory (e.g. I prefer TypeScript)…" maxlength="200">
                   <button type="button" class="btn btn-secondary" id="memory-add-btn">Add</button>
+                </div>
+                <div class="setting-row" style="margin-top:10px">
+                  <label for="setting-memory-retention">Auto-delete memories older than</label>
+                  <select id="setting-memory-retention">
+                    <option value="0">Never</option>
+                    <option value="7">7 days</option>
+                    <option value="30">30 days</option>
+                    <option value="90">90 days</option>
+                    <option value="365">1 year</option>
+                  </select>
                 </div>
                 <button type="button" class="btn btn-secondary" id="memory-clear-btn" style="margin-top:8px;font-size:11px">Clear all memories</button>
               </div>
@@ -1221,6 +1330,7 @@
   <script src="js/launch-intro.js"></script>
   <script src="js/email-assistant.js"></script>
   <script src="js/tabs.js"></script>
+  <script src="js/ui-shell-extras.js"></script>
   <script src="js/assistant.js"></script>
   <script src="js/app.js"></script>
   <script src="js/command-palette.js"></script>

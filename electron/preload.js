@@ -145,5 +145,53 @@ contextBridge.exposeInMainWorld('navio', {
     const h = (_, d) => cb(d);
     ipcRenderer.on('certificate-warning', h);
     return () => ipcRenderer.removeListener('certificate-warning', h);
-  }
+  },
+
+  bookmarksGet: () => ipcRenderer.invoke('bookmarks-get'),
+  bookmarksAdd: (payload) => ipcRenderer.invoke('bookmarks-add', payload),
+  bookmarksUpdate: (payload) => ipcRenderer.invoke('bookmarks-update', payload),
+  bookmarksRemove: (id) => ipcRenderer.invoke('bookmarks-remove', { id }),
+  bookmarksReorder: (payload) => ipcRenderer.invoke('bookmarks-reorder', payload),
+  bookmarksMigrateImported: () => ipcRenderer.invoke('bookmarks-migrate-imported'),
+
+  historyGet: () => ipcRenderer.invoke('history-get'),
+  historyAdd: (payload) => ipcRenderer.invoke('history-add', payload),
+  historySearch: (query, limit) => ipcRenderer.invoke('history-search', { query, limit }),
+  historyRemove: (id) => ipcRenderer.invoke('history-remove', { id }),
+  historyClear: () => ipcRenderer.invoke('history-clear'),
+
+  webviewFindInPage: (webContentsId, text, options) =>
+    ipcRenderer.invoke('webview-find-in-page', { webContentsId, text, options }),
+  webviewStopFindInPage: (webContentsId, action) =>
+    ipcRenderer.invoke('webview-stop-find-in-page', { webContentsId, action }),
+  webviewPrint: (webContentsId) => ipcRenderer.invoke('webview-print', { webContentsId }),
+  webviewSetZoom: (webContentsId, factor) => ipcRenderer.invoke('webview-set-zoom', { webContentsId, factor }),
+  webviewGetZoom: (webContentsId) => ipcRenderer.invoke('webview-get-zoom', { webContentsId }),
+  onFoundInPageResult: (cb) => {
+    const h = (_, d) => cb(d);
+    ipcRenderer.on('found-in-page-result', h);
+    return () => ipcRenderer.removeListener('found-in-page-result', h);
+  },
+  windowSetFullscreen: (fullscreen) => ipcRenderer.invoke('window-set-fullscreen', { fullscreen }),
+  windowIsFullscreen: () => ipcRenderer.invoke('window-is-fullscreen'),
+
+  extensionsList: () => ipcRenderer.invoke('extensions-list'),
+  extensionsLoadUnpacked: () => ipcRenderer.invoke('extensions-load-unpacked'),
+  extensionsRemove: (extensionId) => ipcRenderer.invoke('extensions-remove', { extensionId }),
+  extensionsSetEnabled: (extensionId, enabled) =>
+    ipcRenderer.invoke('extensions-set-enabled', { extensionId, enabled }),
+  extensionsInstallCrxId: (extensionId) => ipcRenderer.invoke('extensions-install-crx-id', { extensionId }),
+  extensionsOpenPopup: (extensionId) => ipcRenderer.invoke('extensions-open-popup', { extensionId }),
+  extensionsOpenOptions: (extensionId) => ipcRenderer.invoke('extensions-open-options', { extensionId }),
+
+  memorySearch: (query) => ipcRenderer.invoke('memory-search', { query }),
+
+  agentRunPlan: (payload) => ipcRenderer.invoke('agent-run-plan', payload),
+
+  syncExportProfile: (opts) => ipcRenderer.invoke('sync-export-profile', opts || {}),
+  syncImportProfile: (opts) => ipcRenderer.invoke('sync-import-profile', opts || {}),
+
+  profilesList: () => ipcRenderer.invoke('profiles-list'),
+  profilesSetActive: (profileId) => ipcRenderer.invoke('profiles-set-active', { profileId }),
+  profilesCreate: (profileId) => ipcRenderer.invoke('profiles-create', { profileId })
 });

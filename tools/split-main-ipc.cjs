@@ -1,0 +1,12 @@
+'use strict';
+const fs = require('fs');
+const path = require('path');
+const mainPath = path.join(__dirname, '..', 'electron', 'main.js');
+const s = fs.readFileSync(mainPath, 'utf8');
+const lines = s.split(/\r?\n/);
+const head = lines.slice(0, 923).join('\n');
+const ipc = lines.slice(923, 3728).join('\n');
+const tail = lines.slice(3728).join('\n');
+const outIpc = path.join(__dirname, '..', 'electron', 'ipc-register-raw.js');
+fs.writeFileSync(outIpc, ipc);
+console.log('head lines', 923, 'ipc lines', 3728 - 923, 'tail lines', lines.length - 3728);
