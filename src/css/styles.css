@@ -2377,6 +2377,114 @@ body.tabstrip-hidden .tab-strip-show {
 }
 .message-content a:hover { border-color: var(--accent); }
 
+/* ── Email reference chip ──────────────────────────────────────────────────── */
+.email-ref-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.4;
+  vertical-align: middle;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  max-width: 100%;
+  position: relative;
+  user-select: none;
+}
+.email-ref-chip:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+}
+.email-ref-chip:active { transform: translateY(1px); }
+.email-ref-chip .erc-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+  opacity: 0.85;
+}
+.email-ref-chip .erc-subject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.email-ref-chip .erc-arrow {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  opacity: 0.7;
+  transition: opacity 0.15s, transform 0.15s;
+}
+.email-ref-chip:hover .erc-arrow {
+  opacity: 1;
+  transform: translateX(2px);
+  color: var(--accent);
+}
+
+/* ── Email chip hover tooltip ─────────────────────────────────────────────── */
+.email-chip-tooltip {
+  position: fixed;
+  z-index: 99999;
+  max-width: 320px;
+  background: var(--bg-elevated, #1e2130);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 10px 13px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.email-chip-tooltip.ect-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.ect-from {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary, #94a3b8);
+  margin-bottom: 5px;
+}
+.ect-from svg { flex-shrink: 0; opacity: 0.7; }
+.ect-snippet {
+  font-size: 12px;
+  color: var(--text-muted, #64748b);
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Light theme overrides for email chip */
+[data-theme="light"] .email-ref-chip {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: var(--text-primary);
+}
+[data-theme="light"] .email-ref-chip:hover {
+  background: rgba(0, 0, 0, 0.07);
+  border-color: rgba(0, 0, 0, 0.18);
+}
+[data-theme="light"] .email-chip-tooltip {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
+}
+[data-theme="light"] .ect-from { color: #475569; }
+[data-theme="light"] .ect-snippet { color: #64748b; }
+
 /* Typing indicator */
 .typing-indicator {
   display: flex;

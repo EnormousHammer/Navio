@@ -15,6 +15,7 @@ class AssistantManagerClass {
     this.conversationHistory = [];
     this._streamUnsubs = [];
     this._autoFollowCount = 0;
+    this._emailRefs = new Map();
 
     this.systemPrompt = `You are Navio, an intelligent AI assistant built into the Navio Browser. You help users browse the web, understand content, and automate tasks.
 
@@ -64,6 +65,13 @@ You are NOT allowed to click the Send button on any email service under ANY circ
 
 CONNECTED INTEGRATIONS:
 When [Connected integrations returned...] context appears in the system messages, use it to answer questions. Always cite which service the information came from (e.g. "According to Gmail…", "In Google Drive…", "Perplexity search found…"). If the context is relevant, prioritize it over general knowledge.
+
+GMAIL EMAIL CITATIONS:
+When Gmail emails are provided in context with URLs, cite each email subject as a markdown link: [Subject Line](gmail-url).
+Format email summaries as a structured list — one email per bullet — with the subject as a clickable link, sender below it, and a one-sentence summary of the content.
+Example format:
+- [Re: Q1 Invoice Follow-up](https://mail.google.com/...) — From: John Smith
+  Confirming receipt of invoice and requesting a revised copy by Friday.
 
 PERSONALITY:
 - Intelligent, modern, concise. Think Perplexity meets a skilled browser agent.
@@ -827,6 +835,24 @@ PERSONALITY:
     // ── 9. Links ──────────────────────────────────────────────────────────────
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
 
+    // ── 9b. Gmail links → professional email reference chips ─────────────────
+    // Matches links pointing to mail.google.com and replaces them with rich cards
+    html = html.replace(
+      /<a\s+href="(https:\/\/mail\.google\.com\/mail\/u\/\d+\/#\w+\/([^"]+))"[^>]*>([^<]*)<\/a>/g,
+      (_, url, msgId, subject) => {
+        const ref = this._emailRefs?.get(msgId) || {};
+        const safeUrl = url.replace(/"/g, '&quot;');
+        const safeSubject = (subject || ref.subject || '').replace(/"/g, '&quot;');
+        const safeFrom = (ref.from || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const safeSnippet = (ref.snippet || '').replace(/"/g, '&quot;').slice(0, 150);
+        return `<span class="email-ref-chip" data-url="${safeUrl}" data-from="${safeFrom}" data-snippet="${safeSnippet}" role="button" tabindex="0" title="Open email">`
+          + `<svg class="erc-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0 1.1.9 2 2 2z"/><polyline points="22,6 12,13 2,6"/></svg>`
+          + `<span class="erc-subject">${subject || ref.subject || '(no subject)'}</span>`
+          + `<svg class="erc-arrow" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`
+          + `</span>`;
+      }
+    );
+
     // ── 10. Unordered lists ───────────────────────────────────────────────────
     html = html.replace(/^[ \t]*[-•*] (.+)$/gm, '<li>$1</li>');
     html = html.replace(/(<li>[\s\S]*?<\/li>)(\n(?!<li>)|$)/g, '$1\n');
@@ -1116,6 +1142,55 @@ PERSONALITY:
   }
 
   async _wireActions(contentEl) {
+    // ── Wire email reference chips ────────────────────────────────────────
+    contentEl.querySelectorAll('.email-ref-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const url = chip.dataset.url;
+        if (!url) return;
+        if (typeof TabManager !== 'undefined' && typeof TabManager.navigateActive === 'function') {
+          TabManager.navigateActive(url);
+        } else {
+          window.open(url, '_blank');
+        }
+      });
+      chip.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); chip.click(); }
+      });
+
+      const from = chip.dataset.from;
+      const snippet = chip.dataset.snippet;
+      if (!from && !snippet) return;
+
+      chip.addEventListener('mouseenter', () => {
+        const existing = document.getElementById('email-chip-tooltip');
+        if (existing) existing.remove();
+        const tip = document.createElement('div');
+        tip.id = 'email-chip-tooltip';
+        tip.className = 'email-chip-tooltip';
+        if (from) tip.innerHTML += `<div class="ect-from"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>${from.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span></div>`;
+        if (snippet) tip.innerHTML += `<div class="ect-snippet">${snippet.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+        document.body.appendChild(tip);
+        chip._tooltip = tip;
+        requestAnimationFrame(() => {
+          const chipRect = chip.getBoundingClientRect();
+          const tipH = tip.offsetHeight;
+          const tipW = tip.offsetWidth;
+          let top = chipRect.top - tipH - 8;
+          let left = chipRect.left;
+          if (top < 8) top = chipRect.bottom + 8;
+          if (left + tipW > window.innerWidth - 8) left = window.innerWidth - tipW - 8;
+          if (left < 8) left = 8;
+          tip.style.top = top + 'px';
+          tip.style.left = left + 'px';
+          tip.classList.add('ect-visible');
+        });
+      });
+      chip.addEventListener('mouseleave', () => {
+        chip._tooltip?.remove();
+        delete chip._tooltip;
+      });
+    });
+
     // ── Wire plan cards ──────────────────────────────────────────────────
     contentEl.querySelectorAll('.navio-plan-card').forEach(card => this._wirePlanCard(card));
 
@@ -1592,9 +1667,23 @@ ${pageInfo}${snapText}`;
         const q = clean(/\b(email|gmail|mail|inbox|message|sent|unread|thread)\b/gi);
         if (q.length > 2) {
           try {
-            const res = await ConnectorsManager.queryConnector('gmail', q, { maxResults: 4 });
+            const res = await ConnectorsManager.queryConnector('gmail', q, { maxResults: 6 });
             if (res?.results?.length) {
-              const lines = res.results.map((r) => `- From: ${r.from || '?'} · Subject: ${r.subject}${r.snippet ? `\n  "${r.snippet.slice(0, 100)}"` : ''}`).join('\n');
+              const lines = res.results.map((r) => {
+                const gmailUrl = r.id ? `https://mail.google.com/mail/u/0/#inbox/${r.id}` : '';
+                if (r.id) {
+                  this._emailRefs.set(r.id, {
+                    subject: r.subject || '(no subject)',
+                    from: r.from || '',
+                    snippet: r.snippet || '',
+                    url: gmailUrl
+                  });
+                }
+                const snippet = r.snippet ? `\n  "${r.snippet.slice(0, 120)}"` : '';
+                return gmailUrl
+                  ? `- [${r.subject || '(no subject)'}](${gmailUrl}) — From: ${r.from || '?'}${snippet}`
+                  : `- From: ${r.from || '?'} · Subject: ${r.subject || '(no subject)'}${snippet}`;
+              }).join('\n');
               results.push(`[Gmail — ${res.total} result(s) for "${q}"]\n${lines}`);
             }
           } catch (_) {}
