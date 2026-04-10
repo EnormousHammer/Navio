@@ -290,7 +290,7 @@ class AssistantManagerClass {
       const pageHint = tab && tab.title && tab.url && !tab.url.startsWith('about:')
         ? `<p style="font-size:12px;color:var(--text-tertiary);margin-top:6px">On: <span style="color:var(--text-accent)">${tab.title}</span></p>`
         : '';
-      this.addMessage('assistant', `Hey${name}! I'm Navio — your AI co-pilot.\n\nI can **summarize**, **explain**, **extract data**, or answer any question about the page you're on. Try a quick action below or just ask me anything.${pageHint}`);
+      this.addMessage('assistant', `Hey${name}! I'm Navio — your AI co-pilot.\n\nJust ask me anything — about the page you're on, the web, your emails, or any task you want automated.${pageHint}`);
     } catch {
       this.addMessage('assistant', "Hey! I'm Navio — your AI co-pilot. How can I help?");
     }
@@ -1168,6 +1168,12 @@ class AssistantManagerClass {
         actionCards.push({ type: 'PLAN', params: encoded });
         return `\x00ACT${idx}\x00`;
       });
+      // [[DRAFT:base64json]] — Gmail draft preview card
+      processedText = processedText.replace(/\[\[DRAFT:([A-Za-z0-9+/=]+)\]\]/g, (_, b64) => {
+        const idx = actionCards.length;
+        actionCards.push({ type: 'GMAIL_DRAFT', params: b64 });
+        return `\x00ACT${idx}\x00`;
+      });
       // [[ACTION:type:params]] — non-greedy, stops at first ]]
       processedText = processedText.replace(/\[\[ACTION:(\w+):([\s\S]*?)\]\]/g, extractToken);
       // Legacy <<ACTION:type:params>> — keep compatible
@@ -1180,6 +1186,7 @@ class AssistantManagerClass {
       });
     } else {
       processedText = processedText.replace(/\[\[PLAN:[\s\S]*?\]\]/g, '');
+      processedText = processedText.replace(/\[\[DRAFT:[A-Za-z0-9+/=]+\]\]/g, '');
       processedText = processedText.replace(/\[\[ACTION:[\s\S]*?\]\]/g, '');
       processedText = processedText.replace(/<<ACTION:[\s\S]*?>>/g, '');
       processedText = processedText.replace(/\[\[TASK_APPROVE:[\s\S]*?\]\]/g, '');
@@ -1325,7 +1332,38 @@ class AssistantManagerClass {
 
       actionCards.forEach(({ type, params }, idx) => {
         let card;
-        if (type === 'PLAN') {
+        if (type === 'GMAIL_DRAFT') {
+          let d = {};
+          try { d = JSON.parse(atob(params)); } catch { d = {}; }
+          const safeBody = (d.body || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          const safeTo = (d.to || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          const safeSubj = (d.subject || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          card = `<div class="gmail-draft-card" data-draft-id="${d.draftId || ''}" data-to="${d.to||''}" data-subject="${d.subject||''}">
+            <div class="gdc-header">
+              <svg class="gdc-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0 1.1.9 2 2 2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              <div class="gdc-meta">
+                <span class="gdc-to">To: <strong>${safeTo}</strong></span>
+                <span class="gdc-subject">${safeSubj}</span>
+              </div>
+              <span class="gdc-badge">Draft</span>
+            </div>
+            <textarea class="gdc-body" readonly>${safeBody}</textarea>
+            <div class="gdc-actions">
+              <button class="gdc-btn gdc-btn-send" type="button">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Send
+              </button>
+              <button class="gdc-btn gdc-btn-edit" type="button">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit
+              </button>
+              <button class="gdc-btn gdc-btn-keep" type="button">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v14a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Keep
+              </button>
+              <button class="gdc-btn gdc-btn-discard" type="button">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>Discard
+              </button>
+            </div>
+          </div>`;
+        } else if (type === 'PLAN') {
           // Render a plan overview card
           const steps = params.split('||').filter(Boolean);
           const stepItems = steps.map((s, i) =>
@@ -1956,13 +1994,85 @@ class AssistantManagerClass {
   }
 
   async _wireActions(contentEl) {
-    // ── Wire email reference chips ────────────────────────────────────────
+    // ── Gmail draft cards ─────────────────────────────────────────────────
+    contentEl.querySelectorAll('.gmail-draft-card').forEach(card => {
+      const draftId = card.dataset.draftId;
+      const textarea = card.querySelector('.gdc-body');
+
+      // Edit — toggle textarea editable
+      card.querySelector('.gdc-btn-edit')?.addEventListener('click', () => {
+        const isEditing = !textarea.readOnly;
+        if (isEditing) {
+          textarea.readOnly = true;
+          card.querySelector('.gdc-btn-edit').innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit';
+          card.classList.remove('gdc-editing');
+        } else {
+          textarea.readOnly = false;
+          textarea.focus();
+          card.querySelector('.gdc-btn-edit').innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>Done';
+          card.classList.add('gdc-editing');
+        }
+      });
+
+      // Send
+      card.querySelector('.gdc-btn-send')?.addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        if (!draftId) { btn.textContent = '⚠ No draft ID'; return; }
+        btn.disabled = true;
+        btn.textContent = 'Sending…';
+        try {
+          const result = await window.navio.gmailSendDraft(draftId);
+          if (result?.success) {
+            card.classList.add('gdc-sent');
+            card.querySelector('.gdc-actions').innerHTML = '<span class="gdc-status-sent"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>Sent</span>';
+          } else {
+            btn.disabled = false;
+            btn.textContent = '⚠ Failed';
+            setTimeout(() => { btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Send'; }, 2000);
+          }
+        } catch { btn.disabled = false; btn.textContent = '⚠ Error'; }
+      });
+
+      // Keep — collapse body, show "saved in Drafts" state
+      card.querySelector('.gdc-btn-keep')?.addEventListener('click', () => {
+        card.classList.add('gdc-kept');
+        card.querySelector('.gdc-actions').innerHTML = '<span class="gdc-status-kept"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v14a2 2 0 0 1-2 2z"/></svg>Saved in Drafts</span>';
+      });
+
+      // Discard
+      card.querySelector('.gdc-btn-discard')?.addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        btn.textContent = 'Deleting…';
+        try {
+          if (draftId) await window.navio.gmailDeleteDraft(draftId);
+          card.classList.add('gdc-discarded');
+          card.querySelector('.gdc-actions').innerHTML = '<span class="gdc-status-discarded">Discarded</span>';
+        } catch { btn.disabled = false; btn.textContent = 'Discard'; }
+      });
+    });
+
+    // ── All <a> links in messages open as new browser tabs ────────────────
+    contentEl.querySelectorAll('a[href]').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const url = link.getAttribute('href');
+        if (!url) return;
+        if (typeof TabManager !== 'undefined' && typeof TabManager.createTab === 'function') {
+          TabManager.createTab(url);
+        } else {
+          window.open(url, '_blank');
+        }
+      });
+    });
+
+    // ── Wire email reference chips (also open as new tab) ────────────────
     contentEl.querySelectorAll('.email-ref-chip').forEach(chip => {
       chip.addEventListener('click', () => {
         const url = chip.dataset.url;
         if (!url) return;
-        if (typeof TabManager !== 'undefined' && typeof TabManager.navigateActive === 'function') {
-          TabManager.navigateActive(url);
+        if (typeof TabManager !== 'undefined' && typeof TabManager.createTab === 'function') {
+          TabManager.createTab(url);
         } else {
           window.open(url, '_blank');
         }

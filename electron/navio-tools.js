@@ -371,6 +371,81 @@ const NAVIO_TOOLS = [
       },
       required: ['name']
     }
+  },
+
+  // ── Gmail API tools ─────────────────────────────────────────────────────────
+  {
+    name: 'gmail_search',
+    description:
+      'Search Gmail for emails using Gmail search syntax. Returns message IDs, subjects, senders, ' +
+      'dates, snippets, thread IDs, and label IDs. Use this instead of navigating to mail.google.com ' +
+      'whenever you need to find or list emails. ' +
+      'Common queries: "in:inbox after:YYYY/MM/DD" for today\'s inbox, ' +
+      '"in:inbox is:unread" for unread, "from:someone@example.com" for a specific sender. ' +
+      'Requires Google OAuth to be connected in Navio Settings.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description:
+            'Gmail search query string (same syntax as the Gmail search box). ' +
+            'Examples: "in:inbox after:2026/04/10", "in:inbox is:unread", "subject:invoice".'
+        },
+        max_results: {
+          type: 'number',
+          description: 'Maximum number of emails to return. Default: 20, max: 50.'
+        }
+      },
+      required: ['query']
+    }
+  },
+
+  {
+    name: 'gmail_send_draft',
+    description: 'Send an existing Gmail draft by its draft ID. The draft must have been created by gmail_create_reply_draft. This actually sends the email — only call this when the user explicitly confirms they want to send.',
+    parameters: {
+      type: 'object',
+      properties: {
+        draft_id: { type: 'string', description: 'The Gmail draft ID to send (from gmail_create_reply_draft result).' }
+      },
+      required: ['draft_id']
+    }
+  },
+
+  {
+    name: 'gmail_delete_draft',
+    description: 'Delete a Gmail draft by its draft ID. Used when the user discards a reply.',
+    parameters: {
+      type: 'object',
+      properties: {
+        draft_id: { type: 'string', description: 'The Gmail draft ID to delete.' }
+      },
+      required: ['draft_id']
+    }
+  },
+
+  {
+    name: 'gmail_create_reply_draft',
+    description:
+      'Create a reply draft for a Gmail message via the Gmail API. The draft is saved in Gmail Drafts ' +
+      'and is NOT sent — the user reviews and sends it manually. ' +
+      'Use this for every reply task instead of clicking Reply in the browser (Gmail iframes are unreliable). ' +
+      'Requires Google OAuth connected with gmail.compose scope.',
+    parameters: {
+      type: 'object',
+      properties: {
+        message_id: {
+          type: 'string',
+          description: 'The Gmail message ID to reply to (from gmail_search results or connector context).'
+        },
+        body: {
+          type: 'string',
+          description: 'The plain-text body of the reply draft.'
+        }
+      },
+      required: ['message_id', 'body']
+    }
   }
 ];
 

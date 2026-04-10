@@ -30,9 +30,8 @@ const NTP = (() => {
       !!ntp?.classList.contains('active') && ticker.classList.contains('visible');
     let reservePx = 0;
     if (show) {
-      const h = ticker.offsetHeight || ticker.getBoundingClientRect().height || 44;
-      const extra = 20;
-      reservePx = Math.max(60, Math.ceil(h + extra));
+      const h = ticker.offsetHeight || ticker.getBoundingClientRect().height || 34;
+      reservePx = Math.ceil(h + 4);
     }
     document.documentElement.style.setProperty('--ntp-ticker-reserve', `${reservePx}px`);
   }

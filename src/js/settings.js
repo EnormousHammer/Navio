@@ -812,6 +812,9 @@ class SettingsManagerClass {
             </div>
             <button class="oauth-client-id-save-btn" data-key="${cfgKey}" data-secret-key="${secretKey || ''}" data-provider="${p.id}">Save</button>
           </div>
+          <div class="oauth-account-status" id="oauth-status-${p.id}">
+            <!-- populated by renderOAuthAccountStatus -->
+          </div>
           <div class="oauth-provider-hint">
             <a class="oauth-console-link" href="${p.consoleUrl}" target="_blank" data-href="${p.consoleUrl}">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
@@ -891,6 +894,91 @@ class SettingsManagerClass {
         if (href && typeof TabManager !== 'undefined') TabManager.createTab(href);
       });
     });
+
+    // Render connected account status + Disconnect button for each provider
+    await this._refreshOAuthAccountStatuses(providers);
+  }
+
+  async _refreshOAuthAccountStatuses(providers) {
+    let tokens = {};
+    try { tokens = await window.navio.oauthGetConnectedAccounts(); } catch { return; }
+
+    for (const p of providers) {
+      this._renderOAuthProviderStatus(p, tokens[p.id]);
+    }
+  }
+
+  _renderOAuthProviderStatus(p, account) {
+    const statusEl = document.getElementById(`oauth-status-${p.id}`);
+    if (!statusEl) return;
+
+    if (account && account.email) {
+      // ── Connected state ──────────────────────────────────────────────────
+      statusEl.innerHTML = `
+        <div class="oauth-connected-row">
+          <span class="oauth-connected-indicator">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+            Connected as <strong>${account.email}</strong>
+          </span>
+          <button class="oauth-disconnect-btn" data-provider="${p.id}">Disconnect</button>
+        </div>`;
+
+      statusEl.querySelector('.oauth-disconnect-btn').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        btn.textContent = 'Disconnecting…';
+        try {
+          await window.navio.oauthDisconnect(p.id);
+          this._renderOAuthProviderStatus(p, null); // switch to disconnected state
+        } catch {
+          btn.disabled = false;
+          btn.textContent = 'Disconnect';
+        }
+      });
+
+    } else {
+      // ── Disconnected state — show Connect button if a Client ID is saved ──
+      const container = document.getElementById('oauth-client-id-fields');
+      const clientIdInput = container?.querySelector(`input[data-key="${p.configKey}"]`);
+      const hasClientId = !!(clientIdInput?.value?.trim() || this.config[p.configKey]);
+
+      if (hasClientId) {
+        statusEl.innerHTML = `
+          <div class="oauth-disconnected-row">
+            <span class="oauth-disconnected-note">Not connected</span>
+            <button class="oauth-connect-now-btn" data-provider="${p.id}">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              Connect
+            </button>
+          </div>`;
+
+        statusEl.querySelector('.oauth-connect-now-btn').addEventListener('click', async (e) => {
+          const btn = e.currentTarget;
+          btn.disabled = true;
+          btn.textContent = 'Connecting…';
+          try {
+            const result = await window.navio.oauthConnect(p.id);
+            if (result?.ok) {
+              this._renderOAuthProviderStatus(p, { email: result.email || result.name || 'account' });
+            } else {
+              btn.disabled = false;
+              btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Connect`;
+              const errEl = document.createElement('div');
+              errEl.className = 'oauth-signin-error';
+              errEl.style.cssText = 'color:var(--text-danger,#f87171);font-size:12px;margin-top:4px;';
+              errEl.textContent = result?.error || 'Sign-in failed — check your Client ID and try again.';
+              statusEl.appendChild(errEl);
+              setTimeout(() => errEl.remove(), 5000);
+            }
+          } catch (err) {
+            btn.disabled = false;
+            btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Connect`;
+          }
+        });
+      } else {
+        statusEl.innerHTML = '';
+      }
+    }
   }
 
   close(discardChanges) {

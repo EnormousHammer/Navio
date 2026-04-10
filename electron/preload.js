@@ -148,8 +148,11 @@ contextBridge.exposeInMainWorld('navio', {
   scanEmailInbox: (webContentsId) => ipcRenderer.invoke('scan-email-inbox', { webContentsId }),
 
   // OAuth 2.0 — "Sign in with Google / Microsoft / etc." flow
+  gmailSendDraft: (draftId) => ipcRenderer.invoke('gmail-send-draft', { draftId }),
+  gmailDeleteDraft: (draftId) => ipcRenderer.invoke('gmail-delete-draft', { draftId }),
   oauthConnect: (providerId) => ipcRenderer.invoke('oauth-connect', { providerId }),
   oauthDisconnect: (providerId) => ipcRenderer.invoke('oauth-disconnect', { providerId }),
+  oauthGetConnectedAccounts: () => ipcRenderer.invoke('oauth-get-connected-accounts'),
   oauthStatus: () => ipcRenderer.invoke('oauth-status'),
   oauthProvidersConfig: () => ipcRenderer.invoke('oauth-providers-config'),
 

@@ -954,7 +954,7 @@ function waitForRendererAck(sender, channel, timeoutMs) {
  * renderer (which calls TabManager.navigateActive), and we wait for an ack.
  */
 async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
-  maxSteps = maxSteps || 35;
+  maxSteps = maxSteps || 100;
   // Merge native tools with any connected MCP tools
   const mcpTools = cfg.mcpEnabled !== false ? getMcpTools() : [];
   const tools = [...NAVIO_TOOLS, ...mcpTools];
@@ -1843,6 +1843,169 @@ const toolExecutors = {
       return { requests: reqs, count: reqs.length };
     } catch (e) {
       return { error: 'read_network failed: ' + e.message };
+    }
+  },
+
+  // ── Gmail API tools ─────────────────────────────────────────────────────────
+
+  async gmail_send_draft(_wc, args) {
+    try {
+      const token = await getValidOAuthToken('google');
+      if (!token) return { error: 'not_signed_in — connect Google in Navio Settings → Connected Apps first.' };
+      const draftId = (args.draft_id || '').trim();
+      if (!draftId) return { error: 'draft_id is required.' };
+      const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/drafts/send`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: draftId })
+      });
+      const data = await res.json();
+      if (!res.ok) return { error: data.error?.message || 'Failed to send draft.' };
+      return { success: true, messageId: data.id, note: 'Email sent successfully.' };
+    } catch (e) {
+      return { error: 'gmail_send_draft failed: ' + e.message };
+    }
+  },
+
+  async gmail_delete_draft(_wc, args) {
+    try {
+      const token = await getValidOAuthToken('google');
+      if (!token) return { error: 'not_signed_in — connect Google in Navio Settings → Connected Apps first.' };
+      const draftId = (args.draft_id || '').trim();
+      if (!draftId) return { error: 'draft_id is required.' };
+      const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/drafts/${encodeURIComponent(draftId)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.status === 204 || res.ok) return { success: true, note: 'Draft deleted.' };
+      const data = await res.json().catch(() => ({}));
+      return { error: data.error?.message || 'Failed to delete draft.' };
+    } catch (e) {
+      return { error: 'gmail_delete_draft failed: ' + e.message };
+    }
+  },
+
+  async gmail_search(_wc, args) {
+    try {
+      const token = await getValidOAuthToken('google');
+      if (!token) return { error: 'not_signed_in — connect Google in Navio Settings → Connected Apps first.' };
+      const query = (args.query || '').trim();
+      if (!query) return { error: 'query is required.' };
+      const maxResults = Math.min(args.max_results || 20, 50);
+      const data = await queryGmail(token, query, { maxResults });
+      if (data.error) {
+        if (/insufficient.*scope|scope.*insufficient|Request had insufficient/i.test(data.error)) {
+          return { error: 'SCOPE_ERROR: Your Google account is missing required Gmail permissions. Go to Navio Settings → Connected Apps → disconnect Google → reconnect it.' };
+        }
+        return { error: data.error };
+      }
+      return {
+        results: data.results || [],
+        total: data.total || 0,
+        note: `Found ${(data.results || []).length} email(s) matching "${query}".`
+      };
+    } catch (e) {
+      return { error: 'gmail_search failed: ' + e.message };
+    }
+  },
+
+  async gmail_create_reply_draft(_wc, args) {
+    try {
+      const token = await getValidOAuthToken('google');
+      if (!token) return { error: 'not_signed_in — connect Google in Navio Settings → Connected Apps first.' };
+
+      const mid = (args.message_id || '').trim();
+      if (!mid) return { error: 'message_id is required.' };
+
+      let bodyText = (args.body || '').trim();
+      if (!bodyText) return { error: 'body is required.' };
+
+      // Fetch user's Gmail signature and append if present (API drafts don't auto-add it)
+      let signature = '';
+      try {
+        const sendAsResp = await fetch(
+          'https://gmail.googleapis.com/gmail/v1/users/me/settings/sendAs',
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (sendAsResp.ok) {
+          const sendAsData = await sendAsResp.json();
+          const primary = (sendAsData.sendAs || []).find(s => s.isDefault) || sendAsData.sendAs?.[0];
+          if (primary?.signature) {
+            // Strip HTML tags from signature to get plain text
+            signature = primary.signature.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
+          }
+        }
+      } catch { /* signature fetch is best-effort */ }
+
+      // Only append signature if it's not already in the body
+      const text = (signature && !bodyText.includes(signature))
+        ? `${bodyText}\n\n--\n${signature}`
+        : bodyText;
+
+      const r = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(mid)}?format=full`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const d = await r.json();
+      if (!r.ok) return { error: d.error?.message || 'Gmail API error fetching message.' };
+
+      const threadId = d.threadId;
+      const headers = d.payload?.headers || [];
+      const getHdr = (name) =>
+        headers.find((h) => h.name && h.name.toLowerCase() === name.toLowerCase())?.value || '';
+
+      const from = getHdr('From');
+      const replyTo = getHdr('Reply-To');
+      const subject = getHdr('Subject');
+      const msgIdHdr = getHdr('Message-ID') || getHdr('Message-Id');
+      const prevRefs = (getHdr('References') || '').trim();
+
+      const toAddr = parseEmailAddressFromHeader(replyTo || from);
+      if (!toAddr) return { error: 'Could not determine reply recipient from message headers.' };
+
+      let subjOut = subject || '(no subject)';
+      if (!/^re:\s/i.test(subjOut)) subjOut = 'Re: ' + subjOut;
+
+      const refs = [prevRefs, msgIdHdr].filter(Boolean).join(' ').trim();
+
+      const mimeLines = [
+        `To: ${toAddr}`,
+        `Subject: ${subjOut}`,
+        msgIdHdr ? `In-Reply-To: ${msgIdHdr}` : '',
+        refs ? `References: ${refs}` : '',
+        'MIME-Version: 1.0',
+        'Content-Type: text/plain; charset=UTF-8',
+        'Content-Transfer-Encoding: 8bit',
+        '',
+        text.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')
+      ].filter((line) => line !== '');
+      const mime = mimeLines.join('\r\n');
+      const raw = gmailBase64UrlEncode(mime);
+
+      const draftRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: threadId ? { raw, threadId } : { raw } })
+      });
+      const draftData = await draftRes.json();
+      if (!draftRes.ok) {
+        const msg = draftData.error?.message || 'Failed to create Gmail draft.';
+        if (/insufficient.*scope|scope.*insufficient|Request had insufficient/i.test(msg)) {
+          return { error: 'SCOPE_ERROR: Your Google account is connected but missing the gmail.compose permission. Go to Navio Settings → Connected Apps → disconnect Google → reconnect it. This will request the compose scope so drafts can be created.' };
+        }
+        return { error: msg };
+      }
+
+      return {
+        success: true,
+        draftId: draftData.id,
+        to: toAddr,
+        subject: subjOut,
+        body: bodyText,
+        note: `Draft saved. Include this in your reply: [[DRAFT:${Buffer.from(JSON.stringify({ draftId: draftData.id, to: toAddr, subject: subjOut, body: bodyText })).toString('base64')}]]`
+      };
+    } catch (e) {
+      return { error: 'gmail_create_reply_draft failed: ' + e.message };
     }
   }
 };
@@ -3417,6 +3580,18 @@ ipcMain.handle('oauth-connect', async (event, { providerId }) => {
   });
 });
 
+// ── IPC: oauth-get-connected-accounts ────────────────────────────────────
+ipcMain.handle('oauth-get-connected-accounts', () => {
+  try {
+    const map = loadOAuthTokens();
+    const result = {};
+    for (const [id, entry] of Object.entries(map)) {
+      if (entry && entry.email) result[id] = { email: entry.email, name: entry.name || '' };
+    }
+    return result;
+  } catch { return {}; }
+});
+
 // ── IPC: oauth-disconnect ─────────────────────────────────────────────────
 ipcMain.handle('oauth-disconnect', (event, { providerId }) => {
   try {
@@ -4412,6 +4587,37 @@ function parseEmailAddressFromHeader(fromVal) {
   const m2 = fromVal.match(/[\w.+-]+@[\w.-]+\.[A-Za-z0-9-]+/);
   return m2 ? m2[0] : fromVal.trim();
 }
+
+// ── Gmail API: send a draft ────────────────────────────────────────────────
+ipcMain.handle('gmail-send-draft', async (_, { draftId }) => {
+  try {
+    const token = await getValidOAuthToken('google');
+    if (!token) return { error: 'not_signed_in' };
+    const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts/send', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: draftId })
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error?.message || 'Failed to send draft.' };
+    return { success: true, messageId: data.id };
+  } catch (e) { return { error: e.message }; }
+});
+
+// ── Gmail API: delete a draft ──────────────────────────────────────────────
+ipcMain.handle('gmail-delete-draft', async (_, { draftId }) => {
+  try {
+    const token = await getValidOAuthToken('google');
+    if (!token) return { error: 'not_signed_in' };
+    const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/drafts/${encodeURIComponent(draftId)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (res.status === 204 || res.ok) return { success: true };
+    const data = await res.json().catch(() => ({}));
+    return { error: data.error?.message || 'Failed to delete draft.' };
+  } catch (e) { return { error: e.message }; }
+});
 
 // ── Gmail API: create a threaded reply draft (no UI automation) ─────────────
 ipcMain.handle('gmail-create-reply-draft', async (_, { messageId, body: replyBody }) => {
