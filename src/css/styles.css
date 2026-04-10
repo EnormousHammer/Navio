@@ -1040,7 +1040,7 @@ body.tabstrip-hidden .tab-strip-show {
   bottom: var(--ntp-ticker-reserve, 0px);
   display: none;
   flex-direction: column;
-  background: #05080f;
+  background: #080d1a;
   overflow-y: auto;
   overflow-x: hidden;
   z-index: 2;
@@ -1064,13 +1064,13 @@ body.tabstrip-hidden .tab-strip-show {
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
-  background-color: #03050c;
+  background-color: #080d1a;
   background-image:
-    radial-gradient(ellipse 90% 55% at 50% -15%, rgba(99, 102, 241, 0.32), transparent 58%),
-    radial-gradient(ellipse 55% 42% at 105% 8%, rgba(0, 212, 255, 0.18), transparent 52%),
-    radial-gradient(ellipse 50% 38% at -5% 88%, rgba(168, 85, 247, 0.20), transparent 55%),
-    radial-gradient(ellipse 75% 50% at 50% 108%, rgba(0, 180, 200, 0.22), transparent 48%),
-    radial-gradient(ellipse 60% 40% at 65% 90%, rgba(236, 72, 153, 0.14), transparent 55%);
+    radial-gradient(ellipse 95% 60% at 50% -10%, rgba(99, 102, 241, 0.50), transparent 60%),
+    radial-gradient(ellipse 60% 50% at 105% 10%, rgba(0, 212, 255, 0.35), transparent 55%),
+    radial-gradient(ellipse 55% 45% at -5% 85%, rgba(168, 85, 247, 0.38), transparent 58%),
+    radial-gradient(ellipse 80% 55% at 50% 110%, rgba(0, 180, 200, 0.35), transparent 50%),
+    radial-gradient(ellipse 50% 40% at 70% 85%, rgba(236, 72, 153, 0.25), transparent 55%);
   animation: ntp-aurora-shift 22s ease-in-out infinite alternate;
 }
 /* Fine tech grid — vignette-masked so edges stay calm, center stays “holographic” */
@@ -1078,12 +1078,12 @@ body.tabstrip-hidden .tab-strip-show {
   content: '';
   position: absolute;
   inset: -30%;
-  opacity: 0.65;
+  opacity: 0.75;
   background-image:
-    linear-gradient(rgba(0, 212, 255, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 212, 255, 0.06) 1px, transparent 1px),
-    linear-gradient(rgba(124, 58, 237, 0.038) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(124, 58, 237, 0.038) 1px, transparent 1px);
+    linear-gradient(rgba(0, 212, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 212, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(rgba(124, 58, 237, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 58, 237, 0.045) 1px, transparent 1px);
   background-size: 56px 56px, 56px 56px, 14px 14px, 14px 14px;
   background-position: 0 0, 0 0, 7px 7px, 7px 7px;
   animation: ntp-grid-drift 72s linear infinite;
@@ -1104,8 +1104,8 @@ body.tabstrip-hidden .tab-strip-show {
       rgba(0, 0, 0, 0.03) 3px
     ),
     url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E"),
-    linear-gradient(105deg, transparent 0%, rgba(0, 212, 255, 0.04) 42%, transparent 64%),
-    linear-gradient(transparent 55%, rgba(3, 5, 12, 0.75));
+    linear-gradient(105deg, transparent 0%, rgba(0, 212, 255, 0.06) 42%, transparent 64%),
+    linear-gradient(transparent 60%, rgba(8, 13, 26, 0.5));
   background-size:
     100% 100%,
     180px 180px,
@@ -1399,33 +1399,33 @@ body.tabstrip-hidden .tab-strip-show {
   align-items: center;
   gap: 10px;
   padding: 10px 18px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(0,216,255,0.15);
+  background: rgba(12, 18, 35, 0.70);
+  border: 1px solid rgba(0,216,255,0.25);
   border-radius: 50px;
   margin-bottom: 8px;
   transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
   position: relative;
   width: 100%;
   max-width: 640px;
-  backdrop-filter: blur(16px) saturate(1.2);
-  -webkit-backdrop-filter: blur(16px) saturate(1.2);
-  box-shadow: 0 0 20px rgba(0,216,255,0.06), 0 4px 24px rgba(0,0,0,0.3);
+  backdrop-filter: blur(20px) saturate(1.3);
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  box-shadow: 0 0 25px rgba(0,216,255,0.10), 0 4px 24px rgba(0,0,0,0.4), inset 0 0 20px rgba(0,216,255,0.03);
   animation: ntp-search-breathe 4s ease-in-out infinite;
 }
 @keyframes ntp-search-breathe {
-  0%, 100% { border-color: rgba(0,216,255,0.15); box-shadow: 0 0 20px rgba(0,216,255,0.06), 0 4px 24px rgba(0,0,0,0.3); }
-  50% { border-color: rgba(0,216,255,0.25); box-shadow: 0 0 30px rgba(0,216,255,0.10), 0 4px 24px rgba(0,0,0,0.3); }
+  0%, 100% { border-color: rgba(0,216,255,0.25); box-shadow: 0 0 25px rgba(0,216,255,0.10), 0 4px 24px rgba(0,0,0,0.4), inset 0 0 20px rgba(0,216,255,0.03); }
+  50% { border-color: rgba(0,216,255,0.40); box-shadow: 0 0 35px rgba(0,216,255,0.18), 0 4px 24px rgba(0,0,0,0.4), inset 0 0 25px rgba(0,216,255,0.05); }
 }
 
 .ntp-search-glow {
   position: absolute;
-  inset: -2px;
+  inset: -3px;
   border-radius: 50px;
-  background: conic-gradient(from 0deg, rgba(0,216,255,0.6), rgba(84,104,255,0.5), rgba(159,111,255,0.5), rgba(244,114,182,0.4), rgba(0,216,255,0.6));
-  opacity: 0.12;
+  background: conic-gradient(from 0deg, rgba(0,216,255,0.7), rgba(84,104,255,0.6), rgba(159,111,255,0.6), rgba(244,114,182,0.5), rgba(0,216,255,0.7));
+  opacity: 0.20;
   transition: opacity 0.4s;
   z-index: -1;
-  filter: blur(12px);
+  filter: blur(14px);
   animation: ntp-glow-rotate 6s linear infinite;
 }
 
@@ -1434,13 +1434,13 @@ body.tabstrip-hidden .tab-strip-show {
 }
 
 .ntp-search:focus-within {
-  border-color: rgba(0,216,255,0.55);
-  background: rgba(255,255,255,0.09);
-  box-shadow: 0 0 0 1px rgba(0,216,255,0.20), 0 8px 50px rgba(0,216,255,0.18), 0 0 100px rgba(84,104,255,0.08);
+  border-color: rgba(0,216,255,0.60);
+  background: rgba(12, 18, 35, 0.85);
+  box-shadow: 0 0 0 1px rgba(0,216,255,0.25), 0 8px 60px rgba(0,216,255,0.22), 0 0 120px rgba(84,104,255,0.10);
   animation: none;
 }
 
-.ntp-search:focus-within .ntp-search-glow { opacity: 0.45; }
+.ntp-search:focus-within .ntp-search-glow { opacity: 0.55; }
 
 .ntp-search svg { color: rgba(226,232,248,0.4); flex-shrink: 0; }
 .ntp-search:focus-within svg { color: #00d8ff; }
@@ -1529,18 +1529,22 @@ body.tabstrip-hidden .tab-strip-show {
   .ntp-widgets { grid-template-columns: 1fr; grid-template-rows: auto; }
 }
 .ntp-widget {
-  background: rgba(255,255,255,0.045);
-  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(12, 18, 35, 0.75);
+  border: 1px solid rgba(0, 216, 255, 0.12);
   border-radius: 16px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   min-height: 0;
   position: relative;
-  backdrop-filter: blur(28px) saturate(1.2);
-  -webkit-backdrop-filter: blur(28px) saturate(1.2);
+  backdrop-filter: blur(30px) saturate(1.3);
+  -webkit-backdrop-filter: blur(30px) saturate(1.3);
   transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
-  box-shadow: 0 4px 30px rgba(0,0,0,0.45), 0 0 1px rgba(0,216,255,0.12), inset 0 1px 0 rgba(255,255,255,0.08);
+  box-shadow:
+    0 8px 32px rgba(0,0,0,0.6),
+    0 0 1px rgba(0,216,255,0.20),
+    inset 0 1px 0 rgba(255,255,255,0.08),
+    inset 0 0 30px rgba(0,216,255,0.02);
 }
 /* Gradient accent line at the top of every widget */
 .ntp-widget::before {
@@ -1548,33 +1552,36 @@ body.tabstrip-hidden .tab-strip-show {
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent 5%, rgba(0,216,255,0.4) 30%, rgba(124,58,237,0.35) 70%, transparent 95%);
+  background: linear-gradient(90deg, transparent 2%, rgba(0,216,255,0.6) 25%, rgba(124,58,237,0.55) 75%, transparent 98%);
   pointer-events: none;
   z-index: 3;
-  opacity: 0.7;
-  transition: opacity 0.3s;
+  opacity: 1;
+  transition: opacity 0.3s, height 0.3s;
 }
 .ntp-widget:hover::before {
   opacity: 1;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, rgba(0,216,255,0.9) 20%, rgba(124,58,237,0.8) 80%, transparent 100%);
 }
 .ntp-widget:hover {
-  border-color: rgba(0,212,255,0.30);
+  border-color: rgba(0,212,255,0.25);
   box-shadow:
-    0 8px 40px rgba(0,212,255,0.10),
-    0 4px 30px rgba(0,0,0,0.5),
-    0 0 0 1px rgba(0,216,255,0.08),
-    inset 0 1px 0 rgba(255,255,255,0.10);
-  transform: translateY(-1px);
+    0 12px 48px rgba(0,212,255,0.12),
+    0 8px 32px rgba(0,0,0,0.6),
+    0 0 0 1px rgba(0,216,255,0.10),
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    inset 0 0 40px rgba(0,216,255,0.03);
+  transform: translateY(-2px);
 }
 /* AI Brief widget — gradient neon border */
 .ntp-widget-ai {
   border-color: transparent;
-  background: linear-gradient(145deg, rgba(124,58,237,0.1), rgba(0,212,255,0.05));
+  background: linear-gradient(145deg, rgba(124,58,237,0.15), rgba(0,212,255,0.08), rgba(12,18,35,0.80));
 }
-/* Override the generic shimmer with a stronger top glow */
+/* Override the generic accent with a brighter AI top glow */
 .ntp-widget-ai::before {
-  left: 5%; right: 5%;
-  background: linear-gradient(90deg, transparent, rgba(0,212,255,0.35), rgba(124,58,237,0.35), transparent);
+  background: linear-gradient(90deg, transparent, rgba(0,216,255,0.8), rgba(124,58,237,0.7), rgba(244,114,182,0.5), transparent);
+  height: 2px;
 }
 .ntp-widget-ai::after {
   content: '';
@@ -1582,7 +1589,7 @@ body.tabstrip-hidden .tab-strip-show {
   inset: 0;
   border-radius: 16px;
   padding: 1px;
-  background: linear-gradient(135deg, rgba(0,212,255,0.45), rgba(124,58,237,0.45), rgba(244,114,182,0.35));
+  background: linear-gradient(135deg, rgba(0,212,255,0.5), rgba(124,58,237,0.5), rgba(244,114,182,0.4));
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
@@ -1596,12 +1603,12 @@ body.tabstrip-hidden .tab-strip-show {
   padding: 9px 14px;
   font-size: 10px;
   font-weight: 800;
-  color: rgba(226,232,248,0.60);
+  color: rgba(226,232,248,0.72);
   text-transform: uppercase;
   letter-spacing: 1px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
   flex-shrink: 0;
-  background: rgba(255,255,255,0.025);
+  background: rgba(255,255,255,0.03);
   position: relative;
   z-index: 2;
 }
@@ -2446,7 +2453,7 @@ body.tabstrip-hidden .tab-strip-show {
   width: 42px;
   height: 42px;
   border-radius: 12px;
-  background: rgba(255,255,255,0.06);
+  background: rgba(12, 18, 35, 0.65);
   border: 1px solid rgba(255,255,255,0.10);
   display: flex;
   align-items: center;
@@ -2467,9 +2474,9 @@ body.tabstrip-hidden .tab-strip-show {
 
 .ntp-shortcut:hover { transform: translateY(-4px); }
 .ntp-shortcut:hover .shortcut-icon {
-  background: rgba(255,255,255,0.14);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4), 0 0 12px rgba(0,216,255,0.08), inset 0 1px 0 rgba(255,255,255,0.15);
-  border-color: rgba(0,216,255,0.20);
+  background: rgba(12, 18, 35, 0.85);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5), 0 0 16px rgba(0,216,255,0.12), inset 0 1px 0 rgba(255,255,255,0.10);
+  border-color: rgba(0,216,255,0.30);
 }
 
 .ntp-shortcut span { font-size: 11px; color: rgba(226,232,248,0.50); }
@@ -8300,7 +8307,7 @@ body.onboarding-active #app {
 /* ── NTP is ALWAYS dark — premium AI showcase regardless of browser theme ── */
 /* Force dark NTP even when browser chrome is in light mode */
 [data-theme="light"] .new-tab-page {
-  background: #05080f;
+  background: #080d1a;
   color: #e2e8f8;
   --ntp-accent: #00d8ff;
   --ntp-purple: #7c3aed;
