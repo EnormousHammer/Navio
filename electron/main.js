@@ -693,18 +693,16 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`
     };
-    // max_completion_tokens is the correct parameter for all current OpenAI models.
-    // max_tokens is deprecated and rejected by newer models (GPT-5+, o-series).
-    // o-series reasoning models also reject the temperature parameter entirely.
     const isOSeries = /^o[1-9]/i.test(model || '');
+    const isGpt5 = /^gpt-?5/i.test(model || '');
+    const completionCap = ntpBrief ? 900 : (isGpt5 ? 16384 : 8192);
     const bodyObj = {
       model: model || 'gpt-4o',
       messages,
-      max_completion_tokens: ntpBrief ? 900 : 4096,
+      max_completion_tokens: completionCap,
       stream: !!useStream
     };
     if (isOSeries) {
-      // o-series fixes temperature at 1 internally; sending it causes a 400 error
       delete bodyObj.temperature;
     } else if (ntpBrief) {
       bodyObj.temperature = 0.55;
@@ -722,7 +720,7 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
     };
     body = JSON.stringify({
       model: model || 'claude-opus-4-5',
-      max_tokens: ntpBrief ? 900 : 4096,
+      max_tokens: ntpBrief ? 900 : 16384,
       system: systemMsg?.content || '',
       messages: chatMsgs
     });
@@ -762,6 +760,8 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
     };
     if (ntpBrief) {
       geminiBody.generationConfig = { maxOutputTokens: 900, temperature: 0.55 };
+    } else {
+      geminiBody.generationConfig = { maxOutputTokens: 16384 };
     }
     body = JSON.stringify(geminiBody);
   } else {
@@ -1087,10 +1087,10 @@ ipcMain.handle('deep-research', async (event, { query }) => {
     const blob = sources
       .map(
         (s, i) =>
-          `### Source ${i + 1}\nURL: ${s.url}\nTitle: ${s.title}\n\n${(s.text || '').slice(0, 5500)}`
+          `### Source ${i + 1}\nURL: ${s.url}\nTitle: ${s.title}\n\n${(s.text || '').slice(0, 12000)}`
       )
       .join('\n\n')
-      .slice(0, 30000);
+      .slice(0, 80000);
 
     const reportRes = await performAiFetch(
       cfg,

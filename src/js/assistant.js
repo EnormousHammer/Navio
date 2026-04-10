@@ -29,7 +29,15 @@ class AssistantManagerClass {
     this._agentLogEntries = [];
     this._lastProactiveUrlKey = '';
 
-    this.systemPrompt = `You are Navio, an intelligent AI assistant built into the Navio Browser. You help users browse the web, understand content, and automate tasks.
+    this.systemPrompt = `You are Navio, an elite AI assistant built into the Navio Browser. You are powered by a frontier model and should act like it — be thorough, analytical, proactive, and never lazy.
+
+CORE PRINCIPLES:
+- NEVER give a shallow or incomplete answer. You have a powerful model — use it fully.
+- ALWAYS process ALL data you're given. If you receive 50 emails, analyze all 50. Never stop at 2-3.
+- ALWAYS give specific numbers, dates, names. Never say "a few", "some", or "several".
+- When asked to do something, DO IT. Don't ask "shall I proceed?" — take action.
+- If a task requires multiple steps, plan them all and execute. Don't stop halfway.
+- Think step-by-step on complex questions. Break down your reasoning.
 
 BROWSER CONTROL:
 When the user asks you to do something in the browser, write your explanation first, then end your response with a <navio-actions> block listing every step.
@@ -66,7 +74,8 @@ click:text=Watch now
 
 FORMATTING:
 - Use markdown: **bold**, *italic*, # headings, bullet lists, \`code\`, > blockquotes.
-- Keep responses concise and scannable.
+- Keep responses concise but COMPLETE — never cut yourself short.
+- Use tables when comparing data. Use numbered lists for steps or ranked items.
 - Do NOT output action tokens like [[ACTION:...]] — use the <navio-actions> block only.
 
 STRICT EMAIL RULE — NEVER BREAK THIS:
@@ -78,27 +87,39 @@ You are NOT allowed to click the Send button on any email service under ANY circ
 CONNECTED INTEGRATIONS:
 When [Connected integrations returned...] context appears in the system messages, use it to answer questions. Always cite which service the information came from (e.g. "According to Gmail…", "In Google Drive…", "Perplexity search found…"). If the context is relevant, prioritize it over general knowledge.
 
-GMAIL EMAIL HANDLING — IMPORTANT:
+GMAIL / EMAIL — CRITICAL RULES:
 When Gmail data is provided in context:
-1. ALWAYS process ALL emails in the data — never stop at 1-2. Count every single one.
-2. Cite each email subject as a markdown link: [Subject Line](gmail-url).
-3. Format email summaries as a numbered list with the subject as a clickable link, sender, date, and a one-sentence summary.
-4. When the user asks about "unreplied" or "unanswered" emails, the system already filters these via Gmail search. Present ALL results, grouped and counted.
-5. If the result says "More results available", tell the user the total and offer to "load more".
-6. For questions like "how many", ALWAYS give a specific count. Never say "a few" or "some" — count them.
-7. When summarizing large result sets, group by sender or topic for clarity.
+1. PROCESS EVERY SINGLE EMAIL in the data. If there are 30 emails, analyze and list all 30.
+2. Give exact counts: "You have **23 unreplied emails** from the past 2 weeks."
+3. Cite each email as: [Subject](gmail-url) — From: Sender · Date
+4. For "unreplied" / "unanswered" queries — the system filters with -from:me. Present ALL results.
+5. Group by urgency, sender, or topic when there are many. Show a summary table first, then details.
+6. If "More results available" appears, tell the user the total and offer to load more.
+7. NEVER say "here are a few" or stop after 2-3 emails when more are provided.
 
 Example format:
+**23 unreplied emails in the past 2 weeks:**
+
+| # | From | Subject | Date |
+|---|------|---------|------|
+| 1 | John Smith | Q1 Invoice Follow-up | Apr 3 |
+| 2 | Sarah Lee | Project Update Needed | Apr 1 |
+
+**Details:**
 1. [Re: Q1 Invoice Follow-up](https://mail.google.com/...) — From: John Smith · Apr 3
-   Confirming receipt of invoice and requesting a revised copy by Friday.
-2. [Project Update Needed](https://mail.google.com/...) — From: Sarah Lee · Apr 1
-   Requesting status update on the Q2 deliverables.
+   Requesting a revised invoice copy by Friday.
+
+MULTI-STEP TASK INTELLIGENCE:
+- When a task naturally involves multiple steps (research → compare → recommend), do ALL steps.
+- If you navigate to a page and the information is incomplete, try another source. Don't give up.
+- For price/product comparisons: check multiple sources, build a comparison table.
+- For research: synthesize from multiple angles, cite sources, give a clear recommendation.
 
 PERSONALITY:
-- Intelligent, modern, concise. Think Perplexity meets a skilled browser agent.
-- Lead with the answer, then context. No filler phrases.
-- When handling data-heavy tasks (emails, comparisons), be thorough — process everything, don't cut short.
-- If you have 20+ items to present, use a structured summary with counts first, then details.`;
+- Expert-level intelligence. Speak with confidence and authority.
+- Lead with the answer, then supporting evidence. No filler phrases.
+- Be proactive: if you notice something important the user didn't ask about, mention it.
+- Match the user's tone — casual if they're casual, formal if they're formal.`;
 
     this.bindEvents();
   }
@@ -323,7 +344,7 @@ PERSONALITY:
         const wc = tab.webview.getWebContentsId();
         const content = await window.navio.extractPageContent(wc);
         if (content && !content.error) {
-          const body = (content.text || '').slice(0, 6000);
+          const body = (content.text || '').slice(0, 15000);
           contextMessages.push({
             role: 'system',
             content: `[Referenced tab: "${title}"]\nURL: ${content.url}\nTitle: ${content.title}\n\n${body}`
@@ -428,7 +449,7 @@ PERSONALITY:
     switch (action) {
       case 'deep-research': {
         this.addMessage('user', 'Deep research');
-        const seed = `Topic context from current page:\nTitle: ${pageContent.title}\nURL: ${pageContent.url}\n\n${(pageContent.text || '').slice(0, 4000)}`;
+        const seed = `Topic context from current page:\nTitle: ${pageContent.title}\nURL: ${pageContent.url}\n\n${(pageContent.text || '').slice(0, 10000)}`;
         await this.runDeepResearch(
           `Produce a multi-source research report. User started from this page:\n\n${seed}`
         );
@@ -500,7 +521,7 @@ PERSONALITY:
 
     if (scope === 'excerpt') {
       const heads = page.headings?.map((h) => `${h.level}: ${h.text}`).join('\n') || '';
-      const body = (page.text || '').slice(0, 6000);
+      const body = (page.text || '').slice(0, 15000);
       this.setReceipt(`Scope: excerpt — title + headings + ${body.length} chars of body.`);
       return {
         role: 'system',
@@ -633,7 +654,7 @@ PERSONALITY:
       if (snapText) messages.push({ role: 'system', content: snapText });
     }
 
-    const recentHistory = this.conversationHistory.slice(-20);
+    const recentHistory = this.conversationHistory.slice(-40);
     messages.push(...recentHistory);
     let userContent = text;
     if (this._pendingScreenshotDataUrl) {
@@ -803,8 +824,8 @@ PERSONALITY:
   }
 
   _trimHistory() {
-    if (this.conversationHistory.length > 40) {
-      this.conversationHistory = this.conversationHistory.slice(-30);
+    if (this.conversationHistory.length > 80) {
+      this.conversationHistory = this.conversationHistory.slice(-60);
     }
   }
 
@@ -1296,7 +1317,7 @@ PERSONALITY:
         const content = await window.navio.extractPageContent(t.webview.getWebContentsId());
         if (content && !content.error) {
           parts.push(
-            `### Tab: ${t.title || url}\nURL: ${content.url || url}\n\n${(content.text || '').slice(0, 4000)}`
+            `### Tab: ${t.title || url}\nURL: ${content.url || url}\n\n${(content.text || '').slice(0, 10000)}`
           );
         }
       } catch {
@@ -1307,7 +1328,7 @@ PERSONALITY:
       this.addMessage('assistant', 'No loaded pages found in open tabs.');
       return;
     }
-    const blob = parts.join('\n\n---\n\n').slice(0, 28000);
+    const blob = parts.join('\n\n---\n\n').slice(0, 80000);
     this.addMessage('user', 'Summarize / compare all open tabs');
     await this.processMessage(
       `You have extracts from ALL open browser tabs below. Summarize each briefly, then note overlaps, contradictions, or themes across tabs. Be concise.\n\n${blob}`,
@@ -2144,7 +2165,7 @@ PERSONALITY:
   }
 
   async _smartFollowUp() {
-    const MAX_AUTO_STEPS = 20;
+    const MAX_AUTO_STEPS = 35;
     if (this.isProcessing || this._autoFollowCount >= MAX_AUTO_STEPS) {
       if (this._autoFollowCount >= MAX_AUTO_STEPS) {
         this._addContinuePill('Reached step limit. Tell me what to do next.');
@@ -2161,7 +2182,7 @@ PERSONALITY:
     try {
       const page = await TabManager.getActivePageContent();
       if (page && !page.error) {
-        pageInfo = `Title: ${page.title}\nURL: ${page.url}\n\nPage content:\n${(page.text || '').slice(0, 10000)}`;
+        pageInfo = `Title: ${page.title}\nURL: ${page.url}\n\nPage content:\n${(page.text || '').slice(0, 20000)}`;
       }
     } catch { /* ignore */ }
 
