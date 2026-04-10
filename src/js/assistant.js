@@ -888,10 +888,12 @@ PERSONALITY:
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
 
-    // ── 3. Fenced code blocks ─────────────────────────────────────────────────
+    // ── 3. Fenced code blocks with language label + copy button ─────────────
     html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
       const langAttr = lang ? ` class="lang-${lang}"` : '';
-      return `<pre${langAttr}><code>${code.trim()}</code></pre>`;
+      const langLabel = lang || 'code';
+      const codeId = 'code-' + Math.random().toString(36).slice(2, 9);
+      return `<div class="msg-code-header"><span class="msg-code-lang">${langLabel}</span><button class="msg-code-copy" data-code-id="${codeId}" onclick="(function(b){var c=document.getElementById('${codeId}');if(c){navigator.clipboard.writeText(c.textContent).then(function(){b.textContent='Copied!';b.classList.add('copied');setTimeout(function(){b.textContent='Copy';b.classList.remove('copied')},1500)})}})(this)">Copy</button></div><pre${langAttr}><code id="${codeId}">${code.trim()}</code></pre>`;
     });
 
     // ── 4. Horizontal rule ────────────────────────────────────────────────────
@@ -1103,7 +1105,9 @@ PERSONALITY:
     this._takeoverMode = true;
     this._takeoverAbort = new AbortController();
     this._agentLogEntries = [];
+    this._takeoverStepNum = 0;
     this._renderAgentLog();
+    if (window.NavioAIBoost) window.NavioAIBoost.setOrbThinking(true);
     // Banner above the input area
     if (!document.getElementById('navio-takeover-banner')) {
       const banner = document.createElement('div');
@@ -1119,11 +1123,20 @@ PERSONALITY:
       const inputArea = this.panel.querySelector('.assistant-input-area');
       if (inputArea) this.panel.insertBefore(banner, inputArea);
     }
+    // Also show the visual agent bar with the animated orb
+    if (window.NavioAIBoost) {
+      const bar = window.NavioAIBoost.buildAgentTakeoverBar('Agent is working...', '');
+      const agentLog = document.getElementById('assistant-agent-log');
+      if (agentLog && agentLog.parentNode) {
+        agentLog.parentNode.insertBefore(bar, agentLog);
+      }
+    }
   }
 
   disableTakeover() {
     this._takeoverMode = false;
     this._autoFollowCount = 0;
+    if (window.NavioAIBoost) window.NavioAIBoost.setOrbThinking(false);
     if (typeof this._takeoverAuthResume === 'function') {
       try {
         this._takeoverAuthResume();
@@ -1141,6 +1154,7 @@ PERSONALITY:
     document.getElementById('navio-takeover-banner')?.remove();
     document.getElementById('navio-step-pause-pill')?.remove();
     document.getElementById('navio-auth-gate-pill')?.remove();
+    document.getElementById('agent-takeover-bar')?.remove();
     const logPanel = document.getElementById('assistant-agent-log');
     if (logPanel) {
       logPanel.hidden = true;

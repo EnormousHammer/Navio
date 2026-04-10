@@ -71,7 +71,7 @@
           </button>
         </div>
         <div id="extension-toolbar" class="extension-toolbar" aria-label="Extension shortcuts"></div>
-        <div class="url-bar-container">
+        <div class="url-bar-container" style="position:relative">
           <div class="url-bar">
             <svg class="url-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input type="text" id="url-input" placeholder="Search, URL, or ask a question…" spellcheck="false" autocomplete="off">
@@ -84,6 +84,7 @@
             <span class="url-zoom-label" id="url-zoom-label" title="Zoom (Ctrl+Plus / Ctrl+Minus)"></span>
             <div class="url-ssl" id="url-ssl" title="Connection info"></div>
           </div>
+          <div id="omnibox-ai-preview" class="omnibox-ai-preview" style="display:none"></div>
         </div>
         <div class="nav-actions">
           <button type="button" class="nav-btn" id="btn-toggle-bookmark-bar" title="Show or hide bookmark bar (saved)" aria-pressed="true">
@@ -294,6 +295,25 @@
             </div>
             <div id="ntp-smart-row" class="ntp-smart-row" role="status" aria-live="polite"></div>
             <p class="ntp-search-hint" id="ntp-kbd-hint"><kbd>/</kbd> focus search · <kbd>Enter</kbd> go</p>
+
+            <div class="ntp-ai-suggestions" id="ntp-ai-suggestions">
+              <button class="ntp-ai-suggestion" data-prompt="Summarize today's top news">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                Today's news briefing
+              </button>
+              <button class="ntp-ai-suggestion" data-prompt="What's on my schedule today?">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                My schedule today
+              </button>
+              <button class="ntp-ai-suggestion" data-prompt="Help me research a topic in depth">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                Deep research
+              </button>
+              <button class="ntp-ai-suggestion" data-prompt="Draft an email for me">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                Draft an email
+              </button>
+            </div>
           </div>
 
           <!-- Quick links -->
@@ -464,12 +484,9 @@
     <aside id="assistant-panel" class="assistant-panel">
       <div class="assistant-header">
         <div class="assistant-title">
-          <div class="ai-icon-ring small">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2a7 7 0 0 1 7 7v1a7 7 0 0 1-14 0V9a7 7 0 0 1 7-7z"/>
-              <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
-              <circle cx="9" cy="9" r="1" fill="currentColor"/>
-              <circle cx="15" cy="9" r="1" fill="currentColor"/>
+          <div class="ai-orb small" id="ai-orb">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/>
             </svg>
           </div>
           <span>Navio AI</span>
@@ -551,15 +568,14 @@
       <div class="assistant-messages" id="assistant-messages">
         <div class="assistant-welcome">
           <div class="welcome-glow-ring">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2a7 7 0 0 1 7 7v1a7 7 0 0 1-14 0V9a7 7 0 0 1 7-7z"/>
-              <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
-              <circle cx="9" cy="9" r="1" fill="currentColor"/>
-              <circle cx="15" cy="9" r="1" fill="currentColor"/>
-            </svg>
+            <div class="ai-orb" style="width:48px;height:48px">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/>
+              </svg>
+            </div>
           </div>
           <h3 class="welcome-title">Navio AI</h3>
-          <p class="welcome-sub">Your intelligent browser companion</p>
+          <p class="welcome-sub">Your intelligent browser companion — ask anything, automate tasks, research deeply</p>
           <div class="welcome-caps">
             <div class="welcome-cap">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -1364,6 +1380,8 @@
     <div class="loading-spinner"></div>
   </div>
 
+  <div id="navio-proactive-chips" class="navio-proactive-chips"></div>
+
   <script src="js/onboarding.js"></script>
   <script src="js/launch-intro.js"></script>
   <script src="js/email-assistant.js"></script>
@@ -1379,5 +1397,6 @@
   <script src="js/settings.js"></script>
   <script src="js/connectors.js"></script>
   <script src="js/live-connectors.js"></script>
+  <script src="js/navio-ai-boost.js"></script>
 </body>
 </html>
