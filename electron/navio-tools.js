@@ -220,6 +220,157 @@ const NAVIO_TOOLS = [
         }
       }
     }
+  },
+
+  // ── Tab management tools ────────────────────────────────────────────────────
+  {
+    name: 'open_tab',
+    description:
+      'Open a new browser tab and optionally navigate it to a URL. Returns the new tab\'s ID. ' +
+      'Use this for parallel research across multiple sites.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: 'Full URL to load in the new tab (optional — omit for a blank tab).'
+        }
+      }
+    }
+  },
+  {
+    name: 'close_tab',
+    description: 'Close a browser tab by its tab ID.',
+    parameters: {
+      type: 'object',
+      properties: {
+        tab_id: {
+          type: 'string',
+          description: 'The tab ID to close (from list_tabs or open_tab).'
+        }
+      },
+      required: ['tab_id']
+    }
+  },
+  {
+    name: 'switch_tab',
+    description:
+      'Switch the active browser tab. Subsequent actions (click, type, read_page, etc.) will target this tab.',
+    parameters: {
+      type: 'object',
+      properties: {
+        tab_id: {
+          type: 'string',
+          description: 'The tab ID to switch to (from list_tabs or open_tab).'
+        }
+      },
+      required: ['tab_id']
+    }
+  },
+  {
+    name: 'list_tabs',
+    description:
+      'List all open browser tabs with their IDs, titles, and URLs. Use to find a specific tab before switching to it.',
+    parameters: { type: 'object', properties: {} }
+  },
+
+  // ── Developer / inspection tools ────────────────────────────────────────────
+  {
+    name: 'read_console',
+    description:
+      'Read recent JavaScript console messages (errors, warnings, logs) from the current page. ' +
+      'Essential for debugging web apps and understanding page errors.',
+    parameters: {
+      type: 'object',
+      properties: {
+        level: {
+          type: 'string',
+          enum: ['all', 'error', 'warning', 'log', 'info'],
+          description: 'Filter by log level. Default: "all".'
+        },
+        limit: {
+          type: 'number',
+          description: 'Max number of messages to return. Default: 50.'
+        }
+      }
+    }
+  },
+  {
+    name: 'read_network',
+    description:
+      'Read recent network requests from the current page with URLs, status codes, methods, and timing. ' +
+      'Useful for debugging API calls, checking for failed requests, and understanding page loading.',
+    parameters: {
+      type: 'object',
+      properties: {
+        filter: {
+          type: 'string',
+          enum: ['all', 'failed', 'xhr', 'document', 'script', 'stylesheet', 'image'],
+          description: 'Filter requests by type or status. "failed" = status >= 400 or network error. Default: "all".'
+        },
+        limit: {
+          type: 'number',
+          description: 'Max number of entries to return. Default: 30.'
+        }
+      }
+    }
+  },
+
+  // ── Planning & workflow tools ───────────────────────────────────────────────
+  {
+    name: 'propose_plan',
+    description:
+      'Propose a multi-step plan for the user to approve before execution. Use this when a task ' +
+      'requires 3+ steps across pages/tabs, or involves sensitive actions (purchases, form submissions, emails). ' +
+      'The user will see the plan and can approve, edit, or cancel. After approval, execute the steps.',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: {
+          type: 'string',
+          description: 'Short title for the plan (e.g. "Book flight to Tokyo").'
+        },
+        steps: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              step_number: { type: 'number', description: 'Step order (1, 2, 3...).' },
+              action: { type: 'string', description: 'Brief description of what this step does.' },
+              tool: { type: 'string', description: 'Primary tool to use (navigate, click, type_text, etc.).' },
+              details: { type: 'string', description: 'Specific parameters or notes for this step.' }
+            },
+            required: ['step_number', 'action']
+          },
+          description: 'Ordered list of steps in the plan.'
+        },
+        estimated_time: {
+          type: 'string',
+          description: 'Estimated time to complete (e.g. "2-3 minutes").'
+        },
+        risks: {
+          type: 'string',
+          description: 'Any risks or sensitive actions in the plan the user should know about.'
+        }
+      },
+      required: ['title', 'steps']
+    }
+  },
+  {
+    name: 'run_workflow',
+    description:
+      'Run a previously saved workflow by name. Workflows are recorded sequences of browser actions ' +
+      'that can be replayed. Use list_workflows first to see available workflows.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Name of the saved workflow to run.'
+        }
+      },
+      required: ['name']
+    }
   }
 ];
 

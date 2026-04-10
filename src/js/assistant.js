@@ -732,6 +732,115 @@ class AssistantManagerClass {
       }
     });
 
+    // Set up tab management handlers
+    const unOpenTab = window.navio.onToolOpenTab(async ({ url }) => {
+      this._appendActivityStep('open_tab', `Opening new tab${url ? ': ' + new URL(url).hostname : ''}...`);
+      try {
+        TabManager.createTab(url || null);
+        await new Promise(r => setTimeout(r, url ? 2500 : 500));
+        const tab = TabManager.getActiveTab();
+        const wv = tab?.webview;
+        window.navio.toolOpenTabAck({
+          success: true,
+          tab_id: tab?.id || '',
+          webContentsId: wv?.getWebContentsId?.() || null,
+          url: tab?.url || '',
+          title: tab?.title || ''
+        });
+      } catch (e) {
+        window.navio.toolOpenTabAck({ error: e.message });
+      }
+    });
+
+    const unCloseTab = window.navio.onToolCloseTab(async ({ tab_id }) => {
+      this._appendActivityStep('close_tab', `Closing tab ${tab_id}`);
+      try {
+        TabManager.closeTab(tab_id);
+        await new Promise(r => setTimeout(r, 300));
+        const active = TabManager.getActiveTab();
+        window.navio.toolCloseTabAck({
+          success: true,
+          active_tab_id: active?.id || '',
+          webContentsId: active?.webview?.getWebContentsId?.() || null
+        });
+      } catch (e) {
+        window.navio.toolCloseTabAck({ error: e.message });
+      }
+    });
+
+    const unSwitchTab = window.navio.onToolSwitchTab(async ({ tab_id }) => {
+      this._appendActivityStep('switch_tab', `Switching to tab ${tab_id}`);
+      try {
+        TabManager.switchToTab(tab_id);
+        await new Promise(r => setTimeout(r, 500));
+        const tab = TabManager.getActiveTab();
+        const wv = tab?.webview;
+        window.navio.toolSwitchTabAck({
+          success: true,
+          tab_id: tab?.id || '',
+          webContentsId: wv?.getWebContentsId?.() || null,
+          url: tab?.url || '',
+          title: tab?.title || ''
+        });
+      } catch (e) {
+        window.navio.toolSwitchTabAck({ error: e.message });
+      }
+    });
+
+    const unListTabs = window.navio.onToolListTabs(async () => {
+      this._appendActivityStep('list_tabs', 'Listing open tabs...');
+      try {
+        const tabs = TabManager.tabs
+          .filter(t => t.url || t.id)
+          .map(t => ({
+            tab_id: t.id,
+            title: t.title || '(untitled)',
+            url: t.url || '',
+            active: t.id === TabManager.activeTabId,
+            webContentsId: t.webview?.getWebContentsId?.() || null
+          }));
+        window.navio.toolListTabsAck({ success: true, tabs });
+      } catch (e) {
+        window.navio.toolListTabsAck({ error: e.message });
+      }
+    });
+
+    // Set up reasoning handler (intermediate AI thinking during tool loop)
+    const unReasoning = window.navio.onToolReasoning?.(({ step, text }) => {
+      this._appendActivityStep('thinking', text.slice(0, 200) + (text.length > 200 ? '...' : ''));
+    });
+
+    // Set up plan approval handler
+    const unProposePlan = window.navio.onToolProposePlan?.(({ title, steps, estimated_time, risks }) => {
+      this._appendActivityStep('propose_plan', `Plan: ${title}`);
+      const planEl = document.createElement('div');
+      planEl.className = 'navio-plan-card';
+      let html = `<div class="npc-title">${this._escapeHtml(title)}</div>`;
+      html += '<ol class="npc-steps">';
+      for (const s of (steps || [])) {
+        html += `<li><strong>${this._escapeHtml(s.action)}</strong>${s.details ? ' — ' + this._escapeHtml(s.details) : ''}</li>`;
+      }
+      html += '</ol>';
+      if (estimated_time) html += `<div class="npc-meta">Estimated: ${this._escapeHtml(estimated_time)}</div>`;
+      if (risks) html += `<div class="npc-meta npc-risks">Note: ${this._escapeHtml(risks)}</div>`;
+      html += '<div class="npc-actions">';
+      html += '<button class="npc-btn npc-approve" type="button">Approve &amp; Run</button>';
+      html += '<button class="npc-btn npc-cancel" type="button">Cancel</button>';
+      html += '</div>';
+      planEl.innerHTML = html;
+      this.messagesEl.appendChild(planEl);
+      this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+
+      planEl.querySelector('.npc-approve').addEventListener('click', () => {
+        planEl.querySelector('.npc-actions').innerHTML = '<span class="npc-approved">Approved — executing...</span>';
+        window.navio.toolProposePlanAck({ approved: true, title });
+      });
+      planEl.querySelector('.npc-cancel')?.addEventListener('click', () => {
+        planEl.querySelector('.npc-actions').innerHTML = '<span class="npc-cancelled">Cancelled</span>';
+        window.navio.toolProposePlanAck({ cancelled: true, title });
+      });
+    });
+
     // Set up progress handler
     const unProgress = window.navio.onToolProgress(({ step, tool, result }) => {
       if (tool === 'navigate') return; // already shown
@@ -757,6 +866,12 @@ class AssistantManagerClass {
 
     // Cleanup
     unNav();
+    unOpenTab();
+    unCloseTab();
+    unSwitchTab();
+    unListTabs();
+    if (unReasoning) unReasoning();
+    if (unProposePlan) unProposePlan();
     unProgress();
     this.removeTypingIndicator();
 
@@ -766,6 +881,30 @@ class AssistantManagerClass {
       stopBtn.remove();
       const stepsCount = (response.toolLog || []).length;
       header.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Done${stepsCount ? ` (${stepsCount} steps)` : ''}`;
+    }
+
+    // Offer to save as workflow if the tool loop had multiple steps
+    if (response.toolLog && response.toolLog.length >= 2 && !response.error) {
+      if (this._workflowRecording) {
+        this._recordedSteps = (this._recordedSteps || []).concat(
+          response.toolLog.map(t => ({ tool: t.tool, args: t.args }))
+        );
+      }
+      const saveBtn = document.createElement('button');
+      saveBtn.className = 'navio-save-workflow-btn';
+      saveBtn.type = 'button';
+      saveBtn.textContent = 'Save as Workflow';
+      saveBtn.addEventListener('click', async () => {
+        const name = window.prompt('Name this workflow:');
+        if (!name?.trim()) return;
+        const steps = response.toolLog.map(t => ({ tool: t.tool, args: t.args }));
+        const result = await window.navio.workflowSave({ name: name.trim(), steps, meta: { description: text } });
+        if (result?.ok) {
+          saveBtn.textContent = 'Saved!';
+          saveBtn.disabled = true;
+        }
+      });
+      activityEl.appendChild(saveBtn);
     }
 
     // Display final response
@@ -815,8 +954,22 @@ class AssistantManagerClass {
       case 'wait': return `Waited`;
       case 'go_back': return `Went back`;
       case 'go_forward': return `Went forward`;
+      case 'open_tab': return `Opened new tab${result?.url ? ': ' + result.url : ''}`;
+      case 'close_tab': return `Closed tab`;
+      case 'switch_tab': return `Switched to tab${result?.title ? ': ' + result.title : ''}`;
+      case 'list_tabs': return `Listed ${result?.tabs?.length || 0} tabs`;
+      case 'read_console': return `Read ${result?.count || 0} console messages`;
+      case 'read_network': return `Read ${result?.count || 0} network requests`;
+      case 'propose_plan': return `Proposed plan${result?.approved ? ' (approved)' : result?.cancelled ? ' (cancelled)' : ''}`;
+      case 'run_workflow': return `Running workflow: ${result?.workflow_name || ''}`;
       default: return tool;
     }
+  }
+
+  _escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
   }
 
   async _processStream(messages, userHistory) {

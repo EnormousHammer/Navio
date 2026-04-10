@@ -30,6 +30,47 @@ contextBridge.exposeInMainWorld('navio', {
     return () => ipcRenderer.removeListener('tool-navigate', handler);
   },
   toolNavigateAck: (result) => ipcRenderer.send('tool-navigate-ack', result),
+
+  // Tab management tool events (agent → renderer → ack)
+  onToolOpenTab: (callback) => {
+    const handler = (_, data) => callback(data);
+    ipcRenderer.on('tool-open-tab', handler);
+    return () => ipcRenderer.removeListener('tool-open-tab', handler);
+  },
+  toolOpenTabAck: (result) => ipcRenderer.send('tool-open-tab-ack', result),
+  onToolCloseTab: (callback) => {
+    const handler = (_, data) => callback(data);
+    ipcRenderer.on('tool-close-tab', handler);
+    return () => ipcRenderer.removeListener('tool-close-tab', handler);
+  },
+  toolCloseTabAck: (result) => ipcRenderer.send('tool-close-tab-ack', result),
+  onToolSwitchTab: (callback) => {
+    const handler = (_, data) => callback(data);
+    ipcRenderer.on('tool-switch-tab', handler);
+    return () => ipcRenderer.removeListener('tool-switch-tab', handler);
+  },
+  toolSwitchTabAck: (result) => ipcRenderer.send('tool-switch-tab-ack', result),
+  onToolListTabs: (callback) => {
+    const handler = (_, data) => callback(data);
+    ipcRenderer.on('tool-list-tabs', handler);
+    return () => ipcRenderer.removeListener('tool-list-tabs', handler);
+  },
+  toolListTabsAck: (result) => ipcRenderer.send('tool-list-tabs-ack', result),
+
+  // Tool reasoning (intermediate AI thinking during tool loop)
+  onToolReasoning: (callback) => {
+    const handler = (_, data) => callback(data);
+    ipcRenderer.on('tool-reasoning', handler);
+    return () => ipcRenderer.removeListener('tool-reasoning', handler);
+  },
+
+  // Planning mode (propose_plan tool → user approval)
+  onToolProposePlan: (callback) => {
+    const handler = (_, data) => callback(data);
+    ipcRenderer.on('tool-propose-plan', handler);
+    return () => ipcRenderer.removeListener('tool-propose-plan', handler);
+  },
+  toolProposePlanAck: (result) => ipcRenderer.send('tool-propose-plan-ack', result),
   onAiStreamChunk: (callback) => {
     const handler = (_, chunk) => callback(chunk);
     ipcRenderer.on('ai-stream-chunk', handler);
@@ -54,6 +95,20 @@ contextBridge.exposeInMainWorld('navio', {
   deepResearch: (params) => ipcRenderer.invoke('deep-research', params),
   workflowSave: (params) => ipcRenderer.invoke('workflow-save', params),
   workflowList: () => ipcRenderer.invoke('workflow-list'),
+  workflowLoad: (params) => ipcRenderer.invoke('workflow-load', params),
+  workflowDelete: (params) => ipcRenderer.invoke('workflow-delete', params),
+
+  // Scheduler (recurring workflows)
+  schedulerList: () => ipcRenderer.invoke('scheduler-list'),
+  schedulerAdd: (params) => ipcRenderer.invoke('scheduler-add', params),
+  schedulerRemove: (params) => ipcRenderer.invoke('scheduler-remove', params),
+  schedulerToggle: (params) => ipcRenderer.invoke('scheduler-toggle', params),
+  schedulerRunNow: (params) => ipcRenderer.invoke('scheduler-run-now', params),
+  onScheduledWorkflowRun: (callback) => {
+    const handler = (_, data) => callback(data);
+    ipcRenderer.on('scheduled-workflow-run', handler);
+    return () => ipcRenderer.removeListener('scheduled-workflow-run', handler);
+  },
   replaceSelectionInPage: (params) => ipcRenderer.invoke('replace-selection-in-page', params),
   webviewPasteClipboard: (params) => ipcRenderer.invoke('webview-paste-clipboard', params),
 

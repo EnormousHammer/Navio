@@ -42,6 +42,15 @@ async function executeStep(wc, action, params, store) {
     });
   }
 
+  // Try to use tool executors from main.js if available
+  try {
+    const { getToolExecutors } = require('./main');
+    const executors = getToolExecutors?.();
+    if (executors && executors[action]) {
+      return await executors[action](wc, params);
+    }
+  } catch { /* fall through to built-in actions */ }
+
   switch (action) {
     case 'goBack':
       if (wc.canGoBack()) wc.goBack();
@@ -59,9 +68,21 @@ async function executeStep(wc, action, params, store) {
     case 'wait':
       await new Promise((r) => setTimeout(r, Math.min(10000, Math.max(100, Number(params.ms) || 500))));
       return { success: true };
+    case 'click':
+    case 'type_text':
+    case 'read_page':
+    case 'get_page_text':
+    case 'select_option':
+    case 'press_key':
+    case 'screenshot':
+    case 'insert_text':
+    case 'navigate':
+    case 'go_back':
+    case 'go_forward':
+      return { error: `Action "${action}" requires the full tool executor context. Use the assistant tool-calling mode instead.` };
     default:
       return {
-        error: `Unsupported agent action "${action}". Use goBack, goForward, scroll, or wait.`
+        error: `Unsupported agent action "${action}". Supported: goBack, goForward, scroll, wait, and all tool-calling actions via assistant.`
       };
   }
 }

@@ -16,6 +16,10 @@ const { registerProfilesIpc } = require('./navio-profiles-ipc');
 const { registerAgentPlanIpc } = require('./navio-agent-ipc');
 const { NAVIO_TOOLS, toOpenAITools, toAnthropicTools, toGeminiTools } = require('./navio-tools');
 const { getAccessibilityTree, clickByRef, typeByRef, selectByRef, getRefMap, clearRefMap } = require('./a11y-tree');
+const { startMonitoring, getConsoleMessages, getNetworkRequests, stopMonitoring } = require('./cdp-inspector');
+const { registerWorkflowIpc, loadWorkflow, saveWorkflow, listWorkflows } = require('./navio-workflows');
+const { getMcpTools, callMcpTool, isMcpTool, initFromConfig: initMcpFromConfig, registerMcpIpc } = require('./navio-mcp');
+const { initScheduler, registerSchedulerIpc, stopAll: stopAllSchedulers } = require('./navio-scheduler');
 
 function getProfileIdFromLaunch() {
   const a = process.argv.find((x) => typeof x === 'string' && x.startsWith('--navio-profile='));
@@ -724,7 +728,6 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
     }
     body = JSON.stringify(bodyObj);
   } else if (provider === 'anthropic') {
-    if (useStream) return { error: 'Streaming not implemented for this provider; disable stream in settings.' };
     url = 'https://api.anthropic.com/v1/messages';
     const systemMsg = messages.find((m) => m.role === 'system');
     const chatMsgs = messages.filter((m) => m.role !== 'system');
@@ -737,15 +740,16 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
       model: model || 'claude-opus-4-5',
       max_tokens: ntpBrief ? 900 : 16384,
       system: systemMsg?.content || '',
-      messages: chatMsgs
+      messages: chatMsgs,
+      stream: !!useStream
     };
     if (fetchOpts.tools && !ntpBrief) {
       anthropicBody.tools = toAnthropicTools(fetchOpts.tools);
     }
     body = JSON.stringify(anthropicBody);
   } else if (provider === 'google') {
-    if (useStream) return { error: 'Streaming not implemented for this provider; disable stream in settings.' };
-    url = `https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemini-2.0-flash'}:generateContent?key=${apiKey}`;
+    const googleEndpoint = useStream ? 'streamGenerateContent' : 'generateContent';
+    url = `https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemini-2.0-flash'}:${googleEndpoint}?key=${apiKey}${useStream ? '&alt=sse' : ''}`;
     headers = { 'Content-Type': 'application/json' };
     function toGeminiParts(content) {
       if (typeof content === 'string') return [{ text: content }];
@@ -792,7 +796,7 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
 
   const response = await fetch(url, { method: 'POST', headers, body });
 
-  if (useStream && (provider === 'openai' || provider === 'custom')) {
+  if (useStream) {
     if (!response.ok) {
       const errText = await response.text();
       return { error: errText || response.statusText };
@@ -864,6 +868,45 @@ function appendAssistantToolCalls(messages, result, provider) {
  * Append a tool result to the message history in the correct provider format.
  */
 function appendToolResult(messages, toolCall, result, provider) {
+  // Detect screenshot / image results and format as multimodal content
+  const hasImage = result && result.image && result.mimeType;
+
+  if (hasImage) {
+    const dataUri = `data:${result.mimeType};base64,${result.image}`;
+    const textPart = JSON.stringify({ success: true, note: 'Screenshot captured. Analyze the image to understand the page layout and identify click targets by xy coordinates.' });
+
+    if (provider === 'openai' || provider === 'custom') {
+      return [...messages, {
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        content: [
+          { type: 'text', text: textPart },
+          { type: 'image_url', image_url: { url: dataUri, detail: 'high' } }
+        ]
+      }];
+    } else if (provider === 'anthropic') {
+      return [...messages, {
+        role: 'user',
+        content: [{
+          type: 'tool_result',
+          tool_use_id: toolCall.id,
+          content: [
+            { type: 'text', text: textPart },
+            { type: 'image', source: { type: 'base64', media_type: result.mimeType, data: result.image } }
+          ]
+        }]
+      }];
+    } else if (provider === 'google') {
+      return [...messages, {
+        role: 'function',
+        parts: [
+          { functionResponse: { name: toolCall.name, response: { content: textPart } } },
+          { inlineData: { mimeType: result.mimeType, data: result.image } }
+        ]
+      }];
+    }
+  }
+
   const resultStr = JSON.stringify(result).slice(0, 50000);
   if (provider === 'openai' || provider === 'custom') {
     return [...messages, { role: 'tool', tool_call_id: toolCall.id, content: resultStr }];
@@ -912,15 +955,28 @@ function waitForRendererAck(sender, channel, timeoutMs) {
  */
 async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
   maxSteps = maxSteps || 35;
-  const tools = NAVIO_TOOLS;
+  // Merge native tools with any connected MCP tools
+  const mcpTools = cfg.mcpEnabled !== false ? getMcpTools() : [];
+  const tools = [...NAVIO_TOOLS, ...mcpTools];
   const toolLog = [];
   let currentMessages = [...messages];
   const provider = cfg.aiProvider || 'openai';
+  let activeWc = wc; // mutable — tab tools can change the target webContents
+
+  // Start CDP monitoring early so console/network events are captured from the start
+  try { await startMonitoring(activeWc); } catch { /* non-fatal */ }
+
+  const TAB_TOOLS = new Set(['open_tab', 'close_tab', 'switch_tab', 'list_tabs']);
 
   for (let step = 0; step < maxSteps; step++) {
     const result = await performAiFetch(cfg, apiKey, currentMessages, false, { tools });
 
     if (result.error) return { error: result.error, toolLog };
+
+    // Emit any intermediate reasoning text the model produced alongside tool calls
+    if (result.content && result.toolCalls && result.toolCalls.length) {
+      sender.send('tool-reasoning', { step, text: result.content });
+    }
 
     if (!result.toolCalls || !result.toolCalls.length) {
       if (result.content) extractAndSaveMemory(result.content);
@@ -951,10 +1007,70 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
         currentMessages = appendToolResult(currentMessages, tc, navResult, provider);
         toolLog.push({ tool: 'navigate', args: tc.arguments, result: navResult });
         sender.send('tool-progress', { step, tool: tc.name, result: navResult });
+
+        // Auto-screenshot after navigation for visual context
+        if (cfg.aiAutoScreenshotAfterNavigate && !navResult.error && activeWc) {
+          try {
+            await new Promise(r => setTimeout(r, 500));
+            const autoScreenshot = await toolExecutors.screenshot(activeWc);
+            if (autoScreenshot.image) {
+              sender.send('tool-progress', { step, tool: 'screenshot', result: { success: true, auto: true } });
+              currentMessages = [...currentMessages, {
+                role: provider === 'google' ? 'user' : 'system',
+                content: provider === 'openai' || provider === 'custom'
+                  ? [
+                      { type: 'text', text: '[Auto-screenshot after navigation — use this to understand the page visually]' },
+                      { type: 'image_url', image_url: { url: `data:${autoScreenshot.mimeType};base64,${autoScreenshot.image}`, detail: 'high' } }
+                    ]
+                  : '[Auto-screenshot captured after navigation]'
+              }];
+            }
+          } catch { /* non-fatal */ }
+        }
         continue;
       }
 
-      // All other tools: execute directly
+      // Planning mode: propose_plan pauses execution and awaits user approval
+      if (tc.name === 'propose_plan') {
+        sender.send('tool-propose-plan', tc.arguments || {});
+        const planResult = await waitForRendererAck(sender, 'tool-propose-plan-ack', 300000); // 5 min timeout
+        currentMessages = appendToolResult(currentMessages, tc, planResult, provider);
+        toolLog.push({ tool: tc.name, args: tc.arguments, result: planResult });
+        sender.send('tool-progress', { step, tool: tc.name, result: planResult });
+        if (planResult.cancelled) {
+          return { content: 'Plan was cancelled by the user.', toolLog };
+        }
+        continue;
+      }
+
+      // Tab management tools: go through the renderer's TabManager
+      if (TAB_TOOLS.has(tc.name)) {
+        const tabResult = await executeTabTool(tc, sender);
+        // switch_tab returns a new webContentsId — update activeWc
+        if (tc.name === 'switch_tab' && tabResult.webContentsId) {
+          const newWc = electronWebContents.fromId(tabResult.webContentsId);
+          if (newWc) activeWc = newWc;
+        }
+        if (tc.name === 'open_tab' && tabResult.webContentsId) {
+          const newWc = electronWebContents.fromId(tabResult.webContentsId);
+          if (newWc) activeWc = newWc;
+        }
+        currentMessages = appendToolResult(currentMessages, tc, tabResult, provider);
+        toolLog.push({ tool: tc.name, args: tc.arguments, result: tabResult });
+        sender.send('tool-progress', { step, tool: tc.name, result: tabResult });
+        continue;
+      }
+
+      // MCP tools: proxy to the MCP server
+      if (isMcpTool(tc.name)) {
+        const mcpResult = await callMcpTool(tc.name, tc.arguments);
+        currentMessages = appendToolResult(currentMessages, tc, mcpResult, provider);
+        toolLog.push({ tool: tc.name, args: tc.arguments, result: mcpResult });
+        sender.send('tool-progress', { step, tool: tc.name, result: mcpResult });
+        continue;
+      }
+
+      // All other tools: execute directly against the active webContents
       const executor = toolExecutors[tc.name];
       if (!executor) {
         const toolResult = { error: `Unknown tool: ${tc.name}` };
@@ -964,13 +1080,30 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
         continue;
       }
 
-      const toolResult = await executor(wc, tc.arguments);
+      const toolResult = await executor(activeWc, tc.arguments);
       currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
       toolLog.push({ tool: tc.name, args: tc.arguments, result: toolResult });
       sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
     }
   }
   return { content: '[Reached maximum tool-calling step limit. Tell me what to do next.]', toolLog };
+}
+
+/**
+ * Execute a tab management tool by sending an IPC event to the renderer
+ * and waiting for an acknowledgement with the result.
+ */
+async function executeTabTool(tc, sender) {
+  const channelMap = {
+    open_tab:   { send: 'tool-open-tab',   ack: 'tool-open-tab-ack' },
+    close_tab:  { send: 'tool-close-tab',  ack: 'tool-close-tab-ack' },
+    switch_tab: { send: 'tool-switch-tab', ack: 'tool-switch-tab-ack' },
+    list_tabs:  { send: 'tool-list-tabs',  ack: 'tool-list-tabs-ack' }
+  };
+  const ch = channelMap[tc.name];
+  if (!ch) return { error: `Unknown tab tool: ${tc.name}` };
+  sender.send(ch.send, tc.arguments || {});
+  return await waitForRendererAck(sender, ch.ack, 30000);
 }
 
 ipcMain.handle('ai-request', async (event, payload) => {
@@ -1087,6 +1220,7 @@ ipcMain.handle('ai-request-stream', async (event, { messages }) => {
   const collectStream = async (fetchResult) => {
     if (fetchResult.error) return { error: fetchResult.error };
     if (!fetchResult.stream) return { error: 'Streaming unavailable for this provider.' };
+    const streamProvider = fetchResult.provider || 'openai';
     const reader = fetchResult.stream.getReader();
     const decoder = new TextDecoder();
     let sseBuffer = '';
@@ -1099,14 +1233,30 @@ ipcMain.handle('ai-request-stream', async (event, { messages }) => {
       sseBuffer = lines.pop() || '';
       for (const line of lines) {
         const trimmed = line.trim();
+        if (!trimmed.startsWith('data:') && trimmed.startsWith('event:')) continue;
         if (!trimmed.startsWith('data:')) continue;
         const data = trimmed.slice(5).trim();
         if (data === '[DONE]') break;
         try {
           const json = JSON.parse(data);
-          const delta = json.choices?.[0]?.delta?.content;
-          if (delta) fullText += delta;
-        } catch { /* skip keep-alives */ }
+
+          if (streamProvider === 'anthropic') {
+            // Anthropic SSE: event types content_block_delta, content_block_start, etc.
+            if (json.type === 'content_block_delta' && json.delta?.type === 'text_delta') {
+              fullText += json.delta.text || '';
+            }
+          } else if (streamProvider === 'google') {
+            // Google SSE: each event is a full candidate response chunk
+            const parts = json.candidates?.[0]?.content?.parts || [];
+            for (const p of parts) {
+              if (p.text) fullText += p.text;
+            }
+          } else {
+            // OpenAI / custom
+            const delta = json.choices?.[0]?.delta?.content;
+            if (delta) fullText += delta;
+          }
+        } catch { /* skip keep-alives or parse errors */ }
       }
     }
     return { content: fullText };
@@ -1656,6 +1806,43 @@ const toolExecutors = {
       return { success: true, url: wc.getURL() };
     } catch (e) {
       return { error: e.message };
+    }
+  },
+
+  async read_console(wc, args) {
+    try {
+      await startMonitoring(wc);
+      const level = args.level || 'all';
+      const limit = Math.min(args.limit || 50, 100);
+      const msgs = getConsoleMessages(wc.id, level, limit);
+      if (!msgs.length) return { messages: [], note: 'No console messages captured yet. The monitor starts when this tool is first called — interact with the page and call again.' };
+      return { messages: msgs, count: msgs.length };
+    } catch (e) {
+      return { error: 'read_console failed: ' + e.message };
+    }
+  },
+
+  async run_workflow(wc, args) {
+    try {
+      const { loadWorkflow } = require('./navio-workflows');
+      const workflow = loadWorkflow(args.name);
+      if (!workflow) return { error: `Workflow "${args.name}" not found. Use list_tabs or check saved workflows.` };
+      return { success: true, workflow_name: args.name, steps: workflow.steps.length, note: 'Workflow loaded. Execute the steps in order.' };
+    } catch (e) {
+      return { error: 'run_workflow failed: ' + e.message };
+    }
+  },
+
+  async read_network(wc, args) {
+    try {
+      await startMonitoring(wc);
+      const filter = args.filter || 'all';
+      const limit = Math.min(args.limit || 30, 60);
+      const reqs = getNetworkRequests(wc.id, filter, limit);
+      if (!reqs.length) return { requests: [], note: 'No network requests captured yet. The monitor starts when this tool is first called — navigate or interact with the page and call again.' };
+      return { requests: reqs, count: reqs.length };
+    } catch (e) {
+      return { error: 'read_network failed: ' + e.message };
     }
   }
 };
@@ -2747,35 +2934,7 @@ ipcMain.handle('workspace', (event, payload) => {
   return { error: 'Unknown op' };
 });
 
-ipcMain.handle('mcp-config', (event, payload) => {
-  const cfg = loadConfig();
-  if (payload?.op === 'get') {
-    return {
-      enabled: !!cfg.mcpEnabled,
-      servers: Array.isArray(cfg.mcpServers) ? cfg.mcpServers : []
-    };
-  }
-  if (payload?.op === 'set') {
-    saveConfig({
-      mcpEnabled: !!payload.enabled,
-      mcpServers: Array.isArray(payload.servers) ? payload.servers : []
-    });
-    if (store) {
-      store.appendLedger({ type: 'mcp_config', enabled: !!payload.enabled, serverCount: (payload.servers || []).length });
-    }
-    return { ok: true };
-  }
-  if (payload?.op === 'list-tools-stub') {
-    return {
-      tools: cfg.mcpEnabled
-        ? [
-            { name: 'navio.echo', description: 'Stub MCP tool (enable real MCP SDK in a future release)' }
-          ]
-        : []
-    };
-  }
-  return { error: 'Unknown op' };
-});
+// MCP config handled by navio-mcp.js — registered in app.whenReady()
 
 ipcMain.handle('proactive-tick', (event, payload) => {
   const cfg = loadConfig();
@@ -4731,6 +4890,20 @@ app.whenReady().then(async () => {
   });
 
   registerAgentPlanIpc(ipcMain, { store });
+  registerWorkflowIpc(ipcMain);
+  registerMcpIpc(ipcMain, loadConfig, saveConfig);
+  registerSchedulerIpc(ipcMain);
+
+  // Initialize MCP connections from persisted config
+  const mcpCfg = loadConfig();
+  if (mcpCfg.mcpEnabled && Array.isArray(mcpCfg.mcpServers)) {
+    initMcpFromConfig(mcpCfg.mcpServers).catch(err => {
+      console.error('[navio] MCP init error:', err.message);
+    });
+  }
+
+  // Start scheduled task timers
+  initScheduler();
   await loadPersistedExtensionsOnStartup(app);
 
   if (app.isPackaged) {
@@ -4746,6 +4919,7 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   globalShortcut.unregisterAll();
+  stopAllSchedulers();
   app.quit();
 });
 
