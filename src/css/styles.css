@@ -1066,23 +1066,24 @@ body.tabstrip-hidden .tab-strip-show {
   overflow: hidden;
   background-color: #03050c;
   background-image:
-    radial-gradient(ellipse 90% 55% at 50% -15%, rgba(99, 102, 241, 0.20), transparent 58%),
-    radial-gradient(ellipse 55% 42% at 108% 8%, rgba(0, 212, 255, 0.10), transparent 52%),
-    radial-gradient(ellipse 50% 38% at -8% 92%, rgba(168, 85, 247, 0.11), transparent 55%),
-    radial-gradient(ellipse 75% 50% at 50% 108%, rgba(0, 180, 200, 0.14), transparent 48%);
-  animation: ntp-aurora-shift 28s ease-in-out infinite alternate;
+    radial-gradient(ellipse 90% 55% at 50% -15%, rgba(99, 102, 241, 0.32), transparent 58%),
+    radial-gradient(ellipse 55% 42% at 105% 8%, rgba(0, 212, 255, 0.18), transparent 52%),
+    radial-gradient(ellipse 50% 38% at -5% 88%, rgba(168, 85, 247, 0.20), transparent 55%),
+    radial-gradient(ellipse 75% 50% at 50% 108%, rgba(0, 180, 200, 0.22), transparent 48%),
+    radial-gradient(ellipse 60% 40% at 65% 90%, rgba(236, 72, 153, 0.14), transparent 55%);
+  animation: ntp-aurora-shift 22s ease-in-out infinite alternate;
 }
 /* Fine tech grid — vignette-masked so edges stay calm, center stays “holographic” */
 .ntp-bg-layer::before {
   content: '';
   position: absolute;
   inset: -30%;
-  opacity: 0.55;
+  opacity: 0.65;
   background-image:
-    linear-gradient(rgba(0, 212, 255, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 212, 255, 0.045) 1px, transparent 1px),
-    linear-gradient(rgba(124, 58, 237, 0.028) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(124, 58, 237, 0.028) 1px, transparent 1px);
+    linear-gradient(rgba(0, 212, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 212, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(124, 58, 237, 0.038) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 58, 237, 0.038) 1px, transparent 1px);
   background-size: 56px 56px, 56px 56px, 14px 14px, 14px 14px;
   background-position: 0 0, 0 0, 7px 7px, 7px 7px;
   animation: ntp-grid-drift 72s linear infinite;
@@ -1121,12 +1122,16 @@ body.tabstrip-hidden .tab-strip-show {
 }
 @keyframes ntp-aurora-shift {
   0% {
-    filter: hue-rotate(0deg) saturate(1);
+    filter: hue-rotate(0deg) saturate(1.05);
     transform: scale(1);
   }
+  50% {
+    filter: hue-rotate(6deg) saturate(1.15);
+    transform: scale(1.03);
+  }
   100% {
-    filter: hue-rotate(12deg) saturate(1.08);
-    transform: scale(1.02);
+    filter: hue-rotate(14deg) saturate(1.1);
+    transform: scale(1.01);
   }
 }
 @keyframes ntp-shimmer {
@@ -1238,7 +1243,7 @@ body.tabstrip-hidden .tab-strip-show {
   color: #fff;
   font-variant-numeric: tabular-nums;
   line-height: 1;
-  text-shadow: 0 0 30px rgba(0,212,255,0.2), 0 0 60px rgba(124,58,237,0.1);
+  text-shadow: 0 0 20px rgba(0,212,255,0.35), 0 0 50px rgba(0,212,255,0.15), 0 0 80px rgba(124,58,237,0.12);
   font-family: 'SF Pro Display', 'Helvetica Neue', system-ui, sans-serif;
 }
 .ntp-clock-ampm {
@@ -1394,16 +1399,22 @@ body.tabstrip-hidden .tab-strip-show {
   align-items: center;
   gap: 10px;
   padding: 10px 18px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(0,216,255,0.15);
   border-radius: 50px;
   margin-bottom: 8px;
-  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
   position: relative;
   width: 100%;
   max-width: 640px;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow: 0 0 20px rgba(0,216,255,0.06), 0 4px 24px rgba(0,0,0,0.3);
+  animation: ntp-search-breathe 4s ease-in-out infinite;
+}
+@keyframes ntp-search-breathe {
+  0%, 100% { border-color: rgba(0,216,255,0.15); box-shadow: 0 0 20px rgba(0,216,255,0.06), 0 4px 24px rgba(0,0,0,0.3); }
+  50% { border-color: rgba(0,216,255,0.25); box-shadow: 0 0 30px rgba(0,216,255,0.10), 0 4px 24px rgba(0,0,0,0.3); }
 }
 
 .ntp-search-glow {
@@ -1411,11 +1422,11 @@ body.tabstrip-hidden .tab-strip-show {
   inset: -2px;
   border-radius: 50px;
   background: conic-gradient(from 0deg, rgba(0,216,255,0.6), rgba(84,104,255,0.5), rgba(159,111,255,0.5), rgba(244,114,182,0.4), rgba(0,216,255,0.6));
-  opacity: 0;
+  opacity: 0.12;
   transition: opacity 0.4s;
   z-index: -1;
-  filter: blur(10px);
-  animation: ntp-glow-rotate 4s linear infinite;
+  filter: blur(12px);
+  animation: ntp-glow-rotate 6s linear infinite;
 }
 
 @keyframes ntp-glow-rotate {
@@ -1423,12 +1434,13 @@ body.tabstrip-hidden .tab-strip-show {
 }
 
 .ntp-search:focus-within {
-  border-color: rgba(0,216,255,0.5);
-  background: rgba(255,255,255,0.08);
-  box-shadow: 0 0 0 1px rgba(0,216,255,0.18), 0 8px 40px rgba(0,216,255,0.15), 0 0 80px rgba(84,104,255,0.06);
+  border-color: rgba(0,216,255,0.55);
+  background: rgba(255,255,255,0.09);
+  box-shadow: 0 0 0 1px rgba(0,216,255,0.20), 0 8px 50px rgba(0,216,255,0.18), 0 0 100px rgba(84,104,255,0.08);
+  animation: none;
 }
 
-.ntp-search:focus-within .ntp-search-glow { opacity: 0.35; }
+.ntp-search:focus-within .ntp-search-glow { opacity: 0.45; }
 
 .ntp-search svg { color: rgba(226,232,248,0.4); flex-shrink: 0; }
 .ntp-search:focus-within svg { color: #00d8ff; }
@@ -1457,10 +1469,14 @@ body.tabstrip-hidden .tab-strip-show {
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  transition: opacity 0.15s, transform 0.15s;
-  box-shadow: 0 2px 12px rgba(0,212,255,0.3);
+  transition: opacity 0.2s, transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 2px 16px rgba(0,212,255,0.4), 0 0 8px rgba(124,58,237,0.3);
 }
-.ntp-search-send:hover { opacity: 0.85; transform: scale(1.05); }
+.ntp-search-send:hover {
+  opacity: 0.9;
+  transform: scale(1.08);
+  box-shadow: 0 4px 24px rgba(0,212,255,0.5), 0 0 12px rgba(124,58,237,0.4);
+}
 
 .ntp-smart-row {
   width: 100%;
@@ -1513,32 +1529,41 @@ body.tabstrip-hidden .tab-strip-show {
   .ntp-widgets { grid-template-columns: 1fr; grid-template-rows: auto; }
 }
 .ntp-widget {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.045);
+  border: 1px solid rgba(255,255,255,0.10);
   border-radius: 16px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   min-height: 0;
   position: relative;
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
-  box-shadow: 0 3px 18px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06);
+  backdrop-filter: blur(28px) saturate(1.2);
+  -webkit-backdrop-filter: blur(28px) saturate(1.2);
+  transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
+  box-shadow: 0 4px 30px rgba(0,0,0,0.45), 0 0 1px rgba(0,216,255,0.12), inset 0 1px 0 rgba(255,255,255,0.08);
 }
-/* Subtle shimmer line at the top of every widget */
+/* Gradient accent line at the top of every widget */
 .ntp-widget::before {
   content: '';
   position: absolute;
-  top: 0; left: 10%; right: 10%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 5%, rgba(0,216,255,0.4) 30%, rgba(124,58,237,0.35) 70%, transparent 95%);
   pointer-events: none;
-  z-index: 1;
+  z-index: 3;
+  opacity: 0.7;
+  transition: opacity 0.3s;
+}
+.ntp-widget:hover::before {
+  opacity: 1;
 }
 .ntp-widget:hover {
-  border-color: rgba(0,212,255,0.25);
-  box-shadow: 0 8px 30px rgba(0,212,255,0.08), 0 3px 18px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08);
+  border-color: rgba(0,212,255,0.30);
+  box-shadow:
+    0 8px 40px rgba(0,212,255,0.10),
+    0 4px 30px rgba(0,0,0,0.5),
+    0 0 0 1px rgba(0,216,255,0.08),
+    inset 0 1px 0 rgba(255,255,255,0.10);
   transform: translateY(-1px);
 }
 /* AI Brief widget — gradient neon border */
@@ -1571,12 +1596,12 @@ body.tabstrip-hidden .tab-strip-show {
   padding: 9px 14px;
   font-size: 10px;
   font-weight: 800;
-  color: rgba(226,232,248,0.55);
+  color: rgba(226,232,248,0.60);
   text-transform: uppercase;
   letter-spacing: 1px;
-  border-bottom: 1px solid rgba(255,255,255,0.07);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
   flex-shrink: 0;
-  background: rgba(255,255,255,0.015);
+  background: rgba(255,255,255,0.025);
   position: relative;
   z-index: 2;
 }
@@ -2378,6 +2403,18 @@ body.tabstrip-hidden .tab-strip-show {
   z-index: 1;
   padding: 0 18px;
 }
+.ntp-shortcuts::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 70%;
+  height: 120%;
+  background: radial-gradient(ellipse at center, rgba(0,216,255,0.06) 0%, rgba(124,58,237,0.03) 50%, transparent 80%);
+  pointer-events: none;
+  z-index: -1;
+}
 
 .ntp-shortcut {
   display: flex;
@@ -2409,8 +2446,8 @@ body.tabstrip-hidden .tab-strip-show {
   width: 42px;
   height: 42px;
   border-radius: 12px;
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.11);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2430,9 +2467,9 @@ body.tabstrip-hidden .tab-strip-show {
 
 .ntp-shortcut:hover { transform: translateY(-4px); }
 .ntp-shortcut:hover .shortcut-icon {
-  background: rgba(255,255,255,0.16);
-  box-shadow: 0 10px 28px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.18);
-  border-color: rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.14);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4), 0 0 12px rgba(0,216,255,0.08), inset 0 1px 0 rgba(255,255,255,0.15);
+  border-color: rgba(0,216,255,0.20);
 }
 
 .ntp-shortcut span { font-size: 11px; color: rgba(226,232,248,0.50); }
@@ -8260,252 +8297,34 @@ body.onboarding-active #app {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* Base NTP surface + CSS variable reset for light mode */
+/* ── NTP is ALWAYS dark — premium AI showcase regardless of browser theme ── */
+/* Force dark NTP even when browser chrome is in light mode */
 [data-theme="light"] .new-tab-page {
-  background: linear-gradient(160deg, #eef2ff 0%, #f4f0ff 45%, #e8f4ff 100%);
-  color: #16172a;
-  --ntp-accent: #0088ee;
-  --ntp-purple: #6d28d9;
-  --ntp-text: #16172a;
-  --ntp-subtext: rgba(22,23,42,0.55);
-  --ntp-border: rgba(50,70,160,0.10);
-  --ntp-glass: rgba(255,255,255,0.55);
-  --ntp-glass-hover: rgba(255,255,255,0.75);
-  /* reset global vars used by child elements */
-  --text-primary: #16172a;
-  --text-secondary: #424466;
-  --text-tertiary: #737594;
-  --text-accent: #0070d8;
-  --bg-surface: rgba(255,255,255,0.60);
-  --bg-elevated: rgba(255,255,255,0.80);
-  --bg-hover: rgba(50,70,160,0.06);
-  --border: rgba(50,70,160,0.10);
-  --border-hover: rgba(50,70,160,0.20);
-  --glass-border: rgba(50,70,160,0.10);
+  background: #05080f;
+  color: #e2e8f8;
+  --ntp-accent: #00d8ff;
+  --ntp-purple: #7c3aed;
+  --ntp-text: #e2e8f8;
+  --ntp-subtext: rgba(226,232,248,0.55);
+  --ntp-border: rgba(255,255,255,0.07);
+  --ntp-glass: rgba(255,255,255,0.04);
+  --ntp-glass-hover: rgba(255,255,255,0.07);
+  --text-primary: #e2e8f8;
+  --text-secondary: rgba(226,232,248,0.65);
+  --text-tertiary: rgba(226,232,248,0.35);
+  --text-accent: #00d8ff;
+  --bg-surface: rgba(255,255,255,0.05);
+  --bg-elevated: rgba(255,255,255,0.06);
+  --bg-hover: rgba(255,255,255,0.06);
+  --border: rgba(255,255,255,0.07);
+  --border-hover: rgba(255,255,255,0.14);
+  --glass-border: rgba(255,255,255,0.07);
 }
-
-[data-theme="light"] .ntp-smart-row { color: rgba(22, 23, 42, 0.48); }
-[data-theme="light"] .ntp-search-hint { color: rgba(22, 23, 42, 0.38); }
-[data-theme="light"] .ntp-search-hint kbd {
-  color: #0070d8;
-  background: rgba(0, 112, 216, 0.08);
-  border-color: rgba(0, 112, 216, 0.22);
-}
-[data-theme="light"] .ntp-brief-block { border-bottom-color: rgba(50, 70, 160, 0.1); }
-[data-theme="light"] .ntp-brief-block-title { color: #0070d8; }
-[data-theme="light"] .ntp-brief-block-text,
-[data-theme="light"] .ntp-brief-analysis { color: #16172a; }
-[data-theme="light"] .ntp-brief-analysis p { color: #1e293b; }
-[data-theme="light"] .ntp-related-label { color: rgba(0, 112, 216, 0.7); }
-[data-theme="light"] .ntp-news-item-compact { border-bottom-color: rgba(50, 70, 160, 0.08); }
-
-[data-theme="light"] .ntp-brief-content { color: #1e293b; }
-[data-theme="light"] .ntp-brief-opening { color: #0f172a !important; }
-[data-theme="light"] .ntp-brief-bullets li { color: #334155; }
-[data-theme="light"] .ntp-brief-bullets li::before { background: rgba(0, 100, 200, 0.5); }
-[data-theme="light"] .ntp-brief-foot {
-  color: #475569 !important;
-  background: rgba(50, 70, 160, 0.04);
-  border-color: rgba(50, 70, 160, 0.1) !important;
-}
-[data-theme="light"] .ntp-brief-foot.ntp-brief-next {
-  color: #0070d8 !important;
-  background: rgba(0, 112, 216, 0.06);
-  border-color: rgba(0, 112, 216, 0.18) !important;
-}
-[data-theme="light"] .ntp-brief-tag { color: rgba(0, 112, 216, 0.65); }
-[data-theme="light"] .ntp-brief-section-head {
-  color: #0070d8;
-  border-bottom-color: rgba(0, 112, 216, 0.15);
-}
-[data-theme="light"] .ntp-brief-datestamp { color: rgba(0, 112, 216, 0.65); }
-[data-theme="light"] .ntp-brief-idle p { color: rgba(22, 23, 42, 0.45); }
-
-/* Light NTP — same structure, softer contrast */
-[data-theme="light"] .ntp-bg-layer {
-  background-color: #f0f4ff;
-  background-image:
-    radial-gradient(ellipse 88% 52% at 50% -12%, rgba(99, 102, 241, 0.14), transparent 58%),
-    radial-gradient(ellipse 50% 40% at 102% 6%, rgba(0, 120, 220, 0.08), transparent 52%),
-    radial-gradient(ellipse 48% 36% at -6% 94%, rgba(139, 92, 246, 0.07), transparent 54%),
-    radial-gradient(ellipse 72% 48% at 50% 105%, rgba(56, 189, 248, 0.10), transparent 50%);
-  animation: ntp-aurora-shift 32s ease-in-out infinite alternate;
-}
-[data-theme="light"] .ntp-bg-layer::before {
-  opacity: 0.4;
-  background-image:
-    linear-gradient(rgba(50, 80, 180, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(50, 80, 180, 0.06) 1px, transparent 1px),
-    linear-gradient(rgba(100, 120, 200, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(100, 120, 200, 0.04) 1px, transparent 1px);
-  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 15%, transparent 75%);
-  mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 15%, transparent 75%);
-}
-[data-theme="light"] .ntp-bg-layer::after {
-  background-image:
-    repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(80, 100, 180, 0.04) 3px, rgba(80, 100, 180, 0.04) 4px),
-    url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E"),
-    linear-gradient(100deg, transparent 0%, rgba(0, 120, 220, 0.05) 45%, transparent 68%),
-    linear-gradient(transparent 50%, rgba(240, 244, 255, 0.92));
-  background-size: 100% 100%, 160px 160px, 200% 200%, 100% 100%;
-  opacity: 0.85;
-}
-
-/* Clock */
-/* Light mode clock — heavier weight so it reads clearly */
-[data-theme="light"] .ntp-clock {
-  color: #0f1020;
-  text-shadow: none;
-  font-weight: 300;
-}
-[data-theme="light"] .ntp-clock-ampm {
-  opacity: 0.50;
-  color: #0f1020;
-}
-[data-theme="light"] #ntp-greeting,
-[data-theme="light"] .ntp-clock-sep,
-[data-theme="light"] #ntp-date { color: rgba(22,23,42,0.52); }
-
-/* Light mode NAVIO title — gradient must use dark tones, not white */
-[data-theme="light"] .ntp-title {
-  background: linear-gradient(90deg, #1a1f6e 0%, #0078d4 50%, #7c3aed 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-/* Mode tabs */
-[data-theme="light"] .ntp-mode-tabs {
-  background: rgba(255,255,255,0.55);
-  border-color: rgba(50,70,160,0.12);
-  backdrop-filter: blur(12px);
-}
-[data-theme="light"] .ntp-mode-tab { color: rgba(22,23,42,0.55); }
-[data-theme="light"] .ntp-mode-tab:hover { color: #16172a; }
-[data-theme="light"] .ntp-mode-tab.active {
-  background: rgba(0,120,220,0.12);
-  color: #0070d8;
-  box-shadow: inset 0 0 0 1px rgba(0,120,220,0.22);
-}
-
-/* Search bar */
-[data-theme="light"] .ntp-search {
-  background: rgba(255,255,255,0.70);
-  border-color: rgba(50,70,160,0.14);
-  box-shadow: 0 4px 24px rgba(50,70,160,0.08), inset 0 1px 0 rgba(255,255,255,0.90);
-  backdrop-filter: blur(16px);
-}
-[data-theme="light"] .ntp-search:focus-within {
-  background: rgba(255,255,255,0.90);
-  border-color: rgba(0,120,220,0.35);
-  box-shadow: 0 0 0 3px rgba(0,120,220,0.10), 0 6px 28px rgba(0,120,220,0.10);
-}
-[data-theme="light"] .ntp-search svg { color: rgba(22,23,42,0.35); }
-[data-theme="light"] .ntp-search:focus-within svg { color: #0070d8; }
-[data-theme="light"] .ntp-search input { color: #16172a; }
-[data-theme="light"] .ntp-search input::placeholder { color: rgba(22,23,42,0.35); }
-
-/* Shortcut labels */
-[data-theme="light"] .ntp-shortcut span { color: rgba(22,23,42,0.55); }
-[data-theme="light"] .shortcut-icon {
-  background: rgba(255,255,255,0.70);
-  border-color: rgba(50,70,160,0.12);
-  box-shadow: 0 2px 10px rgba(50,70,160,0.10), inset 0 1px 0 rgba(255,255,255,0.90);
-}
-[data-theme="light"] .ntp-shortcut:hover .shortcut-icon {
-  background: rgba(255,255,255,0.90);
-  border-color: rgba(0,120,220,0.22);
-  box-shadow: 0 8px 22px rgba(50,70,160,0.14), inset 0 1px 0 rgba(255,255,255,1);
-}
-
-/* Widgets */
-[data-theme="light"] .ntp-widget {
-  background: rgba(255,255,255,0.58);
-  border-color: rgba(50,70,160,0.10);
-  box-shadow: 0 2px 16px rgba(50,70,160,0.07);
-  backdrop-filter: blur(16px);
-}
-[data-theme="light"] .ntp-widget:hover {
-  border-color: rgba(0,120,220,0.22);
-  box-shadow: 0 8px 28px rgba(50,70,160,0.12);
-  transform: translateY(-1px);
-}
-[data-theme="light"] .ntp-widget-ai {
-  background: linear-gradient(145deg, rgba(109,40,217,0.06), rgba(0,120,220,0.04));
-  border-color: rgba(109,40,217,0.12);
-}
-[data-theme="light"] .ntp-widget-header {
-  border-bottom-color: rgba(50,70,160,0.08);
-  color: #16172a;
-}
-[data-theme="light"] .ntp-widget-header label { color: #16172a; }
-[data-theme="light"] .ntp-widget-badge {
-  background: rgba(0,120,220,0.10);
-  color: #0070d8;
-}
-
-/* News items */
-[data-theme="light"] .ntp-news-item { border-bottom-color: rgba(50,70,160,0.07); }
-[data-theme="light"] .ntp-news-item:hover { background: rgba(50,70,160,0.04); }
-[data-theme="light"] .ntp-news-title { color: #16172a; }
-[data-theme="light"] .ntp-news-meta { color: rgba(22,23,42,0.45); }
-
-/* NTP results panel */
-[data-theme="light"] .ntp-results {
-  background: rgba(255,255,255,0.80);
-  border-color: rgba(50,70,160,0.12);
-  backdrop-filter: blur(16px);
-}
-[data-theme="light"] .ntp-results-tab { color: rgba(22,23,42,0.50); }
-[data-theme="light"] .ntp-results-tab.active { color: #0070d8; border-bottom-color: #0070d8; }
-[data-theme="light"] .ntp-results-content { color: #16172a; }
-
-/* AI Brief generate button */
-[data-theme="light"] .ntp-gen-btn {
-  background: rgba(0,120,220,0.10);
-  color: #0070d8;
-  border-color: rgba(0,120,220,0.22);
-}
-[data-theme="light"] .ntp-gen-btn:hover {
-  background: rgba(0,120,220,0.16);
-}
-
-/* Email inbox widget */
-[data-theme="light"] .ntp-email-item { border-bottom-color: rgba(50,70,160,0.07); }
-[data-theme="light"] .ntp-email-item:hover { background: rgba(50,70,160,0.04); }
-[data-theme="light"] .ntp-email-item.unread { background: rgba(0,85,200,0.055); border-left-color: #0055cc; }
-[data-theme="light"] .ntp-email-item.unread:hover { background: rgba(0,85,200,0.09); }
-[data-theme="light"] .ntp-email-subject { color: rgba(22,23,42,0.72); }
-[data-theme="light"] .ntp-email-item.unread .ntp-email-subject { color: #0a0b1a; font-weight: 600; }
-[data-theme="light"] .ntp-email-sender { color: rgba(22,23,42,0.58); }
-[data-theme="light"] .ntp-email-item.unread .ntp-email-sender { color: #0055cc; font-weight: 700; }
-[data-theme="light"] .ntp-email-date { color: rgba(22,23,42,0.38); }
-[data-theme="light"] .ntp-email-item.unread .ntp-email-date { color: #0055cc; font-weight: 600; }
-[data-theme="light"] .ntp-email-preview { color: rgba(22,23,42,0.42); }
-[data-theme="light"] .ntp-email-item.unread .ntp-email-preview { color: rgba(22,23,42,0.58); }
-[data-theme="light"] .ntp-email-from,
-[data-theme="light"] .ntp-email-time { color: rgba(22,23,42,0.50); }
-
-/* Orb ring tint in light mode */
-[data-theme="light"] .ntp-orb-ring {
-  border-color: rgba(0,120,220,0.18);
-}
-
-/* Bottom ticker — light mode */
+/* Ticker is already dark in both themes — keep it */
 [data-theme="light"] .ntp-stock-ticker {
   background: rgba(15, 23, 42, 0.93);
   border-top-color: rgba(30, 64, 175, 0.25);
 }
-[data-theme="light"] .ntp-ticker-viewport::before {
-  background: linear-gradient(to right, rgba(15,23,42,0.6), transparent);
-}
-[data-theme="light"] .ntp-ticker-viewport::after {
-  background: linear-gradient(to left, rgba(15,23,42,0.6), transparent);
-}
-[data-theme="light"] .ntp-ticker-label { color: #60a5fa; text-shadow: none; }
-[data-theme="light"] .ti-symbol { color: #ffffff; }
-[data-theme="light"] .ti-price { color: rgba(255,255,255,0.72); }
-[data-theme="light"] .ntp-ticker-item.up  .ti-change { color: #4ade80; }
-[data-theme="light"] .ntp-ticker-item.down .ti-change { color: #f87171; }
 
 /* ═══════════════════════════════════════════════════════
    ASSISTANT PANEL — ENHANCED DISPLAY
