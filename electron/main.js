@@ -3017,40 +3017,69 @@ async function queryLinear(apiKey, query, options = {}) {
   return { results: items, total: items.length };
 }
 async function queryGmail(token, query, options = {}) {
-  const maxResults = options.maxResults || 5;
-  // Default to unread inbox when query is empty or too vague
+  const maxResults = options.maxResults || 25;
   const effectiveQuery = (!query || query.trim().length < 3) ? 'in:inbox is:unread' : query.trim();
-  // Search emails
-  const searchResp = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(effectiveQuery)}&maxResults=${maxResults}`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  const searchData = await searchResp.json();
-  if (!searchResp.ok) return { error: searchData.error?.message || 'Gmail API error' };
-  if (!searchData.messages?.length) return { results: [], total: 0 };
 
-  // Fetch snippets for each message
-  const msgs = await Promise.all(
-    searchData.messages.slice(0, maxResults).map(async (m) => {
-      try {
-        const r = await fetch(
-          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        const d = await r.json();
-        const headers = d.payload?.headers || [];
-        const get = (name) => headers.find((h) => h.name === name)?.value || '';
-        return {
-          subject: get('Subject') || '(no subject)',
-          from: get('From'),
-          date: get('Date'),
-          snippet: d.snippet || '',
-          id: m.id
-        };
-      } catch { return null; }
-    })
-  );
-  return { results: msgs.filter(Boolean), total: searchData.resultSizeEstimate || msgs.length };
+  const allMessages = [];
+  let pageToken = options.pageToken || null;
+  let totalEstimate = 0;
+  const pagesToFetch = options.pages || 1;
+
+  for (let page = 0; page < pagesToFetch; page++) {
+    let url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(effectiveQuery)}&maxResults=${Math.min(maxResults - allMessages.length, 100)}`;
+    if (pageToken) url += `&pageToken=${pageToken}`;
+
+    const searchResp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const searchData = await searchResp.json();
+    if (!searchResp.ok) return { error: searchData.error?.message || 'Gmail API error' };
+    if (!searchData.messages?.length) break;
+
+    totalEstimate = searchData.resultSizeEstimate || totalEstimate;
+    allMessages.push(...searchData.messages);
+    pageToken = searchData.nextPageToken || null;
+
+    if (!pageToken || allMessages.length >= maxResults) break;
+  }
+
+  if (!allMessages.length) return { results: [], total: 0 };
+
+  const batch = allMessages.slice(0, maxResults);
+  const batchSize = 10;
+  const msgs = [];
+  for (let i = 0; i < batch.length; i += batchSize) {
+    const chunk = batch.slice(i, i + batchSize);
+    const chunkResults = await Promise.all(
+      chunk.map(async (m) => {
+        try {
+          const r = await fetch(
+            `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Date&metadataHeaders=Message-ID&metadataHeaders=In-Reply-To`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          const d = await r.json();
+          const headers = d.payload?.headers || [];
+          const get = (name) => headers.find((h) => h.name === name)?.value || '';
+          return {
+            subject: get('Subject') || '(no subject)',
+            from: get('From'),
+            to: get('To'),
+            date: get('Date'),
+            snippet: d.snippet || '',
+            id: m.id,
+            threadId: m.threadId || d.threadId || '',
+            labelIds: d.labelIds || [],
+            hasReply: !!(get('In-Reply-To'))
+          };
+        } catch { return null; }
+      })
+    );
+    msgs.push(...chunkResults);
+  }
+
+  return {
+    results: msgs.filter(Boolean),
+    total: totalEstimate || msgs.length,
+    nextPageToken: pageToken || null
+  };
 }
 
 async function queryGoogleDrive(token, query, options = {}) {

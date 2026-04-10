@@ -20,6 +20,8 @@ class AssistantManagerClass {
     this._streamUnsubs = [];
     this._autoFollowCount = 0;
     this._emailRefs = new Map();
+    this._lastGmailPageToken = null;
+    this._lastGmailQuery = '';
     this._pendingScreenshotDataUrl = null;
     this._takeoverAbort = null;
     /** @type {(() => void) | null} */
@@ -76,16 +78,27 @@ You are NOT allowed to click the Send button on any email service under ANY circ
 CONNECTED INTEGRATIONS:
 When [Connected integrations returned...] context appears in the system messages, use it to answer questions. Always cite which service the information came from (e.g. "According to Gmail…", "In Google Drive…", "Perplexity search found…"). If the context is relevant, prioritize it over general knowledge.
 
-GMAIL EMAIL CITATIONS:
-When Gmail emails are provided in context with URLs, cite each email subject as a markdown link: [Subject Line](gmail-url).
-Format email summaries as a structured list — one email per bullet — with the subject as a clickable link, sender below it, and a one-sentence summary of the content.
+GMAIL EMAIL HANDLING — IMPORTANT:
+When Gmail data is provided in context:
+1. ALWAYS process ALL emails in the data — never stop at 1-2. Count every single one.
+2. Cite each email subject as a markdown link: [Subject Line](gmail-url).
+3. Format email summaries as a numbered list with the subject as a clickable link, sender, date, and a one-sentence summary.
+4. When the user asks about "unreplied" or "unanswered" emails, the system already filters these via Gmail search. Present ALL results, grouped and counted.
+5. If the result says "More results available", tell the user the total and offer to "load more".
+6. For questions like "how many", ALWAYS give a specific count. Never say "a few" or "some" — count them.
+7. When summarizing large result sets, group by sender or topic for clarity.
+
 Example format:
-- [Re: Q1 Invoice Follow-up](https://mail.google.com/...) — From: John Smith
-  Confirming receipt of invoice and requesting a revised copy by Friday.
+1. [Re: Q1 Invoice Follow-up](https://mail.google.com/...) — From: John Smith · Apr 3
+   Confirming receipt of invoice and requesting a revised copy by Friday.
+2. [Project Update Needed](https://mail.google.com/...) — From: Sarah Lee · Apr 1
+   Requesting status update on the Q2 deliverables.
 
 PERSONALITY:
 - Intelligent, modern, concise. Think Perplexity meets a skilled browser agent.
-- Lead with the answer, then context. No filler phrases.`;
+- Lead with the answer, then context. No filler phrases.
+- When handling data-heavy tasks (emails, comparisons), be thorough — process everything, don't cut short.
+- If you have 20+ items to present, use a structured summary with counts first, then details.`;
 
     this.bindEvents();
   }
@@ -2194,6 +2207,12 @@ PERSONALITY:
 5. The task is NOT complete until the credential is pasted into Navio Settings and the user can connect.`
       : '';
 
+    // If the conversation involves email/Gmail, re-enable connector context on follow-ups
+    const emailConversation = this.conversationHistory.some(m =>
+      /\b(email|gmail|mail|inbox|unreplied|unanswered)\b/i.test(m.content || '')
+    );
+    const isQuickActionFollowUp = !emailConversation;
+
     const followUpText = `[Action completed. Current page state follows.
 
 IMPORTANT AGENT RULES:
@@ -2202,10 +2221,11 @@ IMPORTANT AGENT RULES:
 - If the data looks incomplete or the page didn't fully load, navigate to the same URL again or try an alternate source.
 - If steps remain in the plan, continue executing them. If all steps are done, give a final summary with the best option found and why.
 - NEVER make up prices or results — only report what is actually in the page text above.
+- If you were asked about emails (e.g. unreplied, unread, recent), check if the Gmail data shows ALL results or if there are more. If more, tell the user the total and offer to load more.
 ${googleEditorDirective}${devConsoleDirective}${setupContinuationRule}
 
 ${pageInfo}${snapText}`;
-    await this.processMessage(followUpText, true, null);
+    await this.processMessage(followUpText, isQuickActionFollowUp, null);
     document.getElementById('navio-continue-pill')?.remove();
     // _wireActions (called inside processMessage → addMessage) now handles auto-execution
     // in both takeover mode and auto-execute mode, so no extra _executeTakeover call needed here.
@@ -2338,23 +2358,57 @@ ${pageInfo}${snapText}`;
       }
 
       // ── Gmail ──────────────────────────────────────────────────────────
-      const gmailIntent = /\b(email|gmail|mail|inbox|message|sent|unread|thread|attachment)\b/i.test(text);
+      const gmailIntent = /\b(email|gmail|mail|inbox|message|sent|unread|thread|attachment|respond|replied|reply|unreplied|unanswered|pending|follow.?up|week|days?\b.*\b(email|mail|inbox)|recent\s*(email|mail)|check.*(email|mail|inbox))\b/i.test(text);
       if (has('gmail') && gmailIntent) {
+        const lowerText = text.toLowerCase();
         const wantsUnread = /\bunread\b/i.test(text);
-        const rawQ = clean(/\b(email|gmail|mail|inbox|message|sent|unread|thread)\b/gi);
-        // Build a proper Gmail search query — always anchor to inbox, add is:unread when asked
-        let gmailQuery;
-        if (wantsUnread) {
-          gmailQuery = rawQ.length > 2 ? `in:inbox is:unread ${rawQ}` : 'in:inbox is:unread';
-        } else if (rawQ.length > 2) {
-          gmailQuery = `in:inbox ${rawQ}`;
-        } else {
-          gmailQuery = 'in:inbox is:unread';
+        const wantsUnreplied = /\b(unreplied|unanswered|didn.?t\s*(respond|reply)|not\s*(respond|replied|reply)|no\s*response|pending\s*(reply|response)|haven.?t\s*(respond|replied|reply)|need\s*to\s*respond|waiting|follow.?up)\b/i.test(text);
+        const wantsSent = /\b(sent|outbox|i\s*sent|my\s*sent)\b/i.test(text);
+
+        // Date range detection
+        let dateFilter = '';
+        const weekMatch = text.match(/(\d+)\s*weeks?\b/i) || text.match(/past\s*(\d+)\s*weeks?\b/i);
+        const dayMatch = text.match(/(\d+)\s*days?\b/i) || text.match(/past\s*(\d+)\s*days?\b/i);
+        const monthMatch = text.match(/(\d+)\s*months?\b/i) || text.match(/past\s*(\d+)\s*months?\b/i);
+        if (weekMatch) {
+          dateFilter = `newer_than:${parseInt(weekMatch[1]) * 7}d`;
+        } else if (dayMatch) {
+          dateFilter = `newer_than:${parseInt(dayMatch[1])}d`;
+        } else if (monthMatch) {
+          dateFilter = `newer_than:${parseInt(monthMatch[1]) * 30}d`;
+        } else if (/\b(past\s*(1|one|a)\s*week|this\s*week|last\s*week)\b/i.test(text)) {
+          dateFilter = 'newer_than:7d';
+        } else if (/\b(past\s*(2|two)\s*weeks?|couple\s*weeks?)\b/i.test(text)) {
+          dateFilter = 'newer_than:14d';
+        } else if (/\b(recent|lately|recently)\b/i.test(text)) {
+          dateFilter = 'newer_than:14d';
         }
+
+        const rawQ = clean(/\b(email|gmail|mail|inbox|message|sent|unread|thread|respond|replied|reply|unreplied|unanswered|pending|follow.?up|recent|check|week|weeks|day|days|month|months|past|last|the|how|many|did|i|get|that|didn.?t|haven.?t|not|to|in|my|a|1|2|3)\b/gi);
+
+        let gmailQuery;
+        let fetchCount = 25;
+
+        if (wantsUnreplied) {
+          gmailQuery = `in:inbox -from:me ${dateFilter}`.trim();
+          fetchCount = 50;
+        } else if (wantsSent) {
+          gmailQuery = `in:sent ${dateFilter} ${rawQ}`.replace(/\s+/g, ' ').trim();
+        } else if (wantsUnread) {
+          gmailQuery = `in:inbox is:unread ${dateFilter} ${rawQ}`.replace(/\s+/g, ' ').trim();
+        } else if (rawQ.length > 2) {
+          gmailQuery = `in:inbox ${dateFilter} ${rawQ}`.replace(/\s+/g, ' ').trim();
+        } else {
+          gmailQuery = `in:inbox is:unread ${dateFilter}`.trim() || 'in:inbox is:unread';
+        }
+
         try {
-          const res = await ConnectorsManager.queryConnector('gmail', gmailQuery, { maxResults: 6 });
+          const res = await ConnectorsManager.queryConnector('gmail', gmailQuery, {
+            maxResults: fetchCount,
+            pages: fetchCount > 25 ? 2 : 1
+          });
           if (res?.results?.length) {
-            const lines = res.results.map((r) => {
+            const lines = res.results.map((r, idx) => {
               const gmailUrl = r.id ? `https://mail.google.com/mail/u/0/#inbox/${r.id}` : '';
               if (r.id) {
                 this._emailRefs.set(r.id, {
@@ -2364,12 +2418,52 @@ ${pageInfo}${snapText}`;
                   url: gmailUrl
                 });
               }
-              const snippet = r.snippet ? `\n  "${r.snippet.slice(0, 120)}"` : '';
+              const snippet = r.snippet ? `\n  "${r.snippet.slice(0, 150)}"` : '';
+              const dateStr = r.date ? ` · ${r.date}` : '';
+              const num = `${idx + 1}.`;
               return gmailUrl
-                ? `- [${r.subject || '(no subject)'}](${gmailUrl}) — From: ${r.from || '?'}${snippet}`
-                : `- From: ${r.from || '?'} · Subject: ${r.subject || '(no subject)'}${snippet}`;
+                ? `${num} [${r.subject || '(no subject)'}](${gmailUrl}) — From: ${r.from || '?'}${dateStr}${snippet}`
+                : `${num} From: ${r.from || '?'} · Subject: ${r.subject || '(no subject)'}${dateStr}${snippet}`;
             }).join('\n');
-            results.push(`[Gmail — ${res.total} result(s) for "${gmailQuery}"]\n${lines}`);
+            this._lastGmailPageToken = res.nextPageToken || null;
+            this._lastGmailQuery = gmailQuery;
+            const totalInfo = res.total > res.results.length
+              ? ` (showing ${res.results.length} of ~${res.total} total)`
+              : '';
+            results.push(`[Gmail — ${res.results.length} result(s) for "${gmailQuery}"${totalInfo}]\n${lines}${res.nextPageToken ? '\n\n(More results available — user can ask to "load more" or "show more emails")' : ''}`);
+          } else {
+            results.push(`[Gmail — 0 results for "${gmailQuery}"]`);
+          }
+        } catch (_) {}
+      }
+
+      // ── Gmail "load more" / continuation ────────────────────────────────
+      const wantsMore = /\b(more|next|continue|load more|show more|rest of|remaining)\b/i.test(text)
+        && /\b(email|mail|gmail|result|inbox)\b/i.test(text);
+      if (has('gmail') && wantsMore && this._lastGmailPageToken && !gmailIntent) {
+        try {
+          const res = await ConnectorsManager.queryConnector('gmail', this._lastGmailQuery, {
+            maxResults: 25,
+            pageToken: this._lastGmailPageToken,
+            pages: 1
+          });
+          if (res?.results?.length) {
+            const lines = res.results.map((r, idx) => {
+              const gmailUrl = r.id ? `https://mail.google.com/mail/u/0/#inbox/${r.id}` : '';
+              if (r.id) {
+                this._emailRefs.set(r.id, {
+                  subject: r.subject || '(no subject)',
+                  from: r.from || '',
+                  snippet: r.snippet || '',
+                  url: gmailUrl
+                });
+              }
+              const snippet = r.snippet ? `\n  "${r.snippet.slice(0, 150)}"` : '';
+              const dateStr = r.date ? ` · ${r.date}` : '';
+              return `${idx + 1}. [${r.subject || '(no subject)'}](${gmailUrl}) — From: ${r.from || '?'}${dateStr}${snippet}`;
+            }).join('\n');
+            this._lastGmailPageToken = res.nextPageToken || null;
+            results.push(`[Gmail — next ${res.results.length} result(s)]\n${lines}${res.nextPageToken ? '\n\n(Still more available)' : '\n\n(End of results)'}`);
           }
         } catch (_) {}
       }
