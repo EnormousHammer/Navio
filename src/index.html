@@ -478,7 +478,10 @@
               <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/>
             </svg>
           </div>
-          <span>Navio AI</span>
+          <div class="assistant-title-stack">
+            <span class="assistant-name">Navio <em class="ai-em">AI</em></span>
+            <span class="assistant-status-line"><span class="status-live-dot"></span>Ready</span>
+          </div>
         </div>
         <div class="assistant-actions">
           <button class="icon-btn" id="btn-clear-chat" title="Clear chat">
@@ -556,31 +559,44 @@
 
       <div class="assistant-messages" id="assistant-messages">
         <div class="assistant-welcome">
-          <div class="welcome-glow-ring">
-            <div class="ai-orb" style="width:48px;height:48px">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <div class="welcome-orb-wrap">
+            <div class="welcome-ring welcome-ring-1"></div>
+            <div class="welcome-ring welcome-ring-2"></div>
+            <div class="welcome-ring welcome-ring-3"></div>
+            <div class="ai-orb" style="width:72px;height:72px">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/>
               </svg>
             </div>
           </div>
-          <h3 class="welcome-title">Navio AI</h3>
-          <p class="welcome-sub">Your intelligent browser companion — ask anything, automate tasks, research deeply</p>
+          <div class="welcome-headline">
+            <h3 class="welcome-title">Navio <span class="wt-ai">AI</span></h3>
+            <p class="welcome-sub">Your intelligent browser companion —<br>ask anything, automate, research deeply</p>
+          </div>
           <div class="welcome-caps">
             <div class="welcome-cap">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-              <span>Summarize &amp; explain any page</span>
+              <div class="wcap-icon wcap-summarize">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </div>
+              <span>Summarize &amp; explain</span>
             </div>
             <div class="welcome-cap">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <span>Research &amp; answer questions</span>
+              <div class="wcap-icon wcap-research">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              </div>
+              <span>Research &amp; answers</span>
             </div>
             <div class="welcome-cap">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
-              <span>Extract structured data</span>
+              <div class="wcap-icon wcap-extract">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+              </div>
+              <span>Extract data</span>
             </div>
             <div class="welcome-cap">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 8l6 6"/><path d="M4 14l6-6 2-3"/><path d="M2 5h12"/><path d="M22 22l-5-10-5 10"/><path d="M14 18h6"/></svg>
-              <span>Translate in one click</span>
+              <div class="wcap-icon wcap-translate">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 8l6 6"/><path d="M4 14l6-6 2-3"/><path d="M2 5h12"/><path d="M22 22l-5-10-5 10"/><path d="M14 18h6"/></svg>
+              </div>
+              <span>Translate instantly</span>
             </div>
           </div>
           <p class="welcome-cta">Add your API key in <strong>Settings</strong> to get started.</p>
@@ -599,6 +615,7 @@
         </div>
         <div class="assistant-input-hint">
           <span id="voice-hint">Enter to send &middot; Shift+Enter for new line</span>
+          <span class="ai-powered-badge">✦ Navio AI</span>
         </div>
       </div>
     </aside>

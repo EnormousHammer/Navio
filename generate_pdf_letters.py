@@ -33,7 +33,8 @@ LETTER_DATE = "April 10, 2026"
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def safe_filename(name: str) -> str:
     name = re.sub(r'[<>:"/\\|?*]', '', name)
-    return name.strip().replace(' ', '_')[:80]
+    name = name.strip().replace(' ', '_')
+    return (name + "_-_Canoil_Canada_Price_Increase_Notice_-_Apr_15_2026")[:120]
 
 
 def extract_emails(raw: str) -> list[str]:
@@ -259,7 +260,7 @@ def build_html(company: str, contacts: list[str], rows: list[dict], logo_uri: st
   <div class="sig-block">
     <p style="margin-bottom:18px;">Sincerely,</p>
     <img src="{sig_uri}" alt="Signature" style="height:28px; display:block; margin-bottom:4px;">
-    <p class="sig-name">Dr. Gamil Alhakimi</p>
+    <p class="sig-name">Dr. Gamil Alhakimi, PhD, MBA</p>
     <p class="sig-title">President, Canoil Canada Ltd.</p>
     <p>gamil@canoilcanadaltd.com</p>
     <p>Tel: 1-905-820-2022 &nbsp;|&nbsp; Cell: 905-808-4877</p>
