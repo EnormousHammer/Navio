@@ -29,97 +29,10 @@ class AssistantManagerClass {
     this._agentLogEntries = [];
     this._lastProactiveUrlKey = '';
 
-    this.systemPrompt = `You are Navio, an elite AI assistant built into the Navio Browser. You are powered by a frontier model and should act like it — be thorough, analytical, proactive, and never lazy.
-
-CORE PRINCIPLES:
-- NEVER give a shallow or incomplete answer. You have a powerful model — use it fully.
-- ALWAYS process ALL data you're given. If you receive 50 emails, analyze all 50. Never stop at 2-3.
-- ALWAYS give specific numbers, dates, names. Never say "a few", "some", or "several".
-- When asked to do something, DO IT. Don't ask "shall I proceed?" — take action.
-- If a task requires multiple steps, plan them all and execute. Don't stop halfway.
-- Think step-by-step on complex questions. Break down your reasoning.
-
-BROWSER CONTROL:
-When the user asks you to do something in the browser, write your explanation first, then end your response with a <navio-actions> block listing every step.
-
-Action block format — ONE action per line:
-<navio-actions>
-navigate:https://full-url-here
-click:text=Visible button label
-type:text=Field label:text to type
-scroll:down
-goBack:
-goForward:
-</navio-actions>
-
-SMART NAVIGATION — always use a direct URL, never navigate + search:
-- YouTube search → navigate:https://www.youtube.com/results?search_query=your+query
-- Google search  → navigate:https://www.google.com/search?q=your+query
-- Reddit search  → navigate:https://www.reddit.com/search/?q=query
-- Wikipedia      → navigate:https://en.wikipedia.org/wiki/Topic
-
-RULES:
-1. Always prefer navigate with a full URL over click-to-search.
-2. For click/type use text= (visible label) or aria= (aria-label) — never CSS selectors.
-3. Put ALL steps in ONE <navio-actions> block at the end. Never split across messages.
-4. Never ask "shall I proceed?" — just do it.
-5. If a [Page elements] snapshot is provided, use the EXACT label text shown.
-
-EXAMPLE — for "go to youtube and play world news":
-I'll navigate straight to the YouTube search results for world news and click the first video.
-<navio-actions>
-navigate:https://www.youtube.com/results?search_query=world+news
-click:text=Watch now
-</navio-actions>
-
-FORMATTING:
-- Use markdown: **bold**, *italic*, # headings, bullet lists, \`code\`, > blockquotes.
-- Keep responses concise but COMPLETE — never cut yourself short.
-- Use tables when comparing data. Use numbered lists for steps or ranked items.
-- Do NOT output action tokens like [[ACTION:...]] — use the <navio-actions> block only.
-
-STRICT EMAIL RULE — NEVER BREAK THIS:
-You are NOT allowed to click the Send button on any email service under ANY circumstances.
-- You MAY click "Compose", "Reply", "Reply All" and type draft text into compose fields — this saves drafts for user review.
-- You MUST NEVER click "Send" or any button that dispatches an email.
-- If the user asks you to "send" an email, explain you can only save drafts — then offer to draft it instead.
-
-CONNECTED INTEGRATIONS:
-When [Connected integrations returned...] context appears in the system messages, use it to answer questions. Always cite which service the information came from (e.g. "According to Gmail…", "In Google Drive…", "Perplexity search found…"). If the context is relevant, prioritize it over general knowledge.
-
-GMAIL / EMAIL — CRITICAL RULES:
-When Gmail data is provided in context:
-1. PROCESS EVERY SINGLE EMAIL in the data. If there are 30 emails, analyze and list all 30.
-2. Give exact counts: "You have **23 unreplied emails** from the past 2 weeks."
-3. Cite each email as: [Subject](gmail-url) — From: Sender · Date
-4. For "unreplied" / "unanswered" queries — the system filters with -from:me. Present ALL results.
-5. Group by urgency, sender, or topic when there are many. Show a summary table first, then details.
-6. If "More results available" appears, tell the user the total and offer to load more.
-7. NEVER say "here are a few" or stop after 2-3 emails when more are provided.
-
-Example format:
-**23 unreplied emails in the past 2 weeks:**
-
-| # | From | Subject | Date |
-|---|------|---------|------|
-| 1 | John Smith | Q1 Invoice Follow-up | Apr 3 |
-| 2 | Sarah Lee | Project Update Needed | Apr 1 |
-
-**Details:**
-1. [Re: Q1 Invoice Follow-up](https://mail.google.com/...) — From: John Smith · Apr 3
-   Requesting a revised invoice copy by Friday.
-
-MULTI-STEP TASK INTELLIGENCE:
-- When a task naturally involves multiple steps (research → compare → recommend), do ALL steps.
-- If you navigate to a page and the information is incomplete, try another source. Don't give up.
-- For price/product comparisons: check multiple sources, build a comparison table.
-- For research: synthesize from multiple angles, cite sources, give a clear recommendation.
-
-PERSONALITY:
-- Expert-level intelligence. Speak with confidence and authority.
-- Lead with the answer, then supporting evidence. No filler phrases.
-- Be proactive: if you notice something important the user didn't ask about, mention it.
-- Match the user's tone — casual if they're casual, formal if they're formal.`;
+    // Minimal placeholder — the authoritative prompt is loaded from
+    // navio-system-prompt.txt (or -legacy.txt) and injected by
+    // injectSystemPrompt() in main.js before every API call.
+    this.systemPrompt = 'You are Navio, an intelligent AI browser assistant.';
 
     this.bindEvents();
   }
@@ -580,6 +493,19 @@ PERSONALITY:
     if (!isQuickAction) this._actionFormatRetries = 0;
     this.showTypingIndicator();
 
+    // ── Tool-calling mode (new agentic path) ────────────────────────────────
+    if (config.aiUseToolCalling && !isQuickAction) {
+      try {
+        await this._processWithTools(text, config, historyUserLabel);
+      } catch (err) {
+        this.removeTypingIndicator();
+        this.addMessage('assistant', err.message || 'Tool-calling error', 'error');
+      }
+      this.isProcessing = false;
+      return;
+    }
+    // ── Legacy <navio-actions> path ──────────────────────────────────────────
+
     const messages = [{ role: 'system', content: this.systemPrompt }];
 
     // ── Always inject active tab so the AI knows what page the user is on ──
@@ -713,6 +639,186 @@ PERSONALITY:
     this.isProcessing = false;
   }
 
+  /**
+   * Tool-calling path: builds context messages, sets up navigate/progress
+   * listeners, calls the main-process agentic loop, and displays results.
+   */
+  async _processWithTools(text, config, historyUserLabel) {
+    // Build context messages (same as legacy path but without page snapshot —
+    // the model will call read_page itself via tools)
+    const messages = [{ role: 'system', content: this.systemPrompt }];
+
+    if (typeof TabManager !== 'undefined') {
+      const activeTab = TabManager.getActiveTab();
+      if (activeTab && activeTab.url && !activeTab.url.startsWith('about:')) {
+        messages.push({
+          role: 'system',
+          content: `[Active tab]\nTitle: ${activeTab.title || '(untitled)'}\nURL: ${activeTab.url}`
+        });
+      }
+    }
+
+    // Page context scope (selection/excerpt/full) — still useful for non-browsing queries
+    const ctxMsg = await this.buildPageContextSystemMessage(config, false);
+    if (ctxMsg) messages.push(ctxMsg);
+
+    // Email hint
+    const activeUrl = TabManager.getActiveTab()?.url || '';
+    if (typeof EmailAssistant !== 'undefined' && EmailAssistant.isMailUrl(activeUrl)) {
+      const hint = EmailAssistant.contextHint(activeUrl);
+      if (hint) messages.push({ role: 'system', content: hint });
+    }
+
+    // Open tabs awareness
+    if (typeof TabManager !== 'undefined') {
+      const allTabs = TabManager.tabs.filter(t => t.url && !t.url.startsWith('about:')).slice(0, 20);
+      if (allTabs.length > 1) {
+        const tabList = allTabs.map((t, i) => `${i + 1}. ${t.title || t.url} — ${t.url}`).join('\n');
+        messages.push({ role: 'system', content: `[Open tabs (${allTabs.length})]\n${tabList}` });
+      }
+    }
+
+    // Pinned tabs from context graph
+    const graphNote = await window.navio.contextGraph({ op: 'get' });
+    const pinned = graphNote.graph?.pinnedTabIds || [];
+    if (pinned.length && typeof TabManager !== 'undefined') {
+      const titles = TabManager.tabs
+        .filter((t) => pinned.includes(t.id))
+        .map((t) => `- ${t.title} (${t.url || 'no url'})`)
+        .join('\n');
+      if (titles) messages.push({ role: 'system', content: `[Pinned tabs in workspace]\n${titles}` });
+    }
+
+    // @mentions
+    const mentionMsgs = await this._resolveAtMentions(text);
+    if (mentionMsgs.length) {
+      messages.push({ role: 'system', content: `[Multi-tab context — ${mentionMsgs.length} tab(s) referenced by the user]` });
+      messages.push(...mentionMsgs);
+    }
+
+    // Connector context
+    if (typeof ConnectorsManager !== 'undefined') {
+      const connectorCtx = await this._buildConnectorContext(text);
+      if (connectorCtx) messages.push({ role: 'system', content: connectorCtx });
+    }
+
+    // Conversation history (skip stale page snapshots)
+    const recentHistory = this.conversationHistory
+      .slice(-40)
+      .filter(m => {
+        if (m.role === 'system' && typeof m.content === 'string' && m.content.startsWith('[Page elements')) return false;
+        return true;
+      });
+    messages.push(...recentHistory);
+    messages.push({ role: 'user', content: text });
+
+    // Create the agent activity feed element
+    const activityEl = document.createElement('div');
+    activityEl.className = 'navio-agent-activity';
+    activityEl.innerHTML = '<div class="naa-header"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg> Navio is working...</div><div class="naa-steps"></div>';
+    this.messagesEl.appendChild(activityEl);
+    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+    this._currentActivityEl = activityEl;
+
+    // Set up navigate handler
+    const unNav = window.navio.onToolNavigate(async ({ url }) => {
+      this._appendActivityStep('navigate', `Navigating to ${new URL(url).hostname}...`);
+      try {
+        await TabManager.navigateActive(url);
+        await new Promise(r => setTimeout(r, 2000));
+        window.navio.toolNavigateAck({ success: true, url: TabManager.getActiveTab()?.url || url });
+      } catch (e) {
+        window.navio.toolNavigateAck({ error: e.message });
+      }
+    });
+
+    // Set up progress handler
+    const unProgress = window.navio.onToolProgress(({ step, tool, result }) => {
+      if (tool === 'navigate') return; // already shown
+      const label = this._toolProgressLabel(tool, result);
+      this._appendActivityStep(tool, label);
+    });
+
+    // Set up abort
+    let aborted = false;
+    const stopBtn = document.createElement('button');
+    stopBtn.className = 'navio-agent-stop-btn';
+    stopBtn.type = 'button';
+    stopBtn.textContent = 'Stop';
+    stopBtn.addEventListener('click', () => { aborted = true; });
+    activityEl.querySelector('.naa-header').appendChild(stopBtn);
+
+    // Call the tool-calling IPC
+    const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
+    const response = await window.navio.aiRequestWithTools({
+      messages,
+      webContentsId: wv?.getWebContentsId()
+    });
+
+    // Cleanup
+    unNav();
+    unProgress();
+    this.removeTypingIndicator();
+
+    // Update activity feed to done state
+    const header = activityEl.querySelector('.naa-header');
+    if (header) {
+      stopBtn.remove();
+      const stepsCount = (response.toolLog || []).length;
+      header.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Done${stepsCount ? ` (${stepsCount} steps)` : ''}`;
+    }
+
+    // Display final response
+    if (response.error) {
+      this.addMessage('assistant', response.error, 'error');
+    } else if (response.content) {
+      this.addMessage('assistant', response.content);
+      const userHistory = historyUserLabel || text;
+      this.conversationHistory.push(
+        { role: 'user', content: userHistory },
+        { role: 'assistant', content: response.content }
+      );
+      this._trimHistory();
+      await window.navio.contextGraph({
+        op: 'addTurn',
+        role: 'assistant',
+        summary: response.content.slice(0, 200),
+        tabId: TabManager.getActiveTab()?.id,
+        url: TabManager.getActiveTab()?.url || ''
+      });
+    }
+  }
+
+  _appendActivityStep(tool, label) {
+    if (!this._currentActivityEl) return;
+    const stepsEl = this._currentActivityEl.querySelector('.naa-steps');
+    if (!stepsEl) return;
+    const step = document.createElement('div');
+    step.className = 'naa-step';
+    step.innerHTML = `<span class="naa-tool">${tool}</span> <span class="naa-label">${label}</span>`;
+    stepsEl.appendChild(step);
+    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+  }
+
+  _toolProgressLabel(tool, result) {
+    if (result?.error) return `Error: ${result.error}`;
+    switch (tool) {
+      case 'read_page': return `Read page (${result?.title || 'page'})`;
+      case 'get_page_text': return `Extracted text (${((result?.text || '').length / 1000).toFixed(1)}k chars)`;
+      case 'click': return `Clicked${result?.success ? '' : ' (failed)'}`;
+      case 'type_text': return `Typed text`;
+      case 'select_option': return `Selected option`;
+      case 'scroll': return `Scrolled`;
+      case 'press_key': return `Pressed key`;
+      case 'screenshot': return `Captured screenshot`;
+      case 'insert_text': return `Pasted text`;
+      case 'wait': return `Waited`;
+      case 'go_back': return `Went back`;
+      case 'go_forward': return `Went forward`;
+      default: return tool;
+    }
+  }
+
   async _processStream(messages, userHistory) {
     this._clearStreamListeners();
     let buffer = '';
@@ -826,6 +932,16 @@ PERSONALITY:
   _trimHistory() {
     if (this.conversationHistory.length > 80) {
       this.conversationHistory = this.conversationHistory.slice(-60);
+    }
+    // Strip stale page snapshot context from older system messages
+    const len = this.conversationHistory.length;
+    for (let i = 0; i < len - 4; i++) {
+      const m = this.conversationHistory[i];
+      if (m.role === 'system' && typeof m.content === 'string') {
+        if (m.content.startsWith('[Page elements') || m.content.startsWith('[Page text')) {
+          this.conversationHistory[i] = { role: 'system', content: '[page context removed — stale]' };
+        }
+      }
     }
   }
 

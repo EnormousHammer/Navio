@@ -14,6 +14,8 @@ const { registerExtensionsIpc, loadPersistedExtensionsOnStartup } = require('./e
 const { registerSyncIpc } = require('./navio-sync-ipc');
 const { registerProfilesIpc } = require('./navio-profiles-ipc');
 const { registerAgentPlanIpc } = require('./navio-agent-ipc');
+const { NAVIO_TOOLS, toOpenAITools, toAnthropicTools, toGeminiTools } = require('./navio-tools');
+const { getAccessibilityTree, clickByRef, typeByRef, selectByRef, getRefMap, clearRefMap } = require('./a11y-tree');
 
 function getProfileIdFromLaunch() {
   const a = process.argv.find((x) => typeof x === 'string' && x.startsWith('--navio-profile='));
@@ -216,13 +218,20 @@ function isEmailWriteAction(action, params) {
   return EMAIL_SEND_SELECTORS.some((s) => selector === s || selector.startsWith(s + ' '));
 }
 
-// ── Authoritative system prompt (file: electron/navio-system-prompt.txt)
+// ── Authoritative system prompts ─────────────────────────────────────────────
+// Tool-calling mode uses the main prompt; legacy mode uses the legacy prompt.
 let NAVIO_SYSTEM_PROMPT = '';
+let NAVIO_SYSTEM_PROMPT_LEGACY = '';
 try {
   NAVIO_SYSTEM_PROMPT = fs.readFileSync(path.join(__dirname, 'navio-system-prompt.txt'), 'utf8');
 } catch (e) {
   console.error('[Navio] Could not load navio-system-prompt.txt:', e.message);
   NAVIO_SYSTEM_PROMPT = 'You are Navio, a helpful AI browser assistant.';
+}
+try {
+  NAVIO_SYSTEM_PROMPT_LEGACY = fs.readFileSync(path.join(__dirname, 'navio-system-prompt-legacy.txt'), 'utf8');
+} catch {
+  NAVIO_SYSTEM_PROMPT_LEGACY = NAVIO_SYSTEM_PROMPT;
 }
 
 // ── Markdown → HTML converter (used for Google Docs rich-text paste) ─────────
@@ -539,7 +548,9 @@ ipcMain.handle('memory-search', (_, { query }) => {
 function injectSystemPrompt(messages) {
   const memBlock = buildMemoryBlock();
   const profileBlock = buildProfileBlock();
-  const fullPrompt = NAVIO_SYSTEM_PROMPT + memBlock + profileBlock;
+  const cfg = loadConfig();
+  const basePrompt = cfg.aiUseToolCalling !== false ? NAVIO_SYSTEM_PROMPT : NAVIO_SYSTEM_PROMPT_LEGACY;
+  const fullPrompt = basePrompt + memBlock + profileBlock;
   let replaced = false;
   const result = messages.map((m) => {
     if (!replaced && m.role === 'system') {
@@ -702,6 +713,10 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
       max_completion_tokens: completionCap,
       stream: !!useStream
     };
+    if (fetchOpts.tools && !ntpBrief) {
+      bodyObj.tools = toOpenAITools(fetchOpts.tools);
+      bodyObj.tool_choice = 'auto';
+    }
     if (isOSeries) {
       delete bodyObj.temperature;
     } else if (ntpBrief) {
@@ -718,12 +733,16 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01'
     };
-    body = JSON.stringify({
+    const anthropicBody = {
       model: model || 'claude-opus-4-5',
       max_tokens: ntpBrief ? 900 : 16384,
       system: systemMsg?.content || '',
       messages: chatMsgs
-    });
+    };
+    if (fetchOpts.tools && !ntpBrief) {
+      anthropicBody.tools = toAnthropicTools(fetchOpts.tools);
+    }
+    body = JSON.stringify(anthropicBody);
   } else if (provider === 'google') {
     if (useStream) return { error: 'Streaming not implemented for this provider; disable stream in settings.' };
     url = `https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemini-2.0-flash'}:generateContent?key=${apiKey}`;
@@ -758,6 +777,9 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
         ? { parts: toGeminiParts(systemInstruction.content) }
         : undefined
     };
+    if (fetchOpts.tools && !ntpBrief) {
+      geminiBody.tools = toGeminiTools(fetchOpts.tools);
+    }
     if (ntpBrief) {
       geminiBody.generationConfig = { maxOutputTokens: 900, temperature: 0.55 };
     } else {
@@ -784,15 +806,171 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
   }
 
   let content = '';
+  let toolCalls = [];
+  let rawAssistantMessage = null;
+
   if (provider === 'anthropic') {
-    content = data.content?.[0]?.text || '';
+    const blocks = data.content || [];
+    content = blocks.filter((b) => b.type === 'text').map((b) => b.text).join('');
+    toolCalls = blocks
+      .filter((b) => b.type === 'tool_use')
+      .map((b) => ({ id: b.id, name: b.name, arguments: b.input }));
+    if (toolCalls.length) rawAssistantMessage = data;
   } else if (provider === 'google') {
-    content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    content = parts.filter((p) => p.text).map((p) => p.text).join('');
+    toolCalls = parts
+      .filter((p) => p.functionCall)
+      .map((p, i) => ({
+        id: `gemini_${i}`,
+        name: p.functionCall.name,
+        arguments: p.functionCall.args || {}
+      }));
+    if (toolCalls.length) rawAssistantMessage = data.candidates?.[0]?.content;
   } else {
-    content = data.choices?.[0]?.message?.content || '';
+    const msg = data.choices?.[0]?.message;
+    content = msg?.content || '';
+    if (msg?.tool_calls?.length) {
+      toolCalls = msg.tool_calls.map((tc) => {
+        let args = {};
+        try { args = JSON.parse(tc.function.arguments || '{}'); } catch { /* keep empty */ }
+        return { id: tc.id, name: tc.function.name, arguments: args };
+      });
+      rawAssistantMessage = msg;
+    }
   }
 
-  return { content };
+  return { content, toolCalls, rawAssistantMessage, provider };
+}
+
+// ── Tool-calling agentic loop ────────────────────────────────────────────────
+
+/**
+ * Append the assistant's tool-call response to the message history in the
+ * correct provider format so the next API call includes the tool invocation.
+ */
+function appendAssistantToolCalls(messages, result, provider) {
+  if (provider === 'openai' || provider === 'custom') {
+    return [...messages, result.rawAssistantMessage];
+  } else if (provider === 'anthropic') {
+    return [...messages, { role: 'assistant', content: result.rawAssistantMessage.content }];
+  } else if (provider === 'google') {
+    return [...messages, { role: 'model', parts: result.rawAssistantMessage.parts }];
+  }
+  return messages;
+}
+
+/**
+ * Append a tool result to the message history in the correct provider format.
+ */
+function appendToolResult(messages, toolCall, result, provider) {
+  const resultStr = JSON.stringify(result).slice(0, 50000);
+  if (provider === 'openai' || provider === 'custom') {
+    return [...messages, { role: 'tool', tool_call_id: toolCall.id, content: resultStr }];
+  } else if (provider === 'anthropic') {
+    return [...messages, {
+      role: 'user',
+      content: [{ type: 'tool_result', tool_use_id: toolCall.id, content: resultStr }]
+    }];
+  } else if (provider === 'google') {
+    return [...messages, {
+      role: 'function',
+      parts: [{ functionResponse: { name: toolCall.name, response: { content: result } } }]
+    }];
+  }
+  return messages;
+}
+
+/**
+ * Wait for an IPC ack from the renderer within a timeout.
+ * Used for navigate actions that must go through TabManager in the renderer.
+ */
+function waitForRendererAck(sender, channel, timeoutMs) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      ipcMain.removeListener(channel, handler);
+      resolve({ error: 'Navigation timed out' });
+    }, timeoutMs);
+    const handler = (event, result) => {
+      if (event.sender === sender) {
+        clearTimeout(timer);
+        ipcMain.removeListener(channel, handler);
+        resolve(result || { success: true });
+      }
+    };
+    ipcMain.on(channel, handler);
+  });
+}
+
+/**
+ * The main agentic tool-calling loop.  Calls performAiFetch with tools, executes
+ * any tool_calls the model returns, feeds results back, and repeats until the
+ * model produces a text-only response or we hit the step limit.
+ *
+ * Navigate actions are handled specially: a 'tool-navigate' event is sent to the
+ * renderer (which calls TabManager.navigateActive), and we wait for an ack.
+ */
+async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
+  maxSteps = maxSteps || 35;
+  const tools = NAVIO_TOOLS;
+  const toolLog = [];
+  let currentMessages = [...messages];
+  const provider = cfg.aiProvider || 'openai';
+
+  for (let step = 0; step < maxSteps; step++) {
+    const result = await performAiFetch(cfg, apiKey, currentMessages, false, { tools });
+
+    if (result.error) return { error: result.error, toolLog };
+
+    if (!result.toolCalls || !result.toolCalls.length) {
+      if (result.content) extractAndSaveMemory(result.content);
+      return { content: result.content || '', toolLog };
+    }
+
+    currentMessages = appendAssistantToolCalls(currentMessages, result, provider);
+
+    for (const tc of result.toolCalls) {
+      console.log(`[navio] tool-loop step ${step}: ${tc.name}(${JSON.stringify(tc.arguments).slice(0, 120)})`);
+
+      // Email safety: block clicking send buttons on mail hosts
+      if (tc.name === 'click') {
+        const clickText = tc.arguments.text || '';
+        if (isEmailWriteAction('click', { selector: `text=${clickText}` })) {
+          const toolResult = { error: 'Blocked: Navio cannot click Send on email services. Only drafts are allowed.' };
+          currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
+          toolLog.push({ tool: tc.name, args: tc.arguments, result: toolResult, blocked: true });
+          sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
+          continue;
+        }
+      }
+
+      // Navigate: must go through the renderer for NTP overlay handling
+      if (tc.name === 'navigate') {
+        sender.send('tool-navigate', { url: tc.arguments.url, stepIndex: step });
+        const navResult = await waitForRendererAck(sender, 'tool-navigate-ack', 30000);
+        currentMessages = appendToolResult(currentMessages, tc, navResult, provider);
+        toolLog.push({ tool: 'navigate', args: tc.arguments, result: navResult });
+        sender.send('tool-progress', { step, tool: tc.name, result: navResult });
+        continue;
+      }
+
+      // All other tools: execute directly
+      const executor = toolExecutors[tc.name];
+      if (!executor) {
+        const toolResult = { error: `Unknown tool: ${tc.name}` };
+        currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
+        toolLog.push({ tool: tc.name, args: tc.arguments, result: toolResult });
+        sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
+        continue;
+      }
+
+      const toolResult = await executor(wc, tc.arguments);
+      currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
+      toolLog.push({ tool: tc.name, args: tc.arguments, result: toolResult });
+      sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
+    }
+  }
+  return { content: '[Reached maximum tool-calling step limit. Tell me what to do next.]', toolLog };
 }
 
 ipcMain.handle('ai-request', async (event, payload) => {
@@ -1014,6 +1192,57 @@ ipcMain.handle('extract-page-content', async (event, webContentsId) => {
       })()
     `);
     return JSON.parse(result);
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+// ── Tool-calling AI request (agentic loop) ──────────────────────────────────
+ipcMain.handle('ai-request-with-tools', async (event, { messages, webContentsId }) => {
+  const cfg = loadConfig();
+  if (cfg.aiKillSwitch) {
+    return { error: 'AI is turned off (kill switch). Enable it in Settings → AI.' };
+  }
+  const apiKey = secureConfig.getApiKey(app.getPath('userData'));
+  if (!apiKey) {
+    return { error: 'No API key configured. Add one in Settings → AI.' };
+  }
+
+  let processed = Array.isArray(messages) ? messages.map((m) => ({ ...m })) : [];
+  processed = injectSystemPrompt(processed);
+
+  if (cfg.aiRedactPII !== false) {
+    processed = processed.map((m) => {
+      if (typeof m.content === 'string') return { ...m, content: redactPII(m.content) };
+      if (Array.isArray(m.content)) {
+        return {
+          ...m,
+          content: m.content.map((part) =>
+            part && part.type === 'text' ? { ...part, text: redactPII(part.text || '') } : part
+          )
+        };
+      }
+      return m;
+    });
+  }
+
+  if (store) {
+    store.appendLedger({
+      type: 'ai_request_with_tools',
+      provider: cfg.aiProvider,
+      model: cfg.aiModel,
+      messageCount: processed.length,
+      contextFingerprint: hashContext(processed)
+    });
+  }
+
+  const wc = webContentsId ? electronWebContents.fromId(webContentsId) : null;
+  if (!wc) {
+    return { error: 'No active tab — open a page first.' };
+  }
+
+  try {
+    return await executeToolLoop(cfg, apiKey, processed, wc, event.sender);
   } catch (err) {
     return { error: err.message };
   }
@@ -1272,6 +1501,339 @@ ipcMain.handle('page-snapshot', async (event, webContentsId) => {
   }
 });
 
+// ── Tool executors for the agentic tool-calling loop ─────────────────────────
+// Each executor takes (wc, args) where wc is the active webContents and args
+// are the parsed tool call arguments.  Executors delegate to existing
+// browser-action logic where possible.
+
+const toolExecutors = {
+  async read_page(wc, args) {
+    const result = await getAccessibilityTree(wc, {
+      filter: args.filter || 'interactive',
+      refId: args.ref,
+      maxChars: args.max_chars || 50000
+    });
+    if (!result) {
+      // CDP unavailable — fallback to existing page-snapshot JS injection
+      try {
+        const snap = await wc.executeJavaScript(`
+          (() => {
+            const items = [];
+            const sel = 'a,button,input,textarea,select,[role="button"],[role="link"],[role="checkbox"],[role="radio"],[role="menuitem"],[role="tab"],[role="option"],[role="switch"],[role="combobox"],[role="searchbox"]';
+            for (const el of document.querySelectorAll(sel)) {
+              const r = el.getBoundingClientRect();
+              if (r.width < 2 || r.height < 2) continue;
+              const cs = window.getComputedStyle(el);
+              if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+              const tag = el.tagName.toLowerCase();
+              const role = el.getAttribute('role') || tag;
+              const label = (el.getAttribute('aria-label') || el.innerText || el.placeholder || '').trim().slice(0,80);
+              if (!label) continue;
+              items.push(role + ' "' + label + '"');
+              if (items.length >= 120) break;
+            }
+            return items.join('\\n');
+          })()
+        `);
+        return { fallback: true, elements: snap, url: wc.getURL(), title: wc.getTitle() };
+      } catch (e) {
+        return { error: 'Could not read page: ' + e.message };
+      }
+    }
+    return { tree: result.yaml, url: result.url, title: result.title };
+  },
+
+  async get_page_text(wc, args) {
+    try {
+      const text = await wc.executeJavaScript(`
+        (() => {
+          const t = document.body ? document.body.innerText : document.documentElement.innerText;
+          return (t || '').trim();
+        })()
+      `);
+      const maxChars = args.max_chars || 20000;
+      return { text: (text || '').slice(0, maxChars), url: wc.getURL(), title: wc.getTitle() };
+    } catch (e) {
+      return { error: 'Could not extract text: ' + e.message };
+    }
+  },
+
+  async click(wc, args) {
+    if (args.ref) {
+      return await clickByRef(wc, args.ref);
+    }
+    const selector = args.text ? `text=${args.text}` :
+                     args.aria ? `aria=${args.aria}` :
+                     args.xy   ? `xy=${args.xy}` : '';
+    if (!selector) return { error: 'click requires ref, text, aria, or xy' };
+    // Delegate to the existing browser-action click logic via internal call
+    return await executeBrowserActionInternal(wc, 'click', { selector });
+  },
+
+  async type_text(wc, args) {
+    if (args.ref) {
+      return await typeByRef(wc, args.ref, args.value || '');
+    }
+    const fieldLabel = args.text || '';
+    if (!fieldLabel) return { error: 'type_text requires ref or text to identify the field' };
+    return await executeBrowserActionInternal(wc, 'type', {
+      selector: `text=${fieldLabel}`,
+      text: args.value || ''
+    });
+  },
+
+  async select_option(wc, args) {
+    if (args.ref) {
+      return await selectByRef(wc, args.ref, args.value || '');
+    }
+    const fieldSpec = args.text ? `text=${args.text}` : '';
+    if (!fieldSpec) return { error: 'select_option requires ref or text' };
+    return await executeBrowserActionInternal(wc, 'select', {
+      fieldSpec,
+      optionValue: args.value || ''
+    });
+  },
+
+  async scroll(wc, args) {
+    const amount = Math.min(args.amount || 600, 3000);
+    const dir = args.direction === 'up' ? -amount : amount;
+    try {
+      await wc.executeJavaScript(`window.scrollBy(0, ${dir})`);
+      return { success: true };
+    } catch (e) {
+      return { error: e.message };
+    }
+  },
+
+  async press_key(wc, args) {
+    return await executeBrowserActionInternal(wc, 'pressKey', { key: args.key || 'Tab' });
+  },
+
+  async screenshot(wc) {
+    try {
+      const img = await wc.capturePage();
+      const buf = img.toJPEG(70);
+      const b64 = buf.toString('base64');
+      // Cap at ~200 KB
+      if (b64.length > 200000) {
+        const small = img.resize({ width: 1024 });
+        const smallBuf = small.toJPEG(60);
+        return { image: smallBuf.toString('base64'), mimeType: 'image/jpeg' };
+      }
+      return { image: b64, mimeType: 'image/jpeg' };
+    } catch (e) {
+      return { error: 'Screenshot failed: ' + e.message };
+    }
+  },
+
+  async insert_text(wc, args) {
+    return await executeBrowserActionInternal(wc, 'insertText', { text: args.text || '' });
+  },
+
+  async wait(wc, args) {
+    if (args.text) {
+      return await executeBrowserActionInternal(wc, 'waitForText', { text: args.text });
+    }
+    const ms = Math.min(args.ms || 1000, 10000);
+    await new Promise((r) => setTimeout(r, ms));
+    return { success: true, waited: ms };
+  },
+
+  async go_back(wc) {
+    try {
+      await wc.executeJavaScript('window.history.back()');
+      await new Promise((r) => setTimeout(r, 800));
+      return { success: true, url: wc.getURL() };
+    } catch (e) {
+      return { error: e.message };
+    }
+  },
+
+  async go_forward(wc) {
+    try {
+      await wc.executeJavaScript('window.history.forward()');
+      await new Promise((r) => setTimeout(r, 800));
+      return { success: true, url: wc.getURL() };
+    } catch (e) {
+      return { error: e.message };
+    }
+  }
+};
+
+/**
+ * Internal helper: execute a browser action on a webContents without going
+ * through the IPC layer.  Reuses the same JS injection patterns from the
+ * browser-action handler for text=/aria= click, type, pressKey, etc.
+ */
+async function executeBrowserActionInternal(wc, action, params) {
+  try {
+    switch (action) {
+      case 'click': {
+        const sel = (params.selector || '').trim();
+        if (sel.startsWith('xy=')) {
+          const parts = sel.slice(3).split(/[,;\s]+/).map(Number);
+          if (Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+            wc.sendInputEvent({ type: 'mouseMove', x: parts[0], y: parts[1] });
+            await new Promise((r) => setTimeout(r, 40));
+            wc.sendInputEvent({ type: 'mouseDown', x: parts[0], y: parts[1], button: 'left', clickCount: 1 });
+            await new Promise((r) => setTimeout(r, 60));
+            wc.sendInputEvent({ type: 'mouseUp', x: parts[0], y: parts[1], button: 'left', clickCount: 1 });
+            await new Promise((r) => setTimeout(r, 500));
+            return { success: true };
+          }
+          return { error: 'Invalid xy coordinates' };
+        }
+        const rawJson = JSON.stringify(sel);
+        const ok = await wc.executeJavaScript(`
+          (() => {
+            const raw = ${rawJson};
+            function find(doc) {
+              if (raw.startsWith('text=')) {
+                const q = raw.slice(5).trim().toLowerCase();
+                for (const el of doc.querySelectorAll('a,button,input[type="submit"],[role="button"],[role="link"],[role="menuitem"],[role="tab"],[role="option"]')) {
+                  const lbl = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim().toLowerCase();
+                  if (lbl.includes(q)) { el.scrollIntoView({block:'center'}); el.focus(); el.click(); return true; }
+                }
+                return false;
+              }
+              if (raw.startsWith('aria=')) {
+                const q = raw.slice(5).trim().toLowerCase();
+                for (const el of doc.querySelectorAll('[aria-label]')) {
+                  if ((el.getAttribute('aria-label')||'').toLowerCase().includes(q)) { el.scrollIntoView({block:'center'}); el.focus(); el.click(); return true; }
+                }
+                return false;
+              }
+              try { const el = doc.querySelector(raw); if (el) { el.scrollIntoView({block:'center'}); el.focus(); el.click(); return true; } } catch {}
+              return false;
+            }
+            return find(document);
+          })()
+        `);
+        await new Promise((r) => setTimeout(r, 300));
+        return ok ? { success: true } : { error: `Element not found: ${sel}` };
+      }
+
+      case 'type': {
+        const fieldSel = params.selector || '';
+        const text = params.text || '';
+        const fieldJson = JSON.stringify(fieldSel);
+        const textJson = JSON.stringify(text);
+        const ok = await wc.executeJavaScript(`
+          (() => {
+            const sel = ${fieldJson};
+            const text = ${textJson};
+            let el = null;
+            if (sel.startsWith('text=')) {
+              const q = sel.slice(5).trim().toLowerCase();
+              for (const inp of document.querySelectorAll('input,textarea,select,[contenteditable="true"]')) {
+                const lbl = (inp.getAttribute('aria-label') || inp.getAttribute('placeholder') || inp.getAttribute('name') || '').toLowerCase();
+                if (lbl.includes(q)) { el = inp; break; }
+              }
+            } else if (sel.startsWith('aria=')) {
+              const q = sel.slice(5).trim().toLowerCase();
+              for (const inp of document.querySelectorAll('[aria-label]')) {
+                if ((inp.getAttribute('aria-label')||'').toLowerCase().includes(q)) { el = inp; break; }
+              }
+            }
+            if (!el) return false;
+            el.scrollIntoView({block:'center'});
+            el.focus();
+            if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+              el.value = text;
+              el.dispatchEvent(new Event('input', {bubbles:true}));
+              el.dispatchEvent(new Event('change', {bubbles:true}));
+            }
+            return true;
+          })()
+        `);
+        return ok ? { success: true } : { error: `Field not found: ${fieldSel}` };
+      }
+
+      case 'pressKey': {
+        const key = params.key || 'Tab';
+        const keyMap = {
+          'Tab': { keyCode: 'Tab', code: 'Tab', key: 'Tab' },
+          'Enter': { keyCode: 'Return', code: 'Enter', key: 'Enter' },
+          'Escape': { keyCode: 'Escape', code: 'Escape', key: 'Escape' },
+          'Backspace': { keyCode: 'Backspace', code: 'Backspace', key: 'Backspace' },
+          'ArrowDown': { keyCode: 'Down', code: 'ArrowDown', key: 'ArrowDown' },
+          'ArrowUp': { keyCode: 'Up', code: 'ArrowUp', key: 'ArrowUp' },
+          'ArrowLeft': { keyCode: 'Left', code: 'ArrowLeft', key: 'ArrowLeft' },
+          'ArrowRight': { keyCode: 'Right', code: 'ArrowRight', key: 'ArrowRight' },
+          'Space': { keyCode: 'Space', code: 'Space', key: ' ' }
+        };
+        const mapped = keyMap[key] || { keyCode: key, code: key, key };
+        wc.sendInputEvent({ type: 'keyDown', keyCode: mapped.keyCode });
+        await new Promise((r) => setTimeout(r, 50));
+        wc.sendInputEvent({ type: 'keyUp', keyCode: mapped.keyCode });
+        return { success: true };
+      }
+
+      case 'insertText': {
+        const text = params.text || '';
+        clipboard.writeText(text);
+        wc.sendInputEvent({ type: 'keyDown', keyCode: 'v', modifiers: ['control'] });
+        await new Promise((r) => setTimeout(r, 50));
+        wc.sendInputEvent({ type: 'keyUp', keyCode: 'v', modifiers: ['control'] });
+        await new Promise((r) => setTimeout(r, 200));
+        return { success: true };
+      }
+
+      case 'waitForText': {
+        const target = params.text || '';
+        if (!target) return { error: 'No text to wait for' };
+        const start = Date.now();
+        while (Date.now() - start < 12000) {
+          try {
+            const found = await wc.executeJavaScript(`
+              document.body.innerText.includes(${JSON.stringify(target)})
+            `);
+            if (found) return { success: true, foundAfter: Date.now() - start };
+          } catch { /* page navigating */ }
+          await new Promise((r) => setTimeout(r, 500));
+        }
+        return { error: `Text "${target}" not found within 12s` };
+      }
+
+      case 'select': {
+        const fieldSpec = params.fieldSpec || '';
+        const optionValue = params.optionValue || '';
+        const fsJson = JSON.stringify(fieldSpec);
+        const ovJson = JSON.stringify(optionValue);
+        const ok = await wc.executeJavaScript(`
+          (() => {
+            const spec = ${fsJson};
+            const val = ${ovJson};
+            let el = null;
+            if (spec.startsWith('text=')) {
+              const q = spec.slice(5).trim().toLowerCase();
+              for (const s of document.querySelectorAll('select')) {
+                const lbl = (s.getAttribute('aria-label') || s.getAttribute('name') || '').toLowerCase();
+                if (lbl.includes(q)) { el = s; break; }
+              }
+            }
+            if (!el) return false;
+            for (const opt of el.options) {
+              if (opt.value === val || opt.textContent.trim() === val) {
+                opt.selected = true;
+                el.dispatchEvent(new Event('change', {bubbles:true}));
+                return true;
+              }
+            }
+            return false;
+          })()
+        `);
+        return ok ? { success: true } : { error: `Select/option not found` };
+      }
+
+      default:
+        return { error: `Unknown internal action: ${action}` };
+    }
+  } catch (e) {
+    return { error: `${action} failed: ${e.message}` };
+  }
+}
+
 /** CDP fallback for Gmail when top-frame + same-origin iframe search misses (isolated iframes). */
 async function tryGmailClickViaDebugger(wc, selectorRaw) {
   const rawJson = JSON.stringify(selectorRaw || '');
@@ -1504,6 +2066,16 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
             return { success: true };
           }
           return { error: 'Invalid xy= coordinates — use e.g. click:xy=400,520' };
+        }
+
+        // ref= click via CDP accessibility tree ref_id
+        if (selRaw.toLowerCase().startsWith('ref=') || selRaw.toLowerCase().startsWith('ref_')) {
+          const refId = selRaw.startsWith('ref=') ? selRaw.slice(4).trim() : selRaw.trim();
+          const refResult = await clickByRef(wc, refId);
+          if (refResult.success) {
+            await waitForOptionalNavigationAfterClick(wc, 2000);
+          }
+          return refResult;
         }
 
         const cSel = JSON.stringify(params.selector || '');

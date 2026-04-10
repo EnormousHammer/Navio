@@ -42,7 +42,8 @@ const DEFAULT_CONFIG = {
   memoryRetentionDays: 0,
   aiAutoExecute: false,
   aiAutoScreenshotAfterNavigate: false,
-  aiAgentStepMode: false
+  aiAgentStepMode: false,
+  aiUseToolCalling: true
 };
 
 function readConfigFile() {

@@ -18,6 +18,18 @@ contextBridge.exposeInMainWorld('navio', {
 
   aiRequest: (params) => ipcRenderer.invoke('ai-request', params),
   aiRequestStream: (params) => ipcRenderer.invoke('ai-request-stream', params),
+  aiRequestWithTools: (params) => ipcRenderer.invoke('ai-request-with-tools', params),
+  onToolProgress: (callback) => {
+    const handler = (_, data) => callback(data);
+    ipcRenderer.on('tool-progress', handler);
+    return () => ipcRenderer.removeListener('tool-progress', handler);
+  },
+  onToolNavigate: (callback) => {
+    const handler = (_, data) => callback(data);
+    ipcRenderer.on('tool-navigate', handler);
+    return () => ipcRenderer.removeListener('tool-navigate', handler);
+  },
+  toolNavigateAck: (result) => ipcRenderer.send('tool-navigate-ack', result),
   onAiStreamChunk: (callback) => {
     const handler = (_, chunk) => callback(chunk);
     ipcRenderer.on('ai-stream-chunk', handler);
