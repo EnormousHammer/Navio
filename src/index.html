@@ -207,32 +207,34 @@
           <!-- Full-page dark backdrop for NTP (always dark) -->
           <div class="ntp-bg-layer"></div>
 
-          <!-- Top bar: weather + services -->
+          <!-- Top bar: weather + clock + services -->
           <div class="ntp-topbar">
-            <div class="ntp-weather-block" id="ntp-weather-block" style="visibility:hidden">
-              <span id="ntp-weather-icon">☁</span>
-              <span id="ntp-weather-temp"></span>
-              <span id="ntp-weather-desc"></span>
+            <div class="ntp-topbar-left">
+              <div class="ntp-weather-block" id="ntp-weather-block" style="visibility:hidden">
+                <span id="ntp-weather-icon">☁</span>
+                <span id="ntp-weather-temp"></span>
+                <span id="ntp-weather-desc"></span>
+              </div>
+            </div>
+            <div class="ntp-topbar-center">
+              <div class="ntp-clock-block">
+                <div class="ntp-clock" id="ntp-clock">--:--</div>
+                <div class="ntp-clock-sub">
+                  <span id="ntp-greeting">Good morning</span>
+                  <span class="ntp-clock-sep">·</span>
+                  <span class="ntp-date" id="ntp-date"></span>
+                </div>
+              </div>
             </div>
             <div class="ntp-topbar-right">
               <div class="ntp-services-bar" id="ntp-services-bar"></div>
             </div>
           </div>
 
-          <!-- Hero: big clock + logo + AI input -->
+          <!-- Hero: AI search + suggestions + shortcuts -->
           <div class="ntp-hero">
-            <!-- Big live clock -->
-            <div class="ntp-clock-block">
-              <div class="ntp-clock" id="ntp-clock">--:--</div>
-              <div class="ntp-clock-sub">
-                <span id="ntp-greeting">Good morning</span>
-                <span class="ntp-clock-sep">·</span>
-                <span class="ntp-date" id="ntp-date"></span>
-              </div>
-            </div>
-
-            <!-- Orb + title -->
-            <div class="ntp-brand">
+            <!-- Orb + title — hidden but preserved for JS refs -->
+            <div class="ntp-brand" style="display:none">
               <div class="ntp-orb">
                 <div class="orb-ring orb-ring-1"></div>
                 <div class="orb-ring orb-ring-2"></div>
@@ -246,20 +248,11 @@
               <h1 class="ntp-title">NAVIO</h1>
             </div>
 
-            <!-- Mode tabs -->
-            <div class="ntp-mode-tabs">
-              <button class="ntp-mode-tab active" data-mode="search">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                Search
-              </button>
-              <button class="ntp-mode-tab" data-mode="ai">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                Ask AI
-              </button>
-              <button class="ntp-mode-tab" data-mode="task">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                Task
-              </button>
+            <!-- Mode tabs — hidden, functionality merged into search bar -->
+            <div class="ntp-mode-tabs" style="display:none">
+              <button class="ntp-mode-tab active" data-mode="search">Search</button>
+              <button class="ntp-mode-tab" data-mode="ai">Ask AI</button>
+              <button class="ntp-mode-tab" data-mode="task">Task</button>
             </div>
 
             <!-- Inline AI results panel (appears on AI queries from NTP) -->
@@ -308,10 +301,6 @@
               <button class="ntp-ai-suggestion" data-prompt="Help me research a topic in depth">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 Deep research
-              </button>
-              <button class="ntp-ai-suggestion" data-prompt="Draft an email for me">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                Draft an email
               </button>
             </div>
           </div>

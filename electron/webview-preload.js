@@ -109,4 +109,55 @@ try {
     } catch {}
   });
 
+  // ── YouTube: auto-skip ads ────────────────────────────────────────────────
+  // Watches for the skip button on YouTube ads and clicks it as soon as it
+  // becomes available. Runs only on youtube.com domains.
+  function initYouTubeAdSkipper() {
+    if (!location.hostname.includes('youtube.com')) return;
+
+    const SKIP_SELECTORS = [
+      '.ytp-skip-ad-button',
+      '.ytp-ad-skip-button',
+      '.ytp-ad-skip-button-modern',
+      'button.ytp-ad-skip-button-modern',
+      '.videoAdUiSkipButton',
+      '[id="skip-button:8"]',
+      'button[data-tooltip-target-id="a]"]',
+    ];
+
+    function trySkip() {
+      for (const sel of SKIP_SELECTORS) {
+        const btn = document.querySelector(sel);
+        if (btn && btn.offsetParent !== null) {
+          btn.click();
+          return true;
+        }
+      }
+      const allBtns = document.querySelectorAll('button, .ytp-ad-overlay-close-button');
+      for (const btn of allBtns) {
+        const text = (btn.textContent || '').trim().toLowerCase();
+        if ((text === 'skip' || text === 'skip ad' || text === 'skip ads' || text.startsWith('skip ad')) && btn.offsetParent !== null) {
+          btn.click();
+          return true;
+        }
+      }
+      return false;
+    }
+
+    const observer = new MutationObserver(() => { trySkip(); });
+    function startObserving() {
+      observer.observe(document.body, { childList: true, subtree: true });
+      setInterval(trySkip, 1000);
+    }
+
+    if (document.body) startObserving();
+    else document.addEventListener('DOMContentLoaded', startObserving);
+  }
+
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    initYouTubeAdSkipper();
+  } else {
+    window.addEventListener('DOMContentLoaded', initYouTubeAdSkipper);
+  }
+
 } catch { /* require not available — graceful no-op */ }

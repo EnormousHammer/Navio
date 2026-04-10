@@ -1145,18 +1145,29 @@ body.tabstrip-hidden .tab-strip-show {
 
 /* ── NTP Topbar ────────────────────────────────────────────────────────── */
 .ntp-topbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
-  padding: 6px 24px 0;
+  padding: 10px 24px 0;
   position: relative;
   z-index: 1;
   flex-shrink: 0;
+}
+.ntp-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ntp-topbar-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .ntp-topbar-right {
   display: flex;
   align-items: center;
   gap: 8px;
+  justify-content: flex-end;
 }
 .ntp-weather-block {
   display: flex;
@@ -1210,48 +1221,47 @@ body.tabstrip-hidden .tab-strip-show {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 2px 18px 2px;
+  padding: 6px 18px 0;
   position: relative;
   z-index: 1;
   flex: 0 0 auto;
 }
 
-/* ── Big Clock ─────────────────────────────────────────────────────────── */
+/* ── Clock (now in topbar center) ──────────────────────────────────────── */
 .ntp-clock-block {
   text-align: center;
-  margin-bottom: 6px;
 }
 .ntp-clock {
-  font-size: clamp(38px, 5.5vw, 64px);
+  font-size: clamp(28px, 3.5vw, 42px);
   font-weight: 300;
-  letter-spacing: -2px;
+  letter-spacing: -1.5px;
   color: #fff;
   font-variant-numeric: tabular-nums;
   line-height: 1;
-  text-shadow: 0 0 40px rgba(0,212,255,0.25), 0 0 80px rgba(124,58,237,0.15);
+  text-shadow: 0 0 30px rgba(0,212,255,0.2), 0 0 60px rgba(124,58,237,0.1);
   font-family: 'SF Pro Display', 'Helvetica Neue', system-ui, sans-serif;
 }
 .ntp-clock-ampm {
-  font-size: 0.28em;
+  font-size: 0.3em;
   font-weight: 500;
-  letter-spacing: 2px;
+  letter-spacing: 1.5px;
   text-transform: uppercase;
-  opacity: 0.60;
-  margin-left: 8px;
+  opacity: 0.55;
+  margin-left: 6px;
   vertical-align: super;
 }
 .ntp-clock-sub {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  margin-top: 6px;
-  font-size: 13px;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 11.5px;
   color: var(--ntp-subtext);
   letter-spacing: 0.3px;
 }
 .ntp-clock-sep { opacity: 0.4; }
-.ntp-date { font-size: 13px; color: var(--ntp-subtext); }
+.ntp-date { font-size: 11.5px; color: var(--ntp-subtext); }
 
 /* ── NTP Brand row (orb + title) ───────────────────────────────────────── */
 .ntp-brand {
@@ -1383,11 +1393,11 @@ body.tabstrip-hidden .tab-strip-show {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 11px 18px;
+  padding: 10px 18px;
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.1);
   border-radius: 50px;
-  margin-bottom: 14px;
+  margin-bottom: 8px;
   transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
   position: relative;
   width: 100%;
@@ -1465,9 +1475,9 @@ body.tabstrip-hidden .tab-strip-show {
 }
 
 .ntp-search-hint {
-  margin: 6px 0 0;
-  font-size: 10.5px;
-  color: rgba(226, 232, 248, 0.28);
+  margin: 2px 0 0;
+  font-size: 10px;
+  color: rgba(226, 232, 248, 0.22);
   text-align: center;
   letter-spacing: 0.04em;
 }
@@ -1486,37 +1496,35 @@ body.tabstrip-hidden .tab-strip-show {
 /* ── NTP Widgets ──────────────────────────────────────────────────────── */
 .ntp-widgets {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 12px;
-  padding: 0 20px 16px;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 10px;
+  padding: 0 20px 8px;
   position: relative;
   z-index: 1;
   max-width: 1420px;
   width: 100%;
   margin: 0 auto;
   box-sizing: border-box;
+  flex: 1;
+  min-height: 0;
 }
-@media (max-width: 1000px) {
-  .ntp-widgets { grid-template-columns: 1fr 1fr; }
-  .ntp-widget:last-child { grid-column: 1 / -1; }
-}
-@media (max-width: 640px) {
-  .ntp-widgets { grid-template-columns: 1fr; }
+@media (max-width: 700px) {
+  .ntp-widgets { grid-template-columns: 1fr; grid-template-rows: auto; }
 }
 .ntp-widget {
   background: rgba(255,255,255,0.03);
   border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 18px;
+  border-radius: 16px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  min-height: 200px;
-  max-height: min(400px, 42vh);
+  min-height: 0;
   position: relative;
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+  box-shadow: 0 3px 18px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06);
 }
 /* Subtle shimmer line at the top of every widget */
 .ntp-widget::before {
@@ -1529,9 +1537,9 @@ body.tabstrip-hidden .tab-strip-show {
   z-index: 1;
 }
 .ntp-widget:hover {
-  border-color: rgba(0,212,255,0.3);
-  box-shadow: 0 12px 40px rgba(0,212,255,0.1), 0 4px 24px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08);
-  transform: translateY(-2px);
+  border-color: rgba(0,212,255,0.25);
+  box-shadow: 0 8px 30px rgba(0,212,255,0.08), 0 3px 18px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08);
+  transform: translateY(-1px);
 }
 /* AI Brief widget — gradient neon border */
 .ntp-widget-ai {
@@ -1547,7 +1555,7 @@ body.tabstrip-hidden .tab-strip-show {
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: 18px;
+  border-radius: 16px;
   padding: 1px;
   background: linear-gradient(135deg, rgba(0,212,255,0.45), rgba(124,58,237,0.45), rgba(244,114,182,0.35));
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
@@ -1559,8 +1567,8 @@ body.tabstrip-hidden .tab-strip-show {
 .ntp-widget-header {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 12px 16px;
+  gap: 6px;
+  padding: 9px 14px;
   font-size: 10px;
   font-weight: 800;
   color: rgba(226,232,248,0.55);
@@ -2363,9 +2371,9 @@ body.tabstrip-hidden .tab-strip-show {
 .ntp-shortcuts {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 6px;
   justify-content: center;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
   position: relative;
   z-index: 1;
   padding: 0 18px;
@@ -2398,11 +2406,11 @@ body.tabstrip-hidden .tab-strip-show {
 .ntp-shortcut:hover { transform: translateY(-3px); }
 
 .shortcut-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
-  background: rgba(255,255,255,0.10);
-  border: 1px solid rgba(255,255,255,0.13);
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.11);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -10242,22 +10250,41 @@ body.onboarding-active #app {
 .ntp-ai-suggestions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   justify-content: center;
-  margin-top: 16px;
+  margin-top: 6px;
   padding: 0 24px;
+}
+
+/* ── NTP viewport-height responsiveness ─────────────────────────────── */
+@media (max-height: 750px) {
+  .ntp-clock { font-size: clamp(22px, 2.8vw, 32px); }
+  .ntp-clock-sub { font-size: 10px; margin-top: 1px; }
+  .ntp-hero { padding: 2px 18px 0; }
+  .ntp-ai-suggestions { display: none; }
+  .ntp-search-hint { display: none; }
+  .shortcut-icon { width: 36px; height: 36px; }
+  .ntp-shortcut span { font-size: 10px; }
+  .ntp-shortcuts { gap: 5px; margin-bottom: 4px; }
+  .ntp-widgets { gap: 8px; padding: 0 16px 6px; }
+  .ntp-widget-header { padding: 7px 12px; }
+}
+@media (max-height: 600px) {
+  .ntp-shortcuts { display: none; }
+  .ntp-topbar { padding: 4px 20px 0; }
+  .ntp-clock { font-size: 22px; }
 }
 
 .ntp-ai-suggestion {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 8px 16px;
+  gap: 6px;
+  padding: 6px 14px;
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: var(--radius-full);
-  color: rgba(255,255,255,0.7);
-  font-size: 12.5px;
+  color: rgba(255,255,255,0.65);
+  font-size: 11.5px;
   cursor: pointer;
   transition: all var(--duration) var(--ease);
   font-family: var(--font-sans);

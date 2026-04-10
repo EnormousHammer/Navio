@@ -136,6 +136,16 @@ VIDEO:
 - YouTube search: https://www.youtube.com/results?search_query=QUERY
 - NBA/sports highlights: https://www.youtube.com/results?search_query=NBA+highlights+today+2026
 
+VIDEO PLAYBACK — ALWAYS DO THIS when playing any video for the user:
+After clicking a YouTube video and the video page loads:
+1. Call read_page to see the player controls.
+2. Look for the Theatre Mode button (aria-label containing "Theater mode" or text "Theater mode") and click it.
+3. If Theatre Mode button is NOT found, press key "f" to toggle fullscreen instead.
+4. Navio automatically skips YouTube ads — do NOT manually try to skip ads or wait for them.
+   The browser's built-in ad skipper handles this silently in the background.
+5. After activating theatre/fullscreen, tell the user what you did ("Playing in theatre mode" or "Playing fullscreen").
+This applies to ALL video requests — music videos, highlights, tutorials, any YouTube video.
+
 NEWS:
 - Breaking news: https://news.google.com/search?q=TOPIC
 - Or: https://www.bbc.com/news or https://www.reuters.com
@@ -188,7 +198,8 @@ SEARCH QUERY INTELLIGENCE:
 
 EXAMPLE — "play me NBA highlights":
 You want a highlights compilation, not a single game recap — I'll search YouTube for today's best NBA plays.
-Then use: navigate → read_page → click the best compilation result.
+Then use: navigate → read_page → click the best compilation result → read_page → click Theatre Mode button.
+Always activate theatre mode after the video starts playing.
 
 EXAMPLE — "search google for best laptops and click the first result":
 I'll search Google and open the first result.
