@@ -1454,7 +1454,17 @@ body.tabstrip-hidden .tab-strip-show {
   font-size: 15.5px;
   font-family: var(--font-sans);
   outline: none;
+  box-shadow: none;
+  -webkit-appearance: none;
+  appearance: none;
   letter-spacing: 0.1px;
+}
+
+.ntp-search input:focus,
+.ntp-search input:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border: none;
 }
 
 .ntp-search input::placeholder { color: rgba(226,232,248,0.3); }
@@ -3071,10 +3081,20 @@ body.tabstrip-hidden .tab-strip-show {
   line-height: 1.55;
   resize: none;
   outline: none;
+  box-shadow: none;
+  -webkit-appearance: none;
+  appearance: none;
   max-height: 160px;
   min-height: 24px;
   padding: 2px 0;
   overflow-y: auto;
+}
+
+#assistant-input:focus,
+#assistant-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border: none;
 }
 
 #assistant-input::placeholder {
@@ -6455,7 +6475,7 @@ button:focus-visible,
 [contenteditable]:focus-visible,
 .ntp-search:focus-visible,
 .ntp-search input:focus-visible,
-.assistant-input:focus-visible,
+#assistant-input:focus-visible,
 .assistant-input-container:focus-visible {
   outline: none;
 }
@@ -8180,7 +8200,7 @@ button:focus-visible,
 }
 
 /* ── Dark AI input area ─────────────────────────────────────────────────── */
-[data-theme="dark"] .assistant-input {
+[data-theme="dark"] .assistant-input-area {
   background: rgba(12,18,32,0.80);
   border-top-color: rgba(80,160,255,0.11);
 }
@@ -8298,7 +8318,7 @@ button:focus-visible,
 }
 
 /* ── Light AI input area ────────────────────────────────────────────────── */
-[data-theme="light"] .assistant-input {
+[data-theme="light"] .assistant-input-area {
   background: #f8f9fd;
   border-top-color: rgba(50,70,160,0.09);
 }
