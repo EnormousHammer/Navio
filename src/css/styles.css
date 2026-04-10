@@ -1434,13 +1434,14 @@ body.tabstrip-hidden .tab-strip-show {
 }
 
 .ntp-search:focus-within {
-  border-color: rgba(0,216,255,0.60);
+  border-color: rgba(0,216,255,0.40);
   background: rgba(22, 30, 52, 0.88);
-  box-shadow: 0 0 0 1px rgba(0,216,255,0.25), 0 8px 60px rgba(0,216,255,0.22), 0 0 120px rgba(84,104,255,0.10);
+  box-shadow: 0 0 0 1px rgba(0,216,255,0.15), 0 4px 30px rgba(0,216,255,0.12), 0 0 60px rgba(84,104,255,0.06);
   animation: none;
+  outline: none;
 }
 
-.ntp-search:focus-within .ntp-search-glow { opacity: 0.55; }
+.ntp-search:focus-within .ntp-search-glow { opacity: 0.30; }
 
 .ntp-search svg { color: rgba(226,232,248,0.4); flex-shrink: 0; }
 .ntp-search:focus-within svg { color: #00d8ff; }
@@ -3054,9 +3055,10 @@ body.tabstrip-hidden .tab-strip-show {
 }
 
 .assistant-input-container:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow), 0 0 20px rgba(0,216,255,0.08);
+  border-color: rgba(0,216,255,0.30);
+  box-shadow: 0 0 0 2px rgba(0,216,255,0.06), 0 0 12px rgba(0,216,255,0.05);
   background: var(--bg-surface);
+  outline: none;
 }
 
 #assistant-input {
@@ -6440,11 +6442,22 @@ body.onboarding-active #app {
    DEEP SPACE AI — Futuristic Micro-Details
    ============================================ */
 
-/* ── Focus rings: cyan glow instead of default outline ── */
+/* ── Focus rings: subtle cyan outline for keyboard nav only ── */
 :focus-visible {
-  outline: 1.5px solid rgba(0, 216, 255, 0.55);
+  outline: 1.5px solid rgba(0, 216, 255, 0.35);
   outline-offset: 2px;
-  box-shadow: 0 0 0 3px rgba(0, 216, 255, 0.12);
+}
+/* Suppress focus ring on elements with custom focus styles */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+button:focus-visible,
+[contenteditable]:focus-visible,
+.ntp-search:focus-visible,
+.ntp-search input:focus-visible,
+.assistant-input:focus-visible,
+.assistant-input-container:focus-visible {
+  outline: none;
 }
 
 /* ── Blue-tinted scrollbars ── */
