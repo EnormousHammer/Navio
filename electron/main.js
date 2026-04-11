@@ -4479,6 +4479,49 @@ ipcMain.handle('ntp-sports', async () => {
   }
 });
 
+// ── streamed.pk API proxy (NTP Live Sports widget — see Predicta docs/streaming-external-site-guide.md)
+function _isValidStreamedPkApiPath(p) {
+  if (typeof p !== 'string') return false;
+  const path = p.trim().replace(/^\/+/, '');
+  if (path.includes('..')) return false;
+  if (path === 'sports') return true;
+  // Allow encoded slugs (e.g. percent-encoding) — keep length bounded
+  if (path.startsWith('matches/') && path.length > 8 && path.length < 400) return true;
+  if (path.startsWith('stream/') && path.length > 7 && path.length < 500) return true;
+  return false;
+}
+
+ipcMain.handle('streamed-pk-api', async (_, { path: apiPath }) => {
+  if (!_isValidStreamedPkApiPath(apiPath)) {
+    return { error: 'invalid_path' };
+  }
+  const rel = String(apiPath).trim().replace(/^\/+/, '');
+  const url = `https://streamed.pk/api/${rel}`;
+  const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 20000);
+  try {
+    const r = await fetch(url, {
+      headers: { 'User-Agent': UA, Accept: 'application/json' },
+      signal: ctl.signal,
+    });
+    if (!r.ok) return { error: `HTTP ${r.status}` };
+    const text = await r.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return { error: 'invalid_json' };
+    }
+    return { ok: true, data };
+  } catch (e) {
+    const msg = e?.name === 'AbortError' ? 'timeout' : (e.message || 'fetch_failed');
+    return { error: msg };
+  } finally {
+    clearTimeout(t);
+  }
+});
+
 // ── NTP: Gmail inbox via OAuth (used by NTP inbox widget) ─────────────────
 ipcMain.handle('ntp-gmail-inbox', async () => {
   try {

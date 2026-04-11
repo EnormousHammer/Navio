@@ -170,6 +170,8 @@ contextBridge.exposeInMainWorld('navio', {
   ntpFetchStocks: () => ipcRenderer.invoke('ntp-stocks'),
   ntpFetchSports: () => ipcRenderer.invoke('ntp-sports'),
   ntpGmailInbox: () => ipcRenderer.invoke('ntp-gmail-inbox'),
+  /** Proxied JSON from https://streamed.pk/api/{path} — path e.g. sports | matches/football | stream/source/id */
+  streamedPkApi: (path) => ipcRenderer.invoke('streamed-pk-api', { path }),
 
   setAdBlocker: (enabled) => ipcRenderer.invoke('set-ad-blocker', { enabled }),
   getAdBlockStats: () => ipcRenderer.invoke('get-ad-block-stats'),

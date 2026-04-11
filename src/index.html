@@ -400,18 +400,20 @@
               </div>
             </div>
 
-            <!-- Privacy / Ad-Block Stats Widget -->
-            <div class="ntp-widget ntp-widget-privacy" id="ntp-widget-privacy">
+            <!-- Live sports & streams (streamed.pk catalog — Approach A in Predicta streaming-external-site-guide.md) -->
+            <div class="ntp-widget ntp-widget-live-sports" id="ntp-widget-live-sports">
               <div class="ntp-widget-header">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                Privacy Shield
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg>
+                Live Sports
+                <span class="ntp-live-badge">LIVE</span>
+                <span class="ntp-widget-source" id="ntp-live-sports-source">streamed.pk</span>
+                <button class="ntp-widget-action" id="ntp-live-sports-refresh" type="button" title="Refresh matches">Refresh</button>
+                <button class="ntp-widget-popout" type="button" data-widget="sportsstreams" title="Open streaming site in new tab">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </button>
               </div>
-              <div class="ntp-widget-body ntp-privacy-body">
-                <div class="ntp-privacy-stat">
-                  <div class="ntp-privacy-number">—</div>
-                  <div class="ntp-privacy-label">trackers blocked</div>
-                </div>
-                <div class="ntp-privacy-status">Ad blocker active</div>
+              <div class="ntp-widget-body ntp-live-sports-body" id="ntp-live-sports-body">
+                <div class="ntp-widget-loading"><span></span><span></span><span></span></div>
               </div>
             </div>
           </div>

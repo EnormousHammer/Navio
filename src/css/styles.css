@@ -9362,6 +9362,111 @@ button:focus-visible,
   opacity: 0.85;
 }
 
+/* ── Live Sports NTP widget (streamed.pk via main-process proxy) ─────────── */
+.ntp-widget-live-sports .ntp-widget-header svg {
+  color: #f97316;
+}
+
+.ntp-live-sports-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px !important;
+  min-height: 120px;
+  max-height: 280px;
+  overflow: hidden;
+}
+
+.ntp-live-sports-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 52px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.ntp-live-sport-chip {
+  flex-shrink: 0;
+  border: 1px solid rgba(249, 115, 22, 0.35);
+  background: rgba(249, 115, 22, 0.08);
+  color: var(--text-secondary, rgba(226, 232, 240, 0.85));
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.ntp-live-sport-chip:hover {
+  background: rgba(249, 115, 22, 0.18);
+  border-color: rgba(249, 115, 22, 0.55);
+}
+
+.ntp-live-sport-chip.active {
+  background: rgba(249, 115, 22, 0.35);
+  border-color: rgba(249, 115, 22, 0.75);
+  color: #fff;
+}
+
+.ntp-live-matches {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  padding-right: 2px;
+}
+
+.ntp-live-match-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.ntp-live-match-row:hover {
+  background: rgba(249, 115, 22, 0.12);
+  border-color: rgba(249, 115, 22, 0.25);
+}
+
+.ntp-live-match-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary, #e2e8f0);
+  line-height: 1.3;
+}
+
+.ntp-live-match-meta {
+  font-size: 10px;
+  color: var(--text-tertiary, rgba(148, 163, 184, 0.9));
+}
+
+.ntp-live-sports-foot {
+  font-size: 10px;
+  color: var(--text-tertiary, #64748b);
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin-top: 2px;
+}
+
+.ntp-live-sports-foot .ntp-privacy-ok {
+  color: #22c55e;
+  opacity: 0.85;
+}
+
 /* ── @Tab Mention Picker ─────────────────────────────────────────────────── */
 .at-mention-picker {
   position: fixed;

@@ -9,6 +9,7 @@
  *  • Inbox widget — unread emails from IMAP Gmail/Outlook
  *  • AI Brief — generates personalized daily brief via AI
  *  • "Draft All" button — triggers batch email drafting
+ *  • Live Sports — streamed.pk catalog (Approach A; Predicta docs/streaming-external-site-guide.md)
  */
 
 const NTP = (() => {
@@ -19,6 +20,10 @@ const NTP = (() => {
   let _stockData      = [];   // cached for AI brief
   let _inboxMessages  = [];   // cached from _loadInbox() for AI brief
   let _tickerMode = 'markets'; // 'markets' | 'sports' | 'news'
+  /** Live Sports widget: categories from /sports + rows for /matches/{slug} */
+  let _streamedSports = [];
+  let _streamedSelectedSlug = '';
+  let _streamedMatches = [];
 
   // ── Init ──────────────────────────────────────────────────────────────────
 
@@ -48,6 +53,7 @@ const NTP = (() => {
     _bindAIBrief();
     _bindTickerTabs();
     _bindWidgetPopouts();
+    _bindLiveSportsWidget();
     _bindResultsPanel();
     _bindNtpSlashFocus();
 
@@ -91,7 +97,14 @@ const NTP = (() => {
         _loadServicesBar().catch(() => {}),
         _loadInbox().catch(() => {}),
         _loadTickerForMode().catch(() => {}),
-        _loadPrivacyStats().catch(() => {})
+        _loadLiveSportsWidget().catch((err) => {
+          console.error('[NTP] Live sports widget failed:', err);
+          const b = document.getElementById('ntp-live-sports-body');
+          if (b) {
+            b.innerHTML =
+              '<p class="ntp-widget-empty">Live sports could not load. Update the app or tap Refresh.</p>';
+          }
+        })
       ]);
       await _updateSmartRow();
       _maybeAutoGenerateBrief();
@@ -354,6 +367,12 @@ const NTP = (() => {
   }
 
   function _popoutWidget(widgetKey) {
+    if (widgetKey === 'sportsstreams') {
+      const url = 'https://streamed.pk';
+      if (typeof TabManager !== 'undefined') TabManager.createTab(url);
+      else if (window.navio?.openExternal) window.navio.openExternal(url);
+      return;
+    }
     const configs = {
       news:    { bodyId: 'ntp-news-list',   title: 'World News' },
       inbox:   { bodyId: 'ntp-email-list',  title: 'Inbox' },
@@ -1646,34 +1665,181 @@ const NTP = (() => {
     } catch { return dateStr; }
   }
 
-  // ── Privacy Stats Widget ──────────────────────────────────────────────────
+  // ── Live Sports widget (streamed.pk — same flow as Predicta streaming-api) ─
 
-  async function _loadPrivacyStats() {
-    const widget = document.getElementById('ntp-widget-privacy');
-    if (!widget) return;
-    try {
-      const stats = await window.navio.getAdBlockStats();
-      const blocked = stats?.blocked ?? 0;
-      const saved   = stats?.bytesSaved ?? 0;
-      const kbSaved = saved > 0 ? (saved / 1024).toFixed(0) : null;
-      const el = widget.querySelector('.ntp-privacy-body');
-      if (!el) return;
-      el.innerHTML = `
-        <div class="ntp-privacy-stat">
-          <div class="ntp-privacy-number" id="ntp-privacy-count">${blocked.toLocaleString()}</div>
-          <div class="ntp-privacy-label">trackers blocked</div>
-        </div>
-        ${kbSaved ? `
-        <div class="ntp-privacy-stat">
-          <div class="ntp-privacy-number">${kbSaved} <span style="font-size:14px">KB</span></div>
-          <div class="ntp-privacy-label">data saved</div>
-        </div>` : ''}
-        <div class="ntp-privacy-bar-wrap">
-          <div class="ntp-privacy-bar-fill" style="width:${Math.min(100, blocked / 10)}%"></div>
-        </div>
-        <div class="ntp-privacy-status">${blocked > 0 ? '🛡 Navio is protecting you' : 'Ad blocker active'}</div>`;
-    } catch {}
+  function _streamedExtractPlayableUrl(entry) {
+    if (entry == null) return null;
+    const isHttp = (s) => typeof s === 'string' && /^https?:\/\//i.test(s.trim());
+    if (typeof entry === 'string' && isHttp(entry)) return entry.trim();
+    if (typeof entry !== 'object') return null;
+    const o = entry;
+    const keys = ['stream', 'url', 'src', 'link', 'streamUrl', 'embedUrl', 'hls', 'm3u8', 'playlist'];
+    for (const k of keys) {
+      const v = o[k];
+      if (typeof v === 'string' && isHttp(v)) return v.trim();
+    }
+    const embed = o.embed;
+    if (typeof embed === 'string') {
+      const m = embed.match(/\bsrc\s*=\s*["']([^"']+)["']/i);
+      if (m && isHttp(m[1])) return m[1].trim();
+      if (isHttp(embed)) return embed.trim();
+    }
+    for (const v of Object.values(o)) {
+      if (typeof v === 'string' && isHttp(v)) return v.trim();
+    }
+    return null;
   }
+
+  async function _streamedPkRequest(apiPath) {
+    if (!window.navio?.streamedPkApi) return { error: 'streamed_api_unavailable' };
+    try {
+      const res = await window.navio.streamedPkApi(apiPath);
+      if (res?.error) return { error: res.error };
+      if (res?.ok && res.data !== undefined) return { ok: true, data: res.data };
+      return { error: 'bad_response' };
+    } catch (e) {
+      console.warn('[NTP] streamedPkApi', apiPath, e);
+      return { error: e?.message || 'ipc_failed' };
+    }
+  }
+
+  function _normalizeStreamedSports(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((row) => {
+        if (typeof row === 'string') return { id: row, name: row };
+        if (row && (row.id != null || row.slug != null)) {
+          const id = String(row.id ?? row.slug ?? '').trim();
+          if (!id) return null;
+          return { id, name: String(row.name || row.title || id) };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }
+
+  function _matchTitle(m) {
+    if (m?.title) return m.title;
+    const h = m?.teams?.home?.name;
+    const a = m?.teams?.away?.name;
+    if (h && a) return `${a} vs ${h}`;
+    return 'Match';
+  }
+
+  function _bindLiveSportsWidget() {
+    const root = document.getElementById('ntp-widget-live-sports');
+    if (!root || root.dataset.bound === '1') return;
+    root.dataset.bound = '1';
+    root.addEventListener('click', (e) => {
+      const chip = e.target.closest('.ntp-live-sport-chip');
+      if (chip?.dataset?.slug) {
+        e.preventDefault();
+        _streamedSelectedSlug = chip.dataset.slug;
+        void _loadLiveSportsWidget(false);
+        return;
+      }
+      const row = e.target.closest('.ntp-live-match-row');
+      if (row?.dataset?.matchIdx != null) {
+        e.preventDefault();
+        const idx = parseInt(row.dataset.matchIdx, 10);
+        const match = _streamedMatches[idx];
+        if (match) void _openStreamedMatch(match);
+      }
+    });
+    document.getElementById('ntp-live-sports-refresh')?.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      void _loadLiveSportsWidget(true);
+    });
+  }
+
+  async function _openStreamedMatch(match) {
+    const sources = match?.sources;
+    if (!Array.isArray(sources) || sources.length === 0) {
+      return;
+    }
+    for (const src of sources) {
+      if (!src?.source || src.id == null) continue;
+      const path = `stream/${encodeURIComponent(src.source)}/${encodeURIComponent(String(src.id))}`;
+      const r = await _streamedPkRequest(path);
+      if (r.error || !Array.isArray(r.data)) continue;
+      for (const link of r.data) {
+        const url = _streamedExtractPlayableUrl(link);
+        if (url) {
+          if (typeof TabManager !== 'undefined') TabManager.createTab(url);
+          else if (window.navio?.openExternal) window.navio.openExternal(url);
+          return;
+        }
+      }
+    }
+  }
+
+  async function _loadLiveSportsWidget(resetSlug) {
+    const body = document.getElementById('ntp-live-sports-body');
+    if (!body) return;
+    if (resetSlug) _streamedSelectedSlug = '';
+    body.innerHTML =
+      '<div class="ntp-widget-loading"><span></span><span></span><span></span></div>';
+
+    let privacyFoot = '';
+    try {
+      const stats = await window.navio.getAdBlockStats?.();
+      const blocked = stats?.blocked ?? 0;
+      if (blocked > 0) {
+        privacyFoot = `<div class="ntp-live-sports-foot"><span class="ntp-privacy-ok">Shield: ${blocked.toLocaleString()} trackers blocked</span></div>`;
+      } else {
+        privacyFoot = `<div class="ntp-live-sports-foot">Ad blocker active</div>`;
+      }
+    } catch {
+      privacyFoot = '';
+    }
+
+    try {
+      const sr = await _streamedPkRequest('sports');
+      if (sr.error) {
+        body.innerHTML = `<p class="ntp-widget-empty">Live sports unavailable (${_esc(sr.error)}). Quit and restart Navio after updating, or tap Refresh.</p>${privacyFoot}`;
+        return;
+      }
+      _streamedSports = _normalizeStreamedSports(sr.data);
+      if (_streamedSports.length === 0) {
+        body.innerHTML = `<p class="ntp-widget-empty">No sports categories returned.</p>${privacyFoot}`;
+        return;
+      }
+      if (!_streamedSelectedSlug || !_streamedSports.some((s) => s.id === _streamedSelectedSlug)) {
+        _streamedSelectedSlug = _streamedSports[0].id;
+      }
+
+      const mr = await _streamedPkRequest(`matches/${encodeURIComponent(_streamedSelectedSlug)}`);
+      if (mr.error) {
+        body.innerHTML = `<p class="ntp-widget-empty">Could not load matches (${_esc(mr.error)}).</p>${privacyFoot}`;
+        return;
+      }
+      _streamedMatches = Array.isArray(mr.data) ? mr.data.slice(0, 40) : [];
+
+      const chips = _streamedSports
+        .slice(0, 24)
+        .map(
+          (s) =>
+            `<button type="button" class="ntp-live-sport-chip ${_streamedSelectedSlug === s.id ? 'active' : ''}" data-slug="${_esc(s.id)}" title="${_esc(s.name)}">${_esc(s.name)}</button>`
+        )
+        .join('');
+
+      const rows = _streamedMatches.length
+        ? _streamedMatches
+            .map((m, i) => {
+              const title = _esc(_matchTitle(m));
+              const meta = _esc(m?.time || m?.category || '');
+              return `<button type="button" class="ntp-live-match-row" data-match-idx="${i}"><span class="ntp-live-match-title">${title}</span>${meta ? `<span class="ntp-live-match-meta">${meta}</span>` : ''}<span class="ntp-live-match-meta">Tap to open stream</span></button>`;
+            })
+            .join('')
+        : '<p class="ntp-widget-empty" style="padding:8px 0">No events listed for this category right now.</p>';
+
+      body.innerHTML = `<div class="ntp-live-sports-chips">${chips}</div><div class="ntp-live-matches">${rows}</div>${privacyFoot}`;
+    } catch (e) {
+      console.error('[NTP] _loadLiveSportsWidget', e);
+      body.innerHTML = `<p class="ntp-widget-empty">${_esc(e?.message || 'Unexpected error')}. Try Refresh.</p>${privacyFoot}`;
+    }
+  }
+
 
   return { init };
 })();
