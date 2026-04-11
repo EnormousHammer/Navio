@@ -722,7 +722,7 @@ ipcMain.handle('open-devtools-active', (event, webContentsId) => {
 
 async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) {
   const provider = cfg.aiProvider || 'openai';
-  const model = cfg.aiModel || 'gpt-4o';
+  const model = cfg.aiModel || 'gpt-5.4';
   const endpoint = cfg.customEndpoint || '';
   const ntpBrief = !!fetchOpts.ntpBrief;
 
@@ -740,7 +740,7 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
     const isGpt5 = /^gpt-?5/i.test(model || '');
     const completionCap = ntpBrief ? 900 : (isGpt5 ? 16384 : 8192);
     const bodyObj = {
-      model: model || 'gpt-4o',
+      model: model || 'gpt-5.4',
       messages,
       max_completion_tokens: completionCap,
       stream: !!useStream
@@ -1435,7 +1435,7 @@ ipcMain.handle('deep-research', async (event, { query }) => {
   const apiKey = secureConfig.getApiKey(app.getPath('userData'));
   if (!apiKey) return { error: 'No API key configured.' };
 
-  const plannerCfg = { ...cfg, aiModel: cfg.aiPlannerModel || 'gpt-4o-mini' };
+  const plannerCfg = { ...cfg, aiModel: cfg.aiPlannerModel || 'gpt-5.4-mini' };
 
   const planRes = await performAiFetch(
     plannerCfg,

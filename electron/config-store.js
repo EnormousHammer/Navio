@@ -11,8 +11,8 @@ function getConfigPath() {
 
 const DEFAULT_CONFIG = {
   aiProvider: 'openai',
-  aiModel: 'gpt-4o',
-  aiPlannerModel: 'gpt-4o-mini',
+  aiModel: 'gpt-5.4',
+  aiPlannerModel: 'gpt-5.4-mini',
   customEndpoint: '',
   theme: 'dark',
   searchEngine: 'https://www.google.com/search?q=',
@@ -95,6 +95,13 @@ function loadConfig() {
   const merged = { ...DEFAULT_CONFIG, ...file };
   if (merged.aiDataScope === undefined || merged.aiDataScope === null) {
     merged.aiDataScope = merged.aiIncludePageContext === false ? 'none' : 'excerpt';
+  }
+  // Drop retired GPT-4o defaults for direct OpenAI usage (replaced by GPT-5.4 family).
+  const LEGACY_OPENAI_GPT4 = new Set(['gpt-4o', 'gpt-4o-mini']);
+  if (merged.aiProvider === 'openai') {
+    if (LEGACY_OPENAI_GPT4.has(merged.aiModel)) merged.aiModel = 'gpt-5.4';
+    if (LEGACY_OPENAI_GPT4.has(merged.aiPlannerModel)) merged.aiPlannerModel = 'gpt-5.4-mini';
+    if (merged.aiPlannerModel === 'gpt-5.4-nano') merged.aiPlannerModel = 'gpt-5.4-mini';
   }
   const key = secureConfig.getApiKey(userData);
   merged.hasApiKey = !!key;

@@ -767,10 +767,11 @@
                 <label for="setting-model">Model</label>
                 <select id="setting-model">
                   <optgroup label="OpenAI" data-provider="openai">
+                    <option value="gpt-5.4">GPT-5.4</option>
+                    <option value="gpt-5.4-mini">GPT-5.4 Mini</option>
+                    <option value="gpt-5.4-nano">GPT-5.4 Nano</option>
                     <option value="gpt-5">GPT-5</option>
                     <option value="gpt-5-mini">GPT-5 Mini</option>
-                    <option value="gpt-4o">GPT-4o</option>
-                    <option value="gpt-4o-mini">GPT-4o Mini</option>
                     <option value="o3">o3</option>
                     <option value="o3-mini">o3 Mini</option>
                     <option value="o4-mini">o4 Mini</option>
@@ -802,7 +803,7 @@
                 <label for="setting-model-custom">Model</label>
                 <div class="model-custom-wrap">
                   <input type="text" id="setting-model-custom"
-                    placeholder="e.g. gpt-4o, claude-opus-4-5, gemini-2.0-flash"
+                    placeholder="e.g. gpt-5.4, claude-opus-4-5, gemini-2.0-flash"
                     autocomplete="off" spellcheck="false">
                   <button type="button" id="btn-model-back-presets" class="model-back-btn" title="Choose from list">← List</button>
                 </div>
@@ -811,7 +812,7 @@
               <div class="setting-row">
                 <label for="setting-ai-planner-model">Research planner model</label>
                 <input type="text" id="setting-ai-planner-model"
-                  placeholder="e.g. gpt-4o-mini (OpenAI / custom endpoint)"
+                  placeholder="e.g. gpt-5.4-mini (OpenAI / custom endpoint)"
                   autocomplete="off" spellcheck="false">
               </div>
               <div class="setting-row" id="custom-endpoint-row" style="display:none">

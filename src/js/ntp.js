@@ -804,6 +804,84 @@ const NTP = (() => {
     if (panel) panel.style.display = 'none';
   }
 
+  /** True when the user is likely asking about their mail (inline NTP AI adds inbox text only; no actions). */
+  function _ntpEmailQueryLooksInboxRelated(q) {
+    const s = (q || '').trim().toLowerCase();
+    if (s.length < 3) return false;
+    return /\b(email|e-?mail|emails|inbox|unread|gmail|outlook|mailbox|mail from|messages from|any new mail|what'?s in my inbox)\b/.test(
+      s
+    );
+  }
+
+  function _formatInboxLinesForInlineAI(rows) {
+    return rows.slice(0, 18).map((m, i) => {
+      const sub = m.subject || '(no subject)';
+      const from = m.senderName || m.sender || '';
+      const snip = (m.snippet || '').replace(/\s+/g, ' ').trim().slice(0, 220);
+      const u = m.unread ? ' [unread]' : '';
+      return `${i + 1}. ${sub}${u} — From: ${from}${snip ? `\n   Preview: ${snip}` : ''}`;
+    });
+  }
+
+  /**
+   * Prefix for New Tab "Ask AI" only: real inbox rows so the answer can reference messages.
+   * Does not run tools — sidebar Assistant handles navigation and drafts.
+   */
+  async function _buildNtpInlineEmailContext(query) {
+    if (!_ntpEmailQueryLooksInboxRelated(query)) return { text: '', usedInbox: false };
+    let rows = [];
+    try {
+      if (_inboxMessages.length > 0) {
+        rows = _inboxMessages;
+      } else {
+        let googleConnected = false;
+        try {
+          const oauthSt = await window.navio.oauthStatus();
+          googleConnected = !!(oauthSt && oauthSt.google && oauthSt.google.connected);
+        } catch {
+          /* ignore */
+        }
+        if (googleConnected) {
+          const r = await window.navio.ntpGmailInbox().catch(() => ({}));
+          if (r && r.messages && r.messages.length) rows = r.messages;
+        }
+        if (rows.length === 0) {
+          const imapSt = await window.navio.imapStatus().catch(() => ({}));
+          for (const svcId of Object.keys(imapSt || {})) {
+            if (!imapSt[svcId] || !imapSt[svcId].connected) continue;
+            const r = await window.navio.imapGetUnread(svcId, 12).catch(() => ({}));
+            if (r && r.messages && r.messages.length) {
+              rows = r.messages.map((m) => ({
+                subject: m.subject,
+                senderName: m.fromName || m.from,
+                sender: m.from,
+                snippet: m.snippet || '',
+                unread: true,
+                date: m.date
+              }));
+              break;
+            }
+          }
+        }
+      }
+    } catch {
+      return { text: '', usedInbox: false };
+    }
+    if (!rows.length) {
+      return {
+        text:
+          '[The user asked about email. No inbox messages could be loaded yet — they may need to connect Gmail/Outlook in Connectors or wait for the inbox widget to finish loading. Answer generally and mention connecting email.]\n\n',
+        usedInbox: false
+      };
+    }
+    const lines = _formatInboxLinesForInlineAI(rows);
+    const text =
+      '[Read-only inbox snapshot for this New Tab answer — to open a thread, draft a reply, or automate steps, use the sidebar Navio AI Assistant.]\n' +
+      lines.join('\n') +
+      '\n\n';
+    return { text, usedInbox: true };
+  }
+
   async function _showInlineAIResults(query) {
     const panel = document.getElementById('ntp-results');
     const aiContent = document.getElementById('ntp-rt-ai-content');
@@ -839,16 +917,18 @@ const NTP = (() => {
         aiContent.innerHTML = '<div class="ntp-brief-error">No AI key configured. Add one in <strong>Settings - AI</strong>.</div>';
         return;
       }
+      const emailCtx = await _buildNtpInlineEmailContext(query);
+      const promptForModel = emailCtx.text + query;
       const keys = await window.navio.connectorGetKeys().catch(() => ({}));
       let answer = '';
       let citations = [];
       if (keys && keys.perplexity) {
-        const pq = await window.navio.connectorQuery('perplexity', query, {});
+        const pq = await window.navio.connectorQuery('perplexity', promptForModel, {});
         if (pq.error) throw new Error(pq.error);
         answer = pq.answer || '';
         citations = Array.isArray(pq.citations) ? pq.citations : [];
       } else {
-        const result = await window.navio.aiRequest({ messages: [{ role: 'user', content: query }] });
+        const result = await window.navio.aiRequest({ messages: [{ role: 'user', content: promptForModel }] });
         if (result.error) throw new Error(result.error);
         answer = result.content || '';
       }
@@ -874,6 +954,10 @@ const NTP = (() => {
       } else if (!keys?.perplexity) {
         chips =
           '<p class="ntp-ai-citations-note">Connect <strong>Perplexity</strong> in Connectors for cited web answers.</p>';
+      }
+      if (emailCtx.usedInbox) {
+        chips +=
+          '<p class="ntp-ai-citations-note">Inbox lines above were included for this answer. Use the <strong>Navio AI</strong> sidebar to open messages, draft replies, or run tasks.</p>';
       }
       aiContent.innerHTML = '<div class="ntp-brief-content"><p>' + html + '</p></div>' + chips;
     } catch (e) {
@@ -917,17 +1001,17 @@ const NTP = (() => {
         // Show inline results panel on the NTP
         _showInlineAIResults(val);
       } else if (_mode === 'task') {
-        // Open assistant panel for tasks
-        const assistantBtn = document.getElementById('btn-toggle-assistant');
-        if (assistantBtn) assistantBtn.click();
-        setTimeout(() => {
-          const aiInput = document.getElementById('assistant-input');
-          if (aiInput) {
-            aiInput.value = val;
-            aiInput.dispatchEvent(new Event('input', { bubbles: true }));
-            aiInput.focus();
-          }
-        }, 150);
+        // Full assistant (tool-calling) — open panel (never toggle closed) and send
+        if (typeof AssistantManager !== 'undefined') {
+          AssistantManager.open();
+          setTimeout(() => {
+            if (AssistantManager.inputEl) {
+              AssistantManager.inputEl.value = val;
+              AssistantManager.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+              AssistantManager.sendMessage();
+            }
+          }, 200);
+        }
       } else {
         // Auto-detect: question-like goes to inline results, otherwise web search
         if (typeof App !== 'undefined' && App._isAIQuery && App._isAIQuery(val)) {

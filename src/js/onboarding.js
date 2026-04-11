@@ -225,7 +225,7 @@ class OnboardingManager {
     if (!this.selectedProvider || this.apiKey.length < 8) return;
 
     const modelDefaults = {
-      openai: 'gpt-4o',
+      openai: 'gpt-5.4',
       anthropic: 'claude-opus-4-5',
       google: 'gemini-2.0-flash'
     };
@@ -234,7 +234,7 @@ class OnboardingManager {
       const config = await window.navio.getConfig();
       config.aiProvider = this.selectedProvider;
       config.apiKey = this.apiKey;
-      config.aiModel = modelDefaults[this.selectedProvider] || 'gpt-4o';
+      config.aiModel = modelDefaults[this.selectedProvider] || 'gpt-5.4';
       await window.navio.saveConfig(config);
     } catch (e) { /* proceed */ }
 
