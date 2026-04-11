@@ -474,6 +474,13 @@ class TabManagerClass {
     if (apply) requestAnimationFrame(() => apply());
     const activeWv = this.getActiveWebview();
     if (activeWv) activeWv.classList.remove('active');
+    if (typeof window.__navioNtpLiveSportsResync === 'function') {
+      try {
+        window.__navioNtpLiveSportsResync();
+      } catch (_) {
+        /* ignore */
+      }
+    }
   }
 
   hideNewTabPage() {

@@ -328,16 +328,25 @@ class NavioApp {
       _showAppToast(`⚠ Untrusted certificate on ${hostname} — proceeding anyway`, 'warning');
     });
 
+    const shortcutDedupeMs = 120;
+    const shortcutDedupeAt = { 'new-tab': 0, 'close-tab': 0, 'focus-url': 0 };
+    const runDedupedShortcut = (id, fn) => {
+      const now = Date.now();
+      if (now - (shortcutDedupeAt[id] || 0) < shortcutDedupeMs) return;
+      shortcutDedupeAt[id] = now;
+      fn();
+    };
+
     window.navio.onShortcut((action) => {
       switch (action) {
         case 'new-tab':
-          TabManager.createTab();
+          runDedupedShortcut('new-tab', () => TabManager.createTab());
           break;
         case 'close-tab':
-          TabManager.closeActiveTab();
+          runDedupedShortcut('close-tab', () => TabManager.closeActiveTab());
           break;
         case 'focus-url':
-          document.getElementById('url-input').focus();
+          runDedupedShortcut('focus-url', () => document.getElementById('url-input').focus());
           break;
         case 'toggle-assistant':
           AssistantManager.toggle();
@@ -355,18 +364,23 @@ class NavioApp {
       }
     });
 
+    // Fallback when the shell has focus (and to support Cmd on macOS in the UI process).
+    // Deduped with onShortcut because globalShortcut and keydown can both fire.
     document.addEventListener('keydown', (e) => {
-      if (e.ctrlKey && e.key === 't') {
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod || e.altKey) return;
+      const k = (e.key || '').toLowerCase();
+      if (k === 't' && !e.shiftKey) {
         e.preventDefault();
-        TabManager.createTab();
+        runDedupedShortcut('new-tab', () => TabManager.createTab());
       }
-      if (e.ctrlKey && e.key === 'w') {
+      if (k === 'w' && !e.shiftKey) {
         e.preventDefault();
-        TabManager.closeActiveTab();
+        runDedupedShortcut('close-tab', () => TabManager.closeActiveTab());
       }
-      if (e.ctrlKey && e.key === 'l') {
+      if (k === 'l' && !e.shiftKey) {
         e.preventDefault();
-        document.getElementById('url-input').focus();
+        runDedupedShortcut('focus-url', () => document.getElementById('url-input').focus());
       }
     });
   }

@@ -17,7 +17,7 @@ const { registerAgentPlanIpc } = require('./navio-agent-ipc');
 const { NAVIO_TOOLS, toOpenAITools, toAnthropicTools, toGeminiTools } = require('./navio-tools');
 const { getAccessibilityTree, clickByRef, typeByRef, selectByRef, getRefMap, clearRefMap } = require('./a11y-tree');
 const { startMonitoring, getConsoleMessages, getNetworkRequests, stopMonitoring } = require('./cdp-inspector');
-const { registerWorkflowIpc, loadWorkflow, saveWorkflow, listWorkflows } = require('./navio-workflows');
+const { loadWorkflow, saveWorkflow, listWorkflows, deleteWorkflow } = require('./navio-workflows');
 const { getMcpTools, callMcpTool, isMcpTool, initFromConfig: initMcpFromConfig, registerMcpIpc } = require('./navio-mcp');
 const { initScheduler, registerSchedulerIpc, stopAll: stopAllSchedulers } = require('./navio-scheduler');
 
@@ -172,6 +172,34 @@ function readWorkflowsFile() {
 
 function writeWorkflowsFile(list) {
   fs.writeFileSync(workflowsJsonPath(), JSON.stringify({ workflows: list }, null, 2), 'utf8');
+}
+
+/** Command palette + assistant need one merged list (legacy JSON + per-file tool workflows). */
+function listWorkflowsMergedForIpc() {
+  const legacy = readWorkflowsFile();
+  const navioConverted = [];
+  try {
+    for (const s of listWorkflows()) {
+      const full = loadWorkflow(s.name);
+      if (!full || !Array.isArray(full.steps)) continue;
+      const id = `navio_${crypto.createHash('sha256').update(String(full.name || s.name)).digest('hex').slice(0, 16)}`;
+      const steps = full.steps.map((step) => {
+        if (step && typeof step.tool === 'string') {
+          return `${step.tool}:${JSON.stringify(step.args || {})}`;
+        }
+        return String(step);
+      });
+      navioConverted.push({
+        id,
+        name: full.name || s.name,
+        steps,
+        createdAt: full.created || full.updated || new Date().toISOString()
+      });
+    }
+  } catch (e) {
+    console.warn('[navio] workflow list (navio files):', e.message);
+  }
+  return { workflows: [...legacy, ...navioConverted] };
 }
 
 // ── Email write-action protection ─────────────────────────────────────────────
@@ -1501,7 +1529,20 @@ ipcMain.handle('deep-research', async (event, { query }) => {
   }
 });
 
-ipcMain.handle('workflow-save', async (event, { name, steps }) => {
+ipcMain.handle('workflow-save', async (event, { name, steps, meta }) => {
+  const isToolSteps =
+    Array.isArray(steps) &&
+    steps.length > 0 &&
+    typeof steps[0] === 'object' &&
+    steps[0] !== null &&
+    typeof steps[0].tool === 'string';
+  if (isToolSteps) {
+    try {
+      return { ok: true, workflow: saveWorkflow(name, steps, meta || {}) };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  }
   try {
     const list = readWorkflowsFile();
     const id = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -1518,7 +1559,33 @@ ipcMain.handle('workflow-save', async (event, { name, steps }) => {
   }
 });
 
-ipcMain.handle('workflow-list', async () => ({ workflows: readWorkflowsFile() }));
+ipcMain.handle('workflow-list', async () => listWorkflowsMergedForIpc());
+
+ipcMain.handle('workflow-load', async (event, { name }) => {
+  try {
+    const w = loadWorkflow(name);
+    if (w) return { ok: true, workflow: w };
+    const list = readWorkflowsFile();
+    const found = list.find((wf) => wf.id === name || wf.name === name);
+    if (found) return { ok: true, workflow: found };
+    return { ok: false, error: `Workflow "${name}" not found` };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('workflow-delete', async (event, { name }) => {
+  try {
+    if (name && deleteWorkflow(name)) return { ok: true };
+    const list = readWorkflowsFile();
+    const next = list.filter((w) => w.id !== name && w.name !== name);
+    if (next.length === list.length) return { ok: false, error: 'Not found' };
+    writeWorkflowsFile(next);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
 
 ipcMain.handle('replace-selection-in-page', async (event, { webContentsId, text }) => {
   try {
@@ -5139,7 +5206,6 @@ app.whenReady().then(async () => {
   });
 
   registerAgentPlanIpc(ipcMain, { store });
-  registerWorkflowIpc(ipcMain);
   registerMcpIpc(ipcMain, loadConfig, saveConfig);
   registerSchedulerIpc(ipcMain);
 
@@ -5164,6 +5230,8 @@ app.whenReady().then(async () => {
       console.warn('[navio] electron-updater not available:', e.message);
     }
   }
+}).catch((err) => {
+  console.error('[navio] whenReady failed:', err);
 });
 
 app.on('window-all-closed', () => {

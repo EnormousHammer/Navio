@@ -9,7 +9,7 @@
  *  • Inbox widget — unread emails from IMAP Gmail/Outlook
  *  • AI Brief — generates personalized daily brief via AI
  *  • "Draft All" button — triggers batch email drafting
- *  • Live Sports — streamed.pk catalog (Approach A; Predicta docs/streaming-external-site-guide.md)
+ *  • Live Sports — curated sports (navio-config ntpLiveSportsCatalog) → matches → new tab stream
  */
 
 const NTP = (() => {
@@ -20,10 +20,22 @@ const NTP = (() => {
   let _stockData      = [];   // cached for AI brief
   let _inboxMessages  = [];   // cached from _loadInbox() for AI brief
   let _tickerMode = 'markets'; // 'markets' | 'sports' | 'news'
-  /** Live Sports widget: categories from /sports + rows for /matches/{slug} */
+  /** Live Sports: curated catalog + in-widget drill-down (home → matches) */
+  const DEFAULT_NTP_LIVE_SPORTS_CATALOG = [
+    { id: 'football', name: 'Football' },
+    { id: 'basketball', name: 'NBA' },
+    { id: 'american-football', name: 'NFL / NCAA FB' },
+    { id: 'hockey', name: 'Hockey' },
+    { id: 'baseball', name: 'Baseball' },
+    { id: 'fight', name: 'UFC / Boxing' },
+    { id: 'tennis', name: 'Tennis' },
+    { id: 'motor-sports', name: 'Motorsports' }
+  ];
   let _streamedSports = [];
   let _streamedSelectedSlug = '';
   let _streamedMatches = [];
+  /** 'home' = sport picker only; 'matches' = list for selected slug */
+  let _liveSportsView = 'home';
 
   // ── Init ──────────────────────────────────────────────────────────────────
 
@@ -86,6 +98,13 @@ const NTP = (() => {
       requestAnimationFrame(() => _applyTickerBottomReserve());
       _onShow();
     }
+
+    /** TabManager.showNewTabPage — resync Live Sports if the NTP visibility observer did not run first */
+    if (typeof window !== 'undefined') {
+      window.__navioNtpLiveSportsResync = () => {
+        void _loadLiveSportsWidget(false);
+      };
+    }
   }
 
   function _onShow() {
@@ -97,7 +116,7 @@ const NTP = (() => {
         _loadServicesBar().catch(() => {}),
         _loadInbox().catch(() => {}),
         _loadTickerForMode().catch(() => {}),
-        _loadLiveSportsWidget().catch((err) => {
+        _loadLiveSportsWidget(false).catch((err) => {
           console.error('[NTP] Live sports widget failed:', err);
           const b = document.getElementById('ntp-live-sports-body');
           if (b) {
@@ -1703,19 +1722,31 @@ const NTP = (() => {
     }
   }
 
-  function _normalizeStreamedSports(raw) {
-    if (!Array.isArray(raw)) return [];
-    return raw
-      .map((row) => {
-        if (typeof row === 'string') return { id: row, name: row };
-        if (row && (row.id != null || row.slug != null)) {
+  async function _loadLiveSportsCatalogFromConfig() {
+    try {
+      const cfg = await window.navio.getConfig();
+      const raw = cfg?.ntpLiveSportsCatalog;
+      if (!Array.isArray(raw) || raw.length === 0) {
+        return DEFAULT_NTP_LIVE_SPORTS_CATALOG.slice();
+      }
+      const out = raw
+        .map((row) => {
+          if (row == null) return null;
+          if (typeof row === 'string') {
+            const id = row.trim();
+            return id ? { id, name: id } : null;
+          }
           const id = String(row.id ?? row.slug ?? '').trim();
           if (!id) return null;
-          return { id, name: String(row.name || row.title || id) };
-        }
-        return null;
-      })
-      .filter(Boolean);
+          let name = String(row.name || row.title || id).trim() || id;
+          if (id === 'basketball' && /^basketball$/i.test(name)) name = 'NBA';
+          return { id, name };
+        })
+        .filter(Boolean);
+      return out.length ? out : DEFAULT_NTP_LIVE_SPORTS_CATALOG.slice();
+    } catch {
+      return DEFAULT_NTP_LIVE_SPORTS_CATALOG.slice();
+    }
   }
 
   function _matchTitle(m) {
@@ -1726,15 +1757,42 @@ const NTP = (() => {
     return 'Match';
   }
 
+  /** Compact time hint from streamed.pk `date` (ms) — helps reads as “live / soon”. */
+  function _matchWhenLabel(m) {
+    const d = m?.date;
+    if (typeof d !== 'number' || Number.isNaN(d)) return '';
+    const start = d;
+    const now = Date.now();
+    const delta = start - now;
+    if (delta <= 0 && delta > -3.5 * 60 * 60 * 1000) return 'On air / just started';
+    if (delta > 0 && delta < 50 * 60 * 1000) {
+      const mins = Math.max(1, Math.ceil(delta / 60000));
+      return `Starts in ${mins}m`;
+    }
+    if (delta > 0 && delta < 20 * 60 * 60 * 1000) {
+      return new Date(start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+    return new Date(start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+
   function _bindLiveSportsWidget() {
     const root = document.getElementById('ntp-widget-live-sports');
     if (!root || root.dataset.bound === '1') return;
     root.dataset.bound = '1';
     root.addEventListener('click', (e) => {
-      const chip = e.target.closest('.ntp-live-sport-chip');
-      if (chip?.dataset?.slug) {
+      const back = e.target.closest('.ntp-live-sports-back');
+      if (back) {
         e.preventDefault();
-        _streamedSelectedSlug = chip.dataset.slug;
+        _liveSportsView = 'home';
+        _streamedSelectedSlug = '';
+        void _loadLiveSportsWidget(false);
+        return;
+      }
+      const sportRow = e.target.closest('.ntp-live-sport-row');
+      if (sportRow?.dataset?.slug) {
+        e.preventDefault();
+        _liveSportsView = 'matches';
+        _streamedSelectedSlug = sportRow.dataset.slug;
         void _loadLiveSportsWidget(false);
         return;
       }
@@ -1748,7 +1806,11 @@ const NTP = (() => {
     });
     document.getElementById('ntp-live-sports-refresh')?.addEventListener('click', (ev) => {
       ev.preventDefault();
-      void _loadLiveSportsWidget(true);
+      if (_liveSportsView === 'home') {
+        void _loadLiveSportsWidget(false, { recatalog: true });
+      } else {
+        void _loadLiveSportsWidget(false, { rematches: true });
+      }
     });
   }
 
@@ -1773,12 +1835,35 @@ const NTP = (() => {
     }
   }
 
-  async function _loadLiveSportsWidget(resetSlug) {
+  function _renderLiveSportsHomeGrid(body, catalog, privacyFoot) {
+    if (!catalog.length) {
+      body.innerHTML = `<p class="ntp-widget-empty">No sports in your catalog. Set <code>ntpLiveSportsCatalog</code> in navio-config.json (see defaults in config-store).</p>${privacyFoot}`;
+      return;
+    }
+    const toolbar = `<div class="ntp-live-sports-toolbar" role="status"><span class="ntp-live-sports-toolbar-kicker">Feeds</span><span class="ntp-live-sports-toolbar-line"><span class="ntp-live-sports-toolbar-rec" aria-hidden="true"></span><span class="ntp-live-sports-toolbar-txt">Live listings · tap a tile</span></span></div>`;
+    const rows = catalog
+      .map(
+        (s) =>
+          `<button type="button" class="ntp-live-sport-row" role="listitem" data-slug="${_esc(s.id)}" title="${_esc(s.name)} — events &amp; streams"><span class="ntp-live-sport-row-name">${_esc(s.name)}</span><span class="ntp-live-sport-row-go" aria-hidden="true"></span></button>`
+      )
+      .join('');
+    body.innerHTML = `${toolbar}<div class="ntp-live-sports-list" role="list">${rows}</div>${privacyFoot}`;
+  }
+
+  async function _loadLiveSportsWidget(resetToHome, opts = {}) {
     const body = document.getElementById('ntp-live-sports-body');
     if (!body) return;
-    if (resetSlug) _streamedSelectedSlug = '';
-    body.innerHTML =
-      '<div class="ntp-widget-loading"><span></span><span></span><span></span></div>';
+    if (resetToHome) {
+      _liveSportsView = 'home';
+      _streamedSelectedSlug = '';
+    }
+
+    const loadCatalog = !opts.rematches || opts.recatalog;
+
+    // Replace the static HTML loading dots immediately on the home screen (no IPC wait).
+    if (_liveSportsView === 'home' && loadCatalog) {
+      _renderLiveSportsHomeGrid(body, DEFAULT_NTP_LIVE_SPORTS_CATALOG.slice(), '');
+    }
 
     let privacyFoot = '';
     try {
@@ -1793,47 +1878,58 @@ const NTP = (() => {
       privacyFoot = '';
     }
 
+    if (loadCatalog) {
+      _streamedSports = await _loadLiveSportsCatalogFromConfig();
+    }
+
     try {
-      const sr = await _streamedPkRequest('sports');
-      if (sr.error) {
-        body.innerHTML = `<p class="ntp-widget-empty">Live sports unavailable (${_esc(sr.error)}). Quit and restart Navio after updating, or tap Refresh.</p>${privacyFoot}`;
-        return;
-      }
-      _streamedSports = _normalizeStreamedSports(sr.data);
       if (_streamedSports.length === 0) {
-        body.innerHTML = `<p class="ntp-widget-empty">No sports categories returned.</p>${privacyFoot}`;
+        body.innerHTML = `<p class="ntp-widget-empty">No sports in your catalog. Set <code>ntpLiveSportsCatalog</code> in navio-config.json (see defaults in config-store).</p>${privacyFoot}`;
         return;
-      }
-      if (!_streamedSelectedSlug || !_streamedSports.some((s) => s.id === _streamedSelectedSlug)) {
-        _streamedSelectedSlug = _streamedSports[0].id;
       }
 
-      const mr = await _streamedPkRequest(`matches/${encodeURIComponent(_streamedSelectedSlug)}`);
+      if (_liveSportsView === 'home') {
+        _renderLiveSportsHomeGrid(body, _streamedSports, privacyFoot);
+        return;
+      }
+
+      const slug = _streamedSelectedSlug;
+      if (!slug || !_streamedSports.some((s) => s.id === slug)) {
+        _liveSportsView = 'home';
+        await _loadLiveSportsWidget(false);
+        return;
+      }
+      const sportName = _streamedSports.find((s) => s.id === slug)?.name || slug;
+
+      body.innerHTML =
+        '<div class="ntp-widget-loading"><span></span><span></span><span></span></div>';
+
+      const mr = await _streamedPkRequest(`matches/${encodeURIComponent(slug)}`);
       if (mr.error) {
-        body.innerHTML = `<p class="ntp-widget-empty">Could not load matches (${_esc(mr.error)}).</p>${privacyFoot}`;
+        body.innerHTML = `<div class="ntp-live-sports-nav"><button type="button" class="ntp-live-sports-back" title="Back to feeds">← Feeds</button><span class="ntp-live-sports-context">${_esc(sportName)}</span></div><p class="ntp-widget-empty">Could not load listings (${_esc(mr.error)}).</p>${privacyFoot}`;
         return;
       }
       _streamedMatches = Array.isArray(mr.data) ? mr.data.slice(0, 40) : [];
 
-      const chips = _streamedSports
-        .slice(0, 24)
-        .map(
-          (s) =>
-            `<button type="button" class="ntp-live-sport-chip ${_streamedSelectedSlug === s.id ? 'active' : ''}" data-slug="${_esc(s.id)}" title="${_esc(s.name)}">${_esc(s.name)}</button>`
-        )
-        .join('');
+      const subbar = `<div class="ntp-live-sports-toolbar ntp-live-sports-toolbar--subtle"><span class="ntp-live-sports-toolbar-kicker">Events</span><span class="ntp-live-sports-toolbar-line"><span class="ntp-live-sports-toolbar-rec ntp-live-sports-toolbar-rec--dim" aria-hidden="true"></span><span class="ntp-live-sports-toolbar-txt">Tap to open stream in a new tab</span></span></div>`;
+      const nav = `<div class="ntp-live-sports-nav"><button type="button" class="ntp-live-sports-back" title="Back to feeds">← Feeds</button><span class="ntp-live-sports-context">${_esc(sportName)}</span></div>${subbar}`;
 
       const rows = _streamedMatches.length
         ? _streamedMatches
             .map((m, i) => {
               const title = _esc(_matchTitle(m));
-              const meta = _esc(m?.time || m?.category || '');
-              return `<button type="button" class="ntp-live-match-row" data-match-idx="${i}"><span class="ntp-live-match-title">${title}</span>${meta ? `<span class="ntp-live-match-meta">${meta}</span>` : ''}<span class="ntp-live-match-meta">Tap to open stream</span></button>`;
+              const whenRaw = _matchWhenLabel(m);
+              const legacy = m?.time || m?.category || '';
+              const sub = whenRaw || legacy;
+              const subEsc = sub ? _esc(sub) : '';
+              const liveCls =
+                sub && /on air|just started/i.test(String(sub)) ? ' ntp-live-match-row--live' : '';
+              return `<button type="button" class="ntp-live-match-row${liveCls}" data-match-idx="${i}"><span class="ntp-live-match-row-inner"><span class="ntp-live-match-title">${title}</span>${subEsc ? `<span class="ntp-live-match-when">${subEsc}</span>` : ''}</span><span class="ntp-live-match-cta" aria-hidden="true">Open</span></button>`;
             })
             .join('')
-        : '<p class="ntp-widget-empty" style="padding:8px 0">No events listed for this category right now.</p>';
+        : '<p class="ntp-widget-empty ntp-live-sports-empty">No listings for this feed right now.</p>';
 
-      body.innerHTML = `<div class="ntp-live-sports-chips">${chips}</div><div class="ntp-live-matches">${rows}</div>${privacyFoot}`;
+      body.innerHTML = `${nav}<div class="ntp-live-matches">${rows}</div>${privacyFoot}`;
     } catch (e) {
       console.error('[NTP] _loadLiveSportsWidget', e);
       body.innerHTML = `<p class="ntp-widget-empty">${_esc(e?.message || 'Unexpected error')}. Try Refresh.</p>${privacyFoot}`;

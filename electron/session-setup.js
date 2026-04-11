@@ -266,43 +266,42 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
     domains: AD_BLOCK_PATTERNS.length
   }));
 
-  globalShortcut.register('F12', () => {
-    getMainWindow()?.webContents.openDevTools({ mode: 'detach' });
-  });
+  try {
+    if (
+      !globalShortcut.register('F12', () => {
+        getMainWindow()?.webContents.openDevTools({ mode: 'detach' });
+      })
+    ) {
+      console.warn('[navio] globalShortcut register failed: F12');
+    }
+  } catch (e) {
+    console.warn('[navio] globalShortcut register error: F12', e.message);
+  }
 
-  globalShortcut.register('CommandOrControl+T', () => {
-    getMainWindow()?.webContents.send('shortcut', 'new-tab');
-  });
-  globalShortcut.register('CommandOrControl+W', () => {
-    getMainWindow()?.webContents.send('shortcut', 'close-tab');
-  });
-  globalShortcut.register('CommandOrControl+L', () => {
-    getMainWindow()?.webContents.send('shortcut', 'focus-url');
-  });
-  globalShortcut.register('CommandOrControl+Shift+A', () => {
-    getMainWindow()?.webContents.send('shortcut', 'toggle-assistant');
-  });
-  globalShortcut.register('CommandOrControl+Shift+C', () => {
-    getMainWindow()?.webContents.send('shortcut', 'toggle-connectors');
-  });
-  globalShortcut.register('CommandOrControl+K', () => {
-    getMainWindow()?.webContents.send('shortcut', 'command-palette');
-  });
-  globalShortcut.register('CommandOrControl+H', () => {
-    getMainWindow()?.webContents.send('shortcut', 'history-panel');
-  });
-  globalShortcut.register('CommandOrControl+Shift+H', () => {
-    getMainWindow()?.webContents.send('shortcut', 'history-panel');
-  });
-  globalShortcut.register('CommandOrControl+Shift+O', () => {
-    getMainWindow()?.webContents.send('shortcut', 'tab-search');
-  });
-  globalShortcut.register('CommandOrControl+Shift+E', () => {
-    getMainWindow()?.webContents.send('shortcut', 'tab-search');
-  });
-  globalShortcut.register('CommandOrControl+Shift+B', () => {
-    getMainWindow()?.webContents.send('shortcut', 'bookmarks-panel');
-  });
+  function regShortcut(accelerator, action) {
+    try {
+      const ok = globalShortcut.register(accelerator, () => {
+        getMainWindow()?.webContents.send('shortcut', action);
+      });
+      if (!ok) {
+        console.warn(`[navio] globalShortcut register failed: ${accelerator} → ${action}`);
+      }
+    } catch (e) {
+      console.warn(`[navio] globalShortcut register error: ${accelerator}`, e.message);
+    }
+  }
+
+  regShortcut('CommandOrControl+T', 'new-tab');
+  regShortcut('CommandOrControl+W', 'close-tab');
+  regShortcut('CommandOrControl+L', 'focus-url');
+  regShortcut('CommandOrControl+Shift+A', 'toggle-assistant');
+  regShortcut('CommandOrControl+Shift+C', 'toggle-connectors');
+  regShortcut('CommandOrControl+K', 'command-palette');
+  regShortcut('CommandOrControl+H', 'history-panel');
+  regShortcut('CommandOrControl+Shift+H', 'history-panel');
+  regShortcut('CommandOrControl+Shift+O', 'tab-search');
+  regShortcut('CommandOrControl+Shift+E', 'tab-search');
+  regShortcut('CommandOrControl+Shift+B', 'bookmarks-panel');
 }
 
 module.exports = { setupSessionInfrastructure };

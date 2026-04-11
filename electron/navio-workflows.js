@@ -100,41 +100,9 @@ function deleteWorkflow(name) {
   return false;
 }
 
-/**
- * Register IPC handlers for workflow operations.
- */
-function registerWorkflowIpc(ipcMain) {
-  ipcMain.handle('workflow-save', (event, { name, steps, meta }) => {
-    try {
-      return { ok: true, workflow: saveWorkflow(name, steps, meta) };
-    } catch (e) {
-      return { ok: false, error: e.message };
-    }
-  });
-
-  ipcMain.handle('workflow-list', () => {
-    try {
-      return { ok: true, workflows: listWorkflows() };
-    } catch (e) {
-      return { ok: false, error: e.message, workflows: [] };
-    }
-  });
-
-  ipcMain.handle('workflow-load', (event, { name }) => {
-    const workflow = loadWorkflow(name);
-    if (!workflow) return { ok: false, error: `Workflow "${name}" not found` };
-    return { ok: true, workflow };
-  });
-
-  ipcMain.handle('workflow-delete', (event, { name }) => {
-    return { ok: deleteWorkflow(name) };
-  });
-}
-
 module.exports = {
   saveWorkflow,
   loadWorkflow,
   listWorkflows,
-  deleteWorkflow,
-  registerWorkflowIpc
+  deleteWorkflow
 };

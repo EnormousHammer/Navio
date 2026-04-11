@@ -43,7 +43,21 @@ const DEFAULT_CONFIG = {
   aiAutoExecute: false,
   aiAutoScreenshotAfterNavigate: false,
   aiAgentStepMode: false,
-  aiUseToolCalling: true
+  aiUseToolCalling: true,
+  /**
+   * New tab page — Live Sports widget: your curated list only (id = streamed.pk /matches/{id} slug).
+   * Edit in navio-config.json to add/remove/reorder. Empty array [] falls back to app defaults in ntp.js.
+   */
+  ntpLiveSportsCatalog: [
+    { id: 'football', name: 'Football' },
+    { id: 'basketball', name: 'NBA' },
+    { id: 'american-football', name: 'NFL / NCAA FB' },
+    { id: 'hockey', name: 'Hockey' },
+    { id: 'baseball', name: 'Baseball' },
+    { id: 'fight', name: 'UFC / Boxing' },
+    { id: 'tennis', name: 'Tennis' },
+    { id: 'motor-sports', name: 'Motorsports' }
+  ]
 };
 
 function readConfigFile() {
