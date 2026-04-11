@@ -9700,9 +9700,8 @@ button:focus-visible,
   align-content: start;
 }
 
+/* Match tiles are <div role="button"> (not <button>) so Windows/Electron never paints a system face. */
 .ntp-widget-live-sports .ntp-live-match-row {
-  -webkit-appearance: none;
-  appearance: none;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -9715,10 +9714,13 @@ button:focus-visible,
   border: 1px solid rgba(130, 175, 235, 0.22);
   border-left: 3px solid rgba(56, 189, 248, 0.5);
   border-radius: 10px;
-  /* Solid base so OS/Electron button face never shows through faint gradients */
-  color: var(--text-primary, #e2e8f0);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  color: var(--ntp-text, var(--text-primary, #e2e8f0));
+  /* !important: beat any stray form/control UA rules or theme leaks that set a light background */
   background: linear-gradient(148deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
-    rgba(28, 38, 62, 0.98);
+    rgb(28, 38, 62) !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
   text-align: left;
   transition: background 0.14s ease, border-color 0.14s ease, border-left-color 0.14s ease;
@@ -9726,7 +9728,7 @@ button:focus-visible,
 
 .ntp-widget-live-sports .ntp-live-match-row:hover {
   background: linear-gradient(148deg, rgba(0, 212, 255, 0.12), rgba(124, 58, 237, 0.06)),
-    rgba(28, 38, 62, 0.98);
+    rgb(28, 38, 62) !important;
   border-color: rgba(0, 212, 255, 0.35);
   border-left-color: rgba(0, 212, 255, 0.85);
 }
@@ -9734,13 +9736,13 @@ button:focus-visible,
 .ntp-widget-live-sports .ntp-live-match-row--live {
   border-left-color: rgba(248, 113, 113, 0.55);
   background: linear-gradient(148deg, rgba(248, 113, 113, 0.1), rgba(255, 255, 255, 0.03)),
-    rgba(28, 38, 62, 0.98);
+    rgb(28, 38, 62) !important;
 }
 
 .ntp-widget-live-sports .ntp-live-match-row--live:hover {
   border-left-color: rgba(248, 113, 113, 0.9);
   background: linear-gradient(148deg, rgba(248, 113, 113, 0.14), rgba(124, 58, 237, 0.06)),
-    rgba(28, 38, 62, 0.98);
+    rgb(28, 38, 62) !important;
 }
 
 .ntp-widget-live-sports .ntp-live-match-row-inner {
@@ -10252,26 +10254,26 @@ button:focus-visible,
   color: var(--ntp-text, #e2e8f8);
   border-color: rgba(130, 175, 235, 0.22);
   background: linear-gradient(148deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
-    rgba(28, 38, 62, 0.98);
+    rgb(28, 38, 62) !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
 [data-theme="light"] .ntp-widget-live-sports .ntp-live-match-row:hover {
   background: linear-gradient(148deg, rgba(0, 212, 255, 0.12), rgba(124, 58, 237, 0.06)),
-    rgba(28, 38, 62, 0.98);
+    rgb(28, 38, 62) !important;
   border-color: rgba(0, 212, 255, 0.35);
 }
 
 [data-theme="light"] .ntp-widget-live-sports .ntp-live-match-row--live {
   border-left-color: rgba(248, 113, 113, 0.55);
   background: linear-gradient(148deg, rgba(248, 113, 113, 0.1), rgba(255, 255, 255, 0.03)),
-    rgba(28, 38, 62, 0.98);
+    rgb(28, 38, 62) !important;
 }
 
 [data-theme="light"] .ntp-widget-live-sports .ntp-live-match-row--live:hover {
   border-left-color: rgba(248, 113, 113, 0.9);
   background: linear-gradient(148deg, rgba(248, 113, 113, 0.14), rgba(124, 58, 237, 0.06)),
-    rgba(28, 38, 62, 0.98);
+    rgb(28, 38, 62) !important;
 }
 
 .ntp-widget-live-sports .ntp-live-matches > .ntp-widget-empty,

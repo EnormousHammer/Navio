@@ -1549,6 +1549,15 @@ const NTP = (() => {
         if (match) void _openStreamedMatch(match);
       }
     });
+    root.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const row = e.target.closest('.ntp-live-match-row');
+      if (!row || !root.contains(row) || row.dataset.matchIdx == null) return;
+      e.preventDefault();
+      const idx = parseInt(row.dataset.matchIdx, 10);
+      const match = _streamedMatches[idx];
+      if (match) void _openStreamedMatch(match);
+    });
     document.getElementById('ntp-live-sports-refresh')?.addEventListener('click', (ev) => {
       ev.preventDefault();
       if (_liveSportsView === 'home') {
@@ -1662,19 +1671,21 @@ const NTP = (() => {
       const rows = _streamedMatches.length
         ? _streamedMatches
             .map((m, i) => {
-              const title = _esc(_matchTitle(m));
+              const rawTitle = _matchTitle(m);
+              const title = _esc(rawTitle);
+              const ariaLabel = `${_esc(rawTitle)} — open stream`.replace(/"/g, '&quot;');
               const whenRaw = _matchWhenLabel(m);
               const legacy = m?.time || m?.category || '';
               const sub = whenRaw || legacy;
               const subEsc = sub ? _esc(sub) : '';
               const liveCls =
                 sub && /on air|just started/i.test(String(sub)) ? ' ntp-live-match-row--live' : '';
-              return `<button type="button" class="ntp-live-match-row${liveCls}" data-match-idx="${i}"><span class="ntp-live-match-row-inner"><span class="ntp-live-match-title">${title}</span>${subEsc ? `<span class="ntp-live-match-when">${subEsc}</span>` : ''}</span><span class="ntp-live-match-cta" aria-hidden="true">Open</span></button>`;
+              return `<div role="button" tabindex="0" class="ntp-live-match-row${liveCls}" data-match-idx="${i}" aria-label="${ariaLabel}"><span class="ntp-live-match-row-inner"><span class="ntp-live-match-title">${title}</span>${subEsc ? `<span class="ntp-live-match-when">${subEsc}</span>` : ''}</span><span class="ntp-live-match-cta" aria-hidden="true">Open</span></div>`;
             })
             .join('')
         : '<p class="ntp-widget-empty ntp-live-sports-empty">No listings for this feed right now.</p>';
 
-      body.innerHTML = `${nav}<div class="ntp-live-matches" role="list">${rows}</div>${privacyFoot}`;
+      body.innerHTML = `${nav}<div class="ntp-live-matches" role="group" aria-label="Live events">${rows}</div>${privacyFoot}`;
     } catch (e) {
       console.error('[NTP] _loadLiveSportsWidget', e);
       body.innerHTML = `<p class="ntp-widget-empty">${_esc(e?.message || 'Unexpected error')}. Try Refresh.</p>${privacyFoot}`;
