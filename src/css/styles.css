@@ -827,6 +827,10 @@ body.tabstrip-hidden .tab-strip-show {
   font-weight: 500;
 }
 
+.tab-title.tab-title-custom {
+  font-style: italic;
+}
+
 .tab-item.loading .tab-favicon::after {
   content: '';
   width: 10px;

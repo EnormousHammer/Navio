@@ -94,6 +94,8 @@ class TabManagerClass {
     const tab = {
       id,
       title: 'New Tab',
+      /** User override shown in the tab strip; page title updates still fill `title`. */
+      customTitle: null,
       url: url || '',
       favicon: null,
       loading: false,
@@ -238,9 +240,29 @@ class TabManagerClass {
       if (!e.url) return;
       // External protocols clicked inside a page — open in OS, don't load in a tab
       if (/^(mailto|tel|sms|callto):/i.test(e.url)) {
+        e.preventDefault();
         window.navio.openExternal(e.url).catch(() => {});
         return;
       }
+      // Block ad / tracker / strict script pop-ups (main process; sync IPC)
+      try {
+        const o = e.options || {};
+        if (
+          typeof window.navio.evalPopupBlock === 'function' &&
+          window.navio.evalPopupBlock({
+            url: e.url || '',
+            disposition: e.disposition || 'default',
+            optionsWidth: o.width,
+            optionsHeight: o.height
+          })
+        ) {
+          e.preventDefault();
+          return;
+        }
+      } catch {
+        /* ignore */
+      }
+      e.preventDefault();
       this.createTab(e.url);
     });
 
@@ -503,7 +525,7 @@ class TabManagerClass {
       <div class="tab-favicon">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>
       </div>
-      <span class="tab-title">${this.escapeHtml(tab.title)}</span>
+      <span class="tab-title${tab.customTitle ? ' tab-title-custom' : ''}" title="Double-click to rename">${this.escapeHtml(this.getTabDisplayTitle(tab))}</span>
       <button class="tab-close" title="Close tab">
         <svg width="9" height="9" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.5"/></svg>
       </button>
@@ -529,6 +551,14 @@ class TabManagerClass {
       this._showTabContextMenu(tab.id, e.clientX, e.clientY);
     });
 
+    const titleSpan = el.querySelector('.tab-title');
+    if (titleSpan) {
+      titleSpan.addEventListener('dblclick', (ev) => {
+        ev.stopPropagation();
+        this._promptRenameTab(tab.id);
+      });
+    }
+
     this.tabListEl.appendChild(el);
 
     requestAnimationFrame(() => {
@@ -541,7 +571,9 @@ class TabManagerClass {
     if (!el) return;
 
     const titleEl = el.querySelector('.tab-title');
-    titleEl.textContent = tab.title;
+    titleEl.textContent = this.getTabDisplayTitle(tab);
+    titleEl.classList.toggle('tab-title-custom', !!tab.customTitle);
+    titleEl.title = 'Double-click to rename';
 
     const faviconEl = el.querySelector('.tab-favicon');
     if (tab.favicon) {
@@ -571,7 +603,11 @@ class TabManagerClass {
   updateContextTitle(tab) {
     const contextEl = document.getElementById('context-page-title');
     if (contextEl) {
-      let line = tab.url ? `${tab.title} - ${tab.url}` : 'New Tab';
+      const display = this.getTabDisplayTitle(tab);
+      let line = tab.url ? `${display} - ${tab.url}` : 'New Tab';
+      if (tab.customTitle && tab.title && tab.title !== display) {
+        line = `${display} (${tab.title}) - ${tab.url}`;
+      }
       if (typeof EmailAssistant !== 'undefined' && tab.url && EmailAssistant.isMailUrl(tab.url)) {
         line += ' · Mail';
       }
@@ -583,6 +619,34 @@ class TabManagerClass {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  /** Label shown in the tab strip and pickers (custom name wins over page title). */
+  getTabDisplayTitle(tab) {
+    if (!tab) return '';
+    if (tab.customTitle != null && String(tab.customTitle).trim()) {
+      return String(tab.customTitle).trim();
+    }
+    const p = (tab.title && String(tab.title).trim()) || '';
+    return p || 'New Tab';
+  }
+
+  setTabCustomTitle(tabId, nameOrNull) {
+    const tab = this.tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    if (nameOrNull == null || !String(nameOrNull).trim()) tab.customTitle = null;
+    else tab.customTitle = String(nameOrNull).trim().slice(0, 120);
+    this.updateTabUI(tab);
+    if (tab.id === this.activeTabId) this.updateContextTitle(tab);
+  }
+
+  _promptRenameTab(tabId) {
+    const tab = this.tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    const cur = this.getTabDisplayTitle(tab);
+    const next = window.prompt('Tab name (leave empty to use the page title):', cur);
+    if (next === null) return;
+    this.setTabCustomTitle(tabId, next.trim() ? next : null);
   }
 
   async getActivePageContent() {
@@ -771,6 +835,9 @@ class TabManagerClass {
     menu.id = 'tab-ctx-menu';
     menu.className = 'tab-ctx-menu';
     menu.innerHTML = `
+      <button class="tcm-item" data-action="rename-tab">Rename tab…</button>
+      ${tab.customTitle ? '<button class="tcm-item" data-action="clear-tab-name">Use page title</button>' : ''}
+      <div class="tcm-sep"></div>
       <button class="tcm-item" data-action="toggle-pin">${pinLabel}</button>
       <div class="tcm-sep"></div>
       ${removeItem}
@@ -817,6 +884,8 @@ class TabManagerClass {
       btn.addEventListener('click', () => {
         const act = btn.dataset.action;
         if (act === 'close-tab') this.closeTab(tabId);
+        else if (act === 'rename-tab') this._promptRenameTab(tabId);
+        else if (act === 'clear-tab-name') this.setTabCustomTitle(tabId, null);
         else if (act === 'toggle-pin') {
           const t = this.tabs.find((x) => x.id === tabId);
           if (t) {
@@ -851,7 +920,7 @@ class TabManagerClass {
       return;
     }
     if (this.tabs.length < 2) return;
-    const lines = this.tabs.map((t, i) => `${i}: ${t.title} — ${t.url}`).join('\n');
+    const lines = this.tabs.map((t, i) => `${i}: ${this.getTabDisplayTitle(t)} — ${t.url}`).join('\n');
     const messages = [
       {
         role: 'user',
@@ -902,7 +971,7 @@ class TabManagerClass {
       return;
     }
     if (this.tabs.length < 2) return;
-    const lines = this.tabs.map((t, i) => `${i}: ${t.title} — ${t.url}`).join('\n');
+    const lines = this.tabs.map((t, i) => `${i}: ${this.getTabDisplayTitle(t)} — ${t.url}`).join('\n');
     const messages = [
       {
         role: 'user',

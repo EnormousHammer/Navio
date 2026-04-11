@@ -179,11 +179,12 @@ class CommandPaletteClass {
 
     if (typeof TabManager !== 'undefined' && TabManager.tabs) {
       TabManager.tabs.forEach((tab) => {
-        const hay = `${tab.title} ${tab.url}`.toLowerCase();
+        const label = TabManager.getTabDisplayTitle(tab);
+        const hay = `${label} ${tab.title || ''} ${tab.url}`.toLowerCase();
         if (!q || hay.includes(q)) {
           this.items.push({
             id: `tab-${tab.id}`,
-            label: tab.title || 'Untitled',
+            label: label || 'Untitled',
             meta: tab.url || 'tab',
             run: () => TabManager.switchToTab(tab.id)
           });

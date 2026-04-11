@@ -40,6 +40,9 @@ const DEFAULT_CONFIG = {
   showBookmarkBar: true,
   tabLayout: 'horizontal',
   memoryRetentionDays: 0,
+  adBlockEnabled: true,
+  /** When true (and ad blocking on), also block small / blank script pop-ups unless URL looks like OAuth/SSO. */
+  adStrictPopupBlock: true,
   aiAutoExecute: false,
   aiAutoScreenshotAfterNavigate: false,
   aiAgentStepMode: false,

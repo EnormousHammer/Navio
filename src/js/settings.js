@@ -73,6 +73,7 @@ class SettingsManagerClass {
       importScan: document.getElementById('btn-settings-import-scan'),
       importScanStatus: document.getElementById('settings-import-scan-status'),
       adBlock: document.getElementById('setting-ad-block'),
+      adStrictPopup: document.getElementById('setting-ad-strict-popup'),
       adBlockStats: document.getElementById('ad-block-stats-hint'),
       memoryList: document.getElementById('memory-list'),
       memoryAddInput: document.getElementById('memory-add-input'),
@@ -360,6 +361,10 @@ class SettingsManagerClass {
     if (this.elements.extensionsAI) this.elements.extensionsAI.checked = !!this.config.extensionsAllowAI;
     if (this.elements.formAutofill) this.elements.formAutofill.checked = this.config.formAutofillAssist !== false;
     if (this.elements.adBlock) this.elements.adBlock.checked = this.config.adBlockEnabled !== false;
+    if (this.elements.adStrictPopup) {
+      this.elements.adStrictPopup.checked = this.config.adStrictPopupBlock !== false;
+      this.elements.adStrictPopup.disabled = !!(this.elements.adBlock && !this.elements.adBlock.checked);
+    }
 
     this.elements.provider.value = this.config.aiProvider || 'openai';
     try {
@@ -500,6 +505,9 @@ class SettingsManagerClass {
       this.elements.adBlock.addEventListener('change', async () => {
         const enabled = this.elements.adBlock.checked;
         await window.navio.setAdBlocker(enabled);
+        if (this.elements.adStrictPopup) {
+          this.elements.adStrictPopup.disabled = !enabled;
+        }
         this._refreshAdBlockStats();
       });
     }
@@ -510,10 +518,12 @@ class SettingsManagerClass {
     try {
       const s = await window.navio.getAdBlockStats();
       const status = s.enabled ? 'ON' : 'OFF';
+      const pops = typeof s.popupsBlocked === 'number' ? s.popupsBlocked : 0;
       this.elements.adBlockStats.textContent =
-        `Status: ${status} · ${s.blocked.toLocaleString()} requests blocked this session · ${s.domains} domains in blocklist`;
+        `Status: ${status} · ${s.blocked.toLocaleString()} requests blocked · ${pops.toLocaleString()} ad pop-ups blocked · ${s.domains} domains in blocklist`;
     } catch {
-      this.elements.adBlockStats.textContent = 'Blocks requests from known ad networks, tracking pixels, and data brokers.';
+      this.elements.adBlockStats.textContent =
+        'Blocks requests and ad pop-up windows from known ad networks, tracking pixels, and data brokers.';
     }
   }
 
@@ -1028,6 +1038,7 @@ class SettingsManagerClass {
       extensionsAllowAI: !!(this.elements.extensionsAI && this.elements.extensionsAI.checked),
       formAutofillAssist: !!(this.elements.formAutofill && this.elements.formAutofill.checked),
       adBlockEnabled: !!(this.elements.adBlock && this.elements.adBlock.checked),
+      adStrictPopupBlock: !!(this.elements.adStrictPopup && this.elements.adStrictPopup.checked),
       aiProvider: this.elements.provider.value,
       apiKey: this.elements.apiKey.value.trim(),
       aiModel: this.elements.model.value === '__custom__'

@@ -3,6 +3,7 @@
 const { ipcMain, session, shell, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { AD_BLOCK_PATTERNS, shouldBlockWebPopup } = require('./ad-block-patterns');
 
 /**
  * Webview session, downloads, certs, ad blocker, permissions, global shortcuts.
@@ -146,98 +147,11 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
     navioSession.setPermissionCheckHandler(() => true);
   }
 
-  const AD_BLOCK_PATTERNS = [
-    'doubleclick.net',
-    'googlesyndication.com',
-    'adservice.google',
-    'googleadservices.com',
-    'googletagservices.com',
-    'tpc.googlesyndication.com',
-    'pagead2.googlesyndication.com',
-    'fundingchoicesmessages.google.com',
-    'amazon-adsystem.com',
-    'assoc-amazon.com',
-    'ads.yahoo.com',
-    'gemini.yahoo.com',
-    'advertising.yahoo.com',
-    'syndication.twitter.com',
-    'ads.twitter.com',
-    'ads.linkedin.com',
-    'snap.licdn.com',
-    'facebook.com/tr',
-    'connect.facebook.net',
-    'analytics.facebook.com',
-    'scorecardresearch.com',
-    'quantserve.com',
-    'quantcast.com',
-    'adnxs.com',
-    'rubiconproject.com',
-    'pubmatic.com',
-    'openx.net',
-    'openx.com',
-    'casalemedia.com',
-    'criteo.com',
-    'criteo.net',
-    'bidswitch.net',
-    'sharethrough.com',
-    'triplelift.com',
-    'smartadserver.com',
-    'smaato.net',
-    'spotxchange.com',
-    'spotx.tv',
-    'teads.tv',
-    'teads.com',
-    'yieldmo.com',
-    'zedo.com',
-    'undertone.com',
-    'unrulymedia.com',
-    'media.net',
-    'outbrain.com',
-    'outbrainimg.com',
-    'taboola.com',
-    'revcontent.com',
-    'mgid.com',
-    'propellerads.com',
-    'propellerclick.com',
-    'adzerk.net',
-    'adzerk.com',
-    'advertising.com',
-    'adtech.de',
-    'adform.net',
-    'moatads.com',
-    'adsafeprotected.com',
-    'adcolony.com',
-    'appsflyer.com',
-    'adjust.com',
-    'adjust.io',
-    'mopub.com',
-    'chartboost.com',
-    'adrollapp.com',
-    'buysellads.com',
-    'buysellads.net',
-    'pagefair.com',
-    'hotjar.com',
-    'fullstory.com',
-    'mouseflow.com',
-    'crazyegg.com',
-    'mixpanel.com',
-    'amplitude.com',
-    'heap.com',
-    'heapanalytics.com',
-    'popads.net',
-    'popcash.net',
-    'exoclick.com',
-    'trafficjunky.net',
-    'trafficholder.com',
-    'cdnwidget.com',
-    'adnium.com',
-    'justpremium.com'
-  ];
-
   const cfg0 = loadConfig();
   let adBlockEnabled = cfg0.adBlockEnabled !== false;
   let adBlockCount = 0;
   let adBlockBytes = 0;
+  let adPopupBlockedCount = 0;
   const AD_AVG_BYTES = 40 * 1024;
 
   navioSession.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
@@ -253,6 +167,26 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
     callback({});
   });
 
+  /**
+   * Sync IPC for <webview> new-window — must decide before the event handler returns.
+   * Uses current config (blocklist + optional strict sizing / blank-pop-up rules).
+   */
+  ipcMain.on('navio-eval-popup-block', (event, payload) => {
+    const cfg = loadConfig();
+    const block = shouldBlockWebPopup({
+      url: (payload && payload.url) || '',
+      disposition: (payload && payload.disposition) || 'default',
+      optionsWidth: payload && payload.optionsWidth,
+      optionsHeight: payload && payload.optionsHeight,
+      cfg: {
+        adBlockEnabled: cfg.adBlockEnabled !== false,
+        adStrictPopupBlock: cfg.adStrictPopupBlock !== false
+      }
+    });
+    if (block) adPopupBlockedCount++;
+    event.returnValue = block;
+  });
+
   ipcMain.handle('set-ad-blocker', async (_, { enabled }) => {
     adBlockEnabled = !!enabled;
     saveConfig({ adBlockEnabled });
@@ -263,7 +197,8 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
     enabled: adBlockEnabled,
     blocked: adBlockCount,
     bytesSaved: adBlockBytes,
-    domains: AD_BLOCK_PATTERNS.length
+    domains: AD_BLOCK_PATTERNS.length,
+    popupsBlocked: adPopupBlockedCount
   }));
 
   try {

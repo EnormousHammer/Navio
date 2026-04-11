@@ -7,10 +7,10 @@ Futuristic AI-powered Chromium browser. Intelligence meets the internet.
 - **Navio AI** - Built-in assistant that reads, understands, and interacts with any web page
 - **Multi-Provider** - OpenAI, Anthropic, Google, or any OpenAI-compatible endpoint (bring your own key)
 - **Premium Dark UI** - Futuristic glass-morphism design with electric cyan-to-violet accents
-- **Tab Management** - Sidebar-based tabs with favicons and live loading indicators
+- **Tab Management** - Sidebar-based tabs with favicons, live loading indicators, and **rename** (double-click the tab title or use the tab context menu)
 - **Smart Navigation** - URL bar detects URLs vs search queries automatically
 - **Keyboard Driven** - Full shortcut support for power users
-- **Ad Blocking** - Basic built-in ad network blocking
+- **Ad Blocking** - Built-in blocking of ad network requests, ad URLs in new windows, and optional **strict** blocking of small script-driven pop-ups (OAuth-aware heuristics)
 - **Page Intelligence** - AI reads headings, links, forms, and full text content
 - **Privacy** - API keys stay local, zero telemetry
 

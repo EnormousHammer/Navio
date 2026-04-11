@@ -175,6 +175,11 @@ contextBridge.exposeInMainWorld('navio', {
 
   setAdBlocker: (enabled) => ipcRenderer.invoke('set-ad-blocker', { enabled }),
   getAdBlockStats: () => ipcRenderer.invoke('get-ad-block-stats'),
+  /**
+   * Returns true if this new-window request should be blocked (blocklist and/or strict pop-up rules).
+   * @param {{ url?: string, disposition?: string, optionsWidth?: number, optionsHeight?: number }} payload
+   */
+  evalPopupBlock: (payload) => ipcRenderer.sendSync('navio-eval-popup-block', payload || {}),
 
   // Browser Memory
   memoryGet: () => ipcRenderer.invoke('memory-get'),

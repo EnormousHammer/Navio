@@ -446,14 +446,15 @@
       list.innerHTML = '';
       if (typeof TabManager === 'undefined') return;
       TabManager.tabs.forEach((t) => {
-        const line = `${t.title} ${t.url}`;
+        const disp = TabManager.getTabDisplayTitle(t);
+        const line = `${disp} ${t.title || ''} ${t.url}`;
         if (!fuzzy(line, q)) return;
         const wrap = document.createElement('div');
         wrap.className = 'tab-search-row-wrap';
         const row = document.createElement('button');
         row.type = 'button';
         row.className = 'tab-search-row';
-        row.textContent = t.title || t.url || 'Tab';
+        row.textContent = disp || t.url || 'Tab';
         row.addEventListener('click', () => {
           TabManager.switchToTab(t.id);
           overlay.hidden = true;
@@ -520,7 +521,7 @@
       const tab = TabManager.getActiveTab();
       if (!tab || !tab.url || !tab.url.startsWith('http')) return;
       await window.navio.bookmarksAdd({
-        title: tab.title,
+        title: TabManager.getTabDisplayTitle(tab),
         url: tab.url,
         favicon: tab.favicon,
         toBar: true

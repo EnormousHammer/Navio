@@ -177,7 +177,7 @@
         const result = origSetActive(id);
         const tab = TabManager.getActiveTab();
         if (tab) {
-          setTimeout(() => onPageNavigated(tab.url, tab.title), 500);
+          setTimeout(() => onPageNavigated(tab.url, TabManager.getTabDisplayTitle(tab)), 500);
         }
         return result;
       };

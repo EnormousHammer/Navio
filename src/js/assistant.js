@@ -190,7 +190,10 @@ class AssistantManagerClass {
       ? TabManager.tabs.filter(t => t.url && t.url !== 'about:blank')
       : [];
     const matches = query
-      ? tabs.filter(t => t.title.toLowerCase().includes(query) || (t.url || '').toLowerCase().includes(query))
+      ? tabs.filter((t) => {
+          const d = TabManager.getTabDisplayTitle(t).toLowerCase();
+          return d.includes(query) || (t.title || '').toLowerCase().includes(query) || (t.url || '').toLowerCase().includes(query);
+        })
       : tabs;
     if (!matches.length) { this._hideMentionPicker(); return; }
     this._showMentionPicker(matches, atIdx);
@@ -210,14 +213,18 @@ class AssistantManagerClass {
     picker.style.width = rect.width + 'px';
     picker.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
     picker.style.top = '';
-    picker.innerHTML = tabs.slice(0, 8).map((t, i) => `
-      <div class="at-mention-item" data-idx="${i}" data-title="${t.title.replace(/"/g,'&quot;')}">
+    picker.innerHTML = tabs.slice(0, 8).map((t, i) => {
+      const disp = TabManager.getTabDisplayTitle(t);
+      const safe = disp.replace(/"/g, '&quot;');
+      return `
+      <div class="at-mention-item" data-idx="${i}" data-title="${safe}">
         ${t.favicon ? `<img class="at-mention-favicon" src="${t.favicon}" alt="">` : '<div class="at-mention-favicon-ph"></div>'}
         <div class="at-mention-label">
-          <span class="at-mention-title">${t.title || t.url}</span>
+          <span class="at-mention-title">${disp || t.url}</span>
           <span class="at-mention-url">${(t.url || '').replace(/^https?:\/\//, '').slice(0, 40)}</span>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     picker.hidden = false;
     picker.querySelectorAll('.at-mention-item').forEach((item, i) => {
       item.addEventListener('mousedown', (e) => {
@@ -251,7 +258,10 @@ class AssistantManagerClass {
     const contextMessages = [];
     for (const m of matches) {
       const title = m[1];
-      const tab = tabs.find(t => t.title === title || t.title.toLowerCase() === title.toLowerCase());
+      const tab = tabs.find((t) => {
+        const d = TabManager.getTabDisplayTitle(t);
+        return d === title || d.toLowerCase() === title.toLowerCase() || t.title === title || (t.title || '').toLowerCase() === title.toLowerCase();
+      });
       if (!tab || !tab.webview) continue;
       try {
         const wc = tab.webview.getWebContentsId();
@@ -287,8 +297,8 @@ class AssistantManagerClass {
       const cfg = await window.navio.getConfig();
       const name = cfg.userName ? ` ${cfg.userName.split(' ')[0]}` : '';
       const tab = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
-      const pageHint = tab && tab.title && tab.url && !tab.url.startsWith('about:')
-        ? `<p style="font-size:12px;color:var(--text-tertiary);margin-top:6px">On: <span style="color:var(--text-accent)">${tab.title}</span></p>`
+      const pageHint = tab && tab.url && !tab.url.startsWith('about:')
+        ? `<p style="font-size:12px;color:var(--text-tertiary);margin-top:6px">On: <span style="color:var(--text-accent)">${TabManager.getTabDisplayTitle(tab)}</span></p>`
         : '';
       this.addMessage('assistant', `Hey${name}! I'm Navio — your AI co-pilot.\n\nJust ask me anything — about the page you're on, the web, your emails, or any task you want automated.${pageHint}`);
     } catch {
@@ -459,7 +469,7 @@ class AssistantManagerClass {
     if (!tab) return;
     try {
       await window.navio.contextGraph({ op: 'pinTab', tabId: tab.id });
-      this.addMessage('assistant', `Pinned **${tab.title || 'tab'}** to the context graph for this profile.`);
+      this.addMessage('assistant', `Pinned **${TabManager.getTabDisplayTitle(tab) || 'tab'}** to the context graph for this profile.`);
     } catch (e) {
       this.addMessage('assistant', 'Could not pin tab: ' + (e.message || String(e)));
     }
@@ -514,7 +524,7 @@ class AssistantManagerClass {
       if (activeTab && activeTab.url && !activeTab.url.startsWith('about:')) {
         messages.push({
           role: 'system',
-          content: `[Active tab]\nTitle: ${activeTab.title || '(untitled)'}\nURL: ${activeTab.url}`
+          content: `[Active tab]\nTitle: ${TabManager.getTabDisplayTitle(activeTab) || '(untitled)'}${activeTab.customTitle ? ` (page: ${activeTab.title || '—'})` : ''}\nURL: ${activeTab.url}`
         });
       }
     }
@@ -543,7 +553,7 @@ class AssistantManagerClass {
     if (!isQuickAction && typeof TabManager !== 'undefined') {
       const allTabs = TabManager.tabs.filter(t => t.url && !t.url.startsWith('about:')).slice(0, 20);
       if (allTabs.length > 1) {
-        const tabList = allTabs.map((t, i) => `${i + 1}. ${t.title || t.url} — ${t.url}`).join('\n');
+        const tabList = allTabs.map((t, i) => `${i + 1}. ${TabManager.getTabDisplayTitle(t) || t.url} — ${t.url}`).join('\n');
         messages.push({ role: 'system', content: `[Open tabs (${allTabs.length})]\n${tabList}` });
       }
     }
@@ -553,7 +563,7 @@ class AssistantManagerClass {
     if (pinned.length && typeof TabManager !== 'undefined') {
       const titles = TabManager.tabs
         .filter((t) => pinned.includes(t.id))
-        .map((t) => `- ${t.title} (${t.url || 'no url'})`)
+        .map((t) => `- ${TabManager.getTabDisplayTitle(t)} (${t.url || 'no url'})`)
         .join('\n');
       if (titles) {
         messages.push({ role: 'system', content: `[Pinned tabs in workspace]\n${titles}` });
@@ -653,7 +663,7 @@ class AssistantManagerClass {
       if (activeTab && activeTab.url && !activeTab.url.startsWith('about:')) {
         messages.push({
           role: 'system',
-          content: `[Active tab]\nTitle: ${activeTab.title || '(untitled)'}\nURL: ${activeTab.url}`
+          content: `[Active tab]\nTitle: ${TabManager.getTabDisplayTitle(activeTab) || '(untitled)'}${activeTab.customTitle ? ` (page: ${activeTab.title || '—'})` : ''}\nURL: ${activeTab.url}`
         });
       }
     }
@@ -673,7 +683,7 @@ class AssistantManagerClass {
     if (typeof TabManager !== 'undefined') {
       const allTabs = TabManager.tabs.filter(t => t.url && !t.url.startsWith('about:')).slice(0, 20);
       if (allTabs.length > 1) {
-        const tabList = allTabs.map((t, i) => `${i + 1}. ${t.title || t.url} — ${t.url}`).join('\n');
+        const tabList = allTabs.map((t, i) => `${i + 1}. ${TabManager.getTabDisplayTitle(t) || t.url} — ${t.url}`).join('\n');
         messages.push({ role: 'system', content: `[Open tabs (${allTabs.length})]\n${tabList}` });
       }
     }
@@ -684,7 +694,7 @@ class AssistantManagerClass {
     if (pinned.length && typeof TabManager !== 'undefined') {
       const titles = TabManager.tabs
         .filter((t) => pinned.includes(t.id))
-        .map((t) => `- ${t.title} (${t.url || 'no url'})`)
+        .map((t) => `- ${TabManager.getTabDisplayTitle(t)} (${t.url || 'no url'})`)
         .join('\n');
       if (titles) messages.push({ role: 'system', content: `[Pinned tabs in workspace]\n${titles}` });
     }
@@ -745,7 +755,7 @@ class AssistantManagerClass {
           tab_id: tab?.id || '',
           webContentsId: wv?.getWebContentsId?.() || null,
           url: tab?.url || '',
-          title: tab?.title || ''
+          title: tab ? TabManager.getTabDisplayTitle(tab) : ''
         });
       } catch (e) {
         window.navio.toolOpenTabAck({ error: e.message });
@@ -780,7 +790,7 @@ class AssistantManagerClass {
           tab_id: tab?.id || '',
           webContentsId: wv?.getWebContentsId?.() || null,
           url: tab?.url || '',
-          title: tab?.title || ''
+          title: tab ? TabManager.getTabDisplayTitle(tab) : ''
         });
       } catch (e) {
         window.navio.toolSwitchTabAck({ error: e.message });
@@ -794,7 +804,7 @@ class AssistantManagerClass {
           .filter(t => t.url || t.id)
           .map(t => ({
             tab_id: t.id,
-            title: t.title || '(untitled)',
+            title: TabManager.getTabDisplayTitle(t) || '(untitled)',
             url: t.url || '',
             active: t.id === TabManager.activeTabId,
             webContentsId: t.webview?.getWebContentsId?.() || null
@@ -1624,7 +1634,7 @@ class AssistantManagerClass {
         const content = await window.navio.extractPageContent(t.webview.getWebContentsId());
         if (content && !content.error) {
           parts.push(
-            `### Tab: ${t.title || url}\nURL: ${content.url || url}\n\n${(content.text || '').slice(0, 10000)}`
+            `### Tab: ${TabManager.getTabDisplayTitle(t) || url}\nURL: ${content.url || url}\n\n${(content.text || '').slice(0, 10000)}`
           );
         }
       } catch {

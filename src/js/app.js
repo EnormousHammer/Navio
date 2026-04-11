@@ -611,7 +611,11 @@ const ReadingListManager = (() => {
     if (!tab?.url || tab.url === 'about:blank') {
       _showAppToast('No page to save', 'error'); return;
     }
-    const r = await window.navio.readingListAdd(tab.url, tab.title, tab.favicon).catch(() => null);
+    const r = await window.navio.readingListAdd(
+      tab.url,
+      TabManager.getTabDisplayTitle(tab),
+      tab.favicon
+    ).catch(() => null);
     if (!r) {
       _showAppToast('Could not save page.', 'error');
     } else if (r.ok && r.added) {
