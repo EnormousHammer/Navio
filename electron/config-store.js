@@ -48,7 +48,7 @@ const DEFAULT_CONFIG = {
   aiAgentStepMode: false,
   aiUseToolCalling: true,
   /**
-   * New tab page — Live Sports widget: your curated list only (id = streamed.pk /matches/{id} slug).
+   * New tab page — bottom SPORTS ticker: curated streamed.pk slugs (id = /matches/{id}).
    * Edit in navio-config.json to add/remove/reorder. Empty array [] falls back to app defaults in ntp.js.
    */
   ntpLiveSportsCatalog: [
