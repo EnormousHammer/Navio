@@ -341,10 +341,31 @@
             </button>
           </div>
 
-          <!-- Dashboard widgets: World News + Email + AI Brief -->
+          <!-- Dashboard widgets: Inbox (tall left) | News + Streams -->
           <div class="ntp-widgets">
-            <!-- World News feed -->
-            <div class="ntp-widget" id="ntp-widget-news">
+            <!-- Email inbox — left, spans two rows -->
+            <div class="ntp-widget ntp-email-widget" id="ntp-widget-email">
+              <div class="ntp-widget-header">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                Inbox
+                <span class="ntp-widget-badge" id="ntp-unread-badge" style="display:none"></span>
+                <button class="ntp-widget-action" id="ntp-draft-all-btn" style="display:none" title="Draft replies for all unread emails">&#10022; Draft All</button>
+                <button class="ntp-widget-action" id="ntp-inbox-analyze-btn" title="Ask AI: which emails need my attention today?">&#10022; Analyze</button>
+                <button class="ntp-widget-popout" data-widget="inbox" title="Open in new tab">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </button>
+              </div>
+              <div class="ntp-widget-body" id="ntp-email-list">
+                <div class="ntp-email-empty">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                  <p>Connect Gmail or Outlook in the Connectors Hub to see your inbox here.</p>
+                  <button class="ntp-connect-email-btn" id="ntp-connect-email">Connect email</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- World News — top right -->
+            <div class="ntp-widget ntp-news-widget" id="ntp-widget-news">
               <div class="ntp-widget-header">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                 World News
@@ -361,46 +382,7 @@
               </div>
             </div>
 
-            <!-- Email inbox widget -->
-            <div class="ntp-widget" id="ntp-widget-email">
-              <div class="ntp-widget-header">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                Inbox
-                <span class="ntp-widget-badge" id="ntp-unread-badge" style="display:none"></span>
-                <button class="ntp-widget-action" id="ntp-draft-all-btn" style="display:none" title="Draft replies for all unread emails">✦ Draft All</button>
-                <button class="ntp-widget-action" id="ntp-inbox-analyze-btn" title="Ask AI: which emails need my attention today?">✦ Analyze</button>
-                <button class="ntp-widget-popout" data-widget="inbox" title="Open in new tab">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                </button>
-              </div>
-              <div class="ntp-widget-body" id="ntp-email-list">
-                <div class="ntp-email-empty">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                  <p>Connect Gmail or Outlook in the Connectors Hub to see your inbox here.</p>
-                  <button class="ntp-connect-email-btn" id="ntp-connect-email">Connect email</button>
-                </div>
-              </div>
-            </div>
-
-            <!-- AI Brief widget -->
-            <div class="ntp-widget ntp-widget-ai" id="ntp-widget-aibrief">
-              <div class="ntp-widget-header">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                AI Brief
-                <button class="ntp-widget-action" id="ntp-brief-gen-btn" title="Refresh briefing">↺ Refresh</button>
-                <button class="ntp-widget-popout" data-widget="aibrief" title="Open in new tab">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                </button>
-              </div>
-              <div class="ntp-widget-body" id="ntp-brief-body">
-                <div class="ntp-brief-idle">
-                  <div class="ntp-brief-orb"></div>
-                  <p>Generating your daily brief…</p>
-                </div>
-              </div>
-            </div>
-
-            <!-- Live sports: curated feeds + listings (compact widget) -->
+            <!-- Live sports — bottom right -->
             <div class="ntp-widget ntp-widget-live-sports" id="ntp-widget-live-sports">
               <div class="ntp-widget-header ntp-live-sports-widget-header">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg>

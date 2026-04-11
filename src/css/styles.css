@@ -1536,8 +1536,39 @@ body.tabstrip-hidden .tab-strip-show {
   flex: 1;
   min-height: 0;
 }
+/* Inbox left, full height; News top-right; Streams bottom-right */
+.ntp-email-widget {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+.ntp-news-widget {
+  grid-column: 2;
+  grid-row: 1;
+}
+#ntp-widget-live-sports {
+  grid-column: 2;
+  grid-row: 2;
+}
+/* No email connected (connect prompt only): hide inbox; News and Streams each span full height */
+.ntp-widgets--no-email #ntp-widget-email {
+  display: none;
+}
+.ntp-widgets--no-email .ntp-news-widget {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+.ntp-widgets--no-email #ntp-widget-live-sports {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
 @media (max-width: 700px) {
   .ntp-widgets { grid-template-columns: 1fr; grid-template-rows: auto; }
+  .ntp-email-widget,
+  .ntp-news-widget,
+  #ntp-widget-live-sports {
+    grid-column: auto;
+    grid-row: auto;
+  }
 }
 .ntp-widget {
   background: rgba(22, 30, 52, 0.85);
@@ -1615,7 +1646,7 @@ body.tabstrip-hidden .tab-strip-show {
   padding: 9px 14px;
   font-size: 10px;
   font-weight: 800;
-  color: rgba(226,232,248,0.72);
+  color: rgba(226,232,248,0.9);
   text-transform: uppercase;
   letter-spacing: 1px;
   border-bottom: 1px solid rgba(255,255,255,0.10);
@@ -1628,9 +1659,10 @@ body.tabstrip-hidden .tab-strip-show {
 .ntp-widget-source {
   margin-left: auto;
   font-size: 10px;
-  opacity: 0.4;
-  font-weight: 400;
+  opacity: 0.62;
+  font-weight: 500;
   text-transform: none;
+  color: rgba(226, 232, 248, 0.78);
 }
 .ntp-widget-badge {
   background: rgba(0,216,255,0.15);
@@ -1679,6 +1711,125 @@ body.tabstrip-hidden .tab-strip-show {
   border-radius: 4px;
 }
 .ntp-widget-body::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+
+/* ── Per-widget interiors (each tile has its own role, not one shared “well”) ── */
+
+/* World News — editorial / wire: warm paper undertone + masthead strip */
+.ntp-news-widget .ntp-widget-header {
+  background: linear-gradient(90deg, rgba(180, 60, 60, 0.09), rgba(255, 255, 255, 0.03));
+  border-bottom-color: rgba(200, 90, 90, 0.16);
+}
+.ntp-news-widget .ntp-widget-header svg {
+  color: #f56565;
+  opacity: 0.9;
+}
+.ntp-news-widget .ntp-widget-body {
+  position: relative;
+  z-index: 1;
+  margin: 0 10px 10px;
+  padding: 6px 0;
+  border-radius: 11px;
+  background:
+    linear-gradient(90deg, rgba(200, 70, 70, 0.14) 0px, rgba(200, 70, 70, 0.05) 3px, transparent 4px),
+    linear-gradient(180deg, rgba(42, 36, 34, 0.45) 0%, transparent 40%),
+    linear-gradient(145deg, rgba(34, 36, 52, 0.97), rgba(22, 24, 38, 0.99));
+  border: 1px solid rgba(200, 160, 140, 0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 245, 235, 0.06),
+    0 10px 28px rgba(0, 0, 0, 0.3);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.ntp-news-widget:hover .ntp-widget-body {
+  border-color: rgba(220, 170, 150, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 245, 235, 0.08),
+    0 12px 34px rgba(0, 0, 0, 0.34);
+}
+.ntp-news-widget .ntp-news-category {
+  color: #fecaca;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+.ntp-news-widget .ntp-news-item:hover {
+  background: rgba(220, 80, 80, 0.06);
+  border-left-color: rgba(248, 113, 113, 0.55);
+}
+
+/* Inbox — mail client: cool slate, airy blue edge */
+.ntp-email-widget .ntp-widget-header {
+  background: linear-gradient(90deg, rgba(55, 100, 160, 0.14), rgba(255, 255, 255, 0.03));
+  border-bottom-color: rgba(100, 155, 220, 0.2);
+}
+.ntp-email-widget .ntp-widget-header svg {
+  color: #63b3ed;
+  opacity: 0.92;
+}
+.ntp-email-widget .ntp-widget-body {
+  position: relative;
+  z-index: 1;
+  margin: 0 10px 10px;
+  padding: 6px 0;
+  border-radius: 12px;
+  background: linear-gradient(168deg, rgba(24, 42, 68, 0.96), rgba(16, 30, 52, 0.99));
+  border: 1px solid rgba(90, 150, 220, 0.2);
+  box-shadow:
+    inset 0 1px 0 rgba(190, 220, 255, 0.08),
+    0 8px 26px rgba(0, 25, 70, 0.38);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.ntp-email-widget:hover .ntp-widget-body {
+  border-color: rgba(110, 170, 235, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(200, 225, 255, 0.1),
+    0 10px 30px rgba(0, 35, 90, 0.42);
+}
+
+/* Inbox AI analysis (replaces removed AI Brief card) */
+.ntp-inbox-analysis-slot {
+  flex-shrink: 0;
+  margin: 0 10px 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(90, 150, 220, 0.3);
+  background: rgba(12, 24, 48, 0.75);
+  overflow: auto;
+  max-height: min(42vh, 320px);
+  box-shadow: inset 0 1px 0 rgba(190, 220, 255, 0.06);
+}
+.ntp-inbox-analysis-slot .ntp-brief-content {
+  padding: 12px 14px 14px;
+}
+
+/* AI Brief — neural / studio: aurora wash inside the card (body only) */
+.ntp-widget-ai .ntp-widget-body {
+  position: relative;
+  z-index: 1;
+  margin: 0 10px 10px;
+  padding: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 85% 65% at 50% 0%, rgba(124, 58, 237, 0.22), transparent 55%),
+    radial-gradient(ellipse 70% 55% at 100% 100%, rgba(0, 212, 255, 0.14), transparent 45%),
+    radial-gradient(ellipse 50% 40% at 0% 90%, rgba(244, 114, 182, 0.12), transparent 50%),
+    rgba(20, 24, 44, 0.9);
+  border: 1px solid rgba(200, 170, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 80px rgba(124, 58, 237, 0.07),
+    0 10px 32px rgba(0, 0, 0, 0.35);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.ntp-widget-ai:hover .ntp-widget-body {
+  border-color: rgba(216, 190, 255, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 0 90px rgba(124, 58, 237, 0.1),
+    0 12px 36px rgba(0, 0, 0, 0.38);
+}
+.ntp-widget-ai .ntp-widget-header svg {
+  color: #d6bcfa;
+  opacity: 0.95;
+}
+
 .ntp-widget-loading {
   display: flex;
   align-items: center;
@@ -1703,14 +1854,14 @@ body.tabstrip-hidden .tab-strip-show {
   font-size: 12px;
   color: var(--text-secondary);
   text-align: center;
-  opacity: 0.7;
+  opacity: 0.88;
 }
 
 /* ── News items ─────────────────────────────────────────────────────── */
 .ntp-news-title {
   font-size: 13px;
-  font-weight: 500;
-  color: rgba(226,232,248,0.9);
+  font-weight: 600;
+  color: rgba(241, 245, 255, 0.97);
   line-height: 1.45;
   margin-bottom: 4px;
   display: -webkit-box;
@@ -1722,7 +1873,7 @@ body.tabstrip-hidden .tab-strip-show {
   display: flex;
   gap: 8px;
   font-size: 10.5px;
-  color: rgba(226,232,248,0.4);
+  color: rgba(214, 222, 245, 0.68);
 }
 .ntp-news-meta span:not(:last-child)::after { content: '·'; margin-left: 8px; }
 
@@ -1758,7 +1909,7 @@ body.tabstrip-hidden .tab-strip-show {
 /* ── Email item ─────────────────────────────────────────────────── */
 .ntp-email-item {
   padding: 10px 14px 10px 15px;
-  border-bottom: 1px solid rgba(255,255,255,0.045);
+  border-bottom: 1px solid rgba(255,255,255,0.09);
   position: relative;
   cursor: pointer;
   transition: background 0.15s;
@@ -1785,7 +1936,7 @@ body.tabstrip-hidden .tab-strip-show {
 .ntp-email-sender {
   font-size: 12px;
   font-weight: 600;
-  color: rgba(255,255,255,0.55);
+  color: rgba(235, 241, 255, 0.78);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1797,7 +1948,7 @@ body.tabstrip-hidden .tab-strip-show {
 }
 .ntp-email-date {
   font-size: 10.5px;
-  color: rgba(255,255,255,0.3);
+  color: rgba(210, 218, 240, 0.58);
   flex-shrink: 0;
   white-space: nowrap;
 }
@@ -1809,8 +1960,8 @@ body.tabstrip-hidden .tab-strip-show {
 /* Row 2: subject — allow 2 lines so full title is readable */
 .ntp-email-subject {
   font-size: 13px;
-  font-weight: 500;
-  color: rgba(255,255,255,0.55);
+  font-weight: 600;
+  color: rgba(238, 242, 255, 0.86);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -1826,14 +1977,14 @@ body.tabstrip-hidden .tab-strip-show {
 /* Row 3: snippet — one line preview */
 .ntp-email-preview {
   font-size: 11.5px;
-  color: rgba(255,255,255,0.28);
+  color: rgba(200, 210, 235, 0.62);
   line-height: 1.4;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .ntp-email-item.unread .ntp-email-preview {
-  color: rgba(255,255,255,0.42);
+  color: rgba(220, 228, 248, 0.72);
 }
 
 /* "Open Gmail" hint on hover */
@@ -1862,7 +2013,7 @@ body.tabstrip-hidden .tab-strip-show {
 }
 .ntp-email-meta {
   font-size: 10.5px;
-  color: rgba(255,255,255,0.3);
+  color: rgba(200, 210, 235, 0.58);
   margin-top: 2px;
 }
 .ntp-email-draft-btn {
@@ -1907,12 +2058,12 @@ body.tabstrip-hidden .tab-strip-show {
   font-weight: 800;
   letter-spacing: 0.8px;
   text-transform: uppercase;
-  color: rgba(0,216,255,0.65);
+  color: rgba(110, 231, 255, 0.92);
   margin-bottom: 3px;
 }
 .ntp-news-item {
   padding: 9px 14px 9px 13px;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
+  border-bottom: 1px solid rgba(255,255,255,0.085);
   cursor: pointer;
   transition: background 0.12s, border-left-color 0.12s;
   border-left: 3px solid transparent;
@@ -1922,7 +2073,7 @@ body.tabstrip-hidden .tab-strip-show {
   background: rgba(0,212,255,0.05);
   border-left-color: rgba(0,212,255,0.45);
 }
-.ntp-news-item:hover .ntp-news-title { color: #e2e8f8; }
+.ntp-news-item:hover .ntp-news-title { color: #ffffff; }
 
 /* ── AI Brief widget styles ─────────────────────────────────────────────*/
 .ntp-brief-idle {
@@ -1949,8 +2100,8 @@ body.tabstrip-hidden .tab-strip-show {
   to   { transform: rotate(360deg); }
 }
 .ntp-brief-idle p {
-  font-size: 12px;
-  color: rgba(226,232,248,0.45);
+  font-size: 12.5px;
+  color: rgba(236, 242, 255, 0.88);
   line-height: 1.55;
   margin: 0;
   letter-spacing: 0.1px;
@@ -1959,7 +2110,7 @@ body.tabstrip-hidden .tab-strip-show {
   list-style: none;
   padding: 0; margin: 0;
   font-size: 11px;
-  color: rgba(226,232,248,0.3);
+  color: rgba(210, 218, 245, 0.58);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1973,7 +2124,7 @@ body.tabstrip-hidden .tab-strip-show {
   gap: 10px;
   padding: 30px 16px;
   font-size: 12px;
-  color: rgba(226,232,248,0.45);
+  color: rgba(232, 238, 255, 0.85);
 }
 .ntp-brief-spinner {
   width: 22px; height: 22px;
@@ -1991,7 +2142,7 @@ body.tabstrip-hidden .tab-strip-show {
   padding: 14px 16px 18px;
   font-size: 13px;
   line-height: 1.65;
-  color: rgba(210, 218, 240, 0.82);
+  color: rgba(226, 232, 248, 0.92);
 }
 .ntp-brief-content p {
   margin: 0 0 10px;
@@ -2051,7 +2202,7 @@ body.tabstrip-hidden .tab-strip-show {
   padding: 7px 10px !important;
   font-size: 11.5px !important;
   line-height: 1.5 !important;
-  color: rgba(180, 192, 220, 0.65) !important;
+  color: rgba(200, 210, 235, 0.82) !important;
   background: rgba(255, 255, 255, 0.03);
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.055);
@@ -9367,14 +9518,14 @@ button:focus-visible,
   color: rgba(248, 113, 113, 0.9);
 }
 
-/* Subtle broadcast accent (still reads as Navio glass) */
+/* Streams top accent — cyan / violet (red only as a hint, less gloomy) */
 .ntp-widget-live-sports::before {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(248, 113, 113, 0.45) 18%,
-    rgba(0, 216, 255, 0.5) 50%,
-    rgba(124, 58, 237, 0.35) 82%,
+    rgba(0, 216, 255, 0.45) 22%,
+    rgba(96, 165, 250, 0.4) 50%,
+    rgba(124, 58, 237, 0.38) 78%,
     transparent 100%
   );
 }
@@ -9383,9 +9534,9 @@ button:focus-visible,
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(248, 113, 113, 0.65) 15%,
-    rgba(0, 216, 255, 0.65) 50%,
-    rgba(124, 58, 237, 0.5) 85%,
+    rgba(0, 216, 255, 0.65) 18%,
+    rgba(96, 165, 250, 0.55) 50%,
+    rgba(124, 58, 237, 0.48) 82%,
     transparent 100%
   );
 }
@@ -9395,11 +9546,225 @@ button:focus-visible,
   min-height: 0;
 }
 .ntp-widget-live-sports .ntp-widget-body.ntp-live-sports-body {
+  position: relative;
+  z-index: 1;
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  /* Tight inset so the glass panel uses more of the widget (less empty ring) */
+  margin: 0 4px 4px;
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(56, 100, 150, 0.22) 0%, transparent 45%),
+    linear-gradient(165deg, rgba(38, 48, 72, 0.92), rgba(28, 36, 58, 0.96));
+  border: 1px solid rgba(100, 175, 240, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.11),
+    inset 0 -20px 40px rgba(0, 30, 60, 0.12),
+    0 8px 26px rgba(0, 25, 55, 0.22);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.ntp-widget-live-sports:hover .ntp-widget-body.ntp-live-sports-body {
+  border-color: rgba(0, 212, 255, 0.32);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -20px 48px rgba(0, 40, 80, 0.14),
+    0 10px 32px rgba(0, 40, 90, 0.28);
+}
+
+/* Streams header — cool slate (less “gloomy broadcast” red wash) */
+.ntp-widget-live-sports .ntp-live-sports-widget-header {
+  background: linear-gradient(90deg, rgba(55, 95, 150, 0.16), rgba(255, 255, 255, 0.04));
+  border-bottom-color: rgba(100, 165, 230, 0.22);
+  padding: 7px 12px !important;
+}
+
+/* High-contrast labels inside Streams (Feeds / Events sit on a dark broadcast wash) */
+.ntp-widget-live-sports .ntp-live-sports-toolbar-kicker {
+  color: rgba(255, 236, 240, 0.98);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+.ntp-widget-live-sports .ntp-live-sports-toolbar-txt {
+  color: rgba(220, 230, 248, 0.86) !important;
+  opacity: 1 !important;
+}
+.ntp-widget-live-sports .ntp-live-sports-toolbar--subtle .ntp-live-sports-toolbar-kicker {
+  color: rgba(230, 236, 255, 0.92);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+.ntp-widget-live-sports .ntp-live-sport-row {
+  color: #f8fafc;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.ntp-widget-live-sports .ntp-live-sport-chip {
+  color: rgba(255, 255, 255, 0.95);
+  border-color: rgba(251, 146, 60, 0.55);
+  background: rgba(249, 115, 22, 0.14);
+}
+.ntp-widget-live-sports .ntp-live-sports-context {
+  color: rgba(248, 250, 255, 0.94);
+}
+.ntp-widget-live-sports .ntp-live-match-title {
+  color: rgba(248, 250, 255, 0.98);
+  font-size: 11.5px;
+  line-height: 1.22;
+  -webkit-line-clamp: 3;
+}
+.ntp-widget-live-sports .ntp-live-match-meta {
+  color: rgba(200, 210, 235, 0.78);
+}
+.ntp-widget-live-sports .ntp-live-match-cta {
+  color: rgba(186, 200, 230, 0.75);
+}
+
+/* Feeds / Events — one horizontal band (saves vertical space vs stacked kicker + line) */
+.ntp-widget-live-sports .ntp-live-sports-toolbar {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 2px 6px 0;
+  padding: 4px 8px 5px !important;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(130, 175, 230, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.ntp-widget-live-sports .ntp-live-sports-toolbar--subtle .ntp-live-sports-toolbar-txt {
+  opacity: 1 !important;
+}
+
+/* Sport tiles: rows share leftover height so cells aren’t short strips in a shallow card */
+.ntp-widget-live-sports .ntp-live-sports-list {
+  gap: 5px;
+  padding: 2px 8px 4px;
+  grid-auto-rows: minmax(38px, 1fr);
+  align-content: stretch;
+}
+
+.ntp-widget-live-sports .ntp-live-sport-row {
+  padding: 8px 10px 8px 11px;
+  border-radius: 8px;
+  min-height: 0;
+  height: 100%;
+  align-self: stretch;
+  border: 1px solid rgba(130, 175, 235, 0.24);
+  border-left: 3px solid rgba(56, 189, 248, 0.5);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.03));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.ntp-widget-live-sports .ntp-live-sport-row:hover {
+  background: linear-gradient(145deg, rgba(0, 212, 255, 0.14), rgba(124, 58, 237, 0.08));
+  border-color: rgba(0, 212, 255, 0.35);
+  border-left-color: rgba(0, 212, 255, 0.95);
+}
+
+.ntp-widget-live-sports .ntp-live-sport-row:focus-visible {
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 216, 255, 0.35),
+    0 0 0 2px rgba(0, 212, 255, 0.2);
+}
+
+.ntp-widget-live-sports .ntp-live-sport-row-go {
+  border-top-color: rgba(186, 210, 245, 0.65);
+  border-right-color: rgba(186, 210, 245, 0.65);
+  opacity: 0.8;
+}
+
+.ntp-widget-live-sports .ntp-live-sport-row:hover .ntp-live-sport-row-go {
+  opacity: 1;
+  border-top-color: rgba(0, 216, 255, 0.85);
+  border-right-color: rgba(0, 216, 255, 0.85);
+}
+
+.ntp-widget-live-sports .ntp-live-sports-foot {
+  color: rgba(186, 200, 230, 0.78);
+  border-top-color: rgba(255, 255, 255, 0.08);
+  padding: 2px 8px 0 !important;
+  margin-top: 0 !important;
+  font-size: 8.5px;
+  line-height: 1.25;
+}
+
+/* Live games: 2-up tile grid (more visible in a short widget than a single-column list) */
+.ntp-widget-live-sports .ntp-live-matches {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 2px 6px 4px;
+  align-content: start;
+}
+
+.ntp-widget-live-sports .ntp-live-match-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  width: auto;
+  min-width: 0;
+  min-height: 78px;
+  padding: 9px 10px 7px;
+  gap: 6px;
+  border: 1px solid rgba(130, 175, 235, 0.22);
+  border-left: 3px solid rgba(56, 189, 248, 0.5);
+  border-radius: 10px;
+  background: linear-gradient(148deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  text-align: left;
+}
+
+.ntp-widget-live-sports .ntp-live-match-row:hover {
+  background: linear-gradient(148deg, rgba(0, 212, 255, 0.12), rgba(124, 58, 237, 0.06));
+  border-color: rgba(0, 212, 255, 0.35);
+  border-left-color: rgba(0, 212, 255, 0.85);
+}
+
+.ntp-widget-live-sports .ntp-live-match-row--live {
+  border-left-color: rgba(248, 113, 113, 0.55);
+  background: linear-gradient(148deg, rgba(248, 113, 113, 0.08), rgba(255, 255, 255, 0.02));
+}
+
+.ntp-widget-live-sports .ntp-live-match-row--live:hover {
+  border-left-color: rgba(248, 113, 113, 0.9);
+  background: linear-gradient(148deg, rgba(248, 113, 113, 0.12), rgba(124, 58, 237, 0.05));
+}
+
+.ntp-widget-live-sports .ntp-live-match-row-inner {
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 3px;
+}
+
+.ntp-widget-live-sports .ntp-live-match-cta {
+  margin-top: auto;
+  align-self: stretch;
+  text-align: center;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 7px;
+}
+
+.ntp-widget-live-sports .ntp-live-sports-body {
+  gap: 3px;
+  padding: 2px 0 3px !important;
+}
+
+.ntp-widget-live-sports .ntp-live-sports-nav {
+  padding: 1px 10px 0;
+}
+
+.ntp-widget-live-sports .ntp-live-sports-back {
+  color: rgba(200, 220, 248, 0.92);
+  border-bottom-color: rgba(0, 216, 255, 0.35);
+}
+
+.ntp-widget-live-sports .ntp-live-sports-empty {
+  color: rgba(210, 220, 245, 0.85);
 }
 
 .ntp-live-sports-widget-header {
@@ -9488,7 +9853,7 @@ button:focus-visible,
   font-weight: 800;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: rgba(0, 216, 255, 0.55);
+  color: rgba(120, 230, 255, 0.92);
   line-height: 1.2;
 }
 
@@ -9500,7 +9865,7 @@ button:focus-visible,
 }
 
 .ntp-live-sports-toolbar--subtle .ntp-live-sports-toolbar-kicker {
-  color: rgba(148, 163, 184, 0.65);
+  color: rgba(200, 210, 235, 0.88);
 }
 
 .ntp-live-sports-toolbar--subtle .ntp-live-sports-toolbar-txt {
@@ -9528,7 +9893,7 @@ button:focus-visible,
   font-weight: 500;
   letter-spacing: 0.02em;
   line-height: 1.25;
-  color: var(--text-tertiary, rgba(148, 163, 184, 0.92));
+  color: var(--text-tertiary, rgba(200, 210, 235, 0.88));
   text-transform: none;
 }
 
@@ -9802,7 +10167,7 @@ button:focus-visible,
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(148, 163, 184, 0.55);
+  color: rgba(186, 200, 230, 0.72);
   transition: color 0.14s ease;
 }
 
@@ -9867,6 +10232,22 @@ button:focus-visible,
 [data-theme="light"] .ntp-live-match-row--live:hover {
   background: rgba(220, 38, 38, 0.06);
   border-left-color: rgba(220, 38, 38, 0.65);
+}
+
+[data-theme="light"] .ntp-widget-live-sports .ntp-live-match-row {
+  border-color: rgba(100, 130, 180, 0.35);
+  background: linear-gradient(148deg, rgba(255, 255, 255, 0.95), rgba(241, 245, 249, 0.98));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+[data-theme="light"] .ntp-widget-live-sports .ntp-live-match-row:hover {
+  background: rgba(0, 212, 255, 0.1);
+  border-color: rgba(14, 165, 233, 0.4);
+}
+
+.ntp-widget-live-sports .ntp-live-matches > .ntp-widget-empty,
+.ntp-widget-live-sports .ntp-live-matches > .ntp-live-sports-empty {
+  grid-column: 1 / -1;
 }
 
 /* ── @Tab Mention Picker ─────────────────────────────────────────────────── */
