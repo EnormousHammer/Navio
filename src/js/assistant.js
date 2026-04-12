@@ -1367,6 +1367,7 @@ class AssistantManagerClass {
         pressKey: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h8"/></svg>`,
         screenshot: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
         gmailCreateReplyDraft: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`,
+        gmailUpdateDraft: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
         wait: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
         waitForText: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="14" y2="11"/></svg>`,
         select: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 3 7-7"/></svg>`,
@@ -1383,6 +1384,7 @@ class AssistantManagerClass {
         pressKey: 'Key',
         screenshot: 'Screenshot',
         gmailCreateReplyDraft: 'Gmail reply draft',
+        gmailUpdateDraft: 'Update Gmail draft',
         wait: 'Wait',
         waitForText: 'Wait for text',
         select: 'Select option',
@@ -1406,9 +1408,23 @@ class AssistantManagerClass {
                 <span class="gdc-to">To: <strong>${safeTo}</strong></span>
                 <span class="gdc-subject">${safeSubj}</span>
               </div>
-              <span class="gdc-badge">Draft</span>
+              <span class="gdc-draft-pill" hidden aria-hidden="true"></span>
+              <span class="gdc-badge">Ready</span>
             </div>
-            <textarea class="gdc-body" readonly>${safeBody}</textarea>
+            <div class="gdc-body-wrap">
+              <textarea class="gdc-body" readonly spellcheck="true" rows="6">${safeBody}</textarea>
+            </div>
+            <div class="gdc-toolbar">
+              <button class="gdc-tool gdc-copy" type="button" title="Copy body">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                Copy
+              </button>
+              <button class="gdc-tool gdc-open" type="button" title="Open Drafts in Gmail">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                Gmail
+              </button>
+              <button class="gdc-tool gdc-toggle" type="button" aria-expanded="true" title="Compact or full height">Compact</button>
+            </div>
             <div class="gdc-actions">
               <button class="gdc-btn gdc-btn-send" type="button">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Send
@@ -1482,6 +1498,8 @@ class AssistantManagerClass {
             } catch (_) {
               paramDisplay = 'Gmail message + body';
             }
+          } else if (type === 'gmailUpdateDraft') {
+            paramDisplay = 'Save draft body';
           } else if (type === 'insertText') {
             paramDisplay = params.length > 80 ? params.slice(0, 77) + '…' : params;
           }
@@ -1825,7 +1843,8 @@ class AssistantManagerClass {
         presskey: 'pressKey',
         waitfortext: 'waitForText',
         appendtext: 'appendText',
-        gmailcreatereplydraft: 'gmailCreateReplyDraft'
+        gmailcreatereplydraft: 'gmailCreateReplyDraft',
+        gmailupdatedraft: 'gmailUpdateDraft'
       };
       const type = map[low] || raw;
       return `[[ACTION:${type}:${params}]]`;
@@ -2055,17 +2074,95 @@ class AssistantManagerClass {
   }
 
   async _wireActions(contentEl) {
+    // ── Gmail draft cards — bundle multiple drafts in one reply for scanning ─
+    const draftCards = [...contentEl.querySelectorAll('.gmail-draft-card')];
+    if (draftCards.length > 1) {
+      const first = draftCards[0];
+      const parent = first.parentNode;
+      if (parent) {
+        const bundle = document.createElement('div');
+        bundle.className = 'gmail-drafts-bundle';
+        bundle.innerHTML =
+          '<div class="gdb-head">' +
+          '<span class="gdb-title">Reply drafts</span>' +
+          `<span class="gdb-count">${draftCards.length}</span>` +
+          '</div>';
+        parent.insertBefore(bundle, first);
+        draftCards.forEach((c, i) => {
+          const pill = c.querySelector('.gdc-draft-pill');
+          if (pill) {
+            pill.textContent = `${i + 1} / ${draftCards.length}`;
+            pill.hidden = false;
+          }
+          bundle.appendChild(c);
+        });
+      }
+    }
+
     // ── Gmail draft cards ─────────────────────────────────────────────────
     contentEl.querySelectorAll('.gmail-draft-card').forEach(card => {
       const draftId = card.dataset.draftId;
       const textarea = card.querySelector('.gdc-body');
+      const bodyWrap = card.querySelector('.gdc-body-wrap');
+      if (textarea) textarea.dataset.initialBody = textarea.value;
 
-      // Edit — toggle textarea editable
-      card.querySelector('.gdc-btn-edit')?.addEventListener('click', () => {
+      card.querySelector('.gdc-copy')?.addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        try {
+          await navigator.clipboard.writeText(textarea.value);
+          const prev = btn.innerHTML;
+          btn.innerHTML =
+            '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Copied';
+          setTimeout(() => { btn.innerHTML = prev; }, 1600);
+        } catch { /* ignore */ }
+      });
+
+      card.querySelector('.gdc-open')?.addEventListener('click', () => {
+        const url = 'https://mail.google.com/mail/u/0/#drafts';
+        if (typeof TabManager !== 'undefined' && typeof TabManager.createTab === 'function') {
+          TabManager.createTab(url);
+        } else {
+          window.open(url, '_blank');
+        }
+      });
+
+      const toggleBtn = card.querySelector('.gdc-toggle');
+      toggleBtn?.addEventListener('click', () => {
+        if (!bodyWrap) return;
+        const collapsed = bodyWrap.classList.toggle('gdc-body-wrap--collapsed');
+        toggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        toggleBtn.textContent = collapsed ? 'Full view' : 'Compact';
+      });
+
+      // Edit — toggle textarea editable; sync to Gmail when leaving edit mode
+      card.querySelector('.gdc-btn-edit')?.addEventListener('click', async () => {
         const isEditing = !textarea.readOnly;
         if (isEditing) {
+          const body = textarea.value;
+          const initial = textarea.dataset.initialBody ?? '';
+          const editBtn = card.querySelector('.gdc-btn-edit');
+          if (body !== initial && draftId && typeof window.navio.gmailUpdateDraft === 'function') {
+            if (editBtn) {
+              editBtn.disabled = true;
+              editBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>Saving…';
+            }
+            try {
+              const up = await window.navio.gmailUpdateDraft({ draftId, body });
+              if (up?.error) {
+                if (typeof _showAppToast === 'function') _showAppToast(up.error, 'error');
+              } else {
+                textarea.dataset.initialBody = body;
+                if (typeof _showAppToast === 'function') {
+                  _showAppToast('Draft updated in Gmail', 'success');
+                }
+              }
+            } catch { /* ignore */ }
+            if (editBtn) editBtn.disabled = false;
+          }
           textarea.readOnly = true;
-          card.querySelector('.gdc-btn-edit').innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit';
+          if (editBtn) {
+            editBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit';
+          }
           card.classList.remove('gdc-editing');
         } else {
           textarea.readOnly = false;
@@ -2075,28 +2172,51 @@ class AssistantManagerClass {
         }
       });
 
-      // Send
+      // Send — sync edited body to Gmail before sending
       card.querySelector('.gdc-btn-send')?.addEventListener('click', async (e) => {
         const btn = e.currentTarget;
         if (!draftId) { btn.textContent = '⚠ No draft ID'; return; }
         btn.disabled = true;
-        btn.textContent = 'Sending…';
+        const body = textarea.value;
+        const initial = textarea.dataset.initialBody ?? '';
+        const needsSync = body !== initial && typeof window.navio.gmailUpdateDraft === 'function';
         try {
+          if (needsSync) {
+            btn.textContent = 'Saving…';
+            const up = await window.navio.gmailUpdateDraft({ draftId, body });
+            if (up?.error) {
+              btn.disabled = false;
+              btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Send';
+              if (typeof _showAppToast === 'function') {
+                _showAppToast(up.error, 'error');
+              }
+              return;
+            }
+            textarea.dataset.initialBody = body;
+          }
+          btn.textContent = 'Sending…';
           const result = await window.navio.gmailSendDraft(draftId);
           if (result?.success) {
             card.classList.add('gdc-sent');
+            const badge = card.querySelector('.gdc-badge');
+            if (badge) badge.textContent = 'Sent';
             card.querySelector('.gdc-actions').innerHTML = '<span class="gdc-status-sent"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>Sent</span>';
           } else {
             btn.disabled = false;
             btn.textContent = '⚠ Failed';
             setTimeout(() => { btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Send'; }, 2000);
           }
-        } catch { btn.disabled = false; btn.textContent = '⚠ Error'; }
+        } catch {
+          btn.disabled = false;
+          btn.textContent = '⚠ Error';
+        }
       });
 
       // Keep — collapse body, show "saved in Drafts" state
       card.querySelector('.gdc-btn-keep')?.addEventListener('click', () => {
         card.classList.add('gdc-kept');
+        const badge = card.querySelector('.gdc-badge');
+        if (badge) badge.textContent = 'In Drafts';
         card.querySelector('.gdc-actions').innerHTML = '<span class="gdc-status-kept"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v14a2 2 0 0 1-2 2z"/></svg>Saved in Drafts</span>';
       });
 
@@ -2108,6 +2228,8 @@ class AssistantManagerClass {
         try {
           if (draftId) await window.navio.gmailDeleteDraft(draftId);
           card.classList.add('gdc-discarded');
+          const badge = card.querySelector('.gdc-badge');
+          if (badge) badge.textContent = 'Discarded';
           card.querySelector('.gdc-actions').innerHTML = '<span class="gdc-status-discarded">Discarded</span>';
         } catch { btn.disabled = false; btn.textContent = 'Discard'; }
       });

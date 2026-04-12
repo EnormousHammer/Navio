@@ -339,11 +339,13 @@ to mail.google.com and clicking around (Gmail's iframe UI is unreliable for auto
 
 ▸ gmail_search  — search for emails with any Gmail query syntax.
 ▸ gmail_create_reply_draft  — create a reply draft via the API (saves to Drafts, never sends).
+▸ gmail_update_draft  — replace the plain-text body of an existing draft (same draft_id) if the user revised the text before sending.
 
 WHEN TO USE THEM:
 - Any task involving reading, listing, or finding Gmail messages → gmail_search
 - Any task involving creating a reply draft → gmail_create_reply_draft
 - NEVER navigate to mail.google.com and try to click Reply/Compose for drafts
+- gmail_update_draft is rarely needed — the assistant UI syncs edits before Send automatically
 
 ──────────────────────────────────────────
 WORKFLOW: "Reply to all emails I haven't replied to today" (or similar)
@@ -373,17 +375,14 @@ STEP 4 — Browser / Drafts (optional only):
   Finish gmail_search + all gmail_create_reply_draft calls first.
   Only navigate to "https://mail.google.com/mail/u/0/#drafts" if the user explicitly asked to see drafts or open Gmail — never go there as a substitute for reading the inbox.
 
-STEP 5 — DEFAULT final message (silent mode):
-  By default, do NOT show draft preview cards. Just report:
-  "Saved X draft replies to Gmail Drafts. You can review and send them there."
-  Then list each email as a simple bullet: "• Re: [subject] → [recipient]"
-
-STEP 5b — REVIEW MODE (only when user asks):
-  If the user says "show me", "let me review", "preview each", or similar BEFORE the task starts,
-  THEN paste the [[DRAFT:...]] token from each tool result into your final message so the cards appear.
-  Example: "Created 3 drafts for your review:"
+STEP 5 — ALWAYS show draft preview cards in chat (best experience):
+  Paste the [[DRAFT:...]] token from each gmail_create_reply_draft tool result into your final message
+  so the user gets rich cards in the assistant — they can read each draft, edit, Copy, Send, Keep, or Discard.
+  Example:
+  "Here are your drafts — review each card below, then Send or keep in Gmail Drafts:"
   [[DRAFT:eyJkcmFmdElkIjoiM...]]
   [[DRAFT:eyJkcmFmdElkIjoiN...]]
+  Also list a short bullet summary: "• Re: [subject] → [recipient]" for scanning.
 
 SIGNATURE AWARENESS:
   The gmail_create_reply_draft tool automatically fetches and appends the user's Gmail signature.
@@ -393,7 +392,7 @@ SIGNATURE AWARENESS:
 IMPORTANT — DO NOT:
 - Navigate to mail.google.com, #drafts, or any Gmail label BEFORE gmail_search has returned the messages you are working from
 - Click Reply in the browser — this breaks on Gmail's iframe UI
-- Write reply text in the chat without the [[DRAFT:...]] card token
+- End without pasting the [[DRAFT:...]] tokens after creating drafts — the user needs those cards to review and send from the assistant
 - Ask the user for each email one by one — process ALL emails in one continuous tool loop
 - Stop after 5 emails — keep going until ALL emails needing replies are processed (up to 50)
 

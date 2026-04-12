@@ -428,6 +428,21 @@ const NAVIO_TOOLS = [
   },
 
   {
+    name: 'gmail_update_draft',
+    description:
+      'Update the plain-text body of an existing Gmail draft (same draft ID from gmail_create_reply_draft). ' +
+      'Use when the user revised the draft text in chat before sending. Preserves reply threading headers.',
+    parameters: {
+      type: 'object',
+      properties: {
+        draft_id: { type: 'string', description: 'Gmail draft ID to update.' },
+        body: { type: 'string', description: 'New full plain-text body for the draft.' }
+      },
+      required: ['draft_id', 'body']
+    }
+  },
+
+  {
     name: 'gmail_create_reply_draft',
     description:
       'Create a reply draft for a Gmail message via the Gmail API. The draft is saved in Gmail Drafts ' +

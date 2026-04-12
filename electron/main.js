@@ -1953,6 +1953,16 @@ const toolExecutors = {
     }
   },
 
+  async gmail_update_draft(_wc, args) {
+    try {
+      const draftId = (args.draft_id || '').trim();
+      const body = args.body || '';
+      return await gmailUpdateDraftApi(draftId, body);
+    } catch (e) {
+      return { error: 'gmail_update_draft failed: ' + e.message };
+    }
+  },
+
   async gmail_search(_wc, args) {
     try {
       const token = await getValidOAuthToken('google');
@@ -4701,6 +4711,71 @@ function parseEmailAddressFromHeader(fromVal) {
   return m2 ? m2[0] : fromVal.trim();
 }
 
+/**
+ * Rewrite an existing Gmail draft's plain-text body (same threading headers).
+ * Used when the user edits the draft in the assistant before Send.
+ */
+async function gmailUpdateDraftApi(draftId, bodyText) {
+  const token = await getValidOAuthToken('google');
+  if (!token) return { error: 'not_signed_in' };
+  const id = (draftId || '').trim();
+  if (!id) return { error: 'draft_id is required.' };
+  const text = (bodyText || '').trim();
+  if (!text) return { error: 'body is empty.' };
+
+  const getRes = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/drafts/${encodeURIComponent(id)}?format=full`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const draft = await getRes.json();
+  if (!getRes.ok) {
+    return { error: draft.error?.message || 'Could not load draft.' };
+  }
+
+  const headers = draft.message?.payload?.headers || [];
+  const get = (name) =>
+    headers.find((h) => h.name && h.name.toLowerCase() === name.toLowerCase())?.value || '';
+
+  const toAddr = get('To');
+  const subject = get('Subject');
+  const inReplyTo = get('In-Reply-To');
+  const references = get('References');
+
+  if (!toAddr) return { error: 'Draft is missing a To: header.' };
+
+  const mimeLines = [
+    `To: ${toAddr}`,
+    `Subject: ${subject || '(no subject)'}`,
+    inReplyTo ? `In-Reply-To: ${inReplyTo}` : '',
+    references ? `References: ${references}` : '',
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    text.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')
+  ].filter((line) => line !== '');
+  const mime = mimeLines.join('\r\n');
+  const raw = gmailBase64UrlEncode(mime);
+  const threadId = draft.message?.threadId;
+
+  const updateRes = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/drafts/${encodeURIComponent(id)}`,
+    {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id,
+        message: threadId ? { raw, threadId } : { raw }
+      })
+    }
+  );
+  const upd = await updateRes.json();
+  if (!updateRes.ok) {
+    return { error: upd.error?.message || 'Failed to update draft.' };
+  }
+  return { success: true, draftId: id };
+}
+
 // ── Gmail API: send a draft ────────────────────────────────────────────────
 ipcMain.handle('gmail-send-draft', async (_, { draftId }) => {
   try {
@@ -4715,6 +4790,15 @@ ipcMain.handle('gmail-send-draft', async (_, { draftId }) => {
     if (!res.ok) return { error: data.error?.message || 'Failed to send draft.' };
     return { success: true, messageId: data.id };
   } catch (e) { return { error: e.message }; }
+});
+
+// ── Gmail API: update draft body (assistant edits before send) ─────────────
+ipcMain.handle('gmail-update-draft', async (_, { draftId, body }) => {
+  try {
+    return await gmailUpdateDraftApi(draftId, body);
+  } catch (e) {
+    return { error: e.message };
+  }
 });
 
 // ── Gmail API: delete a draft ──────────────────────────────────────────────

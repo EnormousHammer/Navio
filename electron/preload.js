@@ -149,6 +149,7 @@ contextBridge.exposeInMainWorld('navio', {
 
   // OAuth 2.0 — "Sign in with Google / Microsoft / etc." flow
   gmailSendDraft: (draftId) => ipcRenderer.invoke('gmail-send-draft', { draftId }),
+  gmailUpdateDraft: (payload) => ipcRenderer.invoke('gmail-update-draft', payload),
   gmailDeleteDraft: (draftId) => ipcRenderer.invoke('gmail-delete-draft', { draftId }),
   oauthConnect: (providerId) => ipcRenderer.invoke('oauth-connect', { providerId }),
   oauthDisconnect: (providerId) => ipcRenderer.invoke('oauth-disconnect', { providerId }),
