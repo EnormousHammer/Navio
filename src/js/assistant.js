@@ -48,6 +48,49 @@ function navioDetectPageFocusIntent(text) {
   );
 }
 
+/** Same logic as main process — fix UTF-8 mojibake in draft bodies before display/send. */
+function navioRepairUtf8Mojibake(s) {
+  if (!s || typeof s !== 'string') return s;
+  if (!/[ÃÂâ]/.test(s) && !/[\u0080-\u009F]{2}/.test(s)) return s;
+  let allByte = true;
+  for (let i = 0; i < s.length; i++) {
+    if (s.charCodeAt(i) > 255) {
+      allByte = false;
+      break;
+    }
+  }
+  let t = s;
+  if (allByte) {
+    try {
+      const u8 = new Uint8Array(t.length);
+      for (let i = 0; i < t.length; i++) u8[i] = t.charCodeAt(i);
+      const repaired = new TextDecoder('utf-8', { fatal: false }).decode(u8);
+      const ffd = (repaired.match(/\uFFFD/g) || []).length;
+      if (ffd <= Math.max(1, Math.ceil(t.length / 35))) {
+        const noise = (x) => (x.match(/[ÃÂâ]|[\u0080-\u009F]/g) || []).length;
+        if (noise(repaired) < noise(s) || repaired.length < s.length - 2) t = repaired;
+      }
+    } catch {
+      /* keep t */
+    }
+  }
+  t = t
+    .replace(/\u00E2\u0080\u0099/g, '\u2019')
+    .replace(/\u00E2\u0080\u0098/g, '\u2018')
+    .replace(/\u00E2\u0080\u009C/g, '\u201C')
+    .replace(/\u00E2\u0080\u009D/g, '\u201D')
+    .replace(/\u00E2\u0080\u0094/g, '\u2014')
+    .replace(/\u00E2\u0080\u00A6/g, '\u2026')
+    .replace(/\u2019\u2019/g, '\u2019')
+    .replace(/\u2018\u2018/g, '\u2018')
+    .replace(/â€™/g, '\u2019')
+    .replace(/â€œ/g, '\u201C')
+    .replace(/â€/g, '\u201D')
+    .replace(/â€"/g, '\u2014')
+    .replace(/â€¦/g, '\u2026');
+  return t;
+}
+
 class AssistantManagerClass {
   constructor() {
     this.panel = document.getElementById('assistant-panel');
@@ -1415,7 +1458,8 @@ class AssistantManagerClass {
         if (type === 'GMAIL_DRAFT') {
           let d = {};
           try { d = JSON.parse(atob(params)); } catch { d = {}; }
-          const safeBody = (d.body || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          const safeBody = navioRepairUtf8Mojibake(d.body || '')
+            .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
           const safeTo = (d.to || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
           const safeSubj = (d.subject || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
           card = `<div class="gmail-draft-card" data-draft-id="${d.draftId || ''}" data-to="${d.to||''}" data-subject="${d.subject||''}">

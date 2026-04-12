@@ -1995,30 +1995,11 @@ const toolExecutors = {
       const mid = (args.message_id || '').trim();
       if (!mid) return { error: 'message_id is required.' };
 
-      let bodyText = (args.body || '').trim();
+      let bodyText = navioRepairUtf8Mojibake((args.body || '').trim());
       if (!bodyText) return { error: 'body is required.' };
 
-      // Fetch user's Gmail signature and append if present (API drafts don't auto-add it)
-      let signature = '';
-      try {
-        const sendAsResp = await fetch(
-          'https://gmail.googleapis.com/gmail/v1/users/me/settings/sendAs',
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        if (sendAsResp.ok) {
-          const sendAsData = await sendAsResp.json();
-          const primary = (sendAsData.sendAs || []).find(s => s.isDefault) || sendAsData.sendAs?.[0];
-          if (primary?.signature) {
-            // Strip HTML tags from signature to get plain text
-            signature = primary.signature.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
-          }
-        }
-      } catch { /* signature fetch is best-effort */ }
-
-      // Only append signature if it's not already in the body
-      const text = (signature && !bodyText.includes(signature))
-        ? `${bodyText}\n\n--\n${signature}`
-        : bodyText;
+      // Body only — Gmail adds the user's compose signature when they open/send from Gmail.
+      const text = bodyText;
 
       const r = await fetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(mid)}?format=full`,
@@ -4695,6 +4676,52 @@ ipcMain.handle('gmail-get-message-body', async (_, { id }) => {
   } catch (e) { return { error: e.message }; }
 });
 
+/**
+ * Fix UTF-8 text that was mis-decoded as Latin-1/byte code units (mojibake), e.g.
+ * "We'll" as We + U+00E2 U+0080 U+0099 + ll, or "×" as U+00C3 U+0097.
+ */
+function navioRepairUtf8Mojibake(s) {
+  if (!s || typeof s !== 'string') return s;
+  if (!/[ÃÂâ]/.test(s) && !/[\u0080-\u009F]{2}/.test(s)) return s;
+  let allByte = true;
+  for (let i = 0; i < s.length; i++) {
+    if (s.charCodeAt(i) > 255) {
+      allByte = false;
+      break;
+    }
+  }
+  let t = s;
+  if (allByte) {
+    try {
+      const buf = Buffer.allocUnsafe(t.length);
+      for (let i = 0; i < t.length; i++) buf[i] = t.charCodeAt(i);
+      const repaired = buf.toString('utf8');
+      const ffd = (repaired.match(/\uFFFD/g) || []).length;
+      if (ffd <= Math.max(1, Math.ceil(t.length / 35))) {
+        const noise = (x) => (x.match(/[ÃÂâ]|[\u0080-\u009F]/g) || []).length;
+        if (noise(repaired) < noise(s) || repaired.length < s.length - 2) t = repaired;
+      }
+    } catch {
+      /* keep t */
+    }
+  }
+  t = t
+    .replace(/\u00E2\u0080\u0099/g, '\u2019')
+    .replace(/\u00E2\u0080\u0098/g, '\u2018')
+    .replace(/\u00E2\u0080\u009C/g, '\u201C')
+    .replace(/\u00E2\u0080\u009D/g, '\u201D')
+    .replace(/\u00E2\u0080\u0094/g, '\u2014')
+    .replace(/\u00E2\u0080\u00A6/g, '\u2026')
+    .replace(/\u2019\u2019/g, '\u2019')
+    .replace(/\u2018\u2018/g, '\u2018')
+    .replace(/â€™/g, '\u2019')
+    .replace(/â€œ/g, '\u201C')
+    .replace(/â€/g, '\u201D')
+    .replace(/â€"/g, '\u2014')
+    .replace(/â€¦/g, '\u2026');
+  return t;
+}
+
 function gmailBase64UrlEncode(str) {
   return Buffer.from(str, 'utf8')
     .toString('base64')
@@ -4720,7 +4747,7 @@ async function gmailUpdateDraftApi(draftId, bodyText) {
   if (!token) return { error: 'not_signed_in' };
   const id = (draftId || '').trim();
   if (!id) return { error: 'draft_id is required.' };
-  const text = (bodyText || '').trim();
+  const text = navioRepairUtf8Mojibake((bodyText || '').trim());
   if (!text) return { error: 'body is empty.' };
 
   const getRes = await fetch(
@@ -4825,7 +4852,7 @@ ipcMain.handle('gmail-create-reply-draft', async (_, { messageId, body: replyBod
     const mid = (messageId || '').trim();
     if (!mid) return { error: 'Missing Gmail message id' };
 
-    const text = (replyBody || '').trim();
+    const text = navioRepairUtf8Mojibake((replyBody || '').trim());
     if (!text) return { error: 'Empty reply body' };
 
     const r = await fetch(
