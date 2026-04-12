@@ -301,19 +301,56 @@
     });
   }
 
-  // ── NTP + Assistant starter prompt chips ─────────────────────────────────
-  document.querySelectorAll('.ntp-ai-suggestion, .assistant-starter-chip').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const prompt = btn.dataset.prompt;
-      if (!prompt) return;
-      if (typeof AssistantManager !== 'undefined') {
-        AssistantManager.open();
-        AssistantManager.inputEl.value = prompt;
-        AssistantManager.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-        AssistantManager.inputEl.focus();
-      }
+  // ── NTP + Assistant starter sections (category → 4 options, option sends immediately)
+  function runStarterPrompt(prompt) {
+    if (!prompt || typeof AssistantManager === 'undefined') return;
+    AssistantManager.open();
+    AssistantManager.inputEl.value = prompt;
+    AssistantManager.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+    setTimeout(() => {
+      AssistantManager.sendMessage();
+    }, 0);
+  }
+
+  /** Two-step starter: four category pills swap in place to one group of four options + Back (NTP + assistant). */
+  function wireAiStarterHost(host) {
+    const catFace = host.querySelector('.ai-starter-face--categories');
+    const optFace = host.querySelector('.ai-starter-face--options');
+    const back = host.querySelector('.ai-starter-back');
+    if (!catFace || !optFace || !back) return;
+
+    const groups = host.querySelectorAll('.ai-starter-group');
+
+    const showCategories = () => {
+      optFace.hidden = true;
+      catFace.hidden = false;
+      host.classList.remove('ai-starter-host--detail');
+      groups.forEach((p) => { p.hidden = true; });
+    };
+
+    const showGroup = (g) => {
+      if (!g) return;
+      catFace.hidden = true;
+      optFace.hidden = false;
+      host.classList.add('ai-starter-host--detail');
+      groups.forEach((p) => {
+        p.hidden = p.dataset.starterGroup !== g;
+      });
+    };
+
+    host.querySelectorAll('.ai-starter-cat[data-starter-group]').forEach((btn) => {
+      btn.addEventListener('click', () => showGroup(btn.dataset.starterGroup));
     });
-  });
+    back.addEventListener('click', showCategories);
+    optFace.querySelectorAll('.ai-starter-option[data-prompt]').forEach((opt) => {
+      opt.addEventListener('click', () => {
+        runStarterPrompt(opt.dataset.prompt);
+        showCategories();
+      });
+    });
+  }
+
+  document.querySelectorAll('.ai-starter-host').forEach(wireAiStarterHost);
 
   // ── In-Line Writing Assist ────────────────────────────────────────────────
   let writeAssistEl = null;

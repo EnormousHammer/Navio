@@ -35,6 +35,8 @@ const DEFAULT_CONFIG = {
   readingModeFontScale: 1,
   formAutofillAssist: true,
   onboardingComplete: false,
+  /** When false, startup skips the full-screen intro video (after first dismiss or Settings). */
+  showLaunchIntro: true,
   userName: '',
   lastProactiveSuggestionAt: 0,
   showBookmarkBar: true,
@@ -93,6 +95,14 @@ function loadConfig() {
   }
 
   const merged = { ...DEFAULT_CONFIG, ...file };
+  // Existing installs: don't force the intro again for users who already finished onboarding
+  // before this flag existed (new installs still get DEFAULT_CONFIG.showLaunchIntro true).
+  if (
+    merged.onboardingComplete === true &&
+    !Object.prototype.hasOwnProperty.call(file, 'showLaunchIntro')
+  ) {
+    merged.showLaunchIntro = false;
+  }
   if (merged.aiDataScope === undefined || merged.aiDataScope === null) {
     merged.aiDataScope = merged.aiIncludePageContext === false ? 'none' : 'excerpt';
   }

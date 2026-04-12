@@ -24,6 +24,7 @@ class SettingsManagerClass {
 
     this.elements = {
       startupMode: document.getElementById('setting-startup-mode'),
+      launchIntro: document.getElementById('setting-launch-intro'),
       defaultZoom: document.getElementById('setting-default-zoom'),
       aiPageContext: document.getElementById('setting-ai-page-context'),
       provider: document.getElementById('setting-provider'),
@@ -1026,6 +1027,7 @@ class SettingsManagerClass {
     const newConfig = {
       ...this.config,
       startupMode: this.elements.startupMode.value === 'homepage' ? 'homepage' : 'new-tab',
+      showLaunchIntro: !!(this.elements.launchIntro && this.elements.launchIntro.checked),
       defaultZoom,
       aiIncludePageContext: aiDataScope !== 'none',
       aiDataScope,

@@ -291,22 +291,57 @@
             <p class="ntp-search-hint" id="ntp-kbd-hint"><kbd>/</kbd> focus search · <kbd>Enter</kbd> go</p>
 
             <div class="ntp-ai-suggestions" id="ntp-ai-suggestions">
-                           <button class="ntp-ai-suggestion" data-prompt="Check my Gmail: show unread and anything I probably still need to answer. Draft replies only where it makes sense, save as drafts, never send. Tell me what you did.">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                Gmail: draft app replies
-              </button>
-              <button class="ntp-ai-suggestion" data-prompt="Summarize today's top news from trusted sources. Lead with the biggest stories, then 3–5 bullet follow-ups I might care about.">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-                Today's news briefing
-              </button>
-              <button class="ntp-ai-suggestion" data-prompt="Look at the page open in my active tab. Give a short summary and list three concrete next actions I could take (book, buy, reply, save, follow up, etc.).">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-                Summarize this page
-              </button>
-              <button class="ntp-ai-suggestion" data-prompt="Help me plan a weekend trip. Ask me for departure city, budget, and interests if you need them, then suggest 2–3 destination options with a loose day-by-day outline.">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                Plan a weekend trip
-              </button>
+              <div class="ai-starter-host">
+                <div class="ai-starter-face ai-starter-face--categories">
+                  <div class="ai-starter-pill-row" role="group" aria-label="AI quick tasks">
+                    <button type="button" class="ntp-ai-suggestion ai-starter-cat" data-starter-group="email">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                      Email tasks
+                    </button>
+                    <button type="button" class="ntp-ai-suggestion ai-starter-cat" data-starter-group="news">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                      News briefing
+                    </button>
+                    <button type="button" class="ntp-ai-suggestion ai-starter-cat" data-starter-group="page">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                      This page
+                    </button>
+                    <button type="button" class="ntp-ai-suggestion ai-starter-cat" data-starter-group="trip">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                      Weekend trip
+                    </button>
+                  </div>
+                </div>
+                <div class="ai-starter-face ai-starter-face--options" hidden>
+                  <div class="ai-starter-options-head">
+                    <button type="button" class="ai-starter-back">← Back</button>
+                  </div>
+                  <div class="ai-starter-panel ai-starter-group" data-starter-group="email" hidden>
+                    <button type="button" class="ai-starter-option" data-prompt="In my connected email (Gmail or Outlook), find every unread message from the past 7 days through today that I have not finished handling. For each one that reasonably needs a reply, draft a reply and save it as a draft only — never send. Give me a short checklist of what you processed.">Draft replies: unread this week</button>
+                    <button type="button" class="ai-starter-option" data-prompt="In my email from the past 7 days through today, find messages about purchase orders (PO) where the supplier or vendor has not clearly acknowledged or confirmed the order. List each thread with sender, subject, and date, and draft a polite follow-up for each, saved as drafts only — never send.">POs not acknowledged</button>
+                    <button type="button" class="ai-starter-option" data-prompt="In my email from the past 7 days through today, find RFQs, quotes, or pricing requests I sent where there has been no response and I have not sent a follow-up. List each with context and draft brief follow-up messages as drafts only — never send.">RFQs / quotes: no reply yet</button>
+                    <button type="button" class="ai-starter-option" data-prompt="In my connected email in the browser (Gmail or Outlook), scan threads from the past 7 days through today and find every message that matches either: (A) a customer PO situation where a sales order has not been sent to the customer yet, or (B) a purchase order to a vendor or supplier that has not been acknowledged. For each matching thread, open that exact conversation in a new browser tab (use the mail client’s open-in-new-tab, middle-click on the row, or equivalent) so I can review them side by side. Process matches one by one until each is opened in its own tab. When finished, reply with a numbered list of what you opened: subject, sender, date, and whether it matched (A) or (B).">Open PO / SO threads in new tabs</button>
+                  </div>
+                  <div class="ai-starter-panel ai-starter-group" data-starter-group="news" hidden>
+                    <button type="button" class="ai-starter-option" data-prompt="Summarize today's top news from trusted sources. Lead with the biggest stories, then 3–5 bullet follow-ups I might care about.">Trusted sources overview</button>
+                    <button type="button" class="ai-starter-option" data-prompt="Give me a business and markets focused news briefing for today: major indices, earnings, deals, and macro moves. Keep it factual and cite sources where possible.">Business &amp; markets</button>
+                    <button type="button" class="ai-starter-option" data-prompt="Give me a technology news briefing for today: product launches, AI, security, and major tech policy. Short paragraphs with clear takeaways.">Technology</button>
+                    <button type="button" class="ai-starter-option" data-prompt="Ultra-short news digest: one crisp line per story, maximum 8 stories, no fluff, prioritize global impact.">Speed digest</button>
+                  </div>
+                  <div class="ai-starter-panel ai-starter-group" data-starter-group="page" hidden>
+                    <button type="button" class="ai-starter-option" data-prompt="Look at the page open in my active tab. Give a short summary and list three concrete next actions I could take (book, buy, reply, save, follow up, etc.).">Summary + next actions</button>
+                    <button type="button" class="ai-starter-option" data-prompt="From the page in my active tab, give a 3-bullet TL;DR only.">3-bullet TL;DR</button>
+                    <button type="button" class="ai-starter-option" data-prompt="From the page in my active tab, extract key facts, numbers, dates, and names as a structured list.">Key facts &amp; figures</button>
+                    <button type="button" class="ai-starter-option" data-prompt="From the page in my active tab, list risks, caveats, or fine print I should not miss.">Risks &amp; fine print</button>
+                  </div>
+                  <div class="ai-starter-panel ai-starter-group" data-starter-group="trip" hidden>
+                    <button type="button" class="ai-starter-option" data-prompt="Help me plan a weekend trip. Ask me for departure city, budget, and interests if you need them, then suggest 2–3 destination options with a loose day-by-day outline.">Balanced plan</button>
+                    <button type="button" class="ai-starter-option" data-prompt="Help me plan a budget-conscious weekend trip. Ask only what you must, then suggest 2 options with estimated cost ranges and money-saving tips.">Budget focus</button>
+                    <button type="button" class="ai-starter-option" data-prompt="Help me plan a family-friendly weekend trip with kid-appropriate pacing. Ask region or city if unknown, then suggest 2 options with relaxed schedules.">Family friendly</button>
+                    <button type="button" class="ai-starter-option" data-prompt="Help me plan an outdoor-focused weekend: hiking, parks, or nature within about 3 hours travel. Ask departure city if you need it, then suggest 2 itineraries.">Outdoors &amp; nature</button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -516,24 +551,59 @@
             <p class="welcome-sub">Your intelligent browser companion —<br>ask anything, automate, research deeply</p>
           </div>
           <p class="welcome-cta">Add your API key in <strong>Settings</strong> to get started.</p>
-          <p class="welcome-starter-hint">Starter prompts — tap to fill the box below, then send.</p>
+          <p class="welcome-starter-hint">Starter prompts — pick a category, choose a task (runs immediately), or Back to return.</p>
           <div class="assistant-starter-chips" role="group" aria-label="Starter prompts">
-            <button type="button" class="assistant-starter-chip" data-prompt="Check my Gmail: show unread and anything I probably still need to answer. Draft replies only where it makes sense, save as drafts, never send. Tell me what you did.">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-              Gmail: draft app replies
-            </button>
-            <button type="button" class="assistant-starter-chip" data-prompt="Summarize today's top news from trusted sources. Lead with the biggest stories, then 3–5 bullet follow-ups I might care about.">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-              Today's news briefing
-            </button>
-            <button type="button" class="assistant-starter-chip" data-prompt="Look at the page open in my active tab. Give a short summary and list three concrete next actions I could take (book, buy, reply, save, follow up, etc.).">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-              Summarize this page
-            </button>
-            <button type="button" class="assistant-starter-chip" data-prompt="Help me plan a weekend trip. Ask me for departure city, budget, and interests if you need them, then suggest 2–3 destination options with a loose day-by-day outline.">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-              Plan a weekend trip
-            </button>
+            <div class="ai-starter-host">
+              <div class="ai-starter-face ai-starter-face--categories">
+                <div class="ai-starter-pill-row">
+                  <button type="button" class="assistant-starter-chip ai-starter-cat" data-starter-group="email">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                    Email tasks
+                  </button>
+                  <button type="button" class="assistant-starter-chip ai-starter-cat" data-starter-group="news">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                    News briefing
+                  </button>
+                  <button type="button" class="assistant-starter-chip ai-starter-cat" data-starter-group="page">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                    This page
+                  </button>
+                  <button type="button" class="assistant-starter-chip ai-starter-cat" data-starter-group="trip">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                    Weekend trip
+                  </button>
+                </div>
+              </div>
+              <div class="ai-starter-face ai-starter-face--options" hidden>
+                <div class="ai-starter-options-head">
+                  <button type="button" class="ai-starter-back">← Back</button>
+                </div>
+                <div class="ai-starter-panel ai-starter-group" data-starter-group="email" hidden>
+                  <button type="button" class="ai-starter-option" data-prompt="In my connected email (Gmail or Outlook), find every unread message from the past 7 days through today that I have not finished handling. For each one that reasonably needs a reply, draft a reply and save it as a draft only — never send. Give me a short checklist of what you processed.">Draft replies: unread this week</button>
+                  <button type="button" class="ai-starter-option" data-prompt="In my email from the past 7 days through today, find messages about purchase orders (PO) where the supplier or vendor has not clearly acknowledged or confirmed the order. List each thread with sender, subject, and date, and draft a polite follow-up for each, saved as drafts only — never send.">POs not acknowledged</button>
+                  <button type="button" class="ai-starter-option" data-prompt="In my email from the past 7 days through today, find RFQs, quotes, or pricing requests I sent where there has been no response and I have not sent a follow-up. List each with context and draft brief follow-up messages as drafts only — never send.">RFQs / quotes: no reply yet</button>
+                  <button type="button" class="ai-starter-option" data-prompt="In my connected email in the browser (Gmail or Outlook), scan threads from the past 7 days through today and find every message that matches either: (A) a customer PO situation where a sales order has not been sent to the customer yet, or (B) a purchase order to a vendor or supplier that has not been acknowledged. For each matching thread, open that exact conversation in a new browser tab (use the mail client’s open-in-new-tab, middle-click on the row, or equivalent) so I can review them side by side. Process matches one by one until each is opened in its own tab. When finished, reply with a numbered list of what you opened: subject, sender, date, and whether it matched (A) or (B).">Open PO / SO threads in new tabs</button>
+                </div>
+                <div class="ai-starter-panel ai-starter-group" data-starter-group="news" hidden>
+                  <button type="button" class="ai-starter-option" data-prompt="Summarize today's top news from trusted sources. Lead with the biggest stories, then 3–5 bullet follow-ups I might care about.">Trusted sources overview</button>
+                  <button type="button" class="ai-starter-option" data-prompt="Give me a business and markets focused news briefing for today: major indices, earnings, deals, and macro moves. Keep it factual and cite sources where possible.">Business &amp; markets</button>
+                  <button type="button" class="ai-starter-option" data-prompt="Give me a technology news briefing for today: product launches, AI, security, and major tech policy. Short paragraphs with clear takeaways.">Technology</button>
+                  <button type="button" class="ai-starter-option" data-prompt="Ultra-short news digest: one crisp line per story, maximum 8 stories, no fluff, prioritize global impact.">Speed digest</button>
+                </div>
+                <div class="ai-starter-panel ai-starter-group" data-starter-group="page" hidden>
+                  <button type="button" class="ai-starter-option" data-prompt="Look at the page open in my active tab. Give a short summary and list three concrete next actions I could take (book, buy, reply, save, follow up, etc.).">Summary + next actions</button>
+                  <button type="button" class="ai-starter-option" data-prompt="From the page in my active tab, give a 3-bullet TL;DR only.">3-bullet TL;DR</button>
+                  <button type="button" class="ai-starter-option" data-prompt="From the page in my active tab, extract key facts, numbers, dates, and names as a structured list.">Key facts &amp; figures</button>
+                  <button type="button" class="ai-starter-option" data-prompt="From the page in my active tab, list risks, caveats, or fine print I should not miss.">Risks &amp; fine print</button>
+                </div>
+                <div class="ai-starter-panel ai-starter-group" data-starter-group="trip" hidden>
+                  <button type="button" class="ai-starter-option" data-prompt="Help me plan a weekend trip. Ask me for departure city, budget, and interests if you need them, then suggest 2–3 destination options with a loose day-by-day outline.">Balanced plan</button>
+                  <button type="button" class="ai-starter-option" data-prompt="Help me plan a budget-conscious weekend trip. Ask only what you must, then suggest 2 options with estimated cost ranges and money-saving tips.">Budget focus</button>
+                  <button type="button" class="ai-starter-option" data-prompt="Help me plan a family-friendly weekend trip with kid-appropriate pacing. Ask region or city if unknown, then suggest 2 options with relaxed schedules.">Family friendly</button>
+                  <button type="button" class="ai-starter-option" data-prompt="Help me plan an outdoor-focused weekend: hiking, parks, or nature within about 3 hours travel. Ask departure city if you need it, then suggest 2 itineraries.">Outdoors &amp; nature</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -715,6 +785,11 @@
                   <option value="homepage">Homepage (from Browser settings)</option>
                 </select>
               </div>
+              <label class="setting-toggle-row" style="margin-top:12px">
+                <input type="checkbox" id="setting-launch-intro" checked>
+                <span>Play launch intro video on startup</span>
+              </label>
+              <p class="settings-inline-hint">Skipping the video or pressing Esc also turns this off until you enable it here again.</p>
             </div>
             <div class="settings-section">
               <h3>Display</h3>

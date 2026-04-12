@@ -18,6 +18,7 @@ class NavioApp {
 
     if (typeof LaunchIntro !== 'undefined') {
       await LaunchIntro.playIfAvailable();
+      this.config = await window.navio.getConfig();
     }
 
     this.bindThemeToggle();

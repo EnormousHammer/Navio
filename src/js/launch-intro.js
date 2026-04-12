@@ -22,13 +22,18 @@ const LaunchIntro = {
     return new Promise((resolve) => {
       let finished = false;
 
-      const finish = () => {
+      const finish = async () => {
         if (finished) return;
         finished = true;
         try {
           video.pause();
           video.removeAttribute('src');
           video.load();
+        } catch (e) { /* ignore */ }
+        try {
+          if (window.navio && typeof window.navio.saveConfig === 'function') {
+            await window.navio.saveConfig({ showLaunchIntro: false });
+          }
         } catch (e) { /* ignore */ }
         root.classList.remove('visible');
         root.setAttribute('aria-hidden', 'true');
@@ -38,22 +43,22 @@ const LaunchIntro = {
       };
 
       const onKey = (e) => {
-        if (e.key === 'Escape') finish();
+        if (e.key === 'Escape') void finish();
       };
 
       document.body.classList.add('launch-intro-active');
       root.setAttribute('aria-hidden', 'false');
       root.classList.add('visible');
 
-      video.addEventListener('ended', finish, { once: true });
-      video.addEventListener('error', finish, { once: true });
-      if (skipBtn) skipBtn.addEventListener('click', finish, { once: true });
+      video.addEventListener('ended', () => void finish(), { once: true });
+      video.addEventListener('error', () => void finish(), { once: true });
+      if (skipBtn) skipBtn.addEventListener('click', () => void finish(), { once: true });
       document.addEventListener('keydown', onKey);
 
       video.src = url;
       video.play().catch(() => {
         video.muted = true;
-        video.play().catch(() => finish());
+        video.play().catch(() => void finish());
       });
 
       requestAnimationFrame(() => skipBtn?.focus());

@@ -675,6 +675,8 @@ ipcMain.handle('get-api-key-for-settings', () => {
 
 ipcMain.handle('get-intro-video-url', () => {
   try {
+    const cfg = loadConfig();
+    if (cfg.showLaunchIntro === false) return null;
     if (!fs.existsSync(INTRO_VIDEO_PATH)) return null;
     return pathToFileURL(INTRO_VIDEO_PATH).href;
   } catch (e) {
