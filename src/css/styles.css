@@ -1061,7 +1061,7 @@ body.tabstrip-hidden .tab-strip-show {
 }
 .new-tab-page.active { display: flex; }
 
-/* Full-page background — aurora mesh + masked grid + noise (absolute: stays in #browser-container) */
+/* Full-page background — custom art + scrim + subtle aurora tint + grid + noise */
 .ntp-bg-layer {
   position: absolute;
   inset: 0;
@@ -1070,19 +1070,20 @@ body.tabstrip-hidden .tab-strip-show {
   overflow: hidden;
   background-color: #080d1a;
   background-image:
-    radial-gradient(ellipse 95% 60% at 50% -10%, rgba(99, 102, 241, 0.50), transparent 60%),
-    radial-gradient(ellipse 60% 50% at 105% 10%, rgba(0, 212, 255, 0.35), transparent 55%),
-    radial-gradient(ellipse 55% 45% at -5% 85%, rgba(168, 85, 247, 0.38), transparent 58%),
-    radial-gradient(ellipse 80% 55% at 50% 110%, rgba(0, 180, 200, 0.35), transparent 50%),
-    radial-gradient(ellipse 50% 40% at 70% 85%, rgba(236, 72, 153, 0.25), transparent 55%);
-  animation: ntp-aurora-shift 22s ease-in-out infinite alternate;
+    linear-gradient(180deg, rgba(6, 10, 22, 0.38) 0%, rgba(8, 13, 26, 0.72) 55%, rgba(8, 13, 26, 0.9) 100%),
+    radial-gradient(ellipse 100% 70% at 50% -5%, rgba(0, 212, 255, 0.12), transparent 58%),
+    url("../../public/navio_background.jpg");
+  background-size: 100% 100%, 100% 100%, cover;
+  background-position: center, center top, center center;
+  background-repeat: no-repeat;
+  animation: none;
 }
 /* Fine tech grid — vignette-masked so edges stay calm, center stays “holographic” */
 .ntp-bg-layer::before {
   content: '';
   position: absolute;
   inset: -30%;
-  opacity: 0.75;
+  opacity: 0.38;
   background-image:
     linear-gradient(rgba(0, 212, 255, 0.07) 1px, transparent 1px),
     linear-gradient(90deg, rgba(0, 212, 255, 0.07) 1px, transparent 1px),
@@ -1117,7 +1118,7 @@ body.tabstrip-hidden .tab-strip-show {
     100% 100%;
   background-position: 0 0, 0 0, 0% 0%, 0 100%;
   animation: ntp-shimmer 14s ease-in-out infinite alternate;
-  opacity: 0.9;
+  opacity: 0.55;
   mix-blend-mode: normal;
 }
 @keyframes ntp-grid-drift {
