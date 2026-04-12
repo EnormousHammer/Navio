@@ -91,19 +91,6 @@ function navioRepairUtf8Mojibake(s) {
   return t;
 }
 
-/** Append Gmail send-as signature plain text if missing (same rules as main process). */
-function navioAppendGmailSignaturePlainBody(bodyText, sigPlain) {
-  const sig = (sigPlain || '').trim();
-  if (!sig) return bodyText;
-  const raw = bodyText == null ? '' : String(bodyText);
-  const trimmed = raw.trimEnd();
-  if (!trimmed) return sig;
-  const bodyN = trimmed.replace(/\r\n/g, '\n');
-  const sigN = sig.replace(/\r\n/g, '\n');
-  if (bodyN.endsWith(sigN)) return trimmed;
-  return `${trimmed}\n\n${sig}`;
-}
-
 class AssistantManagerClass {
   constructor() {
     this.panel = document.getElementById('assistant-panel');
@@ -864,9 +851,22 @@ class AssistantManagerClass {
 
     // Set up tab management handlers
     const unOpenTab = window.navio.onToolOpenTab(async ({ url }) => {
-      this._appendActivityStep('open_tab', `Opening new tab${url ? ': ' + new URL(url).hostname : ''}...`);
+      let openUrl = url && String(url).trim() ? String(url).trim() : null;
+      if (openUrl && typeof App !== 'undefined' && typeof App.resolveNavigationInput === 'function') {
+        const resolved = App.resolveNavigationInput(openUrl);
+        if (resolved) openUrl = resolved;
+      }
+      let labelHost = '';
+      if (openUrl) {
+        try {
+          labelHost = new URL(openUrl).hostname;
+        } catch {
+          labelHost = openUrl.slice(0, 48);
+        }
+      }
+      this._appendActivityStep('open_tab', `Opening new tab${openUrl ? ': ' + labelHost : ''}...`);
       try {
-        const loadResult = await TabManager.createTabAndWaitForLoad(url || null);
+        const loadResult = await TabManager.createTabAndWaitForLoad(openUrl);
         if (!loadResult.ok) {
           window.navio.toolOpenTabAck({ success: false, error: loadResult.error || 'load failed' });
           return;
@@ -2179,38 +2179,6 @@ class AssistantManagerClass {
       const textarea = card.querySelector('.gdc-body');
       const bodyWrap = card.querySelector('.gdc-body-wrap');
       if (textarea) textarea.dataset.initialBody = textarea.value;
-
-      (async () => {
-        if (!textarea || typeof window.navio.gmailGetSignaturePlain !== 'function') return;
-        try {
-          const res = await window.navio.gmailGetSignaturePlain();
-          if (res?.error === 'not_signed_in') return;
-          if (res?.needsReconnect && typeof _showAppToast === 'function') {
-            if (!window.__navioGmailSigScopeToastShown) {
-              window.__navioGmailSigScopeToastShown = true;
-              _showAppToast(
-                'Reconnect Google in Settings → Connected Apps so Navio can load your Gmail signature.',
-                'warning'
-              );
-            }
-            return;
-          }
-          const sig = res?.signature || '';
-          if (!sig.trim()) return;
-          const merged = navioAppendGmailSignaturePlainBody(textarea.value, sig);
-          if (merged === textarea.value) return;
-          textarea.value = merged;
-          textarea.dataset.initialBody = merged;
-          if (draftId && typeof window.navio.gmailUpdateDraft === 'function') {
-            const up = await window.navio.gmailUpdateDraft({ draftId, body: merged });
-            if (up?.error && typeof _showAppToast === 'function') {
-              _showAppToast('Signature shown locally; Gmail sync failed: ' + up.error, 'error');
-            }
-          }
-        } catch {
-          /* ignore */
-        }
-      })();
 
       card.querySelector('.gdc-copy')?.addEventListener('click', async (e) => {
         const btn = e.currentTarget;

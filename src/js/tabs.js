@@ -89,7 +89,7 @@ class TabManagerClass {
     });
   }
 
-  createTab(url = null) {
+  createTab(url = null, opts = {}) {
     const id = `tab-${++this.tabCounter}`;
     const tab = {
       id,
@@ -123,6 +123,14 @@ class TabManagerClass {
     webview._pendingUrl = url || null;
 
     tab.webview = webview;
+
+    // Listeners must be registered before the node is attached: dom-ready can fire
+    // immediately on appendChild, and AI open_tab must not miss did-finish-load.
+    this.bindWebviewEvents(tab);
+    if (url && opts.loadWait) {
+      tab._aiLoadWait = this._waitForNextWebviewLoad(webview, opts.loadWait);
+    }
+
     this.browserContainer.appendChild(webview);
 
     // Size the new webview immediately and synchronously so Electron has the
@@ -132,8 +140,6 @@ class TabManagerClass {
       webview.style.width  = width  + 'px';
       webview.style.height = height + 'px';
     }
-
-    this.bindWebviewEvents(tab);
 
     this.tabs.push(tab);
     this.renderTabItem(tab);
@@ -165,7 +171,9 @@ class TabManagerClass {
       if (wv._pendingUrl) {
         const url = wv._pendingUrl;
         wv._pendingUrl = null;
-        wv.loadURL(url).catch(err => console.warn('Pending loadURL failed:', err));
+        const run = () => wv.loadURL(url).catch(err => console.warn('Pending loadURL failed:', err));
+        if (typeof queueMicrotask === 'function') queueMicrotask(run);
+        else setTimeout(run, 0);
       }
     });
 
@@ -388,7 +396,9 @@ class TabManagerClass {
     this.hideNewTabPage();
     const wv = tab.webview;
     if (wv._domReady) {
-      wv.loadURL(resolvedUrl).catch(err => console.warn('navigateActive loadURL failed:', err));
+      const run = () => wv.loadURL(resolvedUrl).catch(err => console.warn('navigateActive loadURL failed:', err));
+      if (typeof queueMicrotask === 'function') queueMicrotask(run);
+      else setTimeout(run, 0);
     } else {
       // dom-ready hasn't fired yet (very fast user action); queue it
       wv._pendingUrl = resolvedUrl;
@@ -421,11 +431,13 @@ class TabManagerClass {
   async createTabAndWaitForLoad(url = null, options = {}) {
     const timeoutMs = options.timeoutMs ?? 45000;
     const settleMs = options.settleMs ?? 200;
-    const tab = this.createTab(url);
+    const tab = this.createTab(url, url ? { loadWait: { timeoutMs, settleMs } } : {});
     if (!url) return { ok: true, tab };
-    const wv = tab.webview;
-    const loadPromise = this._waitForNextWebviewLoad(wv, { timeoutMs, settleMs });
-    const result = await loadPromise;
+    if (!tab._aiLoadWait) {
+      return { tab, ok: false, error: 'Load wait was not registered for new tab' };
+    }
+    const result = await tab._aiLoadWait;
+    delete tab._aiLoadWait;
     return { tab, ...result };
   }
 

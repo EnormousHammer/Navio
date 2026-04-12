@@ -973,6 +973,26 @@ function waitForRendererAck(sender, channel, timeoutMs) {
   });
 }
 
+/** Wait until the guest is not mid-navigation (avoids CDP / executeJS races that surface as ERR_ABORTED / -3). */
+async function waitForWebContentsSettled(wc, { timeoutMs = 25000, settleMs = 180, pollMs = 40 } = {}) {
+  if (!wc) return;
+  try {
+    if (typeof wc.isDestroyed === 'function' && wc.isDestroyed()) return;
+  } catch {
+    return;
+  }
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      if (!wc.isLoading()) break;
+    } catch {
+      break;
+    }
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+  if (settleMs > 0) await new Promise((r) => setTimeout(r, settleMs));
+}
+
 /**
  * The main agentic tool-calling loop.  Calls performAiFetch with tools, executes
  * any tool_calls the model returns, feeds results back, and repeats until the
@@ -991,8 +1011,12 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
   const provider = cfg.aiProvider || 'openai';
   let activeWc = wc; // mutable — tab tools can change the target webContents
 
-  // Start CDP monitoring early so console/network events are captured from the start
-  try { await startMonitoring(activeWc); } catch { /* non-fatal */ }
+  try {
+    await waitForWebContentsSettled(activeWc, { settleMs: 80 });
+    await startMonitoring(activeWc);
+  } catch {
+    /* non-fatal */
+  }
 
   const TAB_TOOLS = new Set(['open_tab', 'close_tab', 'switch_tab', 'list_tabs']);
 
@@ -1035,6 +1059,10 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
         currentMessages = appendToolResult(currentMessages, tc, navResult, provider);
         toolLog.push({ tool: 'navigate', args: tc.arguments, result: navResult });
         sender.send('tool-progress', { step, tool: tc.name, result: navResult });
+
+        if (!navResult.error && activeWc) {
+          await waitForWebContentsSettled(activeWc);
+        }
 
         // Auto-screenshot after navigation for visual context
         if (cfg.aiAutoScreenshotAfterNavigate && !navResult.error && activeWc) {
@@ -1082,6 +1110,9 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
         if (tc.name === 'open_tab' && tabResult.webContentsId) {
           const newWc = electronWebContents.fromId(tabResult.webContentsId);
           if (newWc) activeWc = newWc;
+        }
+        if (!tabResult.error && (tc.name === 'open_tab' || tc.name === 'switch_tab') && activeWc) {
+          await waitForWebContentsSettled(activeWc);
         }
         currentMessages = appendToolResult(currentMessages, tc, tabResult, provider);
         toolLog.push({ tool: tc.name, args: tc.arguments, result: tabResult });
@@ -1726,6 +1757,7 @@ ipcMain.handle('page-snapshot', async (event, webContentsId) => {
 
 const toolExecutors = {
   async read_page(wc, args) {
+    await waitForWebContentsSettled(wc, { settleMs: 120 });
     const result = await getAccessibilityTree(wc, {
       filter: args.filter || 'interactive',
       refId: args.ref,
@@ -1762,6 +1794,7 @@ const toolExecutors = {
   },
 
   async get_page_text(wc, args) {
+    await waitForWebContentsSettled(wc, { settleMs: 100 });
     try {
       const text = await wc.executeJavaScript(`
         (() => {
@@ -1969,7 +2002,9 @@ const toolExecutors = {
       if (!token) return { error: 'not_signed_in — connect Google in Navio Settings → Connected Apps first.' };
       const query = (args.query || '').trim();
       if (!query) return { error: 'query is required.' };
-      const maxResults = Math.min(args.max_results || 20, 50);
+      let maxResults = Math.min(Number(args.max_results) > 0 ? Number(args.max_results) : 25, 50);
+      // Models often pass tiny max_results for inbox triage; raise floor so bulk tasks don't silently cap at ~6–10.
+      if (/in:inbox/i.test(query) && maxResults <= 10) maxResults = 25;
       const data = await queryGmail(token, query, { maxResults });
       if (data.error) {
         if (/insufficient.*scope|scope.*insufficient|Request had insufficient/i.test(data.error)) {
@@ -1997,9 +2032,6 @@ const toolExecutors = {
 
       let bodyText = navioRepairUtf8Mojibake((args.body || '').trim());
       if (!bodyText) return { error: 'body is required.' };
-
-      const sigPlain = await gmailFetchDefaultSignaturePlain(token);
-      const text = gmailAppendSendAsSignaturePlain(bodyText, sigPlain);
 
       const r = await fetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(mid)}?format=full`,
@@ -2032,7 +2064,7 @@ const toolExecutors = {
         subject: subjOut,
         inReplyTo: msgIdHdr || '',
         references: refs,
-        bodyText: text
+        bodyText
       });
       const raw = gmailBase64UrlEncode(mime);
 
@@ -2055,8 +2087,8 @@ const toolExecutors = {
         draftId: draftData.id,
         to: toAddr,
         subject: subjOut,
-        body: text,
-        note: `Draft saved. Include this in your reply: [[DRAFT:${Buffer.from(JSON.stringify({ draftId: draftData.id, to: toAddr, subject: subjOut, body: text })).toString('base64')}]]`
+        body: bodyText,
+        note: `Draft saved. Include this in your reply: [[DRAFT:${Buffer.from(JSON.stringify({ draftId: draftData.id, to: toAddr, subject: subjOut, body: bodyText })).toString('base64')}]]`
       };
     } catch (e) {
       return { error: 'gmail_create_reply_draft failed: ' + e.message };
@@ -4817,23 +4849,6 @@ async function gmailFetchSendAsSignaturePlainResult(token) {
   }
 }
 
-async function gmailFetchDefaultSignaturePlain(token) {
-  const { signature } = await gmailFetchSendAsSignaturePlainResult(token);
-  return signature;
-}
-
-function gmailAppendSendAsSignaturePlain(bodyText, sigPlain) {
-  const sig = (sigPlain || '').trim();
-  if (!sig) return bodyText;
-  const raw = bodyText == null ? '' : String(bodyText);
-  const trimmed = raw.trimEnd();
-  if (!trimmed) return sig;
-  const bodyN = trimmed.replace(/\r\n/g, '\n');
-  const sigN = sig.replace(/\r\n/g, '\n');
-  if (bodyN.endsWith(sigN)) return trimmed;
-  return `${trimmed}\n\n${sig}`;
-}
-
 function parseEmailAddressFromHeader(fromVal) {
   if (!fromVal) return '';
   const m = fromVal.match(/<([^>]+)>/);
@@ -4962,11 +4977,8 @@ ipcMain.handle('gmail-create-reply-draft', async (_, { messageId, body: replyBod
     const mid = (messageId || '').trim();
     if (!mid) return { error: 'Missing Gmail message id' };
 
-    let text = navioRepairUtf8Mojibake((replyBody || '').trim());
+    const text = navioRepairUtf8Mojibake((replyBody || '').trim());
     if (!text) return { error: 'Empty reply body' };
-
-    const sigPlain = await gmailFetchDefaultSignaturePlain(token);
-    text = gmailAppendSendAsSignaturePlain(text, sigPlain);
 
     const r = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(mid)}?format=full`,

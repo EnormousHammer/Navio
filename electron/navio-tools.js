@@ -396,7 +396,9 @@ const NAVIO_TOOLS = [
         },
         max_results: {
           type: 'number',
-          description: 'Maximum number of emails to return. Default: 20, max: 50.'
+          description:
+            'Maximum emails to return (max 50). Default 25. Use 50 for "all" / "everything" / many drafts. ' +
+            'Do not pass small numbers for bulk triage.'
         }
       },
       required: ['query']
@@ -447,10 +449,11 @@ const NAVIO_TOOLS = [
     description:
       'Create a reply draft for a Gmail message via the Gmail API. The draft is saved in Gmail Drafts ' +
       'and is NOT sent — the user reviews and sends it manually. ' +
-      'Navio appends the user’s Gmail signature from Settings (Send mail as), as plain text, after the body you supply. ' +
-      'The signature usually already includes "Best regards" / "Kind regards" and their name — do not add any valediction or sign-off in the body. ' +
+      'The body you pass is stored verbatim (no signature appended by Navio). Gmail applies the user’s own signature from Gmail settings when they compose/send there. ' +
+      'Write only the message text — no "Best regards", name block, or footer unless the user explicitly asked for that wording in the body. ' +
       'Use this for every reply task instead of clicking Reply in the browser (Gmail iframes are unreliable). ' +
-      'Requires Google OAuth with gmail.compose and gmail.settings.basic (reconnect Google if signature never appears).',
+      'If one call returns an error, continue with the remaining messages unless the error is SCOPE_ERROR or not_signed_in. ' +
+      'Requires Google OAuth with gmail.compose (reconnect Google in Navio Settings → Connected Apps if drafts fail).',
     parameters: {
       type: 'object',
       properties: {

@@ -1061,6 +1061,15 @@ body.tabstrip-hidden .tab-strip-show {
 }
 .new-tab-page.active { display: flex; }
 
+/* Flex column grows with NTP content so the absolute .ntp-bg-layer covers full scroll height */
+.ntp-bg-shell {
+  position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 /* Full-page background — custom art + scrim + subtle aurora tint + grid + noise */
 .ntp-bg-layer {
   position: absolute;
@@ -1070,7 +1079,7 @@ body.tabstrip-hidden .tab-strip-show {
   overflow: hidden;
   background-color: #080d1a;
   background-image:
-    linear-gradient(180deg, rgba(6, 10, 22, 0.38) 0%, rgba(8, 13, 26, 0.72) 55%, rgba(8, 13, 26, 0.9) 100%),
+    linear-gradient(180deg, rgba(6, 10, 22, 0.30) 0%, rgba(8, 13, 26, 0.62) 55%, rgba(8, 13, 26, 0.82) 100%),
     radial-gradient(ellipse 100% 70% at 50% -5%, rgba(0, 212, 255, 0.12), transparent 58%),
     url("../../public/navio_background.jpg");
   background-size: 100% 100%, 100% 100%, cover;
@@ -1118,7 +1127,7 @@ body.tabstrip-hidden .tab-strip-show {
     100% 100%;
   background-position: 0 0, 0 0, 0% 0%, 0 100%;
   animation: ntp-shimmer 14s ease-in-out infinite alternate;
-  opacity: 0.55;
+  opacity: 0.48;
   mix-blend-mode: normal;
 }
 @keyframes ntp-grid-drift {

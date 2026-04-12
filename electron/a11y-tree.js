@@ -37,7 +37,7 @@ const STRUCTURAL_ROLES = new Set([
  *
  * Returns { yaml, url, title } or null if CDP fails (e.g. DevTools is open).
  */
-async function getAccessibilityTree(wc, opts = {}) {
+async function getAccessibilityTreeOnce(wc, opts = {}) {
   const { filter = 'all', depth = 15, refId, maxChars = 50000 } = opts;
   let attachedHere = false;
   try {
@@ -52,13 +52,23 @@ async function getAccessibilityTree(wc, opts = {}) {
     refMaps.set(wc.id, refMap);
     return { yaml, url: wc.getURL(), title: wc.getTitle() };
   } catch (err) {
-    console.log('[navio] CDP accessibility tree failed, will use fallback:', err.message);
+    console.log('[navio] CDP accessibility tree attempt failed:', err.message);
     return null;
   } finally {
     if (attachedHere) {
       try { wc.debugger.detach(); } catch { /* ignore */ }
     }
   }
+}
+
+async function getAccessibilityTree(wc, opts = {}) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await getAccessibilityTreeOnce(wc, opts);
+    if (res) return res;
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 220 * (attempt + 1)));
+  }
+  console.log('[navio] CDP accessibility tree failed after retries, will use fallback');
+  return null;
 }
 
 /**

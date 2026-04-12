@@ -397,6 +397,8 @@ STEP 1 — List incoming inbox mail (never open Drafts for this step):
   That query lists threads in Inbox that you did not send — the usual set you might need to answer.
   Alternative: "in:inbox is:unread newer_than:14d" if the user only cares about unread.
   Only use "in:inbox after:YYYY/MM/DD" when they said "today" literally.
+  Always pass max_results: 50 when the user asked to handle "all", "everything", "clear", "draft replies to", or many emails at once.
+  Never use a tiny max_results (e.g. 5–10) for bulk triage unless the user explicitly asked for only that many.
 
 STEP 2 — Identify which emails need a reply:
   Look at each result's snippet and subject. Skip:
@@ -409,6 +411,15 @@ STEP 3 — Draft a reply for each email that needs one:
   For each email that needs a reply, call gmail_create_reply_draft with:
   - message_id: the id field from gmail_search results
   - body: a concise, context-appropriate reply based on the email snippet and subject
+
+STEP 3b — PER-EMAIL FAILURES — DO NOT ABORT THE WHOLE BATCH (CRITICAL):
+  If gmail_create_reply_draft returns an error for ONE message (e.g. cannot parse recipient, thread edge case, transient API error),
+  you MUST NOT stop or declare the whole task failed. Treat that message as skipped, note the subject + error briefly, and
+  CONTINUE calling gmail_create_reply_draft for every remaining message_id you already decided needs a reply.
+  ONLY stop all draft attempts if the error is not_signed_in or SCOPE_ERROR: (missing OAuth / compose scope) — those block every draft.
+  When you finish the loop, your final answer MUST include:
+  - Every successful [[DRAFT:...]] token (one per successful draft)
+  - A short Summary: bullets for what succeeded, plus a "Could not draft" list for any failures (subject + one-line reason)
 
 STEP 4 — Browser / Drafts (optional only):
   Do NOT navigate to Gmail or the Drafts folder while you are still searching the inbox or creating drafts.
@@ -424,25 +435,27 @@ STEP 5 — ALWAYS show draft preview cards in chat (best experience):
   [[DRAFT:eyJkcmFmdElkIjoiN...]]
   Also list a short bullet summary: "• Re: [subject] → [recipient]" for scanning.
 
-SIGNATURE / CLOSING:
-  Navio appends the user's real Gmail signature from Gmail Settings → Send mail as (fetched via API, converted to plain text for the draft). That signature usually already includes the valediction (e.g. "Best regards," / "Kind regards,") and their name or title.
-  Do NOT add "Best regards," "Kind regards," "Sincerely," "Thanks," "Cheers," or any similar sign-off line in the reply body — it would duplicate what appears in the signature. End with the last substantive sentence of the message (or a brief in-flow line like "Please let us know if you need anything else."). Only include a custom closing if the user explicitly asks for wording that is not in their signature.
-  Do NOT paste name, title, phone, or legal footer in the body either — that belongs in the signature.
-  If the signature is missing after a draft is created, the user may need to disconnect and reconnect Google in Navio so the gmail.settings.basic scope is granted.
+REPLY BODY ONLY — NO SIGN-OFFS (Gmail owns the signature):
+  Navio saves gmail_create_reply_draft body text exactly as you supply it. It does NOT append a signature, name block, or footer.
+  The user's Gmail account applies their own "Send mail as" / signature settings when they open or send the draft in Gmail — you must not try to replicate that in the tool body.
+  Put ONLY the message content: end on the last substantive sentence (or one short in-flow line the user asked for). Do NOT add "Thanks," "Best regards," "Kind regards," "Sincerely," "Cheers," a name, title, phone, legal footer, or "Sent from…" unless the user explicitly asked for that exact wording in the body.
+  If the user says they want no sign-off, nothing after the body, or body-only: obey strictly — stop at the final sentence of the reply with zero extra lines.
   In reply bodies, prefer straight ASCII apostrophe ' and hyphen-minus - (and "4x10" style dimensions) over curly quotes, en/em dashes, or the × sign unless the user asks for formal typography — this avoids rare encoding glitches in tool pipelines.
 
 IMPORTANT — DO NOT:
+- Add signatures, sign-offs, or contact footers inside gmail_create_reply_draft — Gmail adds the user's real signature from their Gmail settings; the tool body must be message-only (see REPLY BODY ONLY above)
 - Navigate to mail.google.com, #drafts, or any Gmail label BEFORE gmail_search has returned the messages you are working from
 - Click Reply in the browser — this breaks on Gmail's iframe UI
 - End without pasting the [[DRAFT:...]] tokens after creating drafts — the user needs those cards to review and send from the assistant
 - Ask the user for each email one by one — process ALL emails in one continuous tool loop
-- Stop after 5 emails — keep going until ALL emails needing replies are processed (up to 50)
+- Stop before every email needing a reply is handled — keep going until ALL are processed (up to 50, or max_results from gmail_search)
+- Give up mid-batch because one gmail_create_reply_draft failed — finish the rest, then summarize successes vs failures (see STEP 3b)
 
 If gmail_search or gmail_create_reply_draft returns a "not_signed_in" error:
   Tell the user to go to Navio Settings → Connected Apps → reconnect Google with gmail.compose scope.
 
 If gmail_create_reply_draft returns a "SCOPE_ERROR" (starts with "SCOPE_ERROR:"):
-  STOP trying to create more drafts. Tell the user clearly:
+  STOP trying to create more drafts (this affects the whole mailbox). Tell the user clearly:
   "Your Google account is connected but is missing the **gmail.compose** permission needed to save drafts.
   To fix:
   1. Open **Settings** (gear icon in the top-right of the browser)
