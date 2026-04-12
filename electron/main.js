@@ -1998,8 +1998,8 @@ const toolExecutors = {
       let bodyText = navioRepairUtf8Mojibake((args.body || '').trim());
       if (!bodyText) return { error: 'body is required.' };
 
-      // Body only — Gmail adds the user's compose signature when they open/send from Gmail.
-      const text = bodyText;
+      const sigPlain = await gmailFetchDefaultSignaturePlain(token);
+      const text = gmailAppendSendAsSignaturePlain(bodyText, sigPlain);
 
       const r = await fetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(mid)}?format=full`,
@@ -2027,18 +2027,13 @@ const toolExecutors = {
 
       const refs = [prevRefs, msgIdHdr].filter(Boolean).join(' ').trim();
 
-      const mimeLines = [
-        `To: ${toAddr}`,
-        `Subject: ${subjOut}`,
-        msgIdHdr ? `In-Reply-To: ${msgIdHdr}` : '',
-        refs ? `References: ${refs}` : '',
-        'MIME-Version: 1.0',
-        'Content-Type: text/plain; charset=UTF-8',
-        'Content-Transfer-Encoding: 8bit',
-        '',
-        text.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')
-      ].filter((line) => line !== '');
-      const mime = mimeLines.join('\r\n');
+      const mime = gmailBuildPlainTextMime({
+        toAddr,
+        subject: subjOut,
+        inReplyTo: msgIdHdr || '',
+        references: refs,
+        bodyText: text
+      });
       const raw = gmailBase64UrlEncode(mime);
 
       const draftRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
@@ -2060,8 +2055,8 @@ const toolExecutors = {
         draftId: draftData.id,
         to: toAddr,
         subject: subjOut,
-        body: bodyText,
-        note: `Draft saved. Include this in your reply: [[DRAFT:${Buffer.from(JSON.stringify({ draftId: draftData.id, to: toAddr, subject: subjOut, body: bodyText })).toString('base64')}]]`
+        body: text,
+        note: `Draft saved. Include this in your reply: [[DRAFT:${Buffer.from(JSON.stringify({ draftId: draftData.id, to: toAddr, subject: subjOut, body: text })).toString('base64')}]]`
       };
     } catch (e) {
       return { error: 'gmail_create_reply_draft failed: ' + e.message };
@@ -3230,6 +3225,7 @@ const OAUTH_PROVIDERS = {
       'openid', 'email', 'profile',
       'https://www.googleapis.com/auth/gmail.readonly',
       'https://www.googleapis.com/auth/gmail.compose',
+      'https://www.googleapis.com/auth/gmail.settings.basic',
       'https://www.googleapis.com/auth/drive.readonly',
       'https://www.googleapis.com/auth/calendar.readonly'
     ],
@@ -4730,6 +4726,114 @@ function gmailBase64UrlEncode(str) {
     .replace(/=+$/, '');
 }
 
+/** RFC 2822 plain-text message: headers, blank line, then body (CRLF). */
+function gmailBuildPlainTextMime({ toAddr, subject, inReplyTo, references, bodyText }) {
+  const headerLines = [`To: ${toAddr}`, `Subject: ${subject || '(no subject)'}`];
+  if (inReplyTo) headerLines.push(`In-Reply-To: ${inReplyTo}`);
+  if (references) headerLines.push(`References: ${references}`);
+  headerLines.push(
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: 8bit'
+  );
+  const normalizedBody = (bodyText || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\n/g, '\r\n');
+  return headerLines.join('\r\n') + '\r\n\r\n' + normalizedBody;
+}
+
+/** Pick the send-as row most likely to hold the user's main signature. */
+function gmailPickSendAsRow(sendAsList) {
+  const list = (sendAsList || []).filter(Boolean);
+  if (!list.length) return null;
+  const withSig = list.filter((sa) => (sa.signature || '').trim());
+  const pool = withSig.length ? withSig : list;
+  return (
+    pool.find((sa) => sa.isDefault === true) ||
+    pool.find((sa) => sa.isPrimary === true) ||
+    pool.find((sa) => sa.verificationStatus === 'accepted') ||
+    pool[0]
+  );
+}
+
+/** Gmail stores signatures as HTML; plain-text drafts need a readable text form. */
+function gmailHtmlSignatureToPlain(html) {
+  if (!html || typeof html !== 'string') return '';
+  let s = html
+    .replace(/<\s*br\s*\/?>/gi, '\n')
+    .replace(/<\/\s*(p|div|tr|h[1-6]|table)\s*>/gi, '\n')
+    .replace(/<\s*li\s*>/gi, ' • ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\u00a0/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+  s = s.replace(/&#(\d+);/g, (m, n) => {
+    const c = parseInt(n, 10);
+    return Number.isFinite(c) && c > 0 && c < 0x110000 ? String.fromCodePoint(c) : m;
+  });
+  s = s.replace(/&#x([0-9a-f]+);/gi, (m, h) => {
+    const c = parseInt(h, 16);
+    return Number.isFinite(c) && c > 0 && c < 0x110000 ? String.fromCodePoint(c) : m;
+  });
+  s = s.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  return navioRepairUtf8Mojibake(s);
+}
+
+async function gmailFetchSendAsSignaturePlainResult(token) {
+  if (!token) return { signature: '', error: 'no_token' };
+  try {
+    const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/settings/sendAs', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      const msg = d.error?.message || `HTTP ${r.status}`;
+      const needsReconnect = r.status === 403 || /insufficient|Permission|accessNotConfigured|authentication/i.test(msg);
+      console.warn('[Navio] Gmail settings/sendAs:', msg);
+      return { signature: '', error: msg, needsReconnect };
+    }
+    if (!Array.isArray(d.sendAs) || !d.sendAs.length) {
+      console.warn('[Navio] Gmail sendAs list empty');
+      return { signature: '', error: 'empty_sendAs' };
+    }
+    const row = gmailPickSendAsRow(d.sendAs);
+    const html = (row && row.signature) || '';
+    if (!html.trim()) {
+      console.warn('[Navio] Gmail sendAs: no HTML signature on', row?.sendAsEmail || '(row)');
+    }
+    const signature = gmailHtmlSignatureToPlain(html);
+    if (!signature.trim() && html.replace(/<img[^>]*>/gi, '').replace(/<[^>]+>/g, '').trim()) {
+      console.warn('[Navio] Gmail signature may be image-only; plain-text draft cannot show it.');
+    }
+    return { signature, sendAsEmail: row?.sendAsEmail || '' };
+  } catch (e) {
+    console.warn('[Navio] Gmail sendAs:', e.message);
+    return { signature: '', error: e.message };
+  }
+}
+
+async function gmailFetchDefaultSignaturePlain(token) {
+  const { signature } = await gmailFetchSendAsSignaturePlainResult(token);
+  return signature;
+}
+
+function gmailAppendSendAsSignaturePlain(bodyText, sigPlain) {
+  const sig = (sigPlain || '').trim();
+  if (!sig) return bodyText;
+  const raw = bodyText == null ? '' : String(bodyText);
+  const trimmed = raw.trimEnd();
+  if (!trimmed) return sig;
+  const bodyN = trimmed.replace(/\r\n/g, '\n');
+  const sigN = sig.replace(/\r\n/g, '\n');
+  if (bodyN.endsWith(sigN)) return trimmed;
+  return `${trimmed}\n\n${sig}`;
+}
+
 function parseEmailAddressFromHeader(fromVal) {
   if (!fromVal) return '';
   const m = fromVal.match(/<([^>]+)>/);
@@ -4770,18 +4874,13 @@ async function gmailUpdateDraftApi(draftId, bodyText) {
 
   if (!toAddr) return { error: 'Draft is missing a To: header.' };
 
-  const mimeLines = [
-    `To: ${toAddr}`,
-    `Subject: ${subject || '(no subject)'}`,
-    inReplyTo ? `In-Reply-To: ${inReplyTo}` : '',
-    references ? `References: ${references}` : '',
-    'MIME-Version: 1.0',
-    'Content-Type: text/plain; charset=UTF-8',
-    'Content-Transfer-Encoding: 8bit',
-    '',
-    text.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')
-  ].filter((line) => line !== '');
-  const mime = mimeLines.join('\r\n');
+  const mime = gmailBuildPlainTextMime({
+    toAddr,
+    subject,
+    inReplyTo,
+    references,
+    bodyText: text
+  });
   const raw = gmailBase64UrlEncode(mime);
   const threadId = draft.message?.threadId;
 
@@ -4828,6 +4927,17 @@ ipcMain.handle('gmail-update-draft', async (_, { draftId, body }) => {
   }
 });
 
+/** Plain-text signature from Gmail Settings → Send mail as (for assistant draft cards). */
+ipcMain.handle('gmail-get-signature-plain', async () => {
+  try {
+    const token = await getValidOAuthToken('google');
+    if (!token) return { error: 'not_signed_in' };
+    return await gmailFetchSendAsSignaturePlainResult(token);
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
 // ── Gmail API: delete a draft ──────────────────────────────────────────────
 ipcMain.handle('gmail-delete-draft', async (_, { draftId }) => {
   try {
@@ -4852,8 +4962,11 @@ ipcMain.handle('gmail-create-reply-draft', async (_, { messageId, body: replyBod
     const mid = (messageId || '').trim();
     if (!mid) return { error: 'Missing Gmail message id' };
 
-    const text = navioRepairUtf8Mojibake((replyBody || '').trim());
+    let text = navioRepairUtf8Mojibake((replyBody || '').trim());
     if (!text) return { error: 'Empty reply body' };
+
+    const sigPlain = await gmailFetchDefaultSignaturePlain(token);
+    text = gmailAppendSendAsSignaturePlain(text, sigPlain);
 
     const r = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(mid)}?format=full`,
@@ -4881,18 +4994,13 @@ ipcMain.handle('gmail-create-reply-draft', async (_, { messageId, body: replyBod
 
     const refs = [prevRefs, msgIdHdr].filter(Boolean).join(' ').trim();
 
-    const mimeLines = [
-      `To: ${toAddr}`,
-      `Subject: ${subjOut}`,
-      msgIdHdr ? `In-Reply-To: ${msgIdHdr}` : '',
-      refs ? `References: ${refs}` : '',
-      'MIME-Version: 1.0',
-      'Content-Type: text/plain; charset=UTF-8',
-      'Content-Transfer-Encoding: 8bit',
-      '',
-      text.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')
-    ].filter((line) => line !== '');
-    const mime = mimeLines.join('\r\n');
+    const mime = gmailBuildPlainTextMime({
+      toAddr,
+      subject: subjOut,
+      inReplyTo: msgIdHdr || '',
+      references: refs,
+      bodyText: text
+    });
     const raw = gmailBase64UrlEncode(mime);
 
     const draftRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {

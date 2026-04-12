@@ -3285,6 +3285,7 @@ button.ntp-ticker-sport--stream:focus-visible {
   font-size: 13px;
   font-family: var(--font-sans);
   line-height: 1.55;
+  white-space: pre-wrap;
   resize: vertical;
   outline: none;
   box-sizing: border-box;

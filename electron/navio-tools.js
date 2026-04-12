@@ -447,8 +447,10 @@ const NAVIO_TOOLS = [
     description:
       'Create a reply draft for a Gmail message via the Gmail API. The draft is saved in Gmail Drafts ' +
       'and is NOT sent — the user reviews and sends it manually. ' +
+      'Navio appends the user’s Gmail signature from Settings (Send mail as), as plain text, after the body you supply. ' +
+      'The signature usually already includes "Best regards" / "Kind regards" and their name — do not add any valediction or sign-off in the body. ' +
       'Use this for every reply task instead of clicking Reply in the browser (Gmail iframes are unreliable). ' +
-      'Requires Google OAuth connected with gmail.compose scope.',
+      'Requires Google OAuth with gmail.compose and gmail.settings.basic (reconnect Google if signature never appears).',
     parameters: {
       type: 'object',
       properties: {
