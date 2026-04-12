@@ -30,7 +30,22 @@ function navioDetectMailboxIntent(text) {
   const threadStuff =
     /\b(thread|attachment|respond|replied|reply|unreplied|unanswered|pending|follow.?up|sent|outbox)\b/i.test(s) &&
     /\b(e-?mail|mail|inbox|gmail|message)\b/i.test(s);
-  return !!(mailThing || mailPlusCasual || inboxPhrases || threadStuff);
+  const mailCasual =
+    /\bwho\s+(emailed|wrote|messaged)\s+(me|us)\b/i.test(s) ||
+    /\b(anything|what)\s+(i\s+)?(owe|missed|miss|behind\s+on)\b/i.test(s) ||
+    /\bcatch\s+up\s+on\s+(my\s+)?(mail|inbox|messages?)\b/i.test(s);
+  return !!(mailThing || mailPlusCasual || inboxPhrases || threadStuff || mailCasual);
+}
+
+/** User is asking about the visible page/tab in plain language (no "click"/"navigate" verbs). */
+function navioDetectPageFocusIntent(text) {
+  const s = (text || '').trim();
+  if (s.length < 3) return false;
+  return (
+    /(?:^|\b)(what'?s\s+on\s+(this\s+)?(page|tab|site)|what\s+is\s+on\s+(this\s+)?(page|tab|site)|summarize\s+(this|the)\s+(page|tab|site)|describe\s+(this|the)\s+(page|site|screen)|what\s+am\s+i\s+looking\s+at|what\s+does\s+this\s+(page|site|tab)\s+(say|show)|here\s+on\s+this\s+(page|site)|this\s+(page|tab|site)\s+(say|shows|says)|content\s+of\s+this\s+(page|tab)|current\s+(page|tab)\s+about)/i.test(
+      s
+    ) || /\b(explain|explaining)\s+(this|that)\s+(page|site|screen)\b/i.test(s)
+  );
 }
 
 class AssistantManagerClass {
@@ -609,19 +624,21 @@ class AssistantManagerClass {
       if (connectorCtx) messages.push({ role: 'system', content: connectorCtx });
     }
 
-    // Inject accessibility snapshot when user is likely requesting browser control
-    // Do not inject DOM snapshots for mail triage / API-Gmail tasks — a Gmail or Drafts tab
-    // steers the model away from gmail_search and toward useless clicking.
+    // Inject accessibility snapshot for browser control / "what's on this page".
+    // Skip for pure mail-triage asks (API Gmail is better than clicking the mail UI) — BUT if the user
+    // also asks about the visible page (navioDetectPageFocusIntent), always include the snapshot so
+    // mixed questions are not confusing.
     const isMailTriageQuery =
       /\b(email|gmail|mail|inbox|draft|reply|unread|thread|message|mailbox|notification)\b/i.test(text) &&
       /\b(check|show|list|read|summarize|search|draft|reply|unread|any|find|what|whats|what's|how|connected|got|gotten|missed|look|see|view|peek|triage|new|latest|arrived|anything|something|important|came\s+in|waiting)\b/i.test(
         text
       ) &&
       !/\b(click|navigate|fill|type\s+in|press\s+|scroll\s+to|open\s+http|open\s+www)/i.test(text);
-    const browserIntent =
-      !isMailTriageQuery &&
+    const pageFocusAsk = navioDetectPageFocusIntent(text);
+    const actionVerbBrowse =
       /\b(click|go to|open|navigate|visit|search|type|fill|scroll|find|press|submit|play|watch|buy|book|login|sign)\b/i.test(text);
-    if (browserIntent && !isQuickAction) {
+    const wantsPageSnapshot = pageFocusAsk || (!isMailTriageQuery && actionVerbBrowse);
+    if (wantsPageSnapshot && !isQuickAction) {
       const snapText = await this._getPageSnapshotText();
       if (snapText) messages.push({ role: 'system', content: snapText });
     }
