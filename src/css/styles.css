@@ -1051,6 +1051,8 @@ body.tabstrip-hidden .tab-strip-show {
   color: #e2e8f8;
   /* Bottom inset matches fixed ticker via :root --ntp-ticker-reserve (ntp.js). */
   scroll-padding-bottom: 12px;
+  /* Inbox / news list: ~3–4 rows visible, rest scrolls inside the tile */
+  --ntp-widget-list-max-h: min(300px, 38vh);
   --ntp-accent: #00d8ff;
   --ntp-purple: #7c3aed;
   --ntp-text: #e2e8f8;
@@ -1538,7 +1540,8 @@ body.tabstrip-hidden .tab-strip-show {
 .ntp-widgets {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-template-rows: auto;
+  align-items: start;
   gap: 10px;
   padding: 0 20px 8px;
   position: relative;
@@ -1547,17 +1550,17 @@ body.tabstrip-hidden .tab-strip-show {
   width: 100%;
   margin: 0 auto;
   box-sizing: border-box;
-  flex: 1;
+  flex: 0 1 auto;
   min-height: 0;
 }
-/* Inbox left, full height; World News same height beside inbox */
+/* Inbox left, World News right — compact tiles (lists scroll inside) */
 .ntp-email-widget {
   grid-column: 1;
-  grid-row: 1 / span 2;
+  grid-row: auto;
 }
 .ntp-news-widget {
   grid-column: 2;
-  grid-row: 1 / span 2;
+  grid-row: auto;
 }
 /* No email connected: hide inbox; news uses full width */
 .ntp-widgets--no-email #ntp-widget-email {
@@ -1565,7 +1568,7 @@ body.tabstrip-hidden .tab-strip-show {
 }
 .ntp-widgets--no-email .ntp-news-widget {
   grid-column: 1 / -1;
-  grid-row: 1 / span 2;
+  grid-row: auto;
 }
 @media (max-width: 700px) {
   .ntp-widgets { grid-template-columns: 1fr; grid-template-rows: auto; }
@@ -1583,6 +1586,8 @@ body.tabstrip-hidden .tab-strip-show {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  align-self: start;
+  width: 100%;
   position: relative;
   backdrop-filter: blur(30px) saturate(1.3);
   -webkit-backdrop-filter: blur(30px) saturate(1.3);
@@ -1704,7 +1709,7 @@ body.tabstrip-hidden .tab-strip-show {
 }
 .ntp-widget-body {
   overflow-y: auto;
-  flex: 1;
+  flex: 0 1 auto;
   padding: 6px 0;
   scrollbar-width: thin;
   scrollbar-color: rgba(255,255,255,0.1) transparent;
@@ -1733,6 +1738,8 @@ body.tabstrip-hidden .tab-strip-show {
   z-index: 1;
   margin: 0 10px 10px;
   padding: 6px 0;
+  max-height: var(--ntp-widget-list-max-h);
+  min-height: 0;
   border-radius: 11px;
   background:
     linear-gradient(90deg, rgba(200, 70, 70, 0.14) 0px, rgba(200, 70, 70, 0.05) 3px, transparent 4px),
@@ -1773,6 +1780,8 @@ body.tabstrip-hidden .tab-strip-show {
   z-index: 1;
   margin: 0 10px 10px;
   padding: 6px 0;
+  max-height: var(--ntp-widget-list-max-h);
+  min-height: 0;
   border-radius: 12px;
   background: linear-gradient(168deg, rgba(24, 42, 68, 0.96), rgba(16, 30, 52, 0.99));
   border: 1px solid rgba(90, 150, 220, 0.2);
@@ -6411,11 +6420,7 @@ body.onboarding-active #app {
 }
 
 .assistant-starter-chips .ai-starter-host--detail {
-  min-height: 168px;
-}
-
-.assistant-starter-chips .ai-starter-panel {
-  grid-template-columns: 1fr;
+  min-height: 96px;
 }
 
 /* Capability cards 2-col grid */
@@ -10833,7 +10838,7 @@ button:focus-visible,
 }
 
 .ai-starter-host--detail {
-  min-height: 128px;
+  min-height: 88px;
 }
 
 .ai-starter-pill-row {
@@ -10866,6 +10871,8 @@ button:focus-visible,
 }
 
 .ai-starter-options-head {
+  display: flex;
+  justify-content: center;
   margin-bottom: 8px;
 }
 
@@ -10889,41 +10896,53 @@ button:focus-visible,
   border-color: rgba(0, 216, 255, 0.28);
 }
 
+/* Same formation as category row: centered wrapping pills (not a list / grid). */
 .ai-starter-panel {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  justify-content: center;
+  align-items: center;
   width: 100%;
   padding: 0;
   box-sizing: border-box;
 }
 
-@media (max-width: 520px) {
-  .ai-starter-panel {
-    grid-template-columns: 1fr;
-  }
+/* Author layout rules must not defeat `hidden` (see prior bug with all16 options visible). */
+.ai-starter-panel[hidden],
+.ai-starter-face[hidden] {
+  display: none !important;
 }
 
+/* Match .ntp-ai-suggestion / .assistant-starter-chip pill look */
 .ai-starter-option {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 8px 10px;
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-full);
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 11.5px;
   line-height: 1.35;
-  color: rgba(255, 255, 255, 0.72);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius-md);
+  text-align: center;
+  white-space: normal;
+  width: auto;
+  max-width: 100%;
+  flex: 0 1 auto;
   cursor: pointer;
   font-family: var(--font-sans);
-  transition: background var(--duration) var(--ease), border-color var(--duration) var(--ease), color var(--duration) var(--ease);
+  transition: all var(--duration) var(--ease);
 }
 
 .ai-starter-option:hover {
-  background: rgba(0, 216, 255, 0.1);
-  border-color: rgba(0, 216, 255, 0.28);
+  background: rgba(0, 216, 255, 0.08);
+  border-color: rgba(0, 216, 255, 0.3);
   color: white;
+  box-shadow: 0 0 16px rgba(0, 216, 255, 0.1);
+  transform: translateY(-1px);
 }
 
 /* ── NTP viewport-height responsiveness ─────────────────────────────── */
@@ -11018,28 +11037,18 @@ button:focus-visible,
 }
 
 [data-theme="light"] .ntp-ai-suggestion,
-[data-theme="light"] .assistant-starter-chip {
+[data-theme="light"] .assistant-starter-chip,
+[data-theme="light"] .ai-starter-option {
   background: rgba(0,0,0,0.03);
   border-color: rgba(0,0,0,0.08);
   color: var(--text-secondary);
 }
 
 [data-theme="light"] .ntp-ai-suggestion:hover,
-[data-theme="light"] .assistant-starter-chip:hover {
+[data-theme="light"] .assistant-starter-chip:hover,
+[data-theme="light"] .ai-starter-option:hover {
   background: rgba(0,120,220,0.06);
   border-color: rgba(0,120,220,0.2);
-  color: var(--text-primary);
-}
-
-[data-theme="light"] .ai-starter-option {
-  background: rgba(0, 0, 0, 0.03);
-  border-color: rgba(0, 0, 0, 0.1);
-  color: var(--text-secondary);
-}
-
-[data-theme="light"] .ai-starter-option:hover {
-  background: rgba(0, 120, 220, 0.08);
-  border-color: rgba(0, 120, 220, 0.22);
   color: var(--text-primary);
 }
 
