@@ -6265,6 +6265,26 @@ body.onboarding-active #app {
   max-width: 240px;
 }
 
+.welcome-starter-hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin: 14px 0 10px;
+  line-height: 1.45;
+  max-width: 280px;
+  opacity: 0.92;
+}
+
+.assistant-starter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  width: 100%;
+  max-width: 340px;
+  padding: 0 4px 8px;
+  box-sizing: border-box;
+}
+
 /* Capability cards 2-col grid */
 .welcome-caps {
   display: grid;
@@ -10688,7 +10708,8 @@ button:focus-visible,
   .ntp-clock { font-size: 22px; }
 }
 
-.ntp-ai-suggestion {
+.ntp-ai-suggestion,
+.assistant-starter-chip {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -10703,7 +10724,8 @@ button:focus-visible,
   font-family: var(--font-sans);
 }
 
-.ntp-ai-suggestion:hover {
+.ntp-ai-suggestion:hover,
+.assistant-starter-chip:hover {
   background: rgba(0,216,255,0.08);
   border-color: rgba(0,216,255,0.3);
   color: white;
@@ -10711,12 +10733,14 @@ button:focus-visible,
   transform: translateY(-1px);
 }
 
-.ntp-ai-suggestion svg {
+.ntp-ai-suggestion svg,
+.assistant-starter-chip svg {
   flex-shrink: 0;
   opacity: 0.6;
 }
 
-.ntp-ai-suggestion:hover svg {
+.ntp-ai-suggestion:hover svg,
+.assistant-starter-chip:hover svg {
   opacity: 1;
   color: var(--accent);
 }
@@ -10756,13 +10780,15 @@ button:focus-visible,
   box-shadow: 0 0 14px rgba(0,120,220,0.15), inset 0 0 8px rgba(0,120,220,0.1);
 }
 
-[data-theme="light"] .ntp-ai-suggestion {
+[data-theme="light"] .ntp-ai-suggestion,
+[data-theme="light"] .assistant-starter-chip {
   background: rgba(0,0,0,0.03);
   border-color: rgba(0,0,0,0.08);
   color: var(--text-secondary);
 }
 
-[data-theme="light"] .ntp-ai-suggestion:hover {
+[data-theme="light"] .ntp-ai-suggestion:hover,
+[data-theme="light"] .assistant-starter-chip:hover {
   background: rgba(0,120,220,0.06);
   border-color: rgba(0,120,220,0.2);
   color: var(--text-primary);

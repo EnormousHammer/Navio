@@ -1031,7 +1031,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
       // Navigate: must go through the renderer for NTP overlay handling
       if (tc.name === 'navigate') {
         sender.send('tool-navigate', { url: tc.arguments.url, stepIndex: step });
-        const navResult = await waitForRendererAck(sender, 'tool-navigate-ack', 30000);
+        const navResult = await waitForRendererAck(sender, 'tool-navigate-ack', 60000);
         currentMessages = appendToolResult(currentMessages, tc, navResult, provider);
         toolLog.push({ tool: 'navigate', args: tc.arguments, result: navResult });
         sender.send('tool-progress', { step, tool: tc.name, result: navResult });
@@ -1131,7 +1131,8 @@ async function executeTabTool(tc, sender) {
   const ch = channelMap[tc.name];
   if (!ch) return { error: `Unknown tab tool: ${tc.name}` };
   sender.send(ch.send, tc.arguments || {});
-  return await waitForRendererAck(sender, ch.ack, 30000);
+  const ackMs = tc.name === 'open_tab' ? 60000 : 30000;
+  return await waitForRendererAck(sender, ch.ack, ackMs);
 }
 
 ipcMain.handle('ai-request', async (event, payload) => {
@@ -4057,10 +4058,12 @@ async function queryGmail(token, query, options = {}) {
 
 async function queryGoogleDrive(token, query, options = {}) {
   const pageSize = options.pageSize || 6;
-  const resp = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(`fullText contains '${query}'`)}&pageSize=${pageSize}&fields=files(id,name,mimeType,modifiedTime,webViewLink)`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
+  const q = (query || '').trim();
+  const isRecent = !q || q === '__NAVIO_RECENT__';
+  const url = isRecent
+    ? `https://www.googleapis.com/drive/v3/files?pageSize=${pageSize}&fields=files(id,name,mimeType,modifiedTime,webViewLink)&orderBy=modifiedTime desc&q=${encodeURIComponent('trashed=false')}`
+    : `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(`fullText contains '${q.replace(/'/g, "\\'")}'`)}&pageSize=${pageSize}&fields=files(id,name,mimeType,modifiedTime,webViewLink)`;
+  const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   const data = await resp.json();
   if (!resp.ok) return { error: data.error?.message || 'Google Drive API error' };
   const results = (data.files || []).map((f) => ({

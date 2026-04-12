@@ -380,8 +380,10 @@ const NAVIO_TOOLS = [
       'Search Gmail for emails using Gmail search syntax. Returns message IDs, subjects, senders, ' +
       'dates, snippets, thread IDs, and label IDs. Use this instead of navigating to mail.google.com ' +
       'whenever you need to find or list emails. ' +
-      'Common queries: "in:inbox after:YYYY/MM/DD" for today\'s inbox, ' +
-      '"in:inbox is:unread" for unread, "from:someone@example.com" for a specific sender. ' +
+      'For inbox triage and drafting replies to mail you received, start with: "in:inbox -from:me newer_than:14d" ' +
+      '(incoming threads you did not originate). For unread-only: "in:inbox is:unread newer_than:14d". ' +
+      'For "today": add after:YYYY/MM/DD. ' +
+      'Also: "from:user@example.com", "subject:invoice". ' +
       'Requires Google OAuth to be connected in Navio Settings.',
     parameters: {
       type: 'object',

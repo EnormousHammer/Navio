@@ -301,8 +301,8 @@
     });
   }
 
-  // ── NTP AI Suggestion Buttons ─────────────────────────────────────────────
-  document.querySelectorAll('.ntp-ai-suggestion').forEach((btn) => {
+  // ── NTP + Assistant starter prompt chips ─────────────────────────────────
+  document.querySelectorAll('.ntp-ai-suggestion, .assistant-starter-chip').forEach((btn) => {
     btn.addEventListener('click', () => {
       const prompt = btn.dataset.prompt;
       if (!prompt) return;

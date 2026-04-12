@@ -7,6 +7,32 @@
 const NAVIO_AUTH_GATE_URL_RE =
   /\/(login|signin|sign-in|auth|account\/login|session\/new|oauth|sso)\b|accounts\.google\.com\/(signin|ServiceLogin)|login\.microsoftonline\.com|login\.live\.com|signin\.aws\.amazon\.com/i;
 
+/** Natural-language mailbox ask — shared by Gmail + Outlook connector prefetch. */
+function navioDetectMailboxIntent(text) {
+  const s = (text || '').trim();
+  if (s.length < 2) return false;
+  if (/\b(send|forward|compose)\s+(an?\s+)?(e-?)?mail\s+to\s+\S+@\S+/i.test(s)) return false;
+  const mailThing =
+    /\b(gmail|google\s*mail|inbox|mailbox|e-?mails?|unread|notification)\b/i.test(s) ||
+    /\bmy\s+(e-?mails?|mail|inbox|messages?)\b/i.test(s) ||
+    /\b(messages?|mail)\s+from\b/i.test(s);
+  const mailPlusCasual =
+    /\b(e-?mails?|\bmail\b)\b/i.test(s) &&
+    /\b(check|see|show|read|view|open|look|got|get|gotten|miss|missed|unread|new|latest|any|what|whats|what's|triage|summarize|stuff|came|arrived|waiting|important|anything|something|peek|skim|catch\s*up)\b/i.test(
+      s
+    );
+  const inboxPhrases =
+    /\b(check|see|show|read|peek)\s+(at\s+)?(my\s+)?(inbox|mail|gmail)\b/i.test(s) ||
+    /\b(what|whats|what's|any)('?s|s| is)?\s+(new|in\s+my\s+inbox|up)\b/i.test(s) ||
+    /\b(any|some)thing\s+(new|in\s+my\s+inbox)\b/i.test(s) ||
+    (/\b(did|have)\s+i\s+(get|miss|receive)\b/i.test(s) && /\b(mail|e-?mail|message|anything)\b/i.test(s)) ||
+    /\b(clear|deal\s+with)\s+(my\s+)?(inbox|mail)\b/i.test(s);
+  const threadStuff =
+    /\b(thread|attachment|respond|replied|reply|unreplied|unanswered|pending|follow.?up|sent|outbox)\b/i.test(s) &&
+    /\b(e-?mail|mail|inbox|gmail|message)\b/i.test(s);
+  return !!(mailThing || mailPlusCasual || inboxPhrases || threadStuff);
+}
+
 class AssistantManagerClass {
   constructor() {
     this.panel = document.getElementById('assistant-panel');
@@ -584,7 +610,17 @@ class AssistantManagerClass {
     }
 
     // Inject accessibility snapshot when user is likely requesting browser control
-    const browserIntent = /\b(click|go to|open|navigate|visit|search|type|fill|scroll|find|press|submit|play|watch|buy|book|login|sign|email|mail|inbox)\b/i.test(text);
+    // Do not inject DOM snapshots for mail triage / API-Gmail tasks — a Gmail or Drafts tab
+    // steers the model away from gmail_search and toward useless clicking.
+    const isMailTriageQuery =
+      /\b(email|gmail|mail|inbox|draft|reply|unread|thread|message|mailbox|notification)\b/i.test(text) &&
+      /\b(check|show|list|read|summarize|search|draft|reply|unread|any|find|what|whats|what's|how|connected|got|gotten|missed|look|see|view|peek|triage|new|latest|arrived|anything|something|important|came\s+in|waiting)\b/i.test(
+        text
+      ) &&
+      !/\b(click|navigate|fill|type\s+in|press\s+|scroll\s+to|open\s+http|open\s+www)/i.test(text);
+    const browserIntent =
+      !isMailTriageQuery &&
+      /\b(click|go to|open|navigate|visit|search|type|fill|scroll|find|press|submit|play|watch|buy|book|login|sign)\b/i.test(text);
     if (browserIntent && !isQuickAction) {
       const snapText = await this._getPageSnapshotText();
       if (snapText) messages.push({ role: 'system', content: snapText });
@@ -734,9 +770,20 @@ class AssistantManagerClass {
     const unNav = window.navio.onToolNavigate(async ({ url }) => {
       this._appendActivityStep('navigate', `Navigating to ${new URL(url).hostname}...`);
       try {
-        await TabManager.navigateActive(url);
-        await new Promise(r => setTimeout(r, 2000));
-        window.navio.toolNavigateAck({ success: true, url: TabManager.getActiveTab()?.url || url });
+        const loadResult = await TabManager.navigateActiveAndWaitForLoad(url);
+        if (!loadResult.ok) {
+          window.navio.toolNavigateAck({
+            success: false,
+            error: loadResult.error || 'load failed',
+            url: TabManager.getActiveTab()?.url || url
+          });
+          return;
+        }
+        window.navio.toolNavigateAck({
+          success: true,
+          url: TabManager.getActiveTab()?.url || url,
+          timedOut: !!loadResult.timedOut
+        });
       } catch (e) {
         window.navio.toolNavigateAck({ error: e.message });
       }
@@ -746,16 +793,20 @@ class AssistantManagerClass {
     const unOpenTab = window.navio.onToolOpenTab(async ({ url }) => {
       this._appendActivityStep('open_tab', `Opening new tab${url ? ': ' + new URL(url).hostname : ''}...`);
       try {
-        TabManager.createTab(url || null);
-        await new Promise(r => setTimeout(r, url ? 2500 : 500));
-        const tab = TabManager.getActiveTab();
+        const loadResult = await TabManager.createTabAndWaitForLoad(url || null);
+        if (!loadResult.ok) {
+          window.navio.toolOpenTabAck({ success: false, error: loadResult.error || 'load failed' });
+          return;
+        }
+        const tab = loadResult.tab || TabManager.getActiveTab();
         const wv = tab?.webview;
         window.navio.toolOpenTabAck({
           success: true,
           tab_id: tab?.id || '',
           webContentsId: wv?.getWebContentsId?.() || null,
           url: tab?.url || '',
-          title: tab ? TabManager.getTabDisplayTitle(tab) : ''
+          title: tab ? TabManager.getTabDisplayTitle(tab) : '',
+          timedOut: !!loadResult.timedOut
         });
       } catch (e) {
         window.navio.toolOpenTabAck({ error: e.message });
@@ -2408,32 +2459,16 @@ class AssistantManagerClass {
     if (action === 'navigate') {
       try {
         const url = paramsStr;
-        if (!TabManager || typeof TabManager.navigateActive !== 'function') throw new Error('TabManager unavailable');
-        const ok = TabManager.navigateActive(url);
-        if (!ok) throw new Error('Navigation failed to start');
-
-        // Wait for the webview to finish loading (up to 12 s)
-        await new Promise((resolve) => {
-          let settled = false;
-          const settle = () => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            wv.removeEventListener('did-finish-load', onLoad);
-            wv.removeEventListener('did-fail-load', onFail);
-            resolve();
-          };
-          // Extra paint time after finish-load
-          const onLoad = () => setTimeout(settle, 600);
-          // ERR_ABORTED (-3) is a normal redirect — treat as success
-          const onFail = (e) => {
-            if (e && e.errorCode === -3) setTimeout(settle, 600);
-            else settle();
-          };
-          const timer = setTimeout(settle, 12000);
-          wv.addEventListener('did-finish-load', onLoad);
-          wv.addEventListener('did-fail-load', onFail);
+        if (!TabManager || typeof TabManager.navigateActiveAndWaitForLoad !== 'function') {
+          throw new Error('TabManager unavailable');
+        }
+        const loadResult = await TabManager.navigateActiveAndWaitForLoad(url, {
+          timeoutMs: 12000,
+          settleMs: 600
         });
+        if (!loadResult.ok) throw new Error(loadResult.error || 'Navigation failed');
+
+        const wvAfter = TabManager.getActiveWebview();
 
         let finalUrl = '';
         try {
@@ -2465,7 +2500,7 @@ class AssistantManagerClass {
 
         if (fromTakeover) this._pushAgentLog('navigate', finalUrl || paramsStr || 'ok', true);
 
-        await this._maybeAutoScreenshotTakeover(wv);
+        await this._maybeAutoScreenshotTakeover(wvAfter || wv);
 
         if (!fromTakeover) {
           const msgEl = card.closest('.message');
@@ -2768,12 +2803,31 @@ ${pageInfo}${snapText}`;
       }
 
       // ── Gmail ──────────────────────────────────────────────────────────
-      const gmailIntent = /\b(email|gmail|mail|inbox|message|sent|unread|thread|attachment|respond|replied|reply|unreplied|unanswered|pending|follow.?up|week|days?\b.*\b(email|mail|inbox)|recent\s*(email|mail)|check.*(email|mail|inbox))\b/i.test(text);
+      const gmailIntent = navioDetectMailboxIntent(text);
       if (has('gmail') && gmailIntent) {
-        const lowerText = text.toLowerCase();
         const wantsUnread = /\bunread\b/i.test(text);
-        const wantsUnreplied = /\b(unreplied|unanswered|didn.?t\s*(respond|reply)|not\s*(respond|replied|reply)|no\s*response|pending\s*(reply|response)|haven.?t\s*(respond|replied|reply)|need\s*to\s*respond|waiting|follow.?up)\b/i.test(text);
+        const wantsUnreplied =
+          /\b(unreplied|unanswered|didn.?t\s*(respond|reply)|not\s*(respond|replied|reply)|no\s*response|pending\s*(reply|response)|haven.?t\s*(respond|replied|reply)|need\s*to\s*(respond|reply)|need\s+a\s*reply|needs?\s+replies?|that\s+need(s)?\s+(a\s+)?reply|still\s+.*\b(reply|respond)|awaiting\s+(a\s+)?response|waiting\s+for\s+(a\s+)?reply|follow.?up)\b/i.test(
+            text
+          );
+        const wantsDraftReplies =
+          /\b(draft|drafts)\b/i.test(text) &&
+          /\b(reply|replies|respond)\b/i.test(text) &&
+          /\b(email|gmail|mail|inbox|message|notification)\b/i.test(text);
         const wantsSent = /\b(sent|outbox|i\s*sent|my\s*sent)\b/i.test(text);
+        const wantsAllInbox =
+          /\b(all|every|everything|entire|full|whole)\s+(of\s+)?(my\s+)?(inbox|e-?mails?|mail|messages?)\b/i.test(text) ||
+          /\b(my\s+)?(inbox|mail)\b.*\b(all|everything|full)\b/i.test(text);
+
+        const _gmailFragmentOk = (s) => {
+          if (!s || s.length < 2 || s.length > 72) return false;
+          if (/[.!?(){}"'`[\]]/.test(s)) return false;
+          const tokens = s.trim().split(/\s+/).filter(Boolean);
+          if (tokens.length > 5) return false;
+          if (/^(from|to|subject|label|in|is|category|newer_than|older_than|has|filename|after|before):/i.test(s.trim())) return true;
+          if (tokens.length <= 3) return true;
+          return /^[\w@+./-]+(\s+[\w@+./-]+){0,4}$/i.test(s);
+        };
 
         // Date range detection
         let dateFilter = '';
@@ -2793,23 +2847,37 @@ ${pageInfo}${snapText}`;
         } else if (/\b(recent|lately|recently)\b/i.test(text)) {
           dateFilter = 'newer_than:14d';
         }
+        // Sensible default window so vague "how's my inbox" doesn't scan years of mail.
+        if (!dateFilter && !wantsSent) {
+          dateFilter = 'newer_than:14d';
+        }
 
         const rawQ = clean(/\b(email|gmail|mail|inbox|message|sent|unread|thread|respond|replied|reply|unreplied|unanswered|pending|follow.?up|recent|check|week|weeks|day|days|month|months|past|last|the|how|many|did|i|get|that|didn.?t|haven.?t|not|to|in|my|a|1|2|3)\b/gi);
+        const safeExtra = _gmailFragmentOk(rawQ) ? rawQ : '';
 
         let gmailQuery;
         let fetchCount = 25;
 
         if (wantsUnreplied) {
-          gmailQuery = `in:inbox -from:me ${dateFilter}`.trim();
+          gmailQuery = `in:inbox -from:me ${dateFilter} ${safeExtra}`.replace(/\s+/g, ' ').trim();
+          fetchCount = 50;
+        } else if (wantsDraftReplies && !/\bunread\b/i.test(text)) {
+          // Reply triage without an explicit "unread" ask — incoming threads you didn't start.
+          gmailQuery = `in:inbox -from:me ${dateFilter} ${safeExtra}`.replace(/\s+/g, ' ').trim();
           fetchCount = 50;
         } else if (wantsSent) {
-          gmailQuery = `in:sent ${dateFilter} ${rawQ}`.replace(/\s+/g, ' ').trim();
-        } else if (wantsUnread) {
-          gmailQuery = `in:inbox is:unread ${dateFilter} ${rawQ}`.replace(/\s+/g, ' ').trim();
-        } else if (rawQ.length > 2) {
-          gmailQuery = `in:inbox ${dateFilter} ${rawQ}`.replace(/\s+/g, ' ').trim();
+          gmailQuery = `in:sent ${dateFilter} ${safeExtra}`.replace(/\s+/g, ' ').trim();
+        } else if (wantsAllInbox) {
+          gmailQuery = `in:inbox ${dateFilter} ${safeExtra}`.replace(/\s+/g, ' ').trim();
+          fetchCount = 40;
+        } else if (wantsUnread || (wantsDraftReplies && /\bunread\b/i.test(text))) {
+          gmailQuery = `in:inbox is:unread ${dateFilter} ${safeExtra}`.replace(/\s+/g, ' ').trim();
+          fetchCount = wantsDraftReplies ? 50 : 25;
+        } else if (safeExtra.length > 2) {
+          gmailQuery = `in:inbox is:unread ${dateFilter} ${safeExtra}`.replace(/\s+/g, ' ').trim();
         } else {
-          gmailQuery = `in:inbox is:unread ${dateFilter}`.trim() || 'in:inbox is:unread';
+          // Default: what people mean by "check my mail" — unread in inbox, recent window.
+          gmailQuery = `in:inbox is:unread ${dateFilter}`.replace(/\s+/g, ' ').trim();
         }
 
         try {
@@ -2817,7 +2885,9 @@ ${pageInfo}${snapText}`;
             maxResults: fetchCount,
             pages: fetchCount > 25 ? 2 : 1
           });
-          if (res?.results?.length) {
+          if (res?.error) {
+            results.push(`[Gmail connector error: ${res.error}]`);
+          } else if (res?.results?.length) {
             const lines = res.results.map((r, idx) => {
               const gmailUrl = r.id ? `https://mail.google.com/mail/u/0/#inbox/${r.id}` : '';
               if (r.id) {
@@ -2879,18 +2949,24 @@ ${pageInfo}${snapText}`;
       }
 
       // ── Outlook ────────────────────────────────────────────────────────
-      const outlookIntent = /\b(outlook|email|mail|inbox|message|exchange)\b/i.test(text);
-      if (has('outlook') && outlookIntent && !has('gmail')) {
+      const outlookExplicit =
+        /\boutlook|hotmail|live\.com|office\s*365|microsoft\s*365|exchange\b/i.test(text);
+      const outlookMailIntent =
+        has('outlook') &&
+        (outlookExplicit || (!has('gmail') && navioDetectMailboxIntent(text)));
+      if (outlookMailIntent) {
         const wantsUnreadOutlook = /\bunread\b/i.test(text);
         const rawOutlookQ = clean(/\b(outlook|email|mail|inbox|message)\b/gi);
         // Build Outlook search — default to unread inbox when no specific terms
         const outlookQuery = rawOutlookQ.length > 2 ? rawOutlookQ
           : wantsUnreadOutlook ? 'isRead:false' : 'isRead:false';
         try {
-          const res = await ConnectorsManager.queryConnector('outlook', outlookQuery, { top: 6 });
-          if (res?.results?.length) {
+          const res = await ConnectorsManager.queryConnector('outlook', outlookQuery, { top: 10 });
+          if (res?.error) {
+            results.push(`[Outlook connector error: ${res.error}]`);
+          } else if (res?.results?.length) {
             const lines = res.results.map((r) => {
-              const unreadFlag = r.isRead === false ? ' 🔵' : '';
+              const unreadFlag = r.isRead === false ? ' [unread]' : '';
               return `- From: ${r.from || '?'} · Subject: ${r.subject || '(no subject)'}${unreadFlag}`;
             }).join('\n');
             results.push(`[Outlook — ${res.total} result(s)]\n${lines}`);
@@ -2899,72 +2975,94 @@ ${pageInfo}${snapText}`;
       }
 
       // ── Google Drive ───────────────────────────────────────────────────
-      const driveIntent = /\b(drive|file|document|doc|sheet|spreadsheet|slide|presentation|folder|gdrive)\b/i.test(text);
+      const driveIntent =
+        /\b(drive|google\s*drive|gdrive|googledocs|google\s*docs|sheets?|slides?|file|document|doc|spreadsheet|presentation|folder|my\s+files)\b/i.test(
+          text
+        ) ||
+        /\b(what|show|list|find|where|anything)\b[\s\S]{0,48}\b(drive|docs|sheets|slides|files?)\b/i.test(text) ||
+        /\b(on|in)\s+my\s+drive\b/i.test(text);
       if (has('gdrive') && driveIntent) {
-        const q = clean(/\b(drive|gdrive|file|document|doc|sheet|spreadsheet|slide|folder)\b/gi);
-        if (q.length > 2) {
-          try {
-            const res = await ConnectorsManager.queryConnector('gdrive', q, { pageSize: 5 });
-            if (res?.results?.length) {
-              const lines = res.results.map((r) => `- ${r.name}${r.type ? ` [${r.type.replace('application/vnd.google-apps.', '')}]` : ''}`).join('\n');
-              results.push(`[Google Drive — ${res.total} file(s) matching "${q}"]\n${lines}`);
-            }
-          } catch (_) {}
-        }
+        let q = clean(/\b(drive|gdrive|file|document|doc|sheet|spreadsheet|slide|folder|googledocs|google\s*docs)\b/gi);
+        if (!q || q.length < 2) q = '__NAVIO_RECENT__';
+        try {
+          const res = await ConnectorsManager.queryConnector('gdrive', q, { pageSize: 8 });
+          if (res?.error) {
+            results.push(`[Google Drive connector error: ${res.error}]`);
+          } else if (res?.results?.length) {
+            const label = q === '__NAVIO_RECENT__' ? 'recent (last modified)' : q;
+            const lines = res.results.map((r) => `- ${r.name}${r.type ? ` [${r.type.replace('application/vnd.google-apps.', '')}]` : ''}`).join('\n');
+            results.push(`[Google Drive — ${res.total} file(s) — ${label}]\n${lines}`);
+          }
+        } catch (_) {}
       }
 
       // ── Dropbox ────────────────────────────────────────────────────────
-      const dropboxIntent = /\b(dropbox|file|document|folder)\b/i.test(text);
+      const dropboxIntent =
+        /\b(dropbox|dbx)\b/i.test(text) ||
+        (/\b(file|document|folder)\b/i.test(text) && /\b(in|on|from)\s+dropbox\b/i.test(text));
       if (has('dropbox') && dropboxIntent && !has('gdrive')) {
-        const q = clean(/\b(dropbox|file|document|folder)\b/gi);
-        if (q.length > 2) {
-          try {
-            const res = await ConnectorsManager.queryConnector('dropbox', q, { maxResults: 5 });
-            if (res?.results?.length) {
-              const lines = res.results.map((r) => `- ${r.name}${r.path ? ` (${r.path})` : ''}`).join('\n');
-              results.push(`[Dropbox — ${res.total} file(s) matching "${q}"]\n${lines}`);
-            }
-          } catch (_) {}
-        }
+        let q = clean(/\b(dropbox|dbx|file|document|folder)\b/gi);
+        if (!q || q.length < 2) q = '*';
+        try {
+          const res = await ConnectorsManager.queryConnector('dropbox', q, { maxResults: 8 });
+          if (res?.error) {
+            results.push(`[Dropbox connector error: ${res.error}]`);
+          } else if (res?.results?.length) {
+            const lines = res.results.map((r) => `- ${r.name}${r.path ? ` (${r.path})` : ''}`).join('\n');
+            results.push(`[Dropbox — ${res.total} file(s) — ${q === '*' ? 'broad search' : q}]\n${lines}`);
+          }
+        } catch (_) {}
       }
 
       // ── OneDrive ───────────────────────────────────────────────────────
-      const onedriveIntent = /\b(onedrive|file|document|folder|sharepoint)\b/i.test(text);
+      const onedriveIntent =
+        /\b(onedrive|o365|sharepoint|microsoft\s*drive)\b/i.test(text) ||
+        (/\b(file|document|folder)\b/i.test(text) && /\b(in|on)\s+(onedrive|sharepoint)\b/i.test(text));
       if (has('onedrive') && onedriveIntent) {
-        const q = clean(/\b(onedrive|file|document|folder)\b/gi);
-        if (q.length > 2) {
-          try {
-            const res = await ConnectorsManager.queryConnector('onedrive', q, { top: 5 });
-            if (res?.results?.length) {
-              const lines = res.results.map((r) => `- ${r.name}${r.type ? ` [${r.type}]` : ''}`).join('\n');
-              results.push(`[OneDrive — ${res.total} file(s) matching "${q}"]\n${lines}`);
-            }
-          } catch (_) {}
-        }
+        let q = clean(/\b(onedrive|file|document|folder|sharepoint|microsoft\s*drive)\b/gi);
+        if (!q || q.length < 2) q = '*';
+        try {
+          const res = await ConnectorsManager.queryConnector('onedrive', q, { top: 8 });
+          if (res?.error) {
+            results.push(`[OneDrive connector error: ${res.error}]`);
+          } else if (res?.results?.length) {
+            const lines = res.results.map((r) => `- ${r.name}${r.type ? ` [${r.type}]` : ''}`).join('\n');
+            results.push(`[OneDrive — ${res.total} file(s) — ${q === '*' ? 'broad search' : q}]\n${lines}`);
+          }
+        } catch (_) {}
       }
 
       // ── Slack ──────────────────────────────────────────────────────────
-      const slackIntent = /\b(slack|channel|message|chat|dm|mention|conversation)\b/i.test(text);
+      const slackIntent =
+        /\b(slack)\b/i.test(text) ||
+        (/\b(channel|dm|direct\s*message|mention)\b/i.test(text) && /\b(on|in)\s+slack\b/i.test(text)) ||
+        /\b(what|show|find|catch\s*up|miss)\b[\s\S]{0,40}\b(slack|channel)\b/i.test(text);
       if (has('slack') && slackIntent) {
-        const q = clean(/\b(slack|channel|message|chat|dm|mention)\b/gi);
-        if (q.length > 2) {
-          try {
-            const res = await ConnectorsManager.queryConnector('slack', q, { count: 4 });
-            if (res?.results?.length) {
-              const lines = res.results.map((r) => `- #${r.channel || '?'} (${r.user || '?'}): "${r.text.slice(0, 120)}"`).join('\n');
-              results.push(`[Slack — ${res.total} message(s) for "${q}"]\n${lines}`);
-            }
-          } catch (_) {}
-        }
+        let q = clean(/\b(slack|channel|message|chat|dm|mention)\b/gi);
+        if (!q || q.length < 2) q = '*';
+        try {
+          const res = await ConnectorsManager.queryConnector('slack', q, { count: 6 });
+          if (res?.error) {
+            results.push(`[Slack connector error: ${res.error}]`);
+          } else if (res?.results?.length) {
+            const lines = res.results.map((r) => `- #${r.channel || '?'} (${r.user || '?'}): "${r.text.slice(0, 120)}"`).join('\n');
+            results.push(`[Slack — ${res.total} message(s) — ${q === '*' ? 'broad' : q}]\n${lines}`);
+          }
+        } catch (_) {}
       }
 
       // ── Google Calendar ────────────────────────────────────────────────
-      const calendarIntent = /\b(calendar|meeting|event|schedule|appointment|agenda|today|this week|upcoming)\b/i.test(text);
+      const calendarIntent =
+        /\b(calendar|meeting|event|schedule|appointment|agenda|busy|free|booked)\b/i.test(text) ||
+        (/\b(today|tomorrow|this\s*week|next\s*week|upcoming)\b/i.test(text) &&
+          /\b(when|what|am\s+i|do\s+i\s+have|anything)\b/i.test(text));
       if (has('gcalendar') && calendarIntent) {
         const q = clean(/\b(calendar|meeting|event|schedule|appointment|agenda)\b/gi) || 'events';
         try {
           const res = await ConnectorsManager.queryConnector('gcalendar', q);
-          if (res?.results?.length) {
+          if (res?.error) {
+            results.push(`[Google Calendar connector error: ${res.error}]`);
+          } else if (res?.results?.length) {
             const lines = res.results.map((r) => `- ${r.title} — ${r.start ? new Date(r.start).toLocaleString() : '?'}${r.location ? ` @ ${r.location}` : ''}`).join('\n');
             results.push(`[Google Calendar — ${res.total} upcoming event(s)]\n${lines}`);
           }
@@ -2972,48 +3070,60 @@ ${pageInfo}${snapText}`;
       }
 
       // ── Notion ─────────────────────────────────────────────────────────
-      const notionIntent = /\b(notion|note|page|wiki|knowledge|workspace|doc|document|wrote|saved)\b/i.test(text);
+      const notionIntent =
+        /\b(notion)\b/i.test(text) ||
+        (/\b(note|page|wiki|workspace)\b/i.test(text) && /\b(in|on)\s+notion\b/i.test(text)) ||
+        /\b(what|show|find|list)\b[\s\S]{0,40}\b(notion|my\s+notes)\b/i.test(text);
       if (has('notion') && notionIntent) {
-        const q = clean(/\b(notion|note|page|wiki|knowledge|workspace)\b/gi);
-        if (q.length > 2) {
-          try {
-            const res = await ConnectorsManager.queryConnector('notion', q, { pageSize: 4 });
-            if (res?.results?.length) {
-              const lines = res.results.map((r) => `- ${r.title}${r.type ? ` (${r.type})` : ''}`).join('\n');
-              results.push(`[Notion — ${res.total} result(s) for "${q}"]\n${lines}`);
-            }
-          } catch (_) {}
-        }
+        let q = clean(/\b(notion|note|page|wiki|knowledge|workspace)\b/gi);
+        if (!q || q.length < 2) q = '';
+        try {
+          const res = await ConnectorsManager.queryConnector('notion', q, { pageSize: 6 });
+          if (res?.error) {
+            results.push(`[Notion connector error: ${res.error}]`);
+          } else if (res?.results?.length) {
+            const lines = res.results.map((r) => `- ${r.title}${r.type ? ` (${r.type})` : ''}`).join('\n');
+            results.push(`[Notion — ${res.total} result(s)${q ? ` for "${q}"` : ' (recent)'}]\n${lines}`);
+          }
+        } catch (_) {}
       }
 
       // ── GitHub ─────────────────────────────────────────────────────────
-      const githubIntent = /\b(github|issue|pr|pull request|bug|fix|repo|repository|commit|branch|code)\b/i.test(text);
+      const githubIntent =
+        /\b(github|gh)\b/i.test(text) ||
+        /\b(issue|issues|pull\s*request|repo|repository)\b/i.test(text) ||
+        (/\b(bug|triage)\b/i.test(text) && /\b(on|in)\s+github\b/i.test(text));
       if (has('github') && githubIntent) {
-        const q = clean(/\b(github|issue|pr|pull request|repo|repository)\b/gi);
-        if (q.length > 2) {
-          try {
-            const res = await ConnectorsManager.queryConnector('github', q, { type: 'issues', perPage: 4 });
-            if (res?.results?.length) {
-              const lines = res.results.map((r) => `- [#${r.number || '?'}] ${r.title} (${r.state || 'unknown'})${r.repo ? ` in ${r.repo}` : ''}`).join('\n');
-              results.push(`[GitHub — ${res.total} result(s) for "${q}"]\n${lines}`);
-            }
-          } catch (_) {}
-        }
+        let q = clean(/\b(github|gh|issue|issues|pull request|repo|repository|pr\b)\b/gi);
+        if (!q || q.length < 2) q = 'is:open';
+        try {
+          const res = await ConnectorsManager.queryConnector('github', q, { type: 'issues', perPage: 6 });
+          if (res?.error) {
+            results.push(`[GitHub connector error: ${res.error}]`);
+          } else if (res?.results?.length) {
+            const lines = res.results.map((r) => `- [#${r.number || '?'}] ${r.title} (${r.state || 'unknown'})${r.repo ? ` in ${r.repo}` : ''}`).join('\n');
+            results.push(`[GitHub — ${res.total} result(s) for "${q}"]\n${lines}`);
+          }
+        } catch (_) {}
       }
 
       // ── Linear ─────────────────────────────────────────────────────────
-      const linearIntent = /\b(linear|ticket|task|sprint|backlog|milestone|assigned)\b/i.test(text);
+      const linearIntent =
+        /\b(linear)\b/i.test(text) ||
+        (/\b(ticket|sprint|backlog)\b/i.test(text) && /\b(in|on)\s+linear\b/i.test(text)) ||
+        /\b(what|show)\b[\s\S]{0,32}\b(issues?|tasks?|linear)\b/i.test(text);
       if (has('linear') && linearIntent) {
-        const q = clean(/\b(linear|ticket|task|sprint|backlog|milestone)\b/gi);
-        if (q.length > 2) {
-          try {
-            const res = await ConnectorsManager.queryConnector('linear', q);
-            if (res?.results?.length) {
-              const lines = res.results.map((r) => `- ${r.title} [${r.state || 'unknown'}]${r.team ? ` · ${r.team}` : ''}`).join('\n');
-              results.push(`[Linear — ${res.total} result(s) for "${q}"]\n${lines}`);
-            }
-          } catch (_) {}
-        }
+        let q = clean(/\b(linear|ticket|task|sprint|backlog|milestone)\b/gi);
+        if (!q || q.length < 2) q = 'assignee:me';
+        try {
+          const res = await ConnectorsManager.queryConnector('linear', q);
+          if (res?.error) {
+            results.push(`[Linear connector error: ${res.error}]`);
+          } else if (res?.results?.length) {
+            const lines = res.results.map((r) => `- ${r.title} [${r.state || 'unknown'}]${r.team ? ` · ${r.team}` : ''}`).join('\n');
+            results.push(`[Linear — ${res.total} result(s) for "${q}"]\n${lines}`);
+          }
+        } catch (_) {}
       }
 
       if (results.length === 0) return null;

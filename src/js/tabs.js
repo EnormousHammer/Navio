@@ -396,6 +396,79 @@ class TabManagerClass {
     return true;
   }
 
+  /**
+   * Attach load listeners first, then start navigation — resolves when the main load settles
+   * (did-finish-load + short paint delay), on hard failure, or timeout (still ok: SPA may be idle).
+   * @param {number} [options.timeoutMs] — max wait (default 45s)
+   * @param {number} [options.settleMs] — buffer after did-finish-load for layout/paint (default 200ms)
+   */
+  async navigateActiveAndWaitForLoad(resolvedUrl, options = {}) {
+    const timeoutMs = options.timeoutMs ?? 45000;
+    const settleMs = options.settleMs ?? 200;
+    const tab = this.getActiveTab();
+    if (!tab || !tab.webview) return { ok: false, error: 'no active tab' };
+    const wv = tab.webview;
+
+    const loadPromise = this._waitForNextWebviewLoad(wv, { timeoutMs, settleMs });
+    const started = this.navigateActive(resolvedUrl);
+    if (!started) return { ok: false, error: 'navigation not started' };
+    return loadPromise;
+  }
+
+  /**
+   * Create a tab (optionally with URL) and wait until that webview finishes loading or times out.
+   */
+  async createTabAndWaitForLoad(url = null, options = {}) {
+    const timeoutMs = options.timeoutMs ?? 45000;
+    const settleMs = options.settleMs ?? 200;
+    const tab = this.createTab(url);
+    if (!url) return { ok: true, tab };
+    const wv = tab.webview;
+    const loadPromise = this._waitForNextWebviewLoad(wv, { timeoutMs, settleMs });
+    const result = await loadPromise;
+    return { tab, ...result };
+  }
+
+  /**
+   * Wait for the next did-finish-load on this webview (listeners registered before navigation).
+   * Call this, then call navigateActive / loadURL / rely on pending URL.
+   */
+  _waitForNextWebviewLoad(wv, { timeoutMs, settleMs }) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const cleanup = () => {
+        clearTimeout(timer);
+        wv.removeEventListener('did-finish-load', onFinish);
+        wv.removeEventListener('did-fail-load', onFail);
+      };
+      const finish = (payload) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(payload);
+      };
+
+      const onFinish = () => {
+        try {
+          const u = (wv.getURL && wv.getURL()) || '';
+          // New tabs load about:blank first, then the real URL — ignore the blank finish.
+          if (u === 'about:blank') return;
+        } catch {
+          /* ignore */
+        }
+        setTimeout(() => finish({ ok: true }), settleMs);
+      };
+      const onFail = (e) => {
+        if (e.errorCode === -3) return;
+        finish({ ok: false, error: e.errorDescription || 'load failed', errorCode: e.errorCode });
+      };
+      const timer = setTimeout(() => finish({ ok: true, timedOut: true }), timeoutMs);
+
+      wv.addEventListener('did-finish-load', onFinish);
+      wv.addEventListener('did-fail-load', onFail);
+    });
+  }
+
   switchToTab(id) {
     const prevId = this.activeTabId;
     this.activeTabId = id;

@@ -808,8 +808,14 @@ const NTP = (() => {
   function _ntpEmailQueryLooksInboxRelated(q) {
     const s = (q || '').trim().toLowerCase();
     if (s.length < 3) return false;
-    return /\b(email|e-?mail|emails|inbox|unread|gmail|outlook|mailbox|mail from|messages from|any new mail|what'?s in my inbox)\b/.test(
-      s
+    return (
+      /\b(email|e-?mail|emails|inbox|unread|gmail|outlook|mailbox|mail from|messages from|any new mail|what'?s in my inbox)\b/.test(
+        s
+      ) ||
+      /\b(check|see|show|read|peek)\s+(at\s+)?(my\s+)?(inbox|mail|gmail)\b/.test(s) ||
+      /\b(what|whats|what's|any)('?s|s| is)?\s+(new|in\s+my\s+inbox|up)\b/.test(s) ||
+      (/\b(did|have)\s+i\s+(get|miss|receive)\b/.test(s) && /\b(mail|e-?mail|message)\b/.test(s)) ||
+      /\bmy\s+(e-?mails?|mail|inbox)\b/.test(s)
     );
   }
 
