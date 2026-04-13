@@ -67,7 +67,8 @@ const NAVIO_TOOLS = [
   {
     name: 'type_text',
     description:
-      'Type text into a form field. Identify the field by "ref" (preferred) or "text" (visible label/placeholder).',
+      'Type text into a form field. Identify the field by "ref" (preferred) or "text" (visible label/placeholder). ' +
+      'Gmail and similar apps use nested iframes — prefer ref from read_page on the active mail tab; Navio searches iframes automatically.',
     parameters: {
       type: 'object',
       properties: {
@@ -489,7 +490,7 @@ const NAVIO_TOOLS = [
       'and is NOT sent — the user reviews and sends it manually. ' +
       'The body you pass is stored verbatim (no signature appended by Navio). Gmail applies the user’s own signature from Gmail settings when they compose/send there. ' +
       'Write only the message text — no "Best regards", name block, or footer unless the user explicitly asked for that wording in the body. ' +
-      'Use this for every reply task instead of clicking Reply in the browser (Gmail iframes are unreliable). ' +
+      'Prefer this for bulk or threaded replies. If the user explicitly wants text in the Gmail compose window, use read_page + click + type_text on the Gmail tab instead. ' +
       'If one call returns an error, continue with the remaining messages unless the error is SCOPE_ERROR or not_signed_in. ' +
       'Requires Google OAuth with gmail.compose (reconnect Google in Navio Settings → Connected Apps if drafts fail).',
     parameters: {

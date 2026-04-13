@@ -2056,7 +2056,9 @@ const toolExecutors = {
 
   async click(wc, args) {
     if (args.ref) {
-      return await clickByRef(wc, args.ref);
+      const refResult = await clickByRef(wc, args.ref);
+      if (refResult.success) await waitForOptionalNavigationAfterClick(wc, 2000);
+      return refResult;
     }
     const selector = args.text ? `text=${args.text}` :
                      args.aria ? `aria=${args.aria}` :
@@ -2387,7 +2389,8 @@ async function executeBrowserActionInternal(wc, action, params) {
     switch (action) {
       case 'click': {
         const sel = (params.selector || '').trim();
-        if (sel.startsWith('xy=')) {
+        const selLower = sel.toLowerCase();
+        if (selLower.startsWith('xy=')) {
           const parts = sel.slice(3).split(/[,;\s]+/).map(Number);
           if (Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
             wc.sendInputEvent({ type: 'mouseMove', x: parts[0], y: parts[1] });
@@ -2400,70 +2403,17 @@ async function executeBrowserActionInternal(wc, action, params) {
           }
           return { error: 'Invalid xy coordinates' };
         }
-        const rawJson = JSON.stringify(sel);
-        const ok = await wc.executeJavaScript(`
-          (() => {
-            const raw = ${rawJson};
-            function find(doc) {
-              if (raw.startsWith('text=')) {
-                const q = raw.slice(5).trim().toLowerCase();
-                for (const el of doc.querySelectorAll('a,button,input[type="submit"],[role="button"],[role="link"],[role="menuitem"],[role="tab"],[role="option"]')) {
-                  const lbl = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim().toLowerCase();
-                  if (lbl.includes(q)) { el.scrollIntoView({block:'center'}); el.focus(); el.click(); return true; }
-                }
-                return false;
-              }
-              if (raw.startsWith('aria=')) {
-                const q = raw.slice(5).trim().toLowerCase();
-                for (const el of doc.querySelectorAll('[aria-label]')) {
-                  if ((el.getAttribute('aria-label')||'').toLowerCase().includes(q)) { el.scrollIntoView({block:'center'}); el.focus(); el.click(); return true; }
-                }
-                return false;
-              }
-              try { const el = doc.querySelector(raw); if (el) { el.scrollIntoView({block:'center'}); el.focus(); el.click(); return true; } } catch {}
-              return false;
-            }
-            return find(document);
-          })()
-        `);
-        await new Promise((r) => setTimeout(r, 300));
-        return ok ? { success: true } : { error: `Element not found: ${sel}` };
+        if (selLower.startsWith('ref=') || selLower.startsWith('ref_')) {
+          const refId = selLower.startsWith('ref=') ? sel.slice(4).trim() : sel;
+          const refResult = await clickByRef(wc, refId);
+          if (refResult.success) await waitForOptionalNavigationAfterClick(wc, 2000);
+          return refResult;
+        }
+        return navioDeepClickBySelectorCore(wc, sel);
       }
 
       case 'type': {
-        const fieldSel = params.selector || '';
-        const text = params.text || '';
-        const fieldJson = JSON.stringify(fieldSel);
-        const textJson = JSON.stringify(text);
-        const ok = await wc.executeJavaScript(`
-          (() => {
-            const sel = ${fieldJson};
-            const text = ${textJson};
-            let el = null;
-            if (sel.startsWith('text=')) {
-              const q = sel.slice(5).trim().toLowerCase();
-              for (const inp of document.querySelectorAll('input,textarea,select,[contenteditable="true"]')) {
-                const lbl = (inp.getAttribute('aria-label') || inp.getAttribute('placeholder') || inp.getAttribute('name') || '').toLowerCase();
-                if (lbl.includes(q)) { el = inp; break; }
-              }
-            } else if (sel.startsWith('aria=')) {
-              const q = sel.slice(5).trim().toLowerCase();
-              for (const inp of document.querySelectorAll('[aria-label]')) {
-                if ((inp.getAttribute('aria-label')||'').toLowerCase().includes(q)) { el = inp; break; }
-              }
-            }
-            if (!el) return false;
-            el.scrollIntoView({block:'center'});
-            el.focus();
-            if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-              el.value = text;
-              el.dispatchEvent(new Event('input', {bubbles:true}));
-              el.dispatchEvent(new Event('change', {bubbles:true}));
-            }
-            return true;
-          })()
-        `);
-        return ok ? { success: true } : { error: `Field not found: ${fieldSel}` };
+        return navioDeepTypeBySelector(wc, params.selector || '', params.text || '');
       }
 
       case 'pressKey': {
@@ -2651,6 +2601,246 @@ async function tryGmailClickViaDebugger(wc, selectorRaw) {
   }
 }
 
+/**
+ * Deep click (iframes + shadow DOM) — shared by browser-action IPC and agent toolExecutors.
+ */
+async function navioDeepClickBySelectorCore(wc, selector) {
+  const cSel = JSON.stringify(selector || '');
+  let res = await wc.executeJavaScript(`
+    new Promise((resolve) => {
+      const raw = ${cSel};
+
+      function findElInDoc(doc, sel) {
+        if (!sel || !doc) return null;
+        if (sel.startsWith('text=')) {
+          const q = sel.slice(5).trim().toLowerCase();
+          const candidates = doc.querySelectorAll(
+            'a,button,input[type="submit"],input[type="button"],' +
+            '[role="button"],[role="link"],[role="menuitem"],[role="tab"],' +
+            '[role="option"],[role="radio"],[role="checkbox"],' +
+            'div[class*="button"],span[class*="button"],div[class*="btn"],span[class*="btn"],' +
+            'li[class*="item"],div[class*="item"],div[class*="option"],span[role="link"]'
+          );
+          for (const el of candidates) {
+            const lbl = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim().toLowerCase();
+            if (lbl.includes(q)) return el;
+          }
+          for (const host of doc.querySelectorAll('*')) {
+            if (!host.shadowRoot) continue;
+            const shadowCandidates = host.shadowRoot.querySelectorAll(
+              'a,button,[role="button"],[role="menuitem"],[role="link"]'
+            );
+            for (const el of shadowCandidates) {
+              const lbl = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim().toLowerCase();
+              if (lbl.includes(q)) return el;
+            }
+          }
+          return null;
+        }
+        if (sel.startsWith('aria=')) {
+          const q = sel.slice(5).trim().toLowerCase();
+          for (const el of doc.querySelectorAll('[aria-label]')) {
+            if ((el.getAttribute('aria-label') || '').toLowerCase().includes(q)) return el;
+          }
+          return null;
+        }
+        try { return doc.querySelector(sel); } catch (e) { return null; }
+      }
+
+      function absCenter(el) {
+        const r = el.getBoundingClientRect();
+        let cx = r.left + r.width / 2;
+        let cy = r.top + r.height / 2;
+        let w = el.ownerDocument.defaultView;
+        while (w && w !== w.top) {
+          const fe = w.frameElement;
+          if (!fe) break;
+          const fr = fe.getBoundingClientRect();
+          cx += fr.left;
+          cy += fr.top;
+          w = fe.ownerDocument.defaultView;
+        }
+        return { cx: Math.round(cx), cy: Math.round(cy) };
+      }
+
+      function fireFullClick(el) {
+        const VW = el.ownerDocument.defaultView;
+        el.scrollIntoView({ block: 'center', behavior: 'instant' });
+        el.focus();
+        const rect = el.getBoundingClientRect();
+        const base = {
+          bubbles: true, cancelable: true, view: VW,
+          clientX: rect.left + rect.width / 2,
+          clientY: rect.top + rect.height / 2,
+          screenX: 0,
+          screenY: 0,
+          buttons: 1,
+          button: 0
+        };
+        const ptr = { ...base, pointerId: 1, isPrimary: true, pointerType: 'mouse' };
+        el.dispatchEvent(new VW.PointerEvent('pointerover', { ...ptr }));
+        el.dispatchEvent(new VW.PointerEvent('pointerenter', { ...ptr, bubbles: false }));
+        el.dispatchEvent(new VW.MouseEvent('mouseover', base));
+        el.dispatchEvent(new VW.MouseEvent('mouseenter', { ...base, bubbles: false }));
+        el.dispatchEvent(new VW.PointerEvent('pointermove', { ...ptr }));
+        el.dispatchEvent(new VW.MouseEvent('mousemove', base));
+        el.dispatchEvent(new VW.PointerEvent('pointerdown', { ...ptr }));
+        el.dispatchEvent(new VW.MouseEvent('mousedown', base));
+        el.dispatchEvent(new VW.PointerEvent('pointerup', { ...ptr }));
+        el.dispatchEvent(new VW.MouseEvent('mouseup', base));
+        el.dispatchEvent(new VW.MouseEvent('click', base));
+        el.click();
+      }
+
+      function searchDeep(win, depth) {
+        if (!win || depth > 14) return null;
+        const doc = win.document;
+        const el = findElInDoc(doc, raw);
+        if (el) return el;
+        const iframes = doc.querySelectorAll('iframe');
+        for (let i = 0; i < iframes.length; i++) {
+          try {
+            const iw = iframes[i].contentWindow;
+            if (!iw || !iw.document) continue;
+            const hit = searchDeep(iw, depth + 1);
+            if (hit) return hit;
+          } catch (e) { /* cross-origin */ }
+        }
+        return null;
+      }
+
+      let tries = 0;
+      const attempt = () => {
+        const el = searchDeep(window, 0);
+        if (el) {
+          fireFullClick(el);
+          const { cx, cy } = absCenter(el);
+          resolve({ ok: true, cx, cy });
+        } else if (++tries < 14) {
+          setTimeout(attempt, 250);
+        } else {
+          resolve({ ok: false, error: 'Element not found: ' + raw });
+        }
+      };
+      attempt();
+    })
+  `);
+
+  if (!res.ok && /mail\\.google\\.com/.test(wc.getURL?.() || '')) {
+    res = await tryGmailClickViaDebugger(wc, selector || '');
+  }
+  if (!res.ok) return { error: res.error };
+
+  if (res.cx != null && res.cy != null) {
+    const { cx, cy } = res;
+    wc.sendInputEvent({ type: 'mouseMove', x: cx, y: cy });
+    await new Promise((r) => setTimeout(r, 40));
+    wc.sendInputEvent({ type: 'mouseDown', x: cx, y: cy, button: 'left', clickCount: 1 });
+    await new Promise((r) => setTimeout(r, 60));
+    wc.sendInputEvent({ type: 'mouseUp', x: cx, y: cy, button: 'left', clickCount: 1 });
+  }
+
+  await waitForOptionalNavigationAfterClick(wc, 2000);
+  return { success: true };
+}
+
+/**
+ * Deep type into inputs / contenteditable (iframes) — shared by IPC and agent tools.
+ */
+async function navioDeepTypeBySelector(wc, selector, text) {
+  const tSel = JSON.stringify(selector || '');
+  const tVal = JSON.stringify(text || '');
+  const tRes = await wc.executeJavaScript(`
+    new Promise((resolve) => {
+      const raw = ${tSel};
+      const text = ${tVal};
+      function findElInDoc(doc, sel) {
+        if (!sel || !doc) return null;
+        if (sel.startsWith('text=') || sel.startsWith('aria=')) {
+          const prefix = sel.startsWith('text=') ? 'text=' : 'aria=';
+          const q = sel.slice(prefix.length).trim().toLowerCase();
+          for (const el of doc.querySelectorAll('input,textarea,select,[contenteditable]')) {
+            const lbl = (el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.getAttribute('name') || '').toLowerCase();
+            if (lbl.includes(q)) return el;
+          }
+          if (sel.startsWith('aria=')) {
+            for (const el of doc.querySelectorAll('[aria-label]')) {
+              if ((el.getAttribute('aria-label') || '').toLowerCase().includes(q)) return el;
+            }
+          }
+          return null;
+        }
+        try { return doc.querySelector(sel); } catch (e) { return null; }
+      }
+      function searchTypeDeep(win, depth) {
+        if (!win || depth > 14) return null;
+        const doc = win.document;
+        const el = findElInDoc(doc, raw);
+        if (el) return el;
+        for (const iframe of doc.querySelectorAll('iframe')) {
+          try {
+            const iw = iframe.contentWindow;
+            if (!iw || !iw.document) continue;
+            const hit = searchTypeDeep(iw, depth + 1);
+            if (hit) return hit;
+          } catch (e) { /* cross-origin */ }
+        }
+        return null;
+      }
+      let tries = 0;
+      const attempt = () => {
+        const el = searchTypeDeep(window, 0);
+        if (el) {
+          el.focus();
+          el.scrollIntoView({ block: 'center', behavior: 'instant' });
+          const tag = el.tagName;
+          const isCE = el.isContentEditable || el.getAttribute('contenteditable') === 'true';
+          if (isCE) {
+            el.focus();
+            const doc = el.ownerDocument;
+            if (doc.execCommand) {
+              doc.execCommand('selectAll', false, null);
+              doc.execCommand('insertText', false, text);
+            } else {
+              el.textContent = text;
+            }
+            el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text }));
+          } else {
+            const proto = tag === 'TEXTAREA'
+              ? window.HTMLTextAreaElement.prototype
+              : window.HTMLInputElement.prototype;
+            const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+            if (setter) setter.call(el, text); else el.value = text;
+            el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          resolve({ ok: true });
+        } else if (++tries < 14) {
+          setTimeout(attempt, 250);
+        } else {
+          resolve({ ok: false, error: 'Element not found: ' + raw });
+        }
+      };
+      attempt();
+    })
+  `);
+  if (!tRes.ok) {
+    const currentUrl = wc.getURL?.() || '';
+    const isGoogleEditor = /docs\.google\.com|sheets\.google\.com|slides\.google\.com/.test(currentUrl);
+    if (isGoogleEditor) {
+      clipboard.writeText(text || '');
+      await new Promise((r) => setTimeout(r, 200));
+      const pasteMods = process.platform === 'darwin' ? ['meta'] : ['control'];
+      wc.sendInputEvent({ type: 'keyDown', keyCode: 'V', modifiers: pasteMods });
+      await new Promise((r) => setTimeout(r, 50));
+      wc.sendInputEvent({ type: 'keyUp', keyCode: 'V', modifiers: pasteMods });
+      return { success: true };
+    }
+    return { error: tRes.error };
+  }
+  return { success: true };
+}
+
 ipcMain.handle('browser-action', async (event, { webContentsId, action, params, userConfirmed }) => {
   try {
     if (RISKY_BROWSER_ACTIONS.has(action) && !userConfirmed) {
@@ -2795,144 +2985,7 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
           return refResult;
         }
 
-        const cSel = JSON.stringify(params.selector || '');
-        let res = await wc.executeJavaScript(`
-          new Promise((resolve) => {
-            const raw = ${cSel};
-
-            function findElInDoc(doc, sel) {
-              if (!sel || !doc) return null;
-              if (sel.startsWith('text=')) {
-                const q = sel.slice(5).trim().toLowerCase();
-                const candidates = doc.querySelectorAll(
-                  'a,button,input[type="submit"],input[type="button"],' +
-                  '[role="button"],[role="link"],[role="menuitem"],[role="tab"],' +
-                  '[role="option"],[role="radio"],[role="checkbox"],' +
-                  'div[class*="button"],span[class*="button"],div[class*="btn"],span[class*="btn"],' +
-                  'li[class*="item"],div[class*="item"],div[class*="option"],span[role="link"]'
-                );
-                for (const el of candidates) {
-                  const lbl = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim().toLowerCase();
-                  if (lbl.includes(q)) return el;
-                }
-                for (const host of doc.querySelectorAll('*')) {
-                  if (!host.shadowRoot) continue;
-                  const shadowCandidates = host.shadowRoot.querySelectorAll(
-                    'a,button,[role="button"],[role="menuitem"],[role="link"]'
-                  );
-                  for (const el of shadowCandidates) {
-                    const lbl = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim().toLowerCase();
-                    if (lbl.includes(q)) return el;
-                  }
-                }
-                return null;
-              }
-              if (sel.startsWith('aria=')) {
-                const q = sel.slice(5).trim().toLowerCase();
-                for (const el of doc.querySelectorAll('[aria-label]')) {
-                  if ((el.getAttribute('aria-label') || '').toLowerCase().includes(q)) return el;
-                }
-                return null;
-              }
-              try { return doc.querySelector(sel); } catch (e) { return null; }
-            }
-
-            function absCenter(el) {
-              const r = el.getBoundingClientRect();
-              let cx = r.left + r.width / 2;
-              let cy = r.top + r.height / 2;
-              let w = el.ownerDocument.defaultView;
-              while (w && w !== w.top) {
-                const fe = w.frameElement;
-                if (!fe) break;
-                const fr = fe.getBoundingClientRect();
-                cx += fr.left;
-                cy += fr.top;
-                w = fe.ownerDocument.defaultView;
-              }
-              return { cx: Math.round(cx), cy: Math.round(cy) };
-            }
-
-            function fireFullClick(el) {
-              const VW = el.ownerDocument.defaultView;
-              el.scrollIntoView({ block: 'center', behavior: 'instant' });
-              el.focus();
-              const rect = el.getBoundingClientRect();
-              const base = {
-                bubbles: true, cancelable: true, view: VW,
-                clientX: rect.left + rect.width / 2,
-                clientY: rect.top + rect.height / 2,
-                screenX: 0,
-                screenY: 0,
-                buttons: 1,
-                button: 0
-              };
-              const ptr = { ...base, pointerId: 1, isPrimary: true, pointerType: 'mouse' };
-              el.dispatchEvent(new VW.PointerEvent('pointerover', { ...ptr }));
-              el.dispatchEvent(new VW.PointerEvent('pointerenter', { ...ptr, bubbles: false }));
-              el.dispatchEvent(new VW.MouseEvent('mouseover', base));
-              el.dispatchEvent(new VW.MouseEvent('mouseenter', { ...base, bubbles: false }));
-              el.dispatchEvent(new VW.PointerEvent('pointermove', { ...ptr }));
-              el.dispatchEvent(new VW.MouseEvent('mousemove', base));
-              el.dispatchEvent(new VW.PointerEvent('pointerdown', { ...ptr }));
-              el.dispatchEvent(new VW.MouseEvent('mousedown', base));
-              el.dispatchEvent(new VW.PointerEvent('pointerup', { ...ptr }));
-              el.dispatchEvent(new VW.MouseEvent('mouseup', base));
-              el.dispatchEvent(new VW.MouseEvent('click', base));
-              el.click();
-            }
-
-            function searchDeep(win, depth) {
-              if (!win || depth > 14) return null;
-              const doc = win.document;
-              const el = findElInDoc(doc, raw);
-              if (el) return el;
-              const iframes = doc.querySelectorAll('iframe');
-              for (let i = 0; i < iframes.length; i++) {
-                try {
-                  const iw = iframes[i].contentWindow;
-                  if (!iw || !iw.document) continue;
-                  const hit = searchDeep(iw, depth + 1);
-                  if (hit) return hit;
-                } catch (e) { /* cross-origin */ }
-              }
-              return null;
-            }
-
-            let tries = 0;
-            const attempt = () => {
-              const el = searchDeep(window, 0);
-              if (el) {
-                fireFullClick(el);
-                const { cx, cy } = absCenter(el);
-                resolve({ ok: true, cx, cy });
-              } else if (++tries < 14) {
-                setTimeout(attempt, 250);
-              } else {
-                resolve({ ok: false, error: 'Element not found: ' + raw });
-              }
-            };
-            attempt();
-          })
-        `);
-
-        if (!res.ok && /mail\\.google\\.com/.test(wc.getURL?.() || '')) {
-          res = await tryGmailClickViaDebugger(wc, params.selector || '');
-        }
-
-        if (!res.ok) return { error: res.error };
-
-        if (res.cx != null && res.cy != null) {
-          const { cx, cy } = res;
-          wc.sendInputEvent({ type: 'mouseMove', x: cx, y: cy });
-          await new Promise((r) => setTimeout(r, 40));
-          wc.sendInputEvent({ type: 'mouseDown', x: cx, y: cy, button: 'left', clickCount: 1 });
-          await new Promise((r) => setTimeout(r, 60));
-          wc.sendInputEvent({ type: 'mouseUp', x: cx, y: cy, button: 'left', clickCount: 1 });
-        }
-
-        await waitForOptionalNavigationAfterClick(wc, 2000);
-        return { success: true };
+        return navioDeepClickBySelectorCore(wc, params.selector || '');
       }
 
       case 'select': {
@@ -3104,93 +3157,7 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
       }
 
       case 'type': {
-        const tSel = JSON.stringify(params.selector || '');
-        const tVal = JSON.stringify(params.text || '');
-        const tRes = await wc.executeJavaScript(`
-          new Promise((resolve) => {
-            const raw = ${tSel};
-            const text = ${tVal};
-            function findElInDoc(doc, sel) {
-              if (!sel || !doc) return null;
-              if (sel.startsWith('text=') || sel.startsWith('aria=')) {
-                const prefix = sel.startsWith('text=') ? 'text=' : 'aria=';
-                const q = sel.slice(prefix.length).trim().toLowerCase();
-                for (const el of doc.querySelectorAll('input,textarea,select,[contenteditable]')) {
-                  const lbl = (el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.getAttribute('name') || '').toLowerCase();
-                  if (lbl.includes(q)) return el;
-                }
-                return null;
-              }
-              try { return doc.querySelector(sel); } catch (e) { return null; }
-            }
-            function searchTypeDeep(win, depth) {
-              if (!win || depth > 14) return null;
-              const doc = win.document;
-              const el = findElInDoc(doc, raw);
-              if (el) return el;
-              for (const iframe of doc.querySelectorAll('iframe')) {
-                try {
-                  const iw = iframe.contentWindow;
-                  if (!iw || !iw.document) continue;
-                  const hit = searchTypeDeep(iw, depth + 1);
-                  if (hit) return hit;
-                } catch (e) { /* cross-origin */ }
-              }
-              return null;
-            }
-            let tries = 0;
-            const attempt = () => {
-              const el = searchTypeDeep(window, 0);
-              if (el) {
-                el.focus();
-                el.scrollIntoView({ block: 'center', behavior: 'instant' });
-                const tag = el.tagName;
-                const isCE = el.isContentEditable || el.getAttribute('contenteditable') === 'true';
-                if (isCE) {
-                  el.focus();
-                  const doc = el.ownerDocument;
-                  if (doc.execCommand) {
-                    doc.execCommand('selectAll', false, null);
-                    doc.execCommand('insertText', false, text);
-                  } else {
-                    el.textContent = text;
-                  }
-                  el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text }));
-                } else {
-                  const proto = tag === 'TEXTAREA'
-                    ? window.HTMLTextAreaElement.prototype
-                    : window.HTMLInputElement.prototype;
-                  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-                  if (setter) setter.call(el, text); else el.value = text;
-                  el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text }));
-                  el.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-                resolve({ ok: true });
-              } else if (++tries < 14) {
-                setTimeout(attempt, 250);
-              } else {
-                resolve({ ok: false, error: 'Element not found: ' + raw });
-              }
-            };
-            attempt();
-          })
-        `);
-        if (!tRes.ok) {
-          // Fallback: Google Docs/Sheets use a canvas editor — no DOM input to find.
-          // Use Electron's native insertText() which works on any focused surface.
-          const currentUrl = wc.getURL?.() || '';
-          const isGoogleEditor = /docs\.google\.com|sheets\.google\.com|slides\.google\.com/.test(currentUrl);
-          if (isGoogleEditor) {
-            clipboard.writeText(params.text || '');
-            await new Promise(r => setTimeout(r, 200));
-            wc.sendInputEvent({ type: 'keyDown', keyCode: 'V', modifiers: ['control'] });
-            await new Promise(r => setTimeout(r, 50));
-            wc.sendInputEvent({ type: 'keyUp',   keyCode: 'V', modifiers: ['control'] });
-            return { success: true };
-          }
-          return { error: tRes.error };
-        }
-        return { success: true };
+        return navioDeepTypeBySelector(wc, params.selector || '', params.text || '');
       }
 
       case 'scroll': {
