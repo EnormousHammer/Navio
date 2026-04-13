@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- CSP is intentionally broad (unsafe-eval/inline, connect-src *) for the Electron shell, assistant, and OAuth flows; narrowing it tends to break in-app features. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data: https:; media-src 'self' file: blob: data:; connect-src *;">
   <title>Navio</title>
   <link rel="stylesheet" href="css/styles.css">
@@ -381,6 +382,16 @@
             <button type="button" class="ntp-shortcut" data-url="https://chat.openai.com">
               <div class="shortcut-icon"><img src="https://www.google.com/s2/favicons?domain=chat.openai.com&sz=128" alt="ChatGPT" loading="lazy"></div>
               <span>ChatGPT</span>
+            </button>
+            <button type="button" class="ntp-shortcut ntp-shortcut-watch-live" data-url="https://predicta-bet.vercel.app/">
+              <div class="shortcut-icon shortcut-icon-watch-live">
+                <img src="https://www.google.com/s2/favicons?domain=predicta-bet.vercel.app&sz=128" alt="Predicta Bet" loading="lazy">
+                <span class="shortcut-watch-live-strip" aria-hidden="true">
+                  <svg class="shortcut-watch-live-play" width="8" height="8" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+                  <span class="shortcut-watch-live-text">WATCH LIVE</span>
+                </span>
+              </div>
+              <span>Predicta Bet</span>
             </button>
           </div>
 
@@ -827,6 +838,11 @@
                 <input type="checkbox" id="setting-download-reveal">
                 <span>After a download finishes, show the file in File Explorer</span>
               </label>
+              <div class="setting-row" style="margin-top:12px">
+                <label for="setting-translate-lang">Translate page target language</label>
+                <input type="text" id="setting-translate-lang" placeholder="e.g. en, es, zh-cn (empty = OS locale)" spellcheck="false" autocomplete="off">
+              </div>
+              <p class="settings-inline-hint">Used by the right-click “Translate page” menu. ISO-style code (letters, optional region). Leave empty to follow the system language.</p>
             </div>
             <div class="settings-section">
               <h3>AI assistant</h3>

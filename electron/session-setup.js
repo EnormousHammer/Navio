@@ -241,7 +241,27 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
     }
   });
 
-  function attachPermissionHandlers(ses) {
+   const incognitoPermMemory = new Map();
+
+  function permMemoryKey(origin, permission) {
+    return `${origin}\t${permission}`;
+  }
+
+  function attachPermissionHandlers(ses, { incognito }) {
+    const ud = userData();
+
+    /** @returns {boolean|null} */
+    function storedDecision(origin, permission) {
+      const k = permMemoryKey(origin, permission);
+      if (incognito) {
+        if (incognitoPermMemory.has(k)) return incognitoPermMemory.get(k);
+        const disk = sitePerms.get(ud, origin, permission);
+        if (disk === false) return false;
+        return null;
+      }
+      return sitePerms.get(ud, origin, permission);
+    }
+
     ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
       let pageUrl = '';
       try {
@@ -260,7 +280,7 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
         return;
       }
 
-      const stored = sitePerms.get(userData(), origin, permission);
+      const stored = storedDecision(origin, permission);
       if (stored === true) {
         callback(true);
         return;
@@ -284,11 +304,14 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
           cancelId: 1
         })
         .then(({ response }) => {
+          const k = permMemoryKey(origin, permission);
           if (response === 2) {
-            sitePerms.set(userData(), origin, permission, true);
+            if (incognito) incognitoPermMemory.set(k, true);
+            else sitePerms.set(ud, origin, permission, true);
             callback(true);
           } else if (response === 3) {
-            sitePerms.set(userData(), origin, permission, false);
+            if (incognito) incognitoPermMemory.set(k, false);
+            else sitePerms.set(ud, origin, permission, false);
             callback(false);
           } else if (response === 0) {
             callback(true);
@@ -308,15 +331,15 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
           return true;
         }
         if (!origin) return true;
-        const v = sitePerms.get(userData(), origin, permission);
+        const v = storedDecision(origin, permission);
         if (v === false) return false;
         return true;
       });
     }
   }
 
-  attachPermissionHandlers(navioSession);
-  attachPermissionHandlers(incognitoSession);
+  attachPermissionHandlers(navioSession, { incognito: false });
+  attachPermissionHandlers(incognitoSession, { incognito: true });
 
   const cfg0 = loadConfig();
   let adBlockEnabled = cfg0.adBlockEnabled !== false;

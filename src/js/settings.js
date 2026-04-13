@@ -27,6 +27,7 @@ class SettingsManagerClass {
       launchIntro: document.getElementById('setting-launch-intro'),
       downloadAskWhere: document.getElementById('setting-download-ask-where'),
       downloadRevealInFolder: document.getElementById('setting-download-reveal'),
+      translateTargetLang: document.getElementById('setting-translate-lang'),
       defaultZoom: document.getElementById('setting-default-zoom'),
       aiPageContext: document.getElementById('setting-ai-page-context'),
       provider: document.getElementById('setting-provider'),
@@ -346,6 +347,9 @@ class SettingsManagerClass {
     }
     if (this.elements.downloadRevealInFolder) {
       this.elements.downloadRevealInFolder.checked = this.config.downloadRevealInFolder === true;
+    }
+    if (this.elements.translateTargetLang) {
+      this.elements.translateTargetLang.value = String(this.config.translateTargetLang || '').trim();
     }
 
     const scope = this.config.aiDataScope || (this.config.aiIncludePageContext === false ? 'none' : 'excerpt');
@@ -1111,6 +1115,9 @@ class SettingsManagerClass {
       showLaunchIntro: !!(this.elements.launchIntro && this.elements.launchIntro.checked),
       downloadAskWhere: !!(this.elements.downloadAskWhere && this.elements.downloadAskWhere.checked),
       downloadRevealInFolder: !!(this.elements.downloadRevealInFolder && this.elements.downloadRevealInFolder.checked),
+      translateTargetLang: this.elements.translateTargetLang
+        ? this.elements.translateTargetLang.value.trim().slice(0, 16)
+        : (this.config.translateTargetLang || ''),
       defaultZoom,
       aiIncludePageContext: aiDataScope !== 'none',
       aiDataScope,

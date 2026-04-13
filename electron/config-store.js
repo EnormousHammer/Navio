@@ -53,6 +53,8 @@ const DEFAULT_CONFIG = {
   downloadAskWhere: false,
   /** When true, open File Explorer to the file after a successful download. Off by default to avoid interrupting browsing. */
   downloadRevealInFolder: false,
+  /** Google Translate "translate to" language (e.g. en, es, zh-cn). Empty = use OS locale. */
+  translateTargetLang: '',
   aiAutoExecute: false,
   aiAutoScreenshotAfterNavigate: false,
   aiAgentStepMode: false,

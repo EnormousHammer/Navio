@@ -4,6 +4,7 @@
   "description": "Navio - Futuristic AI-powered browser with built-in intelligence",
   "main": "electron/main.js",
   "scripts": {
+    "test": "node --test ./test/*.test.js",
     "start": "electron .",
     "dev": "electron . --dev",
     "package": "electron-forge package",

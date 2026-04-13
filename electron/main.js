@@ -5,6 +5,8 @@ const { pathToFileURL } = require('url');
 const crypto = require('crypto');
 const secureConfig = require('./secure-config');
 const { NAVIO_PARTITION_INCOGNITO } = require('./navio-partitions');
+const { clearRendererCodeCachesIfDev } = require('./clear-code-cache-dev');
+const { resolveTranslateTargetLang } = require('./translate-locale');
 const { createStore } = require('./navio-store');
 const { setupSessionInfrastructure } = require('./session-setup');
 const { loadConfig, saveConfig } = require('./config-store');
@@ -5630,8 +5632,12 @@ ipcMain.handle('show-webview-context-menu', (event, { webContentsId, x, y, param
     try {
       const pageUrl = (params && params.pageURL) || wc.getURL() || '';
       if (/^https?:\/\//i.test(pageUrl)) {
+        const tl = resolveTranslateTargetLang(app, loadConfig());
         const trUrl =
-          'https://translate.google.com/translate?sl=auto&tl=en&u=' + encodeURIComponent(pageUrl);
+          'https://translate.google.com/translate?sl=auto&tl=' +
+          encodeURIComponent(tl) +
+          '&u=' +
+          encodeURIComponent(pageUrl);
         menu.append(
           new MenuItem({
             label: 'Translate page',
@@ -5669,22 +5675,7 @@ registerProfilesIpc(ipcMain, { profilesBase: NAVIO_PROFILES_BASE });
 
 app.whenReady().then(async () => {
   console.log('[navio] main.js v7 loaded; system prompt injected from main process');
-  // Clear V8 code caches so every launch picks up the latest renderer JS source files.
-  // We use both the Electron session API (in-memory cache) AND the filesystem folder
-  // (persistent cache) to guarantee a clean slate.
-  try {
-    await session.defaultSession.clearCodeCaches({});
-  } catch (e) {
-    console.warn('[navio] session.clearCodeCaches failed:', e.message);
-  }
-  try {
-    const codeCachePath = path.join(app.getPath('userData'), 'Code Cache');
-    if (fs.existsSync(codeCachePath)) {
-      fs.rmSync(codeCachePath, { recursive: true, force: true });
-    }
-  } catch (e) {
-    console.warn('[navio] Could not clear code cache folder:', e.message);
-  }
+  await clearRendererCodeCachesIfDev(app, session, fs, path);
 
   store = createStore(app.getPath('userData'));
 
