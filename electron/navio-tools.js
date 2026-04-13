@@ -16,7 +16,9 @@ const NAVIO_TOOLS = [
   {
     name: 'navigate',
     description:
-      'Navigate the active browser tab to a URL. Always use a full https:// URL.',
+      'Navigate the active browser tab to a URL. Always use a full https:// URL. ' +
+      'NEVER navigate to mail.google.com URLs that point at one message (e.g. #inbox/MESSAGE_ID) — those fail in Navio (ERR_ABORTED). ' +
+      'Use gmail_get_message with the message id from gmail_search instead.',
     parameters: {
       type: 'object',
       properties: {
@@ -227,7 +229,8 @@ const NAVIO_TOOLS = [
     name: 'open_tab',
     description:
       'Open a new browser tab and optionally navigate it to a URL. Returns the new tab\'s ID. ' +
-      'Use this for parallel research across multiple sites.',
+      'Use this for parallel research across multiple sites. ' +
+      'NEVER open_tab to mail.google.com single-message URLs (#inbox/MESSAGE_ID) — use gmail_get_message instead (embedded Gmail aborts).',
     parameters: {
       type: 'object',
       properties: {
@@ -383,6 +386,9 @@ const NAVIO_TOOLS = [
       'For inbox triage and drafting replies to mail you received, start with: "in:inbox -from:me newer_than:14d" ' +
       '(incoming threads you did not originate). For unread-only: "in:inbox is:unread newer_than:14d". ' +
       'For "today": add after:YYYY/MM/DD. ' +
+      'For delivery failures / bounces / NDRs: combine label/sender filters, e.g. ' +
+      '(from:mailer-daemon OR from:postmaster OR subject:undeliverable OR subject:"Delivery Status" OR subject:bounce) ' +
+      'plus optional after:YYYY/MM/DD. Paginate with next_page_token until no more results. ' +
       'Also: "from:user@example.com", "subject:invoice". ' +
       'Requires Google OAuth to be connected in Navio Settings.',
     parameters: {
@@ -397,11 +403,43 @@ const NAVIO_TOOLS = [
         max_results: {
           type: 'number',
           description:
-            'Maximum emails to return (max 50). Default 25. Use 50 for "all" / "everything" / many drafts. ' +
-            'Do not pass small numbers for bulk triage.'
+            'Maximum emails to return (max 200). Default 25. Use 100–200 for bounce lists, bulk triage, or "find all". ' +
+            'Do not pass small numbers for bulk recovery.'
+        },
+        pages: {
+          type: 'number',
+          description:
+            'How many Gmail result pages to fetch in one call (1–8). Default 1. Use 2–4 for large bounce/NDR sweeps.'
+        },
+        page_token: {
+          type: 'string',
+          description:
+            'Pagination: pass next_page_token from the previous gmail_search result to fetch the next batch (same query).'
         }
       },
       required: ['query']
+    }
+  },
+
+  {
+    name: 'gmail_get_message',
+    description:
+      'Fetch one Gmail message by ID (plain-text body + headers). Use after gmail_search when you need the full bounce/NDR ' +
+      'body to extract the failed recipient address, diagnostic codes, or original To: line. ' +
+      'Requires Google OAuth.',
+    parameters: {
+      type: 'object',
+      properties: {
+        message_id: {
+          type: 'string',
+          description: 'Gmail message id from gmail_search results (`id` field).'
+        },
+        max_body_chars: {
+          type: 'number',
+          description: 'Max characters of body to return (default 32000, max 120000).'
+        }
+      },
+      required: ['message_id']
     }
   },
 

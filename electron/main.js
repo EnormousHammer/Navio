@@ -65,8 +65,71 @@ function messageContentToPlainString(content) {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
   return content
-    .map((p) => (p && p.type === 'text' ? String(p.text || '') : p && p.type === 'image_url' ? '[image]' : ''))
+    .map((p) => {
+      if (!p) return '';
+      if (p.type === 'text') return String(p.text || '');
+      if (p.type === 'image_url') return '[image]';
+      if (p.type === 'navio_pdf') return `[PDF: ${p.filename || 'file.pdf'}]`;
+      return '';
+    })
     .join('\n');
+}
+
+/** OpenAI / custom chat: replace internal parts providers do not understand. */
+function normalizeMessagesForOpenAI(messages) {
+  return messages.map((m) => {
+    if (!m || !Array.isArray(m.content)) return m;
+    const next = [];
+    for (const part of m.content) {
+      if (!part) continue;
+      if (part.type === 'navio_pdf') {
+        next.push({
+          type: 'text',
+          text:
+            `[Attached PDF: ${part.filename || 'document.pdf'}] This chat mode does not embed PDF bytes for OpenAI. Switch **Settings → AI** to **Anthropic** or **Google** to analyze PDFs, or paste text from the document.`
+        });
+        continue;
+      }
+      next.push(part);
+    }
+    if (next.length === 0) return { ...m, content: '' };
+    if (next.length === 1 && next[0].type === 'text') return { ...m, content: next[0].text || '' };
+    return { ...m, content: next };
+  });
+}
+
+/** Anthropic expects `image` + `document` blocks, not OpenAI `image_url`. */
+function normalizeMessagesForAnthropic(messages) {
+  return messages.map((m) => {
+    if (!m || m.role !== 'user' || !Array.isArray(m.content)) return m;
+    const blocks = [];
+    for (const part of m.content) {
+      if (!part) continue;
+      if (part.type === 'text') {
+        blocks.push({ type: 'text', text: part.text || '' });
+      } else if (part.type === 'image_url' && part.image_url?.url) {
+        const u = part.image_url.url;
+        const dm = u.match(/^data:([^;]+);base64,(.+)$/);
+        if (dm) {
+          blocks.push({
+            type: 'image',
+            source: { type: 'base64', media_type: dm[1], data: dm[2] }
+          });
+        }
+      } else if (part.type === 'navio_pdf' && part.base64) {
+        blocks.push({
+          type: 'document',
+          source: {
+            type: 'base64',
+            media_type: 'application/pdf',
+            data: part.base64
+          }
+        });
+      }
+    }
+    if (!blocks.length) return { ...m, content: '' };
+    return { ...m, content: blocks };
+  });
 }
 
 function hashContext(messages) {
@@ -733,6 +796,7 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
   let body;
 
   if (provider === 'openai' || provider === 'custom') {
+    messages = normalizeMessagesForOpenAI(messages);
     url = endpoint || 'https://api.openai.com/v1/chat/completions';
     headers = {
       'Content-Type': 'application/json',
@@ -758,6 +822,7 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
     }
     body = JSON.stringify(bodyObj);
   } else if (provider === 'anthropic') {
+    messages = normalizeMessagesForAnthropic(messages);
     url = 'https://api.anthropic.com/v1/messages';
     const systemMsg = messages.find((m) => m.role === 'system');
     const chatMsgs = messages.filter((m) => m.role !== 'system');
@@ -794,6 +859,10 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
           if (m) {
             parts.push({ inlineData: { mimeType: m[1], data: m[2] } });
           }
+        } else if (part.type === 'navio_pdf' && part.base64) {
+          parts.push({
+            inlineData: { mimeType: 'application/pdf', data: part.base64 }
+          });
         }
       }
       return parts.length ? parts : [{ text: '' }];
@@ -1056,6 +1125,15 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
 
       // Navigate: must go through the renderer for NTP overlay handling
       if (tc.name === 'navigate') {
+        const navUrl = (tc.arguments && tc.arguments.url) || '';
+        const gmIntercept = await maybeLoadGmailMessageUrlViaApi('navigate', navUrl);
+        if (gmIntercept) {
+          const toolResult = gmIntercept.result;
+          currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
+          toolLog.push({ tool: 'navigate', args: tc.arguments, result: toolResult, gmail_api_intercept: true });
+          sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
+          continue;
+        }
         sender.send('tool-navigate', { url: tc.arguments.url, stepIndex: step });
         const navResult = await waitForRendererAck(sender, 'tool-navigate-ack', 60000);
         currentMessages = appendToolResult(currentMessages, tc, navResult, provider);
@@ -1103,6 +1181,17 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
 
       // Tab management tools: go through the renderer's TabManager
       if (TAB_TOOLS.has(tc.name)) {
+        if (tc.name === 'open_tab') {
+          const openUrl = tc.arguments?.url || '';
+          const gmIntercept = await maybeLoadGmailMessageUrlViaApi('open_tab', openUrl);
+          if (gmIntercept) {
+            const toolResult = gmIntercept.result;
+            currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
+            toolLog.push({ tool: 'open_tab', args: tc.arguments, result: toolResult, gmail_api_intercept: true });
+            sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
+            continue;
+          }
+        }
         const tabResult = await executeTabTool(tc, sender);
         // switch_tab returns a new webContentsId — update activeWc
         if (tc.name === 'switch_tab' && tabResult.webContentsId) {
@@ -1752,6 +1841,124 @@ ipcMain.handle('page-snapshot', async (event, webContentsId) => {
   }
 });
 
+/** Plain-text body from Gmail API `format=full` payload tree (shared: IPC + tools). */
+function navioGmailExtractPlainBody(payload) {
+  if (!payload) return '';
+  if (payload.mimeType === 'text/plain' && payload.body?.data) {
+    return Buffer.from(payload.body.data, 'base64').toString('utf-8');
+  }
+  for (const part of payload.parts || []) {
+    const found = navioGmailExtractPlainBody(part);
+    if (found) return found;
+  }
+  if (payload.body?.data) {
+    return Buffer.from(payload.body.data, 'base64').toString('utf-8');
+  }
+  return '';
+}
+
+async function navioGmailGetMessageForTool(token, messageId, maxBodyChars = 32000) {
+  const r = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=full`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const d = await r.json();
+  if (!r.ok) return { error: d.error?.message || 'Gmail API error' };
+  const headers = d.payload?.headers || [];
+  const get = (name) => headers.find((h) => h.name === name)?.value || '';
+  let body = navioGmailExtractPlainBody(d.payload);
+  if (body.length > maxBodyChars) {
+    body = `${body.slice(0, maxBodyChars)}\n\n… [body truncated by Navio — ask for a follow-up if needed]`;
+  }
+  return {
+    id: messageId,
+    subject: get('Subject'),
+    from: get('From'),
+    to: get('To'),
+    date: get('Date'),
+    snippet: d.snippet || '',
+    body
+  };
+}
+
+/**
+ * Gmail per-message links (hash fragment or idr=) often hit ERR_ABORTED (-3) in Electron webviews
+ * when Gmail redirects. Extract the API message id so we can fulfill via Gmail API instead.
+ */
+function extractGmailMessageIdFromNavUrl(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  try {
+    const u = new URL(raw.trim());
+    if (!/^mail\.google\.com$/i.test(u.hostname)) return null;
+    const h = (u.hash || '').replace(/^#/, '');
+    if (h) {
+      const segments = h.split('/').filter(Boolean);
+      const last = segments[segments.length - 1] || '';
+      if (/^[a-fA-F0-9]{10,}$/.test(last)) return last;
+    }
+    const idr = u.searchParams.get('idr');
+    if (idr) {
+      const decoded = decodeURIComponent(idr);
+      const seg = decoded.split('/').filter(Boolean).pop() || '';
+      if (/^[a-fA-F0-9]{10,}$/.test(seg)) return seg;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * If url is a Gmail single-message deep link, load it via API and return { intercept: true, result }.
+ * Otherwise return null (caller should navigate / open_tab normally).
+ */
+async function maybeLoadGmailMessageUrlViaApi(toolName, url) {
+  const gmId = extractGmailMessageIdFromNavUrl(url);
+  if (!gmId) return null;
+  const token = await getValidOAuthToken('google');
+  if (!token) {
+    return {
+      intercept: true,
+      result: {
+        success: false,
+        error:
+          'Gmail message URLs cannot be opened in Navio tabs (ERR_ABORTED). Connect Google in Settings → Connected Apps, ' +
+          `then call gmail_get_message with message_id "${gmId}".`,
+        message_id: gmId
+      }
+    };
+  }
+  const msg = await navioGmailGetMessageForTool(token, gmId, 56000);
+  if (msg.error) {
+    return {
+      intercept: true,
+      result: {
+        success: false,
+        error: msg.error,
+        message_id: gmId,
+        hint: 'Try gmail_get_message with this message_id.'
+      }
+    };
+  }
+  return {
+    intercept: true,
+    result: {
+      success: true,
+      note:
+        `Intercepted ${toolName}: mail.google.com message deep links fail in Navio (ERR_ABORTED). ` +
+        'Loaded this message via Gmail API. Do not navigate or open_tab to mail.google.com/#inbox/... again; use gmail_search + gmail_get_message.',
+      message_id: gmId,
+      requested_url: url,
+      subject: msg.subject,
+      from: msg.from,
+      to: msg.to,
+      date: msg.date,
+      snippet: msg.snippet,
+      body: msg.body
+    }
+  };
+}
+
 // ── Tool executors for the agentic tool-calling loop ─────────────────────────
 // Each executor takes (wc, args) where wc is the active webContents and args
 // are the parsed tool call arguments.  Executors delegate to existing
@@ -2004,23 +2211,49 @@ const toolExecutors = {
       if (!token) return { error: 'not_signed_in — connect Google in Navio Settings → Connected Apps first.' };
       const query = (args.query || '').trim();
       if (!query) return { error: 'query is required.' };
-      let maxResults = Math.min(Number(args.max_results) > 0 ? Number(args.max_results) : 25, 50);
+      let maxResults = Math.min(Number(args.max_results) > 0 ? Number(args.max_results) : 25, 200);
       // Models often pass tiny max_results for inbox triage; raise floor so bulk tasks don't silently cap at ~6–10.
       if (/in:inbox/i.test(query) && maxResults <= 10) maxResults = 25;
-      const data = await queryGmail(token, query, { maxResults });
+      const bounceBulk =
+        /\b(bounce|bounces|undeliverable|mailer-daemon|mailer_daemon|postmaster|delivery status|returned mail|failure notice)\b/i.test(
+          query
+        );
+      if (bounceBulk && maxResults < 100) maxResults = 100;
+      let pages = Math.min(Math.max(Number(args.pages) || 1, 1), 8);
+      if (bounceBulk && pages < 2) pages = 2;
+      const pageToken = (args.page_token || '').trim() || null;
+      const data = await queryGmail(token, query, { maxResults, pageToken, pages });
       if (data.error) {
         if (/insufficient.*scope|scope.*insufficient|Request had insufficient/i.test(data.error)) {
           return { error: 'SCOPE_ERROR: Your Google account is missing required Gmail permissions. Go to Navio Settings → Connected Apps → disconnect Google → reconnect it.' };
         }
         return { error: data.error };
       }
+      const n = (data.results || []).length;
+      const nextTok = data.nextPageToken || null;
       return {
         results: data.results || [],
         total: data.total || 0,
-        note: `Found ${(data.results || []).length} email(s) matching "${query}".`
+        next_page_token: nextTok,
+        note: `Found ${n} email(s) matching "${query}".${nextTok ? ' More available — call gmail_search again with the same query and page_token set to next_page_token.' : ''}`
       };
     } catch (e) {
       return { error: 'gmail_search failed: ' + e.message };
+    }
+  },
+
+  async gmail_get_message(_wc, args) {
+    try {
+      const token = await getValidOAuthToken('google');
+      if (!token) return { error: 'not_signed_in — connect Google in Navio Settings → Connected Apps first.' };
+      const mid = (args.message_id || args.id || '').trim();
+      if (!mid) return { error: 'message_id is required.' };
+      const maxC = Math.min(Number(args.max_body_chars) > 0 ? Number(args.max_body_chars) : 32000, 120000);
+      const data = await navioGmailGetMessageForTool(token, mid, maxC);
+      if (data.error) return data;
+      return data;
+    } catch (e) {
+      return { error: 'gmail_get_message failed: ' + e.message };
     }
   },
 
@@ -4676,27 +4909,10 @@ ipcMain.handle('gmail-get-message-body', async (_, { id }) => {
     const d = await r.json();
     if (!r.ok) return { error: d.error?.message || 'Gmail API error' };
 
-    // Extract plain-text body (walk the payload tree)
-    function extractBody(payload) {
-      if (!payload) return '';
-      if (payload.mimeType === 'text/plain' && payload.body?.data) {
-        return Buffer.from(payload.body.data, 'base64').toString('utf-8');
-      }
-      for (const part of payload.parts || []) {
-        const found = extractBody(part);
-        if (found) return found;
-      }
-      // Fallback: top-level body data (some simple messages)
-      if (payload.body?.data) {
-        return Buffer.from(payload.body.data, 'base64').toString('utf-8');
-      }
-      return '';
-    }
-
     const headers = d.payload?.headers || [];
     const get = (name) => headers.find(h => h.name === name)?.value || '';
     return {
-      body:    extractBody(d.payload),
+      body:    navioGmailExtractPlainBody(d.payload),
       subject: get('Subject'),
       from:    get('From'),
       to:      get('To'),

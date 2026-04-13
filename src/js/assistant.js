@@ -48,6 +48,28 @@ function navioDetectPageFocusIntent(text) {
   );
 }
 
+const NAVIO_ASSISTANT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+const NAVIO_ASSISTANT_PDF_MAX_BYTES = 12 * 1024 * 1024;
+const NAVIO_ASSISTANT_TEXT_MAX_CHARS = 180000;
+const NAVIO_ASSISTANT_MAX_ATTACHMENTS = 8;
+
+function navioIsTextLikeFile(file) {
+  const n = (file.name || '').toLowerCase();
+  if (file.type && file.type.startsWith('text/')) return true;
+  return /\.(txt|md|json|csv|xml|html?|css|js|mjs|cjs|ts|tsx|jsx|c|h|cpp|hpp|py|java|kt|rs|go|yaml|yml|toml|ini|log|sh|bat|ps1|env|svg|sql|vue|svelte)$/i.test(
+    n
+  );
+}
+
+function navioIsImageFile(file) {
+  if (file.type && file.type.startsWith('image/')) return true;
+  return /\.(png|jpe?g|gif|webp|bmp|ico)$/i.test(file.name || '');
+}
+
+function navioIsPdfFile(file) {
+  return file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+}
+
 /** Same logic as main process — fix UTF-8 mojibake in draft bodies before display/send. */
 function navioRepairUtf8Mojibake(s) {
   if (!s || typeof s !== 'string') return s;
@@ -109,6 +131,10 @@ class AssistantManagerClass {
     this._lastGmailPageToken = null;
     this._lastGmailQuery = '';
     this._pendingScreenshotDataUrl = null;
+    /** @type {Array<{ id: string, name: string, status: string, kind?: string, dataUrl?: string, base64?: string, text?: string, thumb?: string, error?: string }>} */
+    this._attachmentQueue = [];
+    /** Snapshot of ready attachments for the in-flight `processMessage` (queue is cleared for UI). */
+    this._attachmentsSnapshot = null;
     this._takeoverAbort = null;
     /** @type {(() => void) | null} */
     this._takeoverAuthResume = null;
@@ -169,6 +195,233 @@ class AssistantManagerClass {
     }
 
     this._bindVoiceMode();
+    this._bindAssistantAttachments();
+  }
+
+  _bindAssistantAttachments() {
+    const area = this.panel?.querySelector('.assistant-input-area');
+    const attachBtn = document.getElementById('btn-assistant-attach');
+    const fileInput = document.getElementById('assistant-file-input');
+    if (attachBtn && fileInput) {
+      attachBtn.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', () => {
+        if (fileInput.files?.length) {
+          this._addFilesFromList(fileInput.files);
+          fileInput.value = '';
+        }
+      });
+    }
+    if (this.inputEl) {
+      this.inputEl.addEventListener('paste', (e) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        const files = [];
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i];
+          if (it.kind === 'file') {
+            const f = it.getAsFile();
+            if (f && f.size > 0) files.push(f);
+          }
+        }
+        if (files.length) {
+          e.preventDefault();
+          this._addFilesFromList(files);
+        }
+      });
+    }
+    if (area) {
+      ['dragenter', 'dragover'].forEach((ev) => {
+        area.addEventListener(ev, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          area.classList.add('assistant-input-area--drop');
+        });
+      });
+      area.addEventListener('dragleave', (e) => {
+        if (!area.contains(e.relatedTarget)) area.classList.remove('assistant-input-area--drop');
+      });
+      area.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        area.classList.remove('assistant-input-area--drop');
+        const dt = e.dataTransfer?.files;
+        if (dt?.length) this._addFilesFromList(dt);
+      });
+    }
+  }
+
+  _addFilesFromList(fileList) {
+    const files = Array.from(fileList || []).filter((f) => f && f.size > 0);
+    if (!files.length) return;
+    const row = document.getElementById('assistant-attachment-row');
+    if (row) row.hidden = false;
+    for (const file of files) {
+      if (this._attachmentQueue.length >= NAVIO_ASSISTANT_MAX_ATTACHMENTS) {
+        this.addMessage('assistant', `Maximum ${NAVIO_ASSISTANT_MAX_ATTACHMENTS} attachments per message.`, 'error');
+        break;
+      }
+      const id = `att_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      const entry = {
+        id,
+        name: file.name || 'file',
+        status: 'loading'
+      };
+      this._attachmentQueue.push(entry);
+      this._renderAttachmentChips();
+      this._processAttachmentFile(file, entry);
+    }
+  }
+
+  async _processAttachmentFile(file, entry) {
+    try {
+      if (navioIsImageFile(file)) {
+        if (file.size > NAVIO_ASSISTANT_IMAGE_MAX_BYTES) {
+          throw new Error('Image too large (max 8 MB).');
+        }
+        const dataUrl = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result || ''));
+          r.onerror = () => reject(new Error('Could not read image.'));
+          r.readAsDataURL(file);
+        });
+        entry.status = 'ready';
+        entry.kind = 'image';
+        entry.dataUrl = dataUrl;
+        entry.thumb = dataUrl;
+      } else if (navioIsPdfFile(file)) {
+        if (file.size > NAVIO_ASSISTANT_PDF_MAX_BYTES) {
+          throw new Error('PDF too large (max 12 MB).');
+        }
+        const dataUrl = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result || ''));
+          r.onerror = () => reject(new Error('Could not read PDF.'));
+          r.readAsDataURL(file);
+        });
+        const m = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
+        if (!m) throw new Error('Invalid PDF encoding.');
+        entry.status = 'ready';
+        entry.kind = 'pdf';
+        entry.base64 = m[1];
+        entry.thumb = '';
+      } else if (navioIsTextLikeFile(file)) {
+        if (file.size > NAVIO_ASSISTANT_TEXT_MAX_CHARS * 2) {
+          throw new Error('Text file too large.');
+        }
+        const text = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result || ''));
+          r.onerror = () => reject(new Error('Could not read file.'));
+          r.readAsText(file, 'UTF-8');
+        });
+        entry.status = 'ready';
+        entry.kind = 'text';
+        entry.text = text.length > NAVIO_ASSISTANT_TEXT_MAX_CHARS
+          ? `${text.slice(0, NAVIO_ASSISTANT_TEXT_MAX_CHARS)}\n\n… [truncated]`
+          : text;
+        entry.thumb = '';
+      } else {
+        entry.status = 'ready';
+        entry.kind = 'binary';
+        entry.text = '';
+        entry.thumb = '';
+      }
+    } catch (e) {
+      entry.status = 'error';
+      entry.error = e.message || String(e);
+    }
+    this._renderAttachmentChips();
+  }
+
+  _renderAttachmentChips() {
+    const row = document.getElementById('assistant-attachment-row');
+    if (!row) return;
+    if (!this._attachmentQueue.length) {
+      row.innerHTML = '';
+      row.hidden = true;
+      return;
+    }
+    row.hidden = false;
+    row.innerHTML = this._attachmentQueue
+      .map((e) => {
+        const safe = this._escapeHtml(e.name);
+        if (e.status === 'loading') {
+          return `<div class="assistant-att-chip assistant-att-chip--loading" data-id="${e.id}"><span class="assistant-att-spinner"></span>${safe}</div>`;
+        }
+        if (e.status === 'error') {
+          return `<div class="assistant-att-chip assistant-att-chip--err" data-id="${e.id}">${safe}<span class="assistant-att-err" title="${this._escapeHtml(e.error || '')}">!</span><button type="button" class="assistant-att-remove" data-id="${e.id}" aria-label="Remove">×</button></div>`;
+        }
+        const thumb = e.thumb
+          ? `<img class="assistant-att-thumb" src="${e.thumb.replace(/"/g, '&quot;')}" alt="">`
+          : `<span class="assistant-att-icon" aria-hidden="true">${e.kind === 'pdf' ? 'PDF' : 'FILE'}</span>`;
+        return `<div class="assistant-att-chip" data-id="${e.id}">${thumb}<span class="assistant-att-name">${safe}</span><button type="button" class="assistant-att-remove" data-id="${e.id}" aria-label="Remove">×</button></div>`;
+      })
+      .join('');
+    row.querySelectorAll('.assistant-att-remove').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        this._attachmentQueue = this._attachmentQueue.filter((x) => x.id !== id);
+        this._renderAttachmentChips();
+      });
+    });
+  }
+
+  _attachmentsStillLoading() {
+    return this._attachmentQueue.some((a) => a.status === 'loading');
+  }
+
+  _buildAttachmentPayloadForApi(baseText) {
+    const imageParts = [];
+    const pdfParts = [];
+    let textExtra = '';
+    const ready = (this._attachmentsSnapshot || this._attachmentQueue).filter((a) => a.status === 'ready');
+    for (const e of ready) {
+      if (e.kind === 'image' && e.dataUrl) {
+        imageParts.push({ type: 'image_url', image_url: { url: e.dataUrl, detail: 'high' } });
+      } else if (e.kind === 'pdf' && e.base64) {
+        pdfParts.push({ type: 'navio_pdf', filename: e.name, base64: e.base64 });
+      } else if (e.kind === 'text' && e.text) {
+        textExtra += `\n\n--- attached: ${e.name} ---\n\`\`\`\n${e.text}\n\`\`\`\n`;
+      } else if (e.kind === 'binary') {
+        textExtra += `\n\n[Attached file the app could not open as text: **${e.name}** — describe what you need or convert to PDF/image if the model should read it.]`;
+      }
+    }
+    const fullText = (baseText || '') + textExtra;
+    const hasShot = !!this._pendingScreenshotDataUrl;
+    if (!imageParts.length && !pdfParts.length && !hasShot) {
+      return fullText;
+    }
+    const parts = [];
+    let head = fullText;
+    if (hasShot) {
+      head +=
+        '\n\n[Attached: screenshot of the active tab after the last action. Use it to choose precise click:xy= coordinates or verify UI state.]';
+    }
+    parts.push({ type: 'text', text: head || '(see attachments)' });
+    for (const p of pdfParts) parts.push(p);
+    for (const p of imageParts) parts.push(p);
+    if (hasShot) {
+      parts.push({ type: 'image_url', image_url: { url: this._pendingScreenshotDataUrl } });
+      this._pendingScreenshotDataUrl = null;
+    }
+    return parts;
+  }
+
+  _historyLabelForAttachments(text) {
+    const ready = (this._attachmentsSnapshot || this._attachmentQueue).filter((a) => a.status === 'ready');
+    if (!ready.length) return text;
+    const tags = ready.map((a) => {
+      if (a.kind === 'image') return `[Image: ${a.name}]`;
+      if (a.kind === 'pdf') return `[PDF: ${a.name}]`;
+      if (a.kind === 'text') return `[File: ${a.name}]`;
+      return `[File: ${a.name}]`;
+    });
+    return `${text || '(attachment)'}\n${tags.join(' ')}`;
+  }
+
+  _clearAttachmentQueue() {
+    this._attachmentQueue = [];
+    this._renderAttachmentChips();
   }
 
   // ── Voice Mode (Web Speech API) ──────────────────────────────────────────
@@ -216,7 +469,7 @@ class AssistantManagerClass {
         stopListening();
         if (e.error !== 'no-speech') {
           if (hint) hint.textContent = `Voice error: ${e.error}`;
-          setTimeout(() => { if (hint) hint.textContent = 'Enter to send \u00b7 Shift+Enter for new line'; }, 2500);
+          setTimeout(() => { if (hint) hint.textContent = 'Enter to send \u00b7 Shift+Enter for new line \u00b7 Paste or attach files'; }, 2500);
         }
       };
 
@@ -227,7 +480,7 @@ class AssistantManagerClass {
     const stopListening = () => {
       listening = false;
       btn.classList.remove('listening');
-      if (hint) hint.textContent = 'Enter to send \u00b7 Shift+Enter for new line';
+      if (hint) hint.textContent = 'Enter to send \u00b7 Shift+Enter for new line \u00b7 Paste or attach files';
       if (recognition) { try { recognition.stop(); } catch {} recognition = null; }
     };
 
@@ -399,9 +652,18 @@ class AssistantManagerClass {
 
   async sendMessage() {
     const text = this.inputEl.value.trim();
-    if (!text || this.isProcessing) return;
+    const hasReadyAttachments = this._attachmentQueue.some((a) => a.status === 'ready');
+    if (this._attachmentsStillLoading()) {
+      this.addMessage('assistant', 'Wait until attachments finish loading.', 'error');
+      return;
+    }
+    if ((!text && !hasReadyAttachments) || this.isProcessing) return;
 
     if (text.startsWith('>>')) {
+      if (hasReadyAttachments) {
+        this.addMessage('assistant', 'Remove attachments before using **>>** research.', 'error');
+        return;
+      }
       const q = text.slice(2).trim();
       this.inputEl.value = '';
       this.inputEl.style.height = 'auto';
@@ -416,6 +678,10 @@ class AssistantManagerClass {
 
     // Task chain intake mode
     if (this._awaitingTaskChain) {
+      if (hasReadyAttachments) {
+        this.addMessage('assistant', 'Remove attachments before entering task steps, or cancel the task chain first.', 'error');
+        return;
+      }
       this._awaitingTaskChain = false;
       const steps = text.split('\n').map(l => l.replace(/^\d+[\.\)]\s*/, '').trim()).filter(Boolean);
       this.inputEl.value = '';
@@ -434,8 +700,28 @@ class AssistantManagerClass {
     this.inputEl.value = '';
     this.inputEl.style.height = 'auto';
 
-    this.addMessage('user', text);
-    await this.processMessage(text, false);
+    const effectiveText = text || (hasReadyAttachments ? 'Please help with the attached file(s).' : '');
+    const userDisplay = hasReadyAttachments
+      ? {
+          text: text || '',
+          files: this._attachmentQueue.filter((a) => a.status === 'ready').map((a) => ({
+            name: a.name,
+            thumb: a.thumb,
+            kind: a.kind
+          }))
+        }
+      : text;
+
+    this.addMessage('user', userDisplay);
+    this._attachmentsSnapshot = this._attachmentQueue
+      .filter((a) => a.status === 'ready')
+      .map((a) => ({ ...a }));
+    this._clearAttachmentQueue();
+    try {
+      await this.processMessage(effectiveText, false);
+    } finally {
+      this._attachmentsSnapshot = null;
+    }
   }
 
   async handleQuickAction(action) {
@@ -592,7 +878,7 @@ class AssistantManagerClass {
     // ── Tool-calling mode (new agentic path) ────────────────────────────────
     if (config.aiUseToolCalling && !isQuickAction) {
       try {
-        await this._processWithTools(text, config, historyUserLabel);
+        await this._processWithTools(text, config, historyUserLabel || this._historyLabelForAttachments(text));
       } catch (err) {
         this.removeTypingIndicator();
         this.addMessage('assistant', err.message || 'Tool-calling error', 'error');
@@ -690,22 +976,9 @@ class AssistantManagerClass {
 
     const recentHistory = this.conversationHistory.slice(-40);
     messages.push(...recentHistory);
-    let userContent = text;
-    if (this._pendingScreenshotDataUrl) {
-      const shot = this._pendingScreenshotDataUrl;
-      this._pendingScreenshotDataUrl = null;
-      userContent = [
-        {
-          type: 'text',
-          text:
-            text +
-            '\n\n[Attached: screenshot of the active tab after the last action. Use it to choose precise click:xy= coordinates or verify UI state.]'
-        },
-        { type: 'image_url', image_url: { url: shot } }
-      ];
-    }
+    const userContent = this._buildAttachmentPayloadForApi(text);
     messages.push({ role: 'user', content: userContent });
-    const userHistory = historyUserLabel || text;
+    const userHistory = historyUserLabel || this._historyLabelForAttachments(text);
 
     const useStream = config.aiStreamResponses !== false && (config.aiProvider === 'openai' || config.aiProvider === 'custom');
 
@@ -818,7 +1091,7 @@ class AssistantManagerClass {
         return true;
       });
     messages.push(...recentHistory);
-    messages.push({ role: 'user', content: text });
+    messages.push({ role: 'user', content: this._buildAttachmentPayloadForApi(text) });
 
     // Create the agent activity feed element
     const activityEl = document.createElement('div');
@@ -1051,7 +1324,7 @@ class AssistantManagerClass {
       this.addMessage('assistant', response.error, 'error');
     } else if (response.content) {
       this.addMessage('assistant', response.content);
-      const userHistory = historyUserLabel || text;
+      const userHistory = historyUserLabel || this._historyLabelForAttachments(text);
       this.conversationHistory.push(
         { role: 'user', content: userHistory },
         { role: 'assistant', content: response.content }
@@ -1101,6 +1374,8 @@ class AssistantManagerClass {
       case 'read_network': return `Read ${result?.count || 0} network requests`;
       case 'propose_plan': return `Proposed plan${result?.approved ? ' (approved)' : result?.cancelled ? ' (cancelled)' : ''}`;
       case 'run_workflow': return `Running workflow: ${result?.workflow_name || ''}`;
+      case 'gmail_search': return `Gmail: ${result?.results?.length ?? 0} message(s)`;
+      case 'gmail_get_message': return `Gmail: opened message`;
       default: return tool;
     }
   }
@@ -1243,6 +1518,28 @@ class AssistantManagerClass {
 
     const contentEl = document.createElement('div');
     contentEl.className = 'message-content';
+
+    if (role === 'user' && content && typeof content === 'object' && !Array.isArray(content) && content.files) {
+      const parts = [];
+      if (content.text && String(content.text).trim()) {
+        parts.push(`<div class="user-msg-text">${this.formatMessage(String(content.text), false)}</div>`);
+      }
+      const chips = (content.files || [])
+        .map((f) => {
+          const nm = this._escapeHtml(f.name || 'file');
+          if (f.thumb) {
+            return `<div class="user-att-preview"><img src="${String(f.thumb).replace(/"/g, '&quot;')}" alt="">${nm}</div>`;
+          }
+          return `<div class="user-att-preview user-att-preview--file"><span class="user-att-file-label">${f.kind === 'pdf' ? 'PDF' : 'FILE'}</span>${nm}</div>`;
+        })
+        .join('');
+      if (chips) parts.push(`<div class="user-att-row">${chips}</div>`);
+      contentEl.innerHTML = parts.length ? parts.join('') : '<div class="user-msg-text">(attachment)</div>';
+      msgEl.appendChild(contentEl);
+      this.messagesEl.appendChild(msgEl);
+      this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+      return;
+    }
 
     if (type === 'error') {
       const clean = content.replace(/^\*\*Error:\*\*\s*/i, '').replace(/^\*\*Connection error:\*\*\s*/i, '');
@@ -3157,6 +3454,8 @@ ${pageInfo}${snapText}`;
     this.conversationHistory = [];
     this.setReceipt('');
     this.messagesEl.innerHTML = '';
+    this._attachmentsSnapshot = null;
+    this._clearAttachmentQueue();
     this._showGreeting();
   }
 
