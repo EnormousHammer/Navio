@@ -1,6 +1,6 @@
 'use strict';
 
-const { ipcMain, session, shell, globalShortcut } = require('electron');
+const { ipcMain, session, shell, globalShortcut, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { AD_BLOCK_PATTERNS, shouldBlockWebPopup } = require('./ad-block-patterns');
@@ -67,18 +67,46 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
           .trim();
         if (!filename) filename = 'download';
 
+        const cfg = loadConfig();
         const downloadsDir = app.getPath('downloads');
+        try {
+          fs.mkdirSync(downloadsDir, { recursive: true });
+        } catch (e) {
+          console.warn('[navio] Could not ensure Downloads folder:', e.message);
+        }
+
         const ext = path.extname(filename);
         const base = path.basename(filename, ext) || 'download';
 
-        let savePath = path.join(downloadsDir, filename);
-        let counter = 1;
-        while (fs.existsSync(savePath) && counter <= 99) {
-          savePath = path.join(downloadsDir, `${base} (${counter})${ext}`);
-          counter++;
+        let savePath;
+        if (cfg.downloadAskWhere === true) {
+          const win = getMainWindow();
+          const defaultPath = path.join(downloadsDir, filename);
+          const picked = dialog.showSaveDialogSync(win && !win.isDestroyed() ? win : undefined, {
+            title: 'Save file',
+            defaultPath
+          });
+          if (!picked) {
+            item.cancel();
+            return;
+          }
+          savePath = picked;
+        } else {
+          savePath = path.join(downloadsDir, filename);
+          let counter = 1;
+          while (fs.existsSync(savePath) && counter <= 99) {
+            savePath = path.join(downloadsDir, `${base} (${counter})${ext}`);
+            counter++;
+          }
         }
 
-        item.setSavePath(savePath);
+        try {
+          item.setSavePath(savePath);
+        } catch (e) {
+          console.error('[navio] setSavePath failed:', e.message);
+          item.cancel();
+          return;
+        }
 
         const displayName = path.basename(savePath);
         console.log(`[navio] Download started: ${displayName} → ${savePath}`);
@@ -102,8 +130,16 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
         item.once('done', (_, state) => {
           console.log(`[navio] Download ${state}: ${displayName}`);
           getMainWindow()?.webContents.send('download-done', { filename: displayName, savePath, state });
-          if (state === 'completed') {
-            shell.showItemInFolder(savePath);
+          if (state === 'completed' && cfg.downloadRevealInFolder === true) {
+            try {
+              if (fs.existsSync(savePath)) {
+                shell.showItemInFolder(savePath);
+              } else {
+                console.warn('[navio] Download completed but file not found:', savePath);
+              }
+            } catch (e) {
+              console.warn('[navio] showItemInFolder:', e.message);
+            }
           }
         });
       } catch (err) {

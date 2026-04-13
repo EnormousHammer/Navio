@@ -514,9 +514,12 @@ body.tabstrip-hidden .tab-strip {
   color: var(--text-primary);
 }
 
+/* Fixed gap only — do not flex-grow or it splits the bar50/50 with .tab-strip-list
+   and tabs stop halfway with a dead empty region. Basis8px = width in horizontal strip, height in vertical. */
 .tab-strip-spacer {
-  flex: 1;
+  flex: 0 0 8px;
   min-width: 8px;
+  min-height: 8px;
 }
 
 .tab-strip-toggle {
@@ -3407,7 +3410,7 @@ button.ntp-ticker-sport--stream:focus-visible {
 .email-chip-tooltip {
   position: fixed;
   z-index: 99999;
-  max-width: 320px;
+  max-width: min(420px, calc(100vw - 24px));
   background: var(--bg-elevated, #1e2130);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
@@ -3441,6 +3444,31 @@ button.ntp-ticker-sport--stream:focus-visible {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.ect-body-slot { margin-top: 2px; }
+.ect-body-loading {
+  font-size: 11.5px;
+  color: var(--text-muted, #64748b);
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.ect-body {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  max-height: 240px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary, #e2e8f0);
+}
+.ect-muted {
+  -webkit-line-clamp: unset;
+  display: block;
+  opacity: 0.9;
+}
 
 /* Light theme overrides for email chip */
 [data-theme="light"] .email-ref-chip {
@@ -3459,6 +3487,13 @@ button.ntp-ticker-sport--stream:focus-visible {
 }
 [data-theme="light"] .ect-from { color: #475569; }
 [data-theme="light"] .ect-snippet { color: #64748b; }
+[data-theme="light"] .ect-body {
+  border-top-color: rgba(0, 0, 0, 0.08);
+  color: var(--text-primary);
+}
+[data-theme="light"] .ect-body-loading {
+  border-top-color: rgba(0, 0, 0, 0.08);
+}
 
 [data-theme="light"] .gmail-drafts-bundle {
   border-color: rgba(0, 0, 0, 0.1);
@@ -10120,11 +10155,13 @@ button:focus-visible,
   display: flex;
   align-items: center;
   gap: 2px;
-  background: var(--bg-elevated, #1a1f2e);
-  border: 1px solid rgba(0,216,255,0.22);
+  background: var(--glass-bg, var(--bg-elevated));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-accent);
   border-radius: 22px;
   padding: 4px 6px;
-  box-shadow: 0 6px 28px rgba(0,0,5,0.65), 0 0 0 1px rgba(0,216,255,0.06);
+  box-shadow: var(--shadow-lg);
   animation: iaiToolbarIn 0.14s cubic-bezier(0.2,0,0.2,1);
   pointer-events: auto;
   user-select: none;
@@ -10136,9 +10173,9 @@ button:focus-visible,
 .iai-btn {
   background: none;
   border: none;
-  color: rgba(255,255,255,0.78);
+  color: var(--text-secondary);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   font-family: inherit;
   padding: 5px 11px;
   border-radius: 16px;
@@ -10148,22 +10185,22 @@ button:focus-visible,
   line-height: 1;
 }
 .iai-btn:hover {
-  background: rgba(0,216,255,0.13);
-  color: #00d8ff;
+  background: var(--accent-glow);
+  color: var(--text-accent);
 }
 .iai-sep {
   width: 1px;
   height: 16px;
-  background: rgba(255,255,255,0.1);
+  background: var(--border);
   margin: 0 2px;
   flex-shrink: 0;
 }
 .iai-copy-btn {
-  color: rgba(255,255,255,0.45);
+  color: var(--text-tertiary);
 }
 .iai-copy-btn:hover {
-  color: rgba(255,255,255,0.85);
-  background: rgba(255,255,255,0.07);
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 /* ── Inline AI Result Card ───────────────────────────────────────────────── */
@@ -10172,10 +10209,12 @@ button:focus-visible,
   z-index: 3099;
   width: 360px;
   max-height: 340px;
-  background: var(--bg-elevated, #1a1f2e);
-  border: 1px solid rgba(0,216,255,0.18);
+  background: var(--glass-bg, var(--bg-elevated));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border-accent);
   border-radius: 14px;
-  box-shadow: 0 10px 48px rgba(0,0,5,0.7), 0 0 0 1px rgba(0,216,255,0.05);
+  box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -10186,26 +10225,26 @@ button:focus-visible,
   align-items: center;
   gap: 8px;
   padding: 10px 14px 8px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 .iai-card-replace {
   padding: 3px 10px;
   font-size: 11px;
   border-radius: 999px;
-  border: 1px solid rgba(0, 216, 255, 0.45);
-  background: rgba(0, 216, 255, 0.08);
-  color: #00d8ff;
+  border: 1px solid var(--border-accent);
+  background: var(--accent-glow);
+  color: var(--text-accent);
   cursor: pointer;
   font-family: inherit;
 }
 .iai-card-replace:hover {
-  background: rgba(0, 216, 255, 0.15);
+  background: var(--accent-glow-strong);
 }
 .iai-card-label {
   font-size: 11px;
   font-weight: 700;
-  color: #00d8ff;
+  color: var(--text-accent);
   text-transform: uppercase;
   letter-spacing: 0.07em;
 }
@@ -10213,20 +10252,23 @@ button:focus-visible,
   margin-left: auto;
   background: none;
   border: none;
-  color: rgba(255,255,255,0.35);
+  color: var(--text-tertiary);
   font-size: 20px;
   line-height: 1;
   cursor: pointer;
   padding: 0 2px;
   border-radius: 4px;
-  transition: color 0.12s;
+  transition: color 0.12s, background 0.12s;
 }
-.iai-card-close:hover { color: rgba(255,255,255,0.9); }
+.iai-card-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
 .iai-card-body {
   padding: 12px 14px 14px;
   font-size: 13.5px;
   line-height: 1.65;
-  color: rgba(255,255,255,0.88);
+  color: var(--text-primary);
   overflow-y: auto;
   flex: 1;
   white-space: pre-wrap;
@@ -10238,8 +10280,8 @@ button:focus-visible,
   display: inline-block;
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(0,216,255,0.25);
-  border-top-color: #00d8ff;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: iaiSpin 0.7s linear infinite;
   vertical-align: middle;

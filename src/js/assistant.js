@@ -104,6 +104,8 @@ class AssistantManagerClass {
     this._streamUnsubs = [];
     this._autoFollowCount = 0;
     this._emailRefs = new Map();
+    /** @type {Map<string, string>} messageId → plain body (Gmail API) */
+    this._emailBodyCache = new Map();
     this._lastGmailPageToken = null;
     this._lastGmailQuery = '';
     this._pendingScreenshotDataUrl = null;
@@ -978,6 +980,9 @@ class AssistantManagerClass {
     // Set up progress handler
     const unProgress = window.navio.onToolProgress(({ step, tool, result }) => {
       if (tool === 'navigate') return; // already shown
+      if (tool === 'gmail_search' && result && !result.error) {
+        this._ingestGmailSearchToolResults(result);
+      }
       const label = this._toolProgressLabel(tool, result);
       this._appendActivityStep(tool, label);
     });
@@ -1280,6 +1285,143 @@ class AssistantManagerClass {
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
   }
 
+  /**
+   * Extract Gmail message id from a mail.google.com href (fragment may be inbox/id, search/…, etc.).
+   */
+  _resolveGmailMessageIdFromMailUrl(href) {
+    if (!href || typeof href !== 'string') return null;
+    const hashIdx = href.indexOf('#');
+    if (hashIdx === -1) return null;
+    let frag = href.slice(hashIdx + 1);
+    try {
+      frag = decodeURIComponent(frag.replace(/\+/g, ' '));
+    } catch {
+      /* keep frag */
+    }
+    const parts = frag.split('/').filter(Boolean);
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const seg = parts[i].split('?')[0];
+      if (this._emailRefs?.has(seg)) return seg;
+    }
+    const last = (parts[parts.length - 1] || '').split('?')[0];
+    if (last && /^[a-zA-Z0-9_-]{10,}$/.test(last)) return last;
+    return null;
+  }
+
+  _buildEmailRefChipHtml(url, msgId, subjectLabel) {
+    const ref = (msgId && this._emailRefs?.get(msgId)) || {};
+    const safeUrl = (url || '').replace(/"/g, '&quot;');
+    const display = (subjectLabel || ref.subject || '(no subject)').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const safeFrom = (ref.from || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const safeSnippet = (ref.snippet || '').replace(/"/g, '&quot;').slice(0, 500);
+    const midAttr = msgId ? ` data-msg-id="${String(msgId).replace(/"/g, '&quot;')}"` : '';
+    return (
+      `<span class="email-ref-chip" data-url="${safeUrl}"${midAttr} data-from="${safeFrom}" data-snippet="${safeSnippet}" role="button" tabindex="0" title="Open in Gmail · hover for body">`
+      + `<svg class="erc-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`
+      + `<span class="erc-subject">${display}</span>`
+      + `<svg class="erc-arrow" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`
+      + `</span>`
+    );
+  }
+
+  /**
+   * Turn plain-text subject lines (when the model drops markdown links) into the same chips as linked Gmail URLs.
+   */
+  _enrichPlainEmailSubjects(html) {
+    const map = this._emailRefs;
+    if (!map || map.size === 0 || typeof html !== 'string' || !html) return html;
+
+    const pairs = [...map.entries()]
+      .map(([id, ref]) => {
+        const subject = (ref.subject || '').trim();
+        return { id, subject, subLower: subject.toLowerCase() };
+      })
+      .filter((x) => x.subject.length > 4 && x.subject !== '(no subject)');
+    pairs.sort((a, b) => b.subject.length - a.subject.length);
+    if (!pairs.length) return html;
+
+    const tpl = document.createElement('template');
+    tpl.innerHTML = html;
+    const skipTag = new Set(['A', 'CODE', 'PRE', 'SCRIPT', 'STYLE', 'BUTTON', 'INPUT', 'TEXTAREA']);
+    const walker = document.createTreeWalker(tpl.content, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        let el = node.parentElement;
+        while (el) {
+          if (skipTag.has(el.tagName)) return NodeFilter.FILTER_REJECT;
+          if (el.classList?.contains('email-ref-chip')) return NodeFilter.FILTER_REJECT;
+          el = el.parentElement;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    const textNodes = [];
+    let n;
+    while ((n = walker.nextNode())) textNodes.push(n);
+
+    for (const node of textNodes) {
+      const text = node.nodeValue;
+      if (!text || !text.trim()) continue;
+
+      const frags = [];
+      let i = 0;
+      const textL = text.toLowerCase();
+      while (i < text.length) {
+        let best = null;
+        for (const { id, subject, subLower } of pairs) {
+          const idx = textL.indexOf(subLower, i);
+          if (idx === -1) continue;
+          if (!best || idx < best.idx || (idx === best.idx && subject.length > best.subject.length)) {
+            best = { idx, id, subject, matchLen: subject.length };
+          }
+        }
+        if (!best) {
+          frags.push({ type: 'text', text: text.slice(i) });
+          break;
+        }
+        if (best.idx > i) frags.push({ type: 'text', text: text.slice(i, best.idx) });
+        frags.push({ type: 'chip', id: best.id, subject: best.subject });
+        i = best.idx + best.matchLen;
+      }
+
+      if (frags.length === 1 && frags[0].type === 'text') continue;
+
+      const parent = node.parentNode;
+      if (!parent) continue;
+      const refNode = node;
+      for (const frag of frags) {
+        if (frag.type === 'text') {
+          if (frag.text) parent.insertBefore(document.createTextNode(frag.text), refNode);
+        } else {
+          const ref = map.get(frag.id) || {};
+          const chipUrl = ref.url || `https://mail.google.com/mail/u/0/#inbox/${frag.id}`;
+          const wrap = document.createElement('div');
+          wrap.innerHTML = this._buildEmailRefChipHtml(chipUrl, frag.id, ref.subject || frag.subject);
+          const chip = wrap.firstElementChild;
+          if (chip) parent.insertBefore(chip, refNode);
+        }
+      }
+      parent.removeChild(refNode);
+    }
+
+    return tpl.innerHTML;
+  }
+
+  /** Register Gmail rows from agent gmail_search tool results (same shape as connector). */
+  _ingestGmailSearchToolResults(result) {
+    const rows = result?.results;
+    if (!Array.isArray(rows)) return;
+    for (const r of rows) {
+      if (!r?.id) continue;
+      const gmailUrl = `https://mail.google.com/mail/u/0/#inbox/${r.id}`;
+      this._emailRefs.set(r.id, {
+        subject: r.subject || '(no subject)',
+        from: r.from || '',
+        snippet: r.snippet || '',
+        url: gmailUrl
+      });
+    }
+  }
+
   formatMessage(text, parseActions = false) {
     if (!text) return '';
 
@@ -1372,20 +1514,11 @@ class AssistantManagerClass {
     });
 
     // ── 9b. Gmail links → professional email reference chips ─────────────────
-    // Matches links pointing to mail.google.com and replaces them with rich cards
     html = html.replace(
-      /<a\s+href="(https:\/\/mail\.google\.com\/mail\/u\/\d+\/#\w+\/([^"]+))"[^>]*>([^<]*)<\/a>/g,
-      (_, url, msgId, subject) => {
-        const ref = this._emailRefs?.get(msgId) || {};
-        const safeUrl = url.replace(/"/g, '&quot;');
-        const safeSubject = (subject || ref.subject || '').replace(/"/g, '&quot;');
-        const safeFrom = (ref.from || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        const safeSnippet = (ref.snippet || '').replace(/"/g, '&quot;').slice(0, 150);
-        return `<span class="email-ref-chip" data-url="${safeUrl}" data-from="${safeFrom}" data-snippet="${safeSnippet}" role="button" tabindex="0" title="Open email">`
-          + `<svg class="erc-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0 1.1.9 2 2 2z"/><polyline points="22,6 12,13 2,6"/></svg>`
-          + `<span class="erc-subject">${subject || ref.subject || '(no subject)'}</span>`
-          + `<svg class="erc-arrow" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`
-          + `</span>`;
+      /<a\s+href="(https:\/\/mail\.google\.com\/mail\/u\/\d+\/[^"]*#([^"]+))"[^>]*>([^<]*)<\/a>/gi,
+      (_, url, _frag, subject) => {
+        const msgId = this._resolveGmailMessageIdFromMailUrl(url);
+        return this._buildEmailRefChipHtml(url, msgId, subject);
       }
     );
 
@@ -1590,6 +1723,8 @@ class AssistantManagerClass {
         html = html.replace(`\x00ACT${idx}\x00`, card);
       });
     }
+
+    html = this._enrichPlainEmailSubjects(html);
 
     return html;
   }
@@ -2323,7 +2458,22 @@ class AssistantManagerClass {
       });
     });
 
-    // ── Wire email reference chips (also open as new tab) ────────────────
+    // ── Wire email reference chips (new tab on click; hover shows snippet + full body when available) ──
+    const _ectEsc = (s) =>
+      String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const _ectPositionTip = (tip, chip) => {
+      const chipRect = chip.getBoundingClientRect();
+      const tipH = tip.offsetHeight;
+      const tipW = tip.offsetWidth;
+      let top = chipRect.top - tipH - 8;
+      let left = chipRect.left;
+      if (top < 8) top = chipRect.bottom + 8;
+      if (left + tipW > window.innerWidth - 8) left = window.innerWidth - tipW - 8;
+      if (left < 8) left = 8;
+      tip.style.top = top + 'px';
+      tip.style.left = left + 'px';
+    };
+
     contentEl.querySelectorAll('.email-ref-chip').forEach(chip => {
       chip.addEventListener('click', () => {
         const url = chip.dataset.url;
@@ -2338,35 +2488,73 @@ class AssistantManagerClass {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); chip.click(); }
       });
 
-      const from = chip.dataset.from;
-      const snippet = chip.dataset.snippet;
-      if (!from && !snippet) return;
-
       chip.addEventListener('mouseenter', () => {
-        const existing = document.getElementById('email-chip-tooltip');
-        if (existing) existing.remove();
+        const mid = (chip.dataset.msgId || '').trim();
+        const from = chip.dataset.from || '';
+        const snippet = chip.dataset.snippet || '';
+        document.getElementById('email-chip-tooltip')?.remove();
+
         const tip = document.createElement('div');
         tip.id = 'email-chip-tooltip';
         tip.className = 'email-chip-tooltip';
-        if (from) tip.innerHTML += `<div class="ect-from"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>${from.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span></div>`;
-        if (snippet) tip.innerHTML += `<div class="ect-snippet">${snippet.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+        if (from) {
+          tip.innerHTML += `<div class="ect-from"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>${_ectEsc(from)}</span></div>`;
+        }
+        if (snippet) {
+          tip.innerHTML += `<div class="ect-snippet">${_ectEsc(snippet)}</div>`;
+        }
+
+        const bodySlot = document.createElement('div');
+        bodySlot.className = 'ect-body-slot';
+        tip.appendChild(bodySlot);
+
+        if (mid && typeof window.navio?.gmailGetMessageBody === 'function') {
+          const cached = this._emailBodyCache.get(mid);
+          if (cached) {
+            bodySlot.innerHTML = `<div class="ect-body">${_ectEsc(cached.slice(0, 12000))}</div>`;
+          } else {
+            bodySlot.innerHTML = '<div class="ect-body-loading">Loading full message…</div>';
+            const gen = Date.now();
+            chip._emailTipGen = gen;
+            window.navio.gmailGetMessageBody(mid).then((res) => {
+              if (chip._emailTipGen !== gen || !document.body.contains(tip)) return;
+              if (res?.error) {
+                bodySlot.innerHTML = `<div class="ect-snippet ect-muted">${_ectEsc(res.error)}</div>`;
+              } else {
+                const body = (res?.body || '').trim();
+                if (body) this._emailBodyCache.set(mid, body);
+                const show = body || (res?.snippet || '').trim();
+                bodySlot.innerHTML = show
+                  ? `<div class="ect-body">${_ectEsc(show.slice(0, 12000))}</div>`
+                  : '<div class="ect-snippet ect-muted">No plain-text body for this message.</div>';
+              }
+              requestAnimationFrame(() => {
+                if (document.body.contains(tip)) {
+                  _ectPositionTip(tip, chip);
+                }
+              });
+            }).catch(() => {
+              if (chip._emailTipGen !== gen || !document.body.contains(tip)) return;
+              bodySlot.innerHTML = '<div class="ect-snippet ect-muted">Could not load message body.</div>';
+            });
+          }
+        } else if (mid) {
+          bodySlot.innerHTML =
+            '<div class="ect-snippet ect-muted">Connect Gmail to load the full message body on hover.</div>';
+        } else if (!from && !snippet) {
+          bodySlot.innerHTML =
+            '<div class="ect-snippet ect-muted">Click to open in Gmail.</div>';
+        }
+
         document.body.appendChild(tip);
         chip._tooltip = tip;
         requestAnimationFrame(() => {
-          const chipRect = chip.getBoundingClientRect();
-          const tipH = tip.offsetHeight;
-          const tipW = tip.offsetWidth;
-          let top = chipRect.top - tipH - 8;
-          let left = chipRect.left;
-          if (top < 8) top = chipRect.bottom + 8;
-          if (left + tipW > window.innerWidth - 8) left = window.innerWidth - tipW - 8;
-          if (left < 8) left = 8;
-          tip.style.top = top + 'px';
-          tip.style.left = left + 'px';
+          _ectPositionTip(tip, chip);
           tip.classList.add('ect-visible');
         });
       });
       chip.addEventListener('mouseleave', () => {
+        chip._emailTipGen = 0;
         chip._tooltip?.remove();
         delete chip._tooltip;
       });
@@ -2980,6 +3168,9 @@ ${pageInfo}${snapText}`;
     try {
       const connected = ConnectorsManager.getConnectedIntegrations();
       if (connected.length === 0) return null;
+
+      // Fresh refs per user turn so subject enrichment only matches this query's messages.
+      this._emailRefs.clear();
 
       const results = [];
       const has = (id) => connected.some((c) => c.id === id);

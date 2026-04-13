@@ -25,6 +25,8 @@ class SettingsManagerClass {
     this.elements = {
       startupMode: document.getElementById('setting-startup-mode'),
       launchIntro: document.getElementById('setting-launch-intro'),
+      downloadAskWhere: document.getElementById('setting-download-ask-where'),
+      downloadRevealInFolder: document.getElementById('setting-download-reveal'),
       defaultZoom: document.getElementById('setting-default-zoom'),
       aiPageContext: document.getElementById('setting-ai-page-context'),
       provider: document.getElementById('setting-provider'),
@@ -338,6 +340,13 @@ class SettingsManagerClass {
     const zVal = typeof z === 'number' ? String(z) : String(parseFloat(z) || 1);
     const allowed = ['0.75', '0.9', '1', '1.1', '1.25'];
     this.elements.defaultZoom.value = allowed.includes(zVal) ? zVal : '1';
+
+    if (this.elements.downloadAskWhere) {
+      this.elements.downloadAskWhere.checked = this.config.downloadAskWhere === true;
+    }
+    if (this.elements.downloadRevealInFolder) {
+      this.elements.downloadRevealInFolder.checked = this.config.downloadRevealInFolder === true;
+    }
 
     const scope = this.config.aiDataScope || (this.config.aiIncludePageContext === false ? 'none' : 'excerpt');
     this.elements.aiPageContext.checked = scope !== 'none';
@@ -1028,6 +1037,8 @@ class SettingsManagerClass {
       ...this.config,
       startupMode: this.elements.startupMode.value === 'homepage' ? 'homepage' : 'new-tab',
       showLaunchIntro: !!(this.elements.launchIntro && this.elements.launchIntro.checked),
+      downloadAskWhere: !!(this.elements.downloadAskWhere && this.elements.downloadAskWhere.checked),
+      downloadRevealInFolder: !!(this.elements.downloadRevealInFolder && this.elements.downloadRevealInFolder.checked),
       defaultZoom,
       aiIncludePageContext: aiDataScope !== 'none',
       aiDataScope,
