@@ -271,9 +271,9 @@ class NavioApp {
 
   bindShortcuts() {
     // Handle "open in new tab" requests from the context menu
-    window.navio.onOpenUrlInNewTab((url) => {
+    window.navio.onOpenUrlInNewTab((url, opts = {}) => {
       if (url && typeof TabManager !== 'undefined') {
-        TabManager.createTab(url);
+        TabManager.createTab(url, { incognito: !!opts.incognito });
       }
     });
 
@@ -326,11 +326,11 @@ class NavioApp {
 
     // ── Certificate warning toasts ────────────────────────────────────────
     window.navio.onCertificateWarning(({ hostname }) => {
-      _showAppToast(`⚠ Untrusted certificate on ${hostname} — proceeding anyway`, 'warning');
+      _showAppToast('You proceeded on an untrusted certificate (' + hostname + ')', 'warning');
     });
 
-    const shortcutDedupeMs = 120;
-    const shortcutDedupeAt = { 'new-tab': 0, 'close-tab': 0, 'focus-url': 0 };
+       const shortcutDedupeMs = 120;
+    const shortcutDedupeAt = { 'new-tab': 0, 'new-private-tab': 0, 'close-tab': 0, 'focus-url': 0 };
     const runDedupedShortcut = (id, fn) => {
       const now = Date.now();
       if (now - (shortcutDedupeAt[id] || 0) < shortcutDedupeMs) return;
@@ -342,6 +342,9 @@ class NavioApp {
       switch (action) {
         case 'new-tab':
           runDedupedShortcut('new-tab', () => TabManager.createTab());
+          break;
+        case 'new-private-tab':
+          runDedupedShortcut('new-private-tab', () => TabManager.createTab(null, { incognito: true }));
           break;
         case 'close-tab':
           runDedupedShortcut('close-tab', () => TabManager.closeActiveTab());
@@ -374,6 +377,10 @@ class NavioApp {
       if (k === 't' && !e.shiftKey) {
         e.preventDefault();
         runDedupedShortcut('new-tab', () => TabManager.createTab());
+      }
+      if (k === 'n' && e.shiftKey) {
+        e.preventDefault();
+        runDedupedShortcut('new-private-tab', () => TabManager.createTab(null, { incognito: true }));
       }
       if (k === 'w' && !e.shiftKey) {
         e.preventDefault();
@@ -430,23 +437,28 @@ class NavioApp {
   updateUrlBar(url) {
     const urlInput = document.getElementById('url-input');
     const sslIndicator = document.getElementById('url-ssl');
+    const incog =
+      typeof TabManager !== 'undefined' && TabManager.getActiveTab && !!TabManager.getActiveTab()?.incognito;
+    const sslExtra = incog ? ' incognito-context' : '';
 
     if (!url || url === 'about:blank') {
       urlInput.value = '';
-      sslIndicator.className = 'url-ssl';
+      sslIndicator.className = 'url-ssl' + sslExtra;
+      sslIndicator.title = incog ? 'Private tab' : '';
       return;
     }
 
     urlInput.value = url;
 
     if (url.startsWith('https://')) {
-      sslIndicator.className = 'url-ssl secure';
-      sslIndicator.title = 'Secure connection (HTTPS)';
+      sslIndicator.className = 'url-ssl secure' + sslExtra;
+      sslIndicator.title = incog ? 'Private tab — HTTPS' : 'Secure connection (HTTPS)';
     } else if (url.startsWith('http://')) {
-      sslIndicator.className = 'url-ssl insecure';
-      sslIndicator.title = 'Not secure (HTTP)';
+      sslIndicator.className = 'url-ssl insecure' + sslExtra;
+      sslIndicator.title = incog ? 'Private tab — not secure (HTTP)' : 'Not secure (HTTP)';
     } else {
-      sslIndicator.className = 'url-ssl';
+      sslIndicator.className = 'url-ssl' + sslExtra;
+      sslIndicator.title = incog ? 'Private tab' : '';
     }
   }
 

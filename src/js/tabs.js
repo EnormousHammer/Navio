@@ -3,6 +3,9 @@
  * Handles tab creation, switching, closing, and webview lifecycle
  */
 
+/** In-memory webview partition; must match electron/navio-partitions.js */
+const NAVIO_INCOGNITO_PARTITION = 'navio-incognito';
+
 class TabManagerClass {
   constructor() {
     this.tabs = [];
@@ -19,6 +22,9 @@ class TabManagerClass {
     this.newTabPage = document.getElementById('new-tab-page');
 
     document.getElementById('btn-new-tab').addEventListener('click', () => this.createTab());
+    document.getElementById('btn-new-private-tab')?.addEventListener('click', () =>
+      this.createTab(null, { incognito: true })
+    );
 
     this.tabListEl.addEventListener('wheel', (e) => {
       if (e.deltaY !== 0) {
@@ -40,6 +46,7 @@ class TabManagerClass {
   _passiveMemorySeen = new Set();
 
   _schedulePassiveMemory(tab, wv) {
+    if (tab.incognito) return;
     // Cancel any previous timer for this tab
     if (tab._memTimer) { clearTimeout(tab._memTimer); tab._memTimer = null; }
     const url = tab.url || '';
@@ -62,6 +69,7 @@ class TabManagerClass {
 
   _historyAdd(tab, wv, url) {
     try {
+      if (tab.incognito) return;
       if (!url || !url.startsWith('http')) return;
       window.navio.historyAdd({
         url,
@@ -91,6 +99,7 @@ class TabManagerClass {
 
   createTab(url = null, opts = {}) {
     const id = `tab-${++this.tabCounter}`;
+    const incognito = !!opts.incognito;
     const tab = {
       id,
       title: 'New Tab',
@@ -100,7 +109,8 @@ class TabManagerClass {
       favicon: null,
       loading: false,
       webview: null,
-      pinned: false
+      pinned: false,
+      incognito
     };
 
     // Build a clean user-agent that doesn't expose Electron
@@ -113,7 +123,7 @@ class TabManagerClass {
     const webview = document.createElement('webview');
     webview.setAttribute('id', `wv-${id}`);
     webview.setAttribute('allowpopups', '');
-    webview.setAttribute('partition', 'persist:navio');
+    webview.setAttribute('partition', incognito ? NAVIO_INCOGNITO_PARTITION : 'persist:navio');
     webview.setAttribute('useragent', cleanUA);
     // Always set src="about:blank" so Electron starts the guest renderer
     // immediately and fires dom-ready. Without this, dom-ready never fires
@@ -271,7 +281,7 @@ class TabManagerClass {
         /* ignore */
       }
       e.preventDefault();
-      this.createTab(e.url);
+      this.createTab(e.url, { incognito: !!tab.incognito });
     });
 
     wv.addEventListener('did-fail-load', (e) => {
@@ -324,12 +334,12 @@ class TabManagerClass {
         const data = e.args && e.args[0];
         if (e.channel === 'navio-form-submit' && data) {
           // Credential capture — offer to save
-          if (typeof PasswordManager !== 'undefined') {
+          if (!tab.incognito && typeof PasswordManager !== 'undefined') {
             PasswordManager.showSavePrompt(data, wv);
           }
         } else if (e.channel === 'navio-login-form' && data) {
           // Login form detected — check if we have saved credentials to autofill
-          if (typeof PasswordManager !== 'undefined') {
+          if (!tab.incognito && typeof PasswordManager !== 'undefined') {
             PasswordManager.checkAutofill(data.url, wv);
           }
         } else if (e.channel === 'navio-text-selected' && data) {
@@ -431,7 +441,11 @@ class TabManagerClass {
   async createTabAndWaitForLoad(url = null, options = {}) {
     const timeoutMs = options.timeoutMs ?? 45000;
     const settleMs = options.settleMs ?? 200;
-    const tab = this.createTab(url, url ? { loadWait: { timeoutMs, settleMs } } : {});
+    const passThrough = { ...options };
+    delete passThrough.timeoutMs;
+    delete passThrough.settleMs;
+    delete passThrough.loadWait;
+    const tab = this.createTab(url, url ? { ...passThrough, loadWait: { timeoutMs, settleMs } } : passThrough);
     if (!url) return { ok: true, tab };
     if (!tab._aiLoadWait) {
       return { tab, ok: false, error: 'Load wait was not registered for new tab' };
@@ -499,6 +513,7 @@ class TabManagerClass {
 
     const activeTab = this.getActiveTab();
     if (activeTab) {
+      document.body.classList.toggle('navio-incognito-active', !!activeTab.incognito);
       if (activeTab.url) {
         App.updateUrlBar(activeTab.url);
         this.hideNewTabPage();
@@ -596,7 +611,7 @@ class TabManagerClass {
 
   renderTabItem(tab) {
     const el = document.createElement('div');
-    el.className = 'tab-item';
+    el.className = 'tab-item' + (tab.incognito ? ' tab-incognito' : '');
     el.id = `tabitem-${tab.id}`;
 
     el.innerHTML = `
@@ -676,6 +691,7 @@ class TabManagerClass {
     }
 
     el.classList.toggle('tab-pinned', !!tab.pinned);
+    el.classList.toggle('tab-incognito', !!tab.incognito);
   }
 
   updateContextTitle(tab) {

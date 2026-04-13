@@ -37,6 +37,46 @@
   --ntp-ticker-reserve: 0px;
 }
 
+/* Keep type sharp on hover (avoid softness from transform/filter compositing in Chromium) */
+@media (hover: hover) {
+  :is(
+    button,
+    [role='button'],
+    [role='tab'],
+    a,
+    label,
+    .btn,
+    .icon-btn,
+    .nav-btn,
+    .tab-item,
+    .connector-card,
+    .ntp-widget,
+    .ntp-shortcut,
+    .settings-nav-item,
+    .conn-card-action-btn,
+    .ob-btn,
+    .send-btn,
+    .ntp-search-send,
+    .bookmark-bar-item,
+    .history-overlay-row,
+    .tab-search-row,
+    .live-notif-btn,
+    .live-modal-btn-primary,
+    .live-batch-draft-trigger,
+    .ai-profile-btn,
+    .theme-option,
+    .msg-citation-card,
+    .email-ref-chip,
+    .proactive-chip,
+    .ai-starter-option,
+    .ntp-ai-suggestion,
+    .assistant-starter-chip
+  ):hover {
+    -webkit-font-smoothing: subpixel-antialiased;
+    -moz-osx-font-smoothing: auto;
+  }
+}
+
 /* ── DARK THEME (default) — Deep Space AI: deep navy strata, blue-tinted surfaces ── */
 [data-theme="dark"], :root {
   --bg-void: #070b17;
@@ -608,7 +648,7 @@ body.tabstrip-hidden .tab-strip-show {
 }
 
 .tab-item:active {
-  transform: scale(0.97);
+  opacity: 0.92;
 }
 
 /* ── Tab Groups ──────────────────────────────────────────────────────── */
@@ -637,6 +677,21 @@ body.tabstrip-hidden .tab-strip-show {
 }
 .tab-item.tab-pinned .tab-close {
   display: none;
+}
+
+.tab-item.tab-incognito {
+  border-left: 2px solid rgba(139, 92, 246, 0.75);
+}
+.tab-strip-new.tab-strip-private {
+  opacity: 0.88;
+}
+body.navio-incognito-active .url-bar-container {
+  box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.28);
+  border-radius: 8px;
+}
+.url-ssl.incognito-context {
+  outline: 1px solid rgba(139, 92, 246, 0.35);
+  border-radius: 3px;
 }
 
 /* ── Tab Group Header Row ────────────────────────────────────────────── */
@@ -745,9 +800,9 @@ body.tabstrip-hidden .tab-strip-show {
   border: 2px solid transparent;
   cursor: pointer;
   flex-shrink: 0;
-  transition: transform 0.1s;
+  transition: box-shadow 0.12s ease, border-color 0.12s ease;
 }
-.tcm-color-dot:hover { transform: scale(1.2); }
+.tcm-color-dot:hover { box-shadow: 0 0 0 2px var(--bg-surface), 0 0 0 4px var(--border-accent); }
 .tcm-color-dot.selected { border-color: #fff; box-shadow: 0 0 6px rgba(255,255,255,0.4); }
 .tcm-ng-input {
   flex: 1;
@@ -1499,12 +1554,11 @@ body.tabstrip-hidden .tab-strip-show {
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  transition: opacity 0.2s, transform 0.2s, box-shadow 0.2s;
+  transition: opacity 0.2s, box-shadow 0.2s;
   box-shadow: 0 2px 16px rgba(0,212,255,0.4), 0 0 8px rgba(124,58,237,0.3);
 }
 .ntp-search-send:hover {
-  opacity: 0.9;
-  transform: scale(1.08);
+  opacity: 0.95;
   box-shadow: 0 4px 24px rgba(0,212,255,0.5), 0 0 12px rgba(124,58,237,0.4);
 }
 
@@ -1627,7 +1681,6 @@ body.tabstrip-hidden .tab-strip-show {
     0 0 0 1px rgba(0,216,255,0.12),
     inset 0 1px 0 rgba(255,255,255,0.14),
     inset 0 0 50px rgba(0,216,255,0.04);
-  transform: translateY(-2px);
 }
 /* AI Brief widget — gradient neon border */
 .ntp-widget-ai {
@@ -1921,7 +1974,7 @@ body.tabstrip-hidden .tab-strip-show {
   transition: opacity 0.15s, transform 0.15s;
   box-shadow: 0 2px 12px rgba(0,216,255,0.3);
 }
-.ntp-connect-email-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+.ntp-connect-email-btn:hover { opacity: 0.95; }
 
 /* ── Email item ─────────────────────────────────────────────────── */
 .ntp-email-item {
@@ -2647,8 +2700,6 @@ button.ntp-ticker-sport--stream:focus-visible {
   border-radius: var(--radius-sm);
 }
 
-.ntp-shortcut:hover { transform: translateY(-3px); }
-
 .shortcut-icon {
   width: 42px;
   height: 42px;
@@ -2672,7 +2723,6 @@ button.ntp-ticker-sport--stream:focus-visible {
   border-radius: 4px;
 }
 
-.ntp-shortcut:hover { transform: translateY(-4px); }
 .ntp-shortcut:hover .shortcut-icon {
   background: rgba(28, 38, 62, 0.90);
   box-shadow: 0 8px 24px rgba(0,0,0,0.5), 0 0 16px rgba(0,216,255,0.12), inset 0 1px 0 rgba(255,255,255,0.10);
@@ -3380,7 +3430,7 @@ button.ntp-ticker-sport--stream:focus-visible {
   border-color: rgba(255, 255, 255, 0.22);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
 }
-.email-ref-chip:active { transform: translateY(1px); }
+.email-ref-chip:active { opacity: 0.92; }
 .email-ref-chip .erc-icon {
   flex-shrink: 0;
   color: var(--accent);
@@ -3398,11 +3448,10 @@ button.ntp-ticker-sport--stream:focus-visible {
   flex-shrink: 0;
   color: var(--text-muted);
   opacity: 0.7;
-  transition: opacity 0.15s, transform 0.15s;
+  transition: opacity 0.15s, color 0.15s;
 }
 .email-ref-chip:hover .erc-arrow {
   opacity: 1;
-  transform: translateX(2px);
   color: var(--accent);
 }
 
@@ -3761,7 +3810,7 @@ button.ntp-ticker-sport--stream:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease, border-radius 0.18s ease;
+  transition: box-shadow 0.18s ease, opacity 0.18s ease, border-radius 0.18s ease;
   flex-shrink: 0;
   box-shadow: 0 2px 12px rgba(0, 216, 255, 0.3), 0 0 0 0 rgba(0,216,255,0);
   position: relative;
@@ -3777,13 +3826,12 @@ button.ntp-ticker-sport--stream:focus-visible {
 }
 
 .send-btn:hover {
-  transform: scale(1.06);
   box-shadow: 0 4px 20px rgba(0, 216, 255, 0.45), 0 0 0 3px rgba(0,216,255,0.12);
   border-radius: 14px;
 }
 
 .send-btn:active {
-  transform: scale(0.94);
+  opacity: 0.92;
   border-radius: 10px;
 }
 
@@ -4413,7 +4461,6 @@ button.ntp-ticker-sport--stream:focus-visible {
 
 .btn-primary:hover {
   box-shadow: 0 4px 20px rgba(0, 216, 255, 0.22);
-  transform: translateY(-1px);
 }
 
 .btn-secondary {
@@ -4695,8 +4742,7 @@ body.tabstrip-hidden .loading-indicator {
 .connector-card:hover {
   border-color: var(--border-hover);
   background: var(--bg-hover);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
+  box-shadow: var(--shadow-md), 0 2px 12px rgba(0, 5, 24, 0.12);
 }
 
 .connector-card-icon {
@@ -5055,7 +5101,6 @@ body.tabstrip-hidden .loading-indicator {
 
 .conn-card-action-btn.conn-oauth-btn:hover {
   box-shadow: 0 2px 8px rgba(0,0,0,0.22);
-  transform: translateY(-1px);
 }
 
 .conn-card-action-btn.conn-setup-btn {
@@ -5856,7 +5901,6 @@ body.onboarding-active #app {
   border-color: transparent;
   color: white;
   box-shadow: 0 0 30px rgba(0, 216, 255, 0.2);
-  transform: translateY(-2px);
 }
 
 .ob-btn-start:hover::before { opacity: 1; }
@@ -6010,7 +6054,6 @@ body.onboarding-active #app {
 
 .ob-btn-next:hover:not(:disabled) {
   box-shadow: 0 4px 24px rgba(0, 216, 255, 0.25);
-  transform: translateY(-1px);
 }
 
 .ob-btn-next:disabled {
@@ -6304,7 +6347,6 @@ body.onboarding-active #app {
 }
 
 .ob-btn-launch:hover {
-  transform: translateY(-3px);
   box-shadow: 0 8px 40px rgba(0, 216, 255, 0.3), 0 0 60px rgba(0, 216, 255, 0.1);
 }
 
@@ -7414,12 +7456,10 @@ button:focus-visible,
 [data-theme="dark"] .connector-card:hover {
   border-color: rgba(0, 216, 255, 0.22) !important;
   box-shadow: var(--shadow-md), 0 0 22px rgba(0, 216, 255, 0.09);
-  transform: translateY(-1px);
 }
 [data-theme="light"] .connector-card:hover {
   border-color: rgba(0, 120, 220, 0.22) !important;
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
+  box-shadow: var(--shadow-md), 0 2px 12px rgba(20, 30, 80, 0.08);
 }
 
 /* ── Send button: theme-aware glow on hover ── */
@@ -7576,8 +7616,8 @@ button:focus-visible,
   cursor: pointer;
   transition: opacity 150ms, transform 100ms;
 }
-.live-notif-btn:hover { opacity: 0.88; transform: translateY(-1px); }
-.live-notif-btn:active { transform: translateY(0); }
+.live-notif-btn:hover { opacity: 0.88; }
+.live-notif-btn:active { opacity: 0.95; }
 
 .live-notif-btn-open {
   background: var(--bg-surface, #192035);
@@ -7919,9 +7959,9 @@ button:focus-visible,
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 150ms, transform 100ms;
+  transition: opacity 150ms;
 }
-.live-modal-btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
+.live-modal-btn-primary:hover { opacity: 0.88; }
 
 .live-modal-btn-secondary {
   padding: 7px 14px;
@@ -8420,8 +8460,8 @@ button:focus-visible,
   transition: opacity 0.15s, transform 0.15s;
   margin-top: 4px;
 }
-.live-batch-draft-trigger:hover { opacity: 0.88; transform: translateY(-1px); }
-.live-batch-draft-trigger:active { transform: translateY(0); }
+.live-batch-draft-trigger:hover { opacity: 0.88; }
+.live-batch-draft-trigger:active { opacity: 0.95; }
 
 /* ── End Batch Draft Modal ─────────────────────────────────────────────── */
 
@@ -10744,7 +10784,6 @@ button:focus-visible,
   border-color: var(--accent);
   box-shadow: var(--shadow-glow), var(--shadow-md);
   background: rgba(0,216,255,0.08);
-  transform: translateX(-3px);
 }
 
 .proactive-chip .pc-icon {
@@ -11286,7 +11325,6 @@ button:focus-visible,
   border-color: rgba(0, 216, 255, 0.3);
   color: white;
   box-shadow: 0 0 16px rgba(0, 216, 255, 0.1);
-  transform: translateY(-1px);
 }
 
 /* ── NTP viewport-height responsiveness ─────────────────────────────── */
@@ -11330,7 +11368,6 @@ button:focus-visible,
   border-color: rgba(0,216,255,0.3);
   color: white;
   box-shadow: 0 0 16px rgba(0,216,255,0.1);
-  transform: translateY(-1px);
 }
 
 .ntp-ai-suggestion svg,

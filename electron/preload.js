@@ -129,7 +129,10 @@ contextBridge.exposeInMainWorld('navio', {
   showWebviewContextMenu: (params) => ipcRenderer.invoke('show-webview-context-menu', params),
 
   onOpenUrlInNewTab: (callback) => {
-    const handler = (_, url) => callback(url);
+    const handler = (_, payload) => {
+      if (typeof payload === 'string') callback(payload, { incognito: false });
+      else callback(payload && payload.url, { incognito: !!(payload && payload.incognito) });
+    };
     ipcRenderer.on('open-url-in-new-tab', handler);
     return () => ipcRenderer.removeListener('open-url-in-new-tab', handler);
   },

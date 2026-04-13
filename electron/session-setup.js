@@ -4,23 +4,63 @@ const { ipcMain, session, shell, globalShortcut, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { AD_BLOCK_PATTERNS, shouldBlockWebPopup } = require('./ad-block-patterns');
+const sitePerms = require('./site-permissions');
+const { NAVIO_PARTITION_MAIN, NAVIO_PARTITION_INCOGNITO } = require('./navio-partitions');
+
+const PERMISSION_LABELS = {
+  media: 'Use your camera and/or microphone',
+  geolocation: 'See your location',
+  notifications: 'Show notifications',
+  midiSysex: 'Use MIDI devices',
+  pointerLock: 'Lock the mouse pointer',
+  fullscreen: 'Enter full screen',
+  openExternal: 'Open external applications',
+  displayCapture: 'Record your screen',
+  speakerSelection: 'Choose audio output devices',
+  localFonts: 'Access local fonts',
+  windowManagement: 'Manage windows on your screen',
+  'clipboard-read': 'Read from the clipboard',
+  'clipboard-sanitized-write': 'Write to the clipboard',
+  keyboardLock: 'Use keyboard lock',
+  storage: 'Use persistent storage',
+  fileSystem: 'Access files on this device'
+};
+
+function permissionHumanLabel(permission) {
+  return PERMISSION_LABELS[permission] || permission.replace(/-/g, ' ');
+}
+
+function originHostname(origin) {
+  try {
+    return new URL(origin).hostname || origin;
+  } catch {
+    return origin;
+  }
+}
 
 /**
  * Webview session, downloads, certs, ad blocker, permissions, global shortcuts.
  * Call after createStore + createMainWindow from main.js.
  */
 function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig }) {
-  const navioSession = session.fromPartition('persist:navio');
+  const userData = () => app.getPath('userData');
+  const navioSession = session.fromPartition(NAVIO_PARTITION_MAIN);
+  const incognitoSession = session.fromPartition(NAVIO_PARTITION_INCOGNITO);
 
   const webviewPreloadAbs = path.resolve(__dirname, 'webview-preload.js');
-  try {
-    navioSession.registerPreloadScript({
-      id: 'navio-webview-preload',
-      type: 'frame',
-      filePath: webviewPreloadAbs
-    });
-  } catch (e) {
-    console.error('[navio] registerPreloadScript failed:', e.message);
+  for (const [ses, id] of [
+    [navioSession, 'navio-webview-preload'],
+    [incognitoSession, 'navio-webview-preload-incognito']
+  ]) {
+    try {
+      ses.registerPreloadScript({
+        id,
+        type: 'frame',
+        filePath: webviewPreloadAbs
+      });
+    } catch (e) {
+      console.error('[navio] registerPreloadScript failed:', id, e.message);
+    }
   }
 
   function applySessionFixes(ses) {
@@ -53,6 +93,7 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   }
 
   applySessionFixes(navioSession);
+  applySessionFixes(incognitoSession);
   applySessionFixes(session.defaultSession);
 
   function handleDownloads(ses) {
@@ -148,19 +189,44 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
     });
   }
   handleDownloads(navioSession);
+  handleDownloads(incognitoSession);
   handleDownloads(session.defaultSession);
 
   function handleCertErrors(ses) {
     ses.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
       event.preventDefault();
-      callback(true);
+      const win = getMainWindow();
+      let hostname = 'this site';
       try {
-        const hostname = new URL(url).hostname;
-        getMainWindow()?.webContents.send('certificate-warning', { hostname, error });
-      } catch (_) {}
+        hostname = new URL(url).hostname;
+      } catch {
+        /* keep default */
+      }
+      const errText = String(error || 'Certificate validation failed').slice(0, 400);
+      dialog
+        .showMessageBox(win && !win.isDestroyed() ? win : undefined, {
+          type: 'warning',
+          title: 'Your connection is not private',
+          message: `Navio cannot verify the identity of ${hostname}.`,
+          detail: `${errText}\n\nProceed only if you trust this network and understand the risk.`,
+          buttons: ['Go back (recommended)', 'Proceed anyway'],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true
+        })
+        .then(({ response }) => {
+          if (response === 1) {
+            getMainWindow()?.webContents.send('certificate-warning', { hostname, error: errText });
+            callback(true);
+          } else {
+            callback(false);
+          }
+        })
+        .catch(() => callback(false));
     });
   }
   handleCertErrors(navioSession);
+  handleCertErrors(incognitoSession);
   handleCertErrors(session.defaultSession);
 
   ipcMain.handle('open-external', async (_, url) => {
@@ -175,13 +241,82 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
     }
   });
 
-  navioSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    callback(true);
-  });
+  function attachPermissionHandlers(ses) {
+    ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
+      let pageUrl = '';
+      try {
+        pageUrl = (details && details.requestingUrl) || webContents.getURL() || '';
+      } catch {
+        pageUrl = '';
+      }
+      let origin = '';
+      try {
+        if (pageUrl && /^https?:/i.test(pageUrl)) origin = new URL(pageUrl).origin;
+      } catch {
+        origin = '';
+      }
+      if (!origin) {
+        callback(false);
+        return;
+      }
 
-  if (typeof navioSession.setPermissionCheckHandler === 'function') {
-    navioSession.setPermissionCheckHandler(() => true);
+      const stored = sitePerms.get(userData(), origin, permission);
+      if (stored === true) {
+        callback(true);
+        return;
+      }
+      if (stored === false) {
+        callback(false);
+        return;
+      }
+
+      const win = getMainWindow();
+      const host = originHostname(origin);
+      const want = permissionHumanLabel(permission);
+      dialog
+        .showMessageBox(win && !win.isDestroyed() ? win : undefined, {
+          type: 'question',
+          title: 'Permission',
+          message: `${host} wants permission:`,
+          detail: want,
+          buttons: ['Allow once', 'Deny', 'Always allow', 'Always deny'],
+          defaultId: 0,
+          cancelId: 1
+        })
+        .then(({ response }) => {
+          if (response === 2) {
+            sitePerms.set(userData(), origin, permission, true);
+            callback(true);
+          } else if (response === 3) {
+            sitePerms.set(userData(), origin, permission, false);
+            callback(false);
+          } else if (response === 0) {
+            callback(true);
+          } else {
+            callback(false);
+          }
+        })
+        .catch(() => callback(false));
+    });
+
+    if (typeof ses.setPermissionCheckHandler === 'function') {
+      ses.setPermissionCheckHandler((wc, permission, requestingOrigin) => {
+        let origin = String(requestingOrigin || '');
+        try {
+          if (origin) origin = new URL(origin).origin;
+        } catch {
+          return true;
+        }
+        if (!origin) return true;
+        const v = sitePerms.get(userData(), origin, permission);
+        if (v === false) return false;
+        return true;
+      });
+    }
   }
+
+  attachPermissionHandlers(navioSession);
+  attachPermissionHandlers(incognitoSession);
 
   const cfg0 = loadConfig();
   let adBlockEnabled = cfg0.adBlockEnabled !== false;
@@ -190,18 +325,22 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   let adPopupBlockedCount = 0;
   const AD_AVG_BYTES = 40 * 1024;
 
-  navioSession.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
-    if (adBlockEnabled) {
-      const url = details.url;
-      if (AD_BLOCK_PATTERNS.some((p) => url.includes(p))) {
-        adBlockCount++;
-        adBlockBytes += AD_AVG_BYTES;
-        callback({ cancel: true });
-        return;
+  function attachAdBlocker(ses) {
+    ses.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
+      if (adBlockEnabled) {
+        const url = details.url;
+        if (AD_BLOCK_PATTERNS.some((p) => url.includes(p))) {
+          adBlockCount++;
+          adBlockBytes += AD_AVG_BYTES;
+          callback({ cancel: true });
+          return;
+        }
       }
-    }
-    callback({});
-  });
+      callback({});
+    });
+  }
+  attachAdBlocker(navioSession);
+  attachAdBlocker(incognitoSession);
 
   /**
    * Sync IPC for <webview> new-window — must decide before the event handler returns.
@@ -263,6 +402,7 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   }
 
   regShortcut('CommandOrControl+T', 'new-tab');
+  regShortcut('CommandOrControl+Shift+N', 'new-private-tab');
   regShortcut('CommandOrControl+W', 'close-tab');
   regShortcut('CommandOrControl+L', 'focus-url');
   regShortcut('CommandOrControl+Shift+A', 'toggle-assistant');

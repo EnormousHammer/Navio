@@ -76,6 +76,11 @@ class CommandPaletteClass {
   baseCommands() {
     return [
       { id: 'new-tab', label: 'New tab', run: () => TabManager.createTab() },
+      {
+        id: 'new-private-tab',
+        label: 'New private tab',
+        run: () => TabManager.createTab(null, { incognito: true })
+      },
       { id: 'close-tab', label: 'Close active tab', run: () => TabManager.closeActiveTab() },
       { id: 'focus-url', label: 'Focus address bar', run: () => document.getElementById('url-input').focus() },
       { id: 'assistant', label: 'Toggle Navio AI', run: () => AssistantManager.toggle() },

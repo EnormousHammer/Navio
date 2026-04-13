@@ -4,6 +4,7 @@ const fs = require('fs');
 const { pathToFileURL } = require('url');
 const crypto = require('crypto');
 const secureConfig = require('./secure-config');
+const { NAVIO_PARTITION_INCOGNITO } = require('./navio-partitions');
 const { createStore } = require('./navio-store');
 const { setupSessionInfrastructure } = require('./session-setup');
 const { loadConfig, saveConfig } = require('./config-store');
@@ -5586,6 +5587,15 @@ ipcMain.handle('show-webview-context-menu', (event, { webContentsId, x, y, param
     if (!wc) return;
 
     const menu = new Menu();
+    const openInNewTabPayload = (url) => {
+      if (!url || !mainWindow) return;
+      try {
+        const incognito = wc.session === session.fromPartition(NAVIO_PARTITION_INCOGNITO);
+        mainWindow.webContents.send('open-url-in-new-tab', { url, incognito });
+      } catch {
+        mainWindow.webContents.send('open-url-in-new-tab', { url, incognito: false });
+      }
+    };
 
     if (params.selectionText) {
       menu.append(new MenuItem({ label: 'Copy', role: 'copy', click: () => wc.copy() }));
@@ -5601,7 +5611,7 @@ ipcMain.handle('show-webview-context-menu', (event, { webContentsId, x, y, param
     if (params.linkURL) {
       menu.append(new MenuItem({
         label: 'Open Link in New Tab',
-        click: () => mainWindow?.webContents.send('open-url-in-new-tab', params.linkURL)
+        click: () => openInNewTabPayload(params.linkURL)
       }));
       menu.append(new MenuItem({
         label: 'Copy Link Address',
@@ -5612,9 +5622,26 @@ ipcMain.handle('show-webview-context-menu', (event, { webContentsId, x, y, param
     if (params.mediaType === 'image' && params.srcURL) {
       menu.append(new MenuItem({
         label: 'Open Image in New Tab',
-        click: () => mainWindow?.webContents.send('open-url-in-new-tab', params.srcURL)
+        click: () => openInNewTabPayload(params.srcURL)
       }));
       menu.append(new MenuItem({ type: 'separator' }));
+    }
+
+    try {
+      const pageUrl = (params && params.pageURL) || wc.getURL() || '';
+      if (/^https?:\/\//i.test(pageUrl)) {
+        const trUrl =
+          'https://translate.google.com/translate?sl=auto&tl=en&u=' + encodeURIComponent(pageUrl);
+        menu.append(
+          new MenuItem({
+            label: 'Translate page',
+            click: () => openInNewTabPayload(trUrl)
+          })
+        );
+        menu.append(new MenuItem({ type: 'separator' }));
+      }
+    } catch {
+      /* ignore */
     }
 
     menu.append(new MenuItem({ label: 'Back', click: () => { if (wc.canGoBack()) wc.goBack(); }, enabled: wc.canGoBack() }));
