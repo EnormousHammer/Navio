@@ -52,6 +52,8 @@ const DEFAULT_CONFIG = {
   aiAutoExecute: false,
   aiAutoScreenshotAfterNavigate: false,
   aiAgentStepMode: false,
+  /** Max agent loop iterations (50-500). Higher = bulk Gmail/API jobs less likely to stop early. */
+  aiAgentMaxToolSteps: 200,
   aiUseToolCalling: true,
   /**
    * New tab page — bottom SPORTS ticker: curated streamed.pk slugs (id = /matches/{id}).
@@ -110,6 +112,8 @@ function loadConfig() {
   if (merged.aiDataScope === undefined || merged.aiDataScope === null) {
     merged.aiDataScope = merged.aiIncludePageContext === false ? 'none' : 'excerpt';
   }
+  const _steps = Number(merged.aiAgentMaxToolSteps);
+  merged.aiAgentMaxToolSteps = Number.isFinite(_steps) ? Math.min(500, Math.max(50, Math.round(_steps))) : 200;
   // Drop retired GPT-4o defaults for direct OpenAI usage (replaced by GPT-5.4 family).
   const LEGACY_OPENAI_GPT4 = new Set(['gpt-4o', 'gpt-4o-mini']);
   if (merged.aiProvider === 'openai') {

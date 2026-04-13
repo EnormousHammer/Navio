@@ -1064,6 +1064,36 @@ async function waitForWebContentsSettled(wc, { timeoutMs = 25000, settleMs = 180
   if (settleMs > 0) await new Promise((r) => setTimeout(r, settleMs));
 }
 
+function navioTransientAiError(msg) {
+  const s = String(msg || '');
+  return /429|503|502|504|529|timeout|ECONNRESET|ETIMEDOUT|rate limit|too many requests|overloaded|temporarily unavailable|try again|cloudflare|bad gateway/i.test(
+    s
+  );
+}
+
+async function navioSleep(ms) {
+  await new Promise((r) => setTimeout(r, ms));
+}
+
+function navioGmailApiTransientError(msg) {
+  const s = String(msg || '');
+  return /429|503|502|resource has been exhausted|rateLimitExceeded|userRateLimitExceeded|backendError|internal error|unavailable/i.test(
+    s
+  );
+}
+
+/** Retry performAiFetch on transient provider/network errors so one hiccup does not kill the whole agent run. */
+async function performAiFetchResilient(cfg, apiKey, messages, fetchOpts, attempts = 4) {
+  let last;
+  for (let i = 0; i < attempts; i++) {
+    last = await performAiFetch(cfg, apiKey, messages, false, fetchOpts);
+    if (!last.error) return last;
+    if (!navioTransientAiError(last.error)) return last;
+    await navioSleep(500 * Math.pow(2, i));
+  }
+  return last;
+}
+
 /**
  * The main agentic tool-calling loop.  Calls performAiFetch with tools, executes
  * any tool_calls the model returns, feeds results back, and repeats until the
@@ -1073,7 +1103,8 @@ async function waitForWebContentsSettled(wc, { timeoutMs = 25000, settleMs = 180
  * renderer (which calls TabManager.navigateActive), and we wait for an ack.
  */
 async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
-  maxSteps = maxSteps || 100;
+  const configured = Number(cfg.aiAgentMaxToolSteps);
+  maxSteps = Math.min(500, Math.max(50, Number.isFinite(configured) && configured > 0 ? Math.round(configured) : 200));
   // Merge native tools with any connected MCP tools
   const mcpTools = cfg.mcpEnabled !== false ? getMcpTools() : [];
   const tools = [...NAVIO_TOOLS, ...mcpTools];
@@ -1092,7 +1123,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
   const TAB_TOOLS = new Set(['open_tab', 'close_tab', 'switch_tab', 'list_tabs']);
 
   for (let step = 0; step < maxSteps; step++) {
-    const result = await performAiFetch(cfg, apiKey, currentMessages, false, { tools });
+    const result = await performAiFetchResilient(cfg, apiKey, currentMessages, { tools });
 
     if (result.error) return { error: result.error, toolLog };
 
@@ -1236,7 +1267,12 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
       sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
     }
   }
-  return { content: '[Reached maximum tool-calling step limit. Tell me what to do next.]', toolLog };
+  return {
+    content:
+      `[Agent step limit (${maxSteps}) reached — work may be incomplete. Say **continue** or **keep going** and Navio will resume (or raise aiAgentMaxToolSteps in navio-config.json, max 500).]`,
+    toolLog,
+    stepLimitReached: true
+  };
 }
 
 /**
@@ -2222,7 +2258,12 @@ const toolExecutors = {
       let pages = Math.min(Math.max(Number(args.pages) || 1, 1), 8);
       if (bounceBulk && pages < 2) pages = 2;
       const pageToken = (args.page_token || '').trim() || null;
-      const data = await queryGmail(token, query, { maxResults, pageToken, pages });
+      let data;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        data = await queryGmail(token, query, { maxResults, pageToken, pages });
+        if (!data.error || !navioGmailApiTransientError(data.error)) break;
+        await navioSleep(600 * (attempt + 1));
+      }
       if (data.error) {
         if (/insufficient.*scope|scope.*insufficient|Request had insufficient/i.test(data.error)) {
           return { error: 'SCOPE_ERROR: Your Google account is missing required Gmail permissions. Go to Navio Settings → Connected Apps → disconnect Google → reconnect it.' };
@@ -2249,7 +2290,12 @@ const toolExecutors = {
       const mid = (args.message_id || args.id || '').trim();
       if (!mid) return { error: 'message_id is required.' };
       const maxC = Math.min(Number(args.max_body_chars) > 0 ? Number(args.max_body_chars) : 32000, 120000);
-      const data = await navioGmailGetMessageForTool(token, mid, maxC);
+      let data;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        data = await navioGmailGetMessageForTool(token, mid, maxC);
+        if (!data.error || !navioGmailApiTransientError(data.error)) break;
+        await navioSleep(600 * (attempt + 1));
+      }
       if (data.error) return data;
       return data;
     } catch (e) {
