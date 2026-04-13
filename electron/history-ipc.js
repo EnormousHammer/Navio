@@ -68,13 +68,18 @@ function registerHistoryIpc(ipcMain, { app }) {
   ipcMain.handle('history-search', (_, { query, limit = 200 }) => {
     const data = loadHistory(app.getPath('userData'));
     const q = (query || '').toLowerCase().trim();
-    if (!q) return { entries: data.entries.slice(-limit).reverse() };
+    const byTimeDesc = (a, b) => (b.visitedAt || 0) - (a.visitedAt || 0);
+    if (!q) {
+      const sorted = [...data.entries].sort(byTimeDesc);
+      return { entries: sorted.slice(0, limit) };
+    }
     const filtered = data.entries.filter(
       (e) =>
         (e.title && e.title.toLowerCase().includes(q)) ||
         (e.url && e.url.toLowerCase().includes(q))
     );
-    return { entries: filtered.slice(-limit).reverse() };
+    filtered.sort(byTimeDesc);
+    return { entries: filtered.slice(0, limit) };
   });
 
   ipcMain.handle('history-remove', (_, { id }) => {

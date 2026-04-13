@@ -11,7 +11,7 @@ const { registerBookmarksIpc } = require('./bookmarks-ipc');
 const { registerHistoryIpc } = require('./history-ipc');
 const { registerWebviewActionsIpc } = require('./webview-actions-ipc');
 const { registerExtensionsIpc, loadPersistedExtensionsOnStartup } = require('./extensions-ipc');
-const { registerSyncIpc } = require('./navio-sync-ipc');
+const { registerSyncIpc, startNavioCloudSync } = require('./navio-sync-ipc');
 const { registerProfilesIpc } = require('./navio-profiles-ipc');
 const { registerAgentPlanIpc } = require('./navio-agent-ipc');
 const { NAVIO_TOOLS, toOpenAITools, toAnthropicTools, toGeminiTools } = require('./navio-tools');
@@ -5637,7 +5637,7 @@ registerBookmarksIpc(ipcMain, { app, loadConfig });
 registerHistoryIpc(ipcMain, { app });
 registerWebviewActionsIpc(ipcMain, { getMainWindow: () => mainWindow });
 registerExtensionsIpc(ipcMain, { app, getMainWindow: () => mainWindow });
-registerSyncIpc(ipcMain, { app, loadConfig });
+registerSyncIpc(ipcMain, { app, loadConfig, saveConfig });
 registerProfilesIpc(ipcMain, { profilesBase: NAVIO_PROFILES_BASE });
 
 app.whenReady().then(async () => {
@@ -5662,6 +5662,8 @@ app.whenReady().then(async () => {
   store = createStore(app.getPath('userData'));
 
   createMainWindow();
+
+  startNavioCloudSync(app, loadConfig, saveConfig, () => mainWindow);
 
   setupSessionInfrastructure({
     app,

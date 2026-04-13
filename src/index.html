@@ -147,14 +147,16 @@
       </div>
 
       <div id="history-overlay" class="shell-overlay" hidden>
-        <div class="shell-overlay-panel">
+        <div class="shell-overlay-panel shell-overlay-panel-history">
           <div class="shell-overlay-head">
             <h2>History</h2>
-            <button type="button" id="history-overlay-close" class="shell-overlay-x">×</button>
+            <button type="button" id="history-overlay-close" class="shell-overlay-x" aria-label="Close">×</button>
           </div>
-          <input type="search" id="history-overlay-search" class="shell-overlay-search" placeholder="Search history…" />
-          <button type="button" id="history-overlay-clear" class="shell-overlay-danger">Clear all</button>
-          <div id="history-overlay-list" class="shell-overlay-list"></div>
+          <div class="shell-overlay-toolbar">
+            <input type="search" id="history-overlay-search" class="shell-overlay-search shell-overlay-search-flex" placeholder="Search by title or address…" autocomplete="off" />
+            <button type="button" id="history-overlay-clear" class="shell-overlay-clear-all">Clear all</button>
+          </div>
+          <div id="history-overlay-list" class="shell-overlay-list shell-overlay-list-history"></div>
         </div>
       </div>
 
@@ -241,9 +243,7 @@
                 <div class="orb-ring orb-ring-2"></div>
                 <div class="orb-ring orb-ring-3"></div>
                 <div class="orb-core">
-                  <svg viewBox="0 0 32 32" width="26" height="26">
-                    <path d="M16 2L4 28h6l6-16 6 16h6L16 2z" fill="white"/>
-                  </svg>
+                  <img src="assets/logo-mark.svg" width="26" height="26" alt="" />
                 </div>
               </div>
               <h1 class="ntp-title">NAVIO</h1>
@@ -738,9 +738,12 @@
   <!-- Settings Modal -->
   <div id="settings-modal" class="modal-overlay">
     <div class="modal modal-settings">
-      <div class="modal-header">
-        <h2>Settings</h2>
-        <button type="button" class="icon-btn" id="btn-close-settings" aria-label="Close settings">
+      <div class="modal-header modal-header-settings">
+        <div class="modal-header-text">
+          <h2 id="settings-modal-title">Settings</h2>
+          <p class="modal-settings-subtitle">Browsing, assistant, appearance, and privacy — organized in one place.</p>
+        </div>
+        <button type="button" class="icon-btn modal-header-close" id="btn-close-settings" aria-label="Close settings">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -1070,7 +1073,7 @@
             </div>
             <div class="settings-section">
               <h3>Profile backup (sync)</h3>
-              <p class="settings-inline-hint">Export or import bookmarks + history. Optional passphrase encrypts the file.</p>
+              <p class="settings-inline-hint">Export or import bookmarks + history. Optional passphrase encrypts the file — also used for <strong>Integrations → Sync</strong> when folder sync is on.</p>
               <div class="setting-row setting-row-actions">
                 <button type="button" class="btn btn-secondary" id="btn-sync-export">Export backup…</button>
                 <button type="button" class="btn btn-secondary" id="btn-sync-import">Import backup…</button>
@@ -1168,11 +1171,18 @@
               <p class="settings-inline-hint" id="setting-mcp-tools-hint" style="margin-top:8px"></p>
             </div>
             <div class="settings-section">
-              <h3>Sync</h3>
+              <h3>Sync across devices</h3>
+              <p class="settings-inline-hint">Uses a folder that your cloud app keeps in sync (OneDrive, Google Drive, Dropbox, etc.). Bookmarks and history are written to <code>navio-sync.navbak</code> on a timer. Use the <strong>same passphrase</strong> on every PC (Profile backup → passphrase).</p>
               <label class="setting-toggle-row">
                 <input type="checkbox" id="setting-sync-enabled">
-                <span>Enable encrypted sync (placeholder — not connected)</span>
+                <span>Enable folder sync</span>
               </label>
+              <div class="setting-row" style="margin-top:10px;flex-wrap:wrap;gap:8px;align-items:center">
+                <button type="button" class="btn btn-secondary" id="btn-sync-pick-folder">Choose sync folder…</button>
+                <button type="button" class="btn btn-secondary" id="btn-sync-run-now">Sync now</button>
+              </div>
+              <p class="settings-inline-hint" id="sync-folder-path-display" style="margin-top:8px;margin-bottom:0;word-break:break-all"></p>
+              <p class="settings-inline-hint" id="sync-passphrase-status" style="margin-top:6px;margin-bottom:0"></p>
             </div>
             <div class="settings-section">
               <h3>Extensions &amp; AI</h3>
@@ -1214,15 +1224,7 @@
               <h3>Navio</h3>
               <div class="about-card">
                 <div class="about-logo">
-                  <svg viewBox="0 0 32 32" width="28" height="28">
-                    <defs>
-                      <linearGradient id="about-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" style="stop-color:#00d4ff"/>
-                        <stop offset="100%" style="stop-color:#7c3aed"/>
-                      </linearGradient>
-                    </defs>
-                    <path d="M16 2L4 28h6l6-16 6 16h6L16 2z" fill="url(#about-grad)"/>
-                  </svg>
+                  <img src="assets/logo.svg" width="32" height="32" alt="Navio" />
                 </div>
                 <div>
                   <strong>Navio</strong> v1.0.0<br>
@@ -1263,16 +1265,7 @@
           <div class="ob-ring ob-ring-3"></div>
           <div class="ob-ring ob-ring-4"></div>
           <div class="ob-logo-core">
-            <svg viewBox="0 0 32 32" width="52" height="52">
-              <defs>
-                <linearGradient id="ob-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" style="stop-color:#00d4ff"/>
-                  <stop offset="50%" style="stop-color:#7c3aed"/>
-                  <stop offset="100%" style="stop-color:#f472b6"/>
-                </linearGradient>
-              </defs>
-              <path d="M16 2L4 28h6l6-16 6 16h6L16 2z" fill="url(#ob-grad)"/>
-            </svg>
+            <img src="assets/logo-mark.svg" width="52" height="52" alt="" />
           </div>
         </div>
         <h1 class="ob-hero-title">NAVIO</h1>

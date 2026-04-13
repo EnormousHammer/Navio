@@ -32,6 +32,10 @@ const DEFAULT_CONFIG = {
   mcpEnabled: false,
   mcpServers: [],
   syncEnabled: false,
+  /** Folder synced by OneDrive / Google Drive / Dropbox; Navio writes navio-sync.navbak here. */
+  syncFolderPath: '',
+  /** Last applied or pushed profile exportedAt (ms); used for pull/push ordering. */
+  syncLastSeenExportedAt: 0,
   readingModeFontScale: 1,
   formAutofillAssist: true,
   onboardingComplete: false,

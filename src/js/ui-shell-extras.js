@@ -4,25 +4,167 @@
 (function () {
   let findUnsub;
 
+  function historyDayKey(ts) {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  }
+
+  function historyDayHeading(ts) {
+    const now = new Date();
+    const td = historyDayKey(now.getTime());
+    const y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const yd = historyDayKey(y.getTime());
+    const d = new Date(ts);
+    const dk = historyDayKey(ts);
+    if (dk === td) return 'Today';
+    if (dk === yd) return 'Yesterday';
+    return d.toLocaleDateString(undefined, {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+      year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+    });
+  }
+
+  function formatVisitTime(ts) {
+    return new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+
+  function historyHostname(url) {
+    try {
+      return new URL(url).hostname.replace(/^www\./i, '');
+    } catch {
+      return '';
+    }
+  }
+
+  function historyDisplayUrl(url) {
+    try {
+      const u = new URL(url);
+      u.hash = '';
+      let s = u.hostname.replace(/^www\./i, '') + u.pathname;
+      if (s.length > 1 && s.endsWith('/')) s = s.slice(0, -1);
+      return s || url;
+    } catch {
+      return url;
+    }
+  }
+
+  function historySafeFavicon(url) {
+    if (!url || typeof url !== 'string') return '';
+    try {
+      const u = new URL(url);
+      if (u.protocol === 'http:' || u.protocol === 'https:') return url;
+    } catch {
+      /* ignore */
+    }
+    return '';
+  }
+
+  function historyFaviconPlaceholder(url) {
+    const span = document.createElement('span');
+    span.className = 'history-favicon history-favicon--ph';
+    const host = historyHostname(url);
+    span.textContent = (host[0] || '?').toUpperCase();
+    span.setAttribute('aria-hidden', 'true');
+    return span;
+  }
+
   async function fillHistoryOverlayList(query) {
     const list = document.getElementById('history-overlay-list');
     if (!list || !window.navio.historySearch) return;
-    const res = await window.navio.historySearch(query || '', 300);
+    const q = (query || '').trim();
+    const res = await window.navio.historySearch(q, 500);
+    const entries = res.entries || [];
     list.innerHTML = '';
-    (res.entries || []).forEach((e) => {
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.className = 'history-overlay-row';
-      row.innerHTML = `<div class="h-title"></div><div class="h-url"></div>`;
-      row.querySelector('.h-title').textContent = e.title || e.url;
-      row.querySelector('.h-url').textContent = e.url;
-      row.addEventListener('click', () => {
-        if (typeof TabManager !== 'undefined') TabManager.navigateActive(e.url);
+
+    if (entries.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'history-empty-msg';
+      empty.textContent = q
+        ? 'No history matches your search.'
+        : 'Pages you open will appear here.';
+      list.appendChild(empty);
+      return;
+    }
+
+    let lastDayKey = null;
+    for (const e of entries) {
+      const ts = e.visitedAt || 0;
+      const dk = historyDayKey(ts);
+      if (dk !== lastDayKey) {
+        lastDayKey = dk;
+        const h = document.createElement('h3');
+        h.className = 'history-date-heading';
+        h.textContent = historyDayHeading(ts);
+        list.appendChild(h);
+      }
+
+      const wrap = document.createElement('div');
+      wrap.className = 'history-overlay-row-wrap';
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'history-overlay-row';
+
+      const favSrc = historySafeFavicon(e.favicon);
+      if (favSrc) {
+        const img = document.createElement('img');
+        img.className = 'history-favicon';
+        img.alt = '';
+        img.src = favSrc;
+        img.addEventListener('error', () => {
+          img.replaceWith(historyFaviconPlaceholder(e.url));
+        });
+        btn.appendChild(img);
+      } else {
+        btn.appendChild(historyFaviconPlaceholder(e.url));
+      }
+
+      const body = document.createElement('span');
+      body.className = 'history-body';
+      const titleEl = document.createElement('span');
+      titleEl.className = 'h-title';
+      titleEl.textContent = e.title || historyHostname(e.url) || e.url || 'Untitled';
+      const urlEl = document.createElement('span');
+      urlEl.className = 'h-url';
+      urlEl.textContent = historyDisplayUrl(e.url);
+      body.appendChild(titleEl);
+      body.appendChild(urlEl);
+      btn.appendChild(body);
+
+      const timeEl = document.createElement('span');
+      timeEl.className = 'h-time';
+      let timeStr = formatVisitTime(ts);
+      if (e.visitCount > 1) timeStr += ` · ${e.visitCount}×`;
+      timeEl.textContent = timeStr;
+
+      btn.appendChild(timeEl);
+
+      btn.addEventListener('click', () => {
+        if (typeof TabManager !== 'undefined' && e.url) TabManager.navigateActive(e.url);
         const overlay = document.getElementById('history-overlay');
         if (overlay) overlay.hidden = true;
       });
-      list.appendChild(row);
-    });
+
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'history-overlay-del';
+      del.title = 'Remove from history';
+      del.setAttribute('aria-label', 'Remove from history');
+      del.textContent = '×';
+      del.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        if (!e.id) return;
+        await window.navio.historyRemove(e.id);
+        const inp = document.getElementById('history-overlay-search');
+        await fillHistoryOverlayList(inp ? inp.value : '');
+      });
+
+      wrap.appendChild(btn);
+      wrap.appendChild(del);
+      list.appendChild(wrap);
+    }
   }
 
   function flattenBookmarksData(data) {
@@ -116,9 +258,12 @@
 
   window.__navioOpenHistoryOverlay = function () {
     const overlay = document.getElementById('history-overlay');
+    const q = document.getElementById('history-overlay-search');
     if (overlay) {
       overlay.hidden = false;
+      if (q) q.value = '';
       fillHistoryOverlayList('');
+      if (q) q.focus();
     }
   };
 
@@ -486,9 +631,12 @@
     window.navio.onShortcut((action) => {
       if (action === 'history-panel') {
         const overlay = document.getElementById('history-overlay');
+        const q = document.getElementById('history-overlay-search');
         if (overlay) {
           overlay.hidden = false;
+          if (q) q.value = '';
           fillHistoryOverlayList('');
+          if (q) q.focus();
         }
       }
       if (action === 'tab-search') {
@@ -602,6 +750,13 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
+    if (window.navio.onSyncEvent) {
+      window.navio.onSyncEvent((payload) => {
+        if (payload && payload.type === 'sync-pulled') {
+          window.dispatchEvent(new Event('bookmarks-changed'));
+        }
+      });
+    }
     initBookmarkBar();
     bindBookmarkBarToggle();
     bindFindInPage();

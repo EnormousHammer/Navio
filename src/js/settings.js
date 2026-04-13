@@ -439,6 +439,56 @@ class SettingsManagerClass {
     this.updateProviderHint();
     this.refreshMcpHint();
     this.refreshMemoryInfo();
+    this._refreshSyncSection().catch(() => {});
+  }
+
+  async _refreshSyncSection() {
+    const disp = document.getElementById('sync-folder-path-display');
+    const stEl = document.getElementById('sync-passphrase-status');
+    if (disp) {
+      disp.textContent = this.config.syncFolderPath
+        ? this.config.syncFolderPath
+        : '— choose a folder, then Save settings —';
+    }
+    if (stEl && window.navio.syncGetStatus) {
+      try {
+        const st = await window.navio.syncGetStatus();
+        stEl.textContent = st.hasPassphrase
+          ? 'Passphrase is stored on this device. Enter a new one under Profile backup only to replace it.'
+          : 'Set a passphrase under Profile backup (min. 4 characters), then Save, before sync can run.';
+      } catch {
+        stEl.textContent = '';
+      }
+    }
+  }
+
+  _bindCloudSyncControls() {
+    const btn = document.getElementById('btn-sync-pick-folder');
+    if (btn && !btn._navioBound) {
+      btn._navioBound = true;
+      btn.addEventListener('click', async () => {
+        try {
+          const r = await window.navio.syncPickFolder();
+          if (r && r.ok && r.path) {
+            this.config.syncFolderPath = r.path;
+            const disp = document.getElementById('sync-folder-path-display');
+            if (disp) disp.textContent = r.path;
+          }
+        } catch (_) {}
+      });
+    }
+    const runBtn = document.getElementById('btn-sync-run-now');
+    if (runBtn && !runBtn._navioBound) {
+      runBtn._navioBound = true;
+      runBtn.addEventListener('click', async () => {
+        try {
+          await window.navio.syncRunNow();
+          alert('Sync finished.');
+        } catch (e) {
+          alert(e.message || 'Sync failed');
+        }
+      });
+    }
   }
 
   async refreshMemoryInfo() {
@@ -510,6 +560,7 @@ class SettingsManagerClass {
     this._bindExtensionsSettings();
     this._bindProfilesSettings();
     this._bindSyncButtons();
+    this._bindCloudSyncControls();
     this._refreshExtensionsList();
     this._refreshProfilesList();
 
@@ -1023,6 +1074,27 @@ class SettingsManagerClass {
   }
 
   async save() {
+    const syncPhraseInput = this.elements.syncPassphrase ? this.elements.syncPassphrase.value.trim() : '';
+    if (this.elements.syncEnabled && this.elements.syncEnabled.checked) {
+      const folder = String(this.config.syncFolderPath || '').trim();
+      let st = { hasPassphrase: false };
+      try {
+        if (window.navio.syncGetStatus) st = await window.navio.syncGetStatus();
+      } catch (_) {}
+      if (!folder) {
+        alert('Choose a sync folder under Integrations → Sync.');
+        return;
+      }
+      if (!st.hasPassphrase && syncPhraseInput.length < 4) {
+        alert('Folder sync needs a passphrase. Enter one under Profile backup (min. 4 characters), then Save.');
+        return;
+      }
+      if (syncPhraseInput.length > 0 && syncPhraseInput.length < 4) {
+        alert('Passphrase must be at least 4 characters.');
+        return;
+      }
+    }
+
     const aw = parseInt(this.elements.assistantWidth.value, 10);
     const assistantWidth = Number.isFinite(aw) ? Math.min(560, Math.max(300, aw)) : 420;
 
@@ -1073,12 +1145,29 @@ class SettingsManagerClass {
       showBookmarkBar: !!(this.elements.bookmarkBar && this.elements.bookmarkBar.checked),
       memoryRetentionDays: this.elements.memoryRetention
         ? parseInt(this.elements.memoryRetention.value, 10) || 0
-        : 0
+        : 0,
+      syncFolderPath: String(this.config.syncFolderPath || '').trim()
     };
 
     await window.navio.saveConfig(newConfig);
 
+    if (syncPhraseInput.length >= 4 && window.navio.syncSavePassphrase) {
+      const pr = await window.navio.syncSavePassphrase({ passphrase: syncPhraseInput });
+      if (!pr || !pr.ok) {
+        alert((pr && pr.error) || 'Could not save sync passphrase');
+      }
+    }
+    if (this.elements.syncPassphrase) this.elements.syncPassphrase.value = '';
+
     this.config = { ...(await window.navio.getConfig()) };
+
+    if (newConfig.syncEnabled && window.navio.syncRunNow) {
+      try {
+        await window.navio.syncRunNow();
+      } catch (_) {}
+    }
+
+    this._refreshSyncSection().catch(() => {});
 
     if (typeof App !== 'undefined') {
       App.config = this.config;

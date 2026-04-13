@@ -276,6 +276,17 @@ contextBridge.exposeInMainWorld('navio', {
 
   syncExportProfile: (opts) => ipcRenderer.invoke('sync-export-profile', opts || {}),
   syncImportProfile: (opts) => ipcRenderer.invoke('sync-import-profile', opts || {}),
+  syncPickFolder: () => ipcRenderer.invoke('sync-pick-folder'),
+  syncGetStatus: () => ipcRenderer.invoke('sync-get-status'),
+  syncSavePassphrase: (opts) => ipcRenderer.invoke('sync-save-passphrase', opts || {}),
+  syncRunNow: () => ipcRenderer.invoke('sync-run-now'),
+  onSyncEvent: (cb) => {
+    ipcRenderer.on('navio-sync-event', (_, payload) => {
+      try {
+        cb(payload);
+      } catch (_) {}
+    });
+  },
 
   profilesList: () => ipcRenderer.invoke('profiles-list'),
   profilesSetActive: (profileId) => ipcRenderer.invoke('profiles-set-active', { profileId }),
