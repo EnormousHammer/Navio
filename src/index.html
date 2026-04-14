@@ -435,6 +435,31 @@
                 </div>
               </div>
             </div>
+
+            <!-- Weather — full width: 7-day (2×7 grid) or hourly (2×12) -->
+            <div class="ntp-widget ntp-weather-widget" id="ntp-widget-weather">
+              <div class="ntp-widget-header ntp-weather-widget-header">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/><circle cx="12" cy="12" r="4"/></svg>
+                Weather
+                <span class="ntp-widget-source ntp-weather-location" id="ntp-weather-location-label" title="From your device location or last saved position"></span>
+                <div class="ntp-weather-view-toggle" role="group" aria-label="Forecast view">
+                  <button type="button" class="ntp-weather-view-btn active" data-weather-view="daily" title="Seven-day outlook">7 days</button>
+                  <button type="button" class="ntp-weather-view-btn" data-weather-view="hourly" title="Next 24 hours">Hourly</button>
+                </div>
+                <button type="button" class="ntp-widget-action" id="ntp-weather-retry-btn" style="display:none" title="Request location again">⟳ Location</button>
+                <button class="ntp-widget-popout" data-widget="weather" title="Open in new tab">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </button>
+              </div>
+              <div class="ntp-widget-body ntp-weather-widget-body" id="ntp-weather-widget-body">
+                <div class="ntp-widget-loading ntp-weather-loading" id="ntp-weather-loading">
+                  <span></span><span></span><span></span>
+                </div>
+                <div id="ntp-weather-error" class="ntp-weather-error" style="display:none"></div>
+                <div id="ntp-weather-grid-daily" class="ntp-wx-grid ntp-wx-grid--daily" style="display:none" aria-hidden="true"></div>
+                <div id="ntp-weather-grid-hourly" class="ntp-wx-grid ntp-wx-grid--hourly" style="display:none" aria-hidden="true"></div>
+              </div>
+            </div>
           </div>
 
           </div>

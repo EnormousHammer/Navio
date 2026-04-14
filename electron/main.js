@@ -5679,16 +5679,16 @@ app.whenReady().then(async () => {
 
   store = createStore(app.getPath('userData'));
 
-  createMainWindow();
-
-  startNavioCloudSync(app, loadConfig, saveConfig, () => mainWindow);
-
   setupSessionInfrastructure({
     app,
     getMainWindow: () => mainWindow,
     loadConfig,
     saveConfig
   });
+
+  createMainWindow();
+
+  startNavioCloudSync(app, loadConfig, saveConfig, () => mainWindow);
 
   registerAgentPlanIpc(ipcMain, { store });
   registerMcpIpc(ipcMain, loadConfig, saveConfig);

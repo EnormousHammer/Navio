@@ -30,6 +30,27 @@ function permissionHumanLabel(permission) {
   return PERMISSION_LABELS[permission] || permission.replace(/-/g, ' ');
 }
 
+/**
+ * Main-window UI loads from file:// — Chromium has no https origin, so our old handler
+ * treated origin as empty and denied geolocation without a prompt. Map file pages to a
+ * stable synthetic origin for storage + show "Navio Browser" in the dialog.
+ */
+const NAVIO_LOCAL_UI_ORIGIN = 'https://navio.local-ui';
+
+function permissionOriginFromUrl(pageUrl) {
+  if (!pageUrl || typeof pageUrl !== 'string') return { origin: '', isNavioLocal: false };
+  const u = pageUrl.trim();
+  if (/^file:/i.test(u)) return { origin: NAVIO_LOCAL_UI_ORIGIN, isNavioLocal: true };
+  if (/^https?:/i.test(u)) {
+    try {
+      return { origin: new URL(u).origin, isNavioLocal: false };
+    } catch {
+      return { origin: '', isNavioLocal: false };
+    }
+  }
+  return { origin: '', isNavioLocal: false };
+}
+
 function originHostname(origin) {
   try {
     return new URL(origin).hostname || origin;
@@ -269,11 +290,9 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
       } catch {
         pageUrl = '';
       }
-      let origin = '';
-      try {
-        if (pageUrl && /^https?:/i.test(pageUrl)) origin = new URL(pageUrl).origin;
-      } catch {
-        origin = '';
+      let { origin, isNavioLocal } = permissionOriginFromUrl(pageUrl);
+      if (!origin && details && details.requestingUrl) {
+        ({ origin, isNavioLocal } = permissionOriginFromUrl(details.requestingUrl));
       }
       if (!origin) {
         callback(false);
@@ -291,7 +310,7 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
       }
 
       const win = getMainWindow();
-      const host = originHostname(origin);
+      const host = isNavioLocal ? 'Navio Browser' : originHostname(origin);
       const want = permissionHumanLabel(permission);
       dialog
         .showMessageBox(win && !win.isDestroyed() ? win : undefined, {
@@ -324,11 +343,15 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
 
     if (typeof ses.setPermissionCheckHandler === 'function') {
       ses.setPermissionCheckHandler((wc, permission, requestingOrigin) => {
-        let origin = String(requestingOrigin || '');
+        let pageUrl = '';
         try {
-          if (origin) origin = new URL(origin).origin;
+          pageUrl = wc.getURL() || '';
         } catch {
-          return true;
+          pageUrl = '';
+        }
+        let { origin } = permissionOriginFromUrl(pageUrl);
+        if (!origin && requestingOrigin) {
+          ({ origin } = permissionOriginFromUrl(String(requestingOrigin)));
         }
         if (!origin) return true;
         const v = storedDecision(origin, permission);
@@ -340,6 +363,8 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
 
   attachPermissionHandlers(navioSession, { incognito: false });
   attachPermissionHandlers(incognitoSession, { incognito: true });
+  /** Main BrowserWindow loads index.html on file:// — uses defaultSession, not persist:navio */
+  attachPermissionHandlers(session.defaultSession, { incognito: false });
 
   const cfg0 = loadConfig();
   let adBlockEnabled = cfg0.adBlockEnabled !== false;

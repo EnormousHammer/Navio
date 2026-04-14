@@ -21,6 +21,25 @@ npm install
 npm start
 ```
 
+## Desktop app (install on other Windows PCs)
+
+Navio is packaged with **Electron Forge**. On this machine, a full build is:
+
+```bash
+npm install
+npm run build
+```
+
+Artifacts (64-bit Windows):
+
+| Output | Path | Use |
+|--------|------|-----|
+| **Installer** | `out/make/squirrel.windows/x64/Navio-1.0.0 Setup.exe` | Run on each PC to install (Start menu, auto-updater friendly). |
+| **Portable ZIP** | `out/make/zip/win32/x64/Navio-win32-x64-1.0.0.zip` | Unzip anywhere and run `navio-browser.exe` — good for USB or “no installer” machines. |
+| **Unpacked folder** | `out/Navio-win32-x64/` | Copy the whole folder to another PC (same as ZIP, but not compressed). |
+
+Copy the **Setup.exe** or **ZIP** to a USB drive or cloud share; each target PC must match **Windows x64**. Building for macOS or Linux requires running `npm run build` on those platforms (Forge makers are configured per OS).
+
 ## AI Setup
 
 1. Launch Navio

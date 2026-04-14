@@ -1620,6 +1620,10 @@ body.navio-incognito-active .url-bar-container {
   grid-column: 2;
   grid-row: auto;
 }
+.ntp-weather-widget {
+  grid-column: 1 / -1;
+  grid-row: auto;
+}
 /* No email connected: hide inbox; news uses full width */
 .ntp-widgets--no-email #ntp-widget-email {
   display: none;
@@ -1631,7 +1635,8 @@ body.navio-incognito-active .url-bar-container {
 @media (max-width: 700px) {
   .ntp-widgets { grid-template-columns: 1fr; grid-template-rows: auto; }
   .ntp-email-widget,
-  .ntp-news-widget {
+  .ntp-news-widget,
+  .ntp-weather-widget {
     grid-column: auto;
     grid-row: auto;
   }
@@ -1821,6 +1826,159 @@ body.navio-incognito-active .url-bar-container {
 .ntp-news-widget .ntp-news-item:hover {
   background: rgba(220, 80, 80, 0.06);
   border-left-color: rgba(248, 113, 113, 0.55);
+}
+
+/* Weather widget — 7-day 2×7 grid + hourly 2×12 */
+.ntp-weather-widget .ntp-widget-header svg {
+  color: #fbbf24;
+  opacity: 0.95;
+}
+.ntp-weather-widget-header {
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+.ntp-weather-location {
+  max-width: min(200px, 38vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ntp-weather-view-toggle {
+  display: inline-flex;
+  margin-left: auto;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.ntp-weather-view-btn {
+  border: none;
+  background: transparent;
+  color: rgba(226, 232, 248, 0.45);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.ntp-weather-view-btn:hover {
+  color: rgba(226, 232, 248, 0.85);
+}
+.ntp-weather-view-btn.active {
+  background: rgba(0, 216, 255, 0.15);
+  color: #7dd3fc;
+  box-shadow: inset 0 0 0 1px rgba(0, 216, 255, 0.25);
+}
+.ntp-weather-widget-body {
+  margin: 0 10px 10px;
+  padding: 10px 8px 12px;
+  min-height: 108px;
+  border-radius: 12px;
+  background:
+    linear-gradient(165deg, rgba(30, 58, 90, 0.55), rgba(18, 28, 48, 0.96));
+  border: 1px solid rgba(100, 180, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  position: relative;
+}
+.ntp-weather-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  background: rgba(12, 18, 32, 0.5);
+  border-radius: 12px;
+}
+.ntp-weather-widget-body:not(.ntp-weather-body--busy) .ntp-weather-loading {
+  display: none !important;
+}
+.ntp-weather-error {
+  text-align: center;
+  color: rgba(226, 232, 248, 0.55);
+  font-size: 12px;
+  padding: 16px 12px;
+  line-height: 1.45;
+}
+.ntp-wx-grid {
+  display: grid;
+  gap: 6px 8px;
+  width: 100%;
+}
+.ntp-wx-grid--daily {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-rows: auto auto;
+}
+.ntp-wx-grid--daily .ntp-wx-cell {
+  min-width: 0;
+  text-align: center;
+  padding: 6px 4px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.ntp-wx-grid--daily .ntp-wx-cell--r1 {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(226, 232, 248, 0.55);
+  letter-spacing: 0.02em;
+}
+.ntp-wx-grid--daily .ntp-wx-day {
+  display: block;
+  margin-bottom: 2px;
+}
+.ntp-wx-grid--daily .ntp-wx-cell--r1 .ntp-wx-ico {
+  font-size: 22px;
+  line-height: 1.1;
+  margin: 2px 0;
+  display: block;
+}
+.ntp-wx-grid--daily .ntp-wx-cell--r1 .ntp-wx-hi {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e0f2fe;
+}
+.ntp-wx-grid--daily .ntp-wx-cell--r2 {
+  font-size: 11px;
+  color: rgba(147, 197, 253, 0.85);
+  padding-top: 4px;
+  padding-bottom: 6px;
+}
+.ntp-wx-grid--hourly {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows: auto auto;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+.ntp-wx-grid--hourly .ntp-wx-cell {
+  min-width: 0;
+  text-align: center;
+  padding: 5px 2px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.ntp-wx-grid--hourly .ntp-wx-hr-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: rgba(226, 232, 248, 0.45);
+}
+.ntp-wx-grid--hourly .ntp-wx-ico {
+  font-size: 16px;
+  line-height: 1.2;
+  margin: 1px 0;
+}
+.ntp-wx-grid--hourly .ntp-wx-temp {
+  font-size: 10px;
+  font-weight: 600;
+  color: #bae6fd;
+}
+@media (max-width: 900px) {
+  .ntp-wx-grid--hourly {
+    grid-template-columns: repeat(12, minmax(52px, 1fr));
+  }
 }
 
 /* Inbox — mail client: cool slate, airy blue edge */
