@@ -424,16 +424,22 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
     popupsBlocked: adPopupBlockedCount
   }));
 
+  function openMainDevTools() {
+    getMainWindow()?.webContents.openDevTools({ mode: 'detach' });
+  }
   try {
-    if (
-      !globalShortcut.register('F12', () => {
-        getMainWindow()?.webContents.openDevTools({ mode: 'detach' });
-      })
-    ) {
-      console.warn('[navio] globalShortcut register failed: F12');
+    const f12Ok = globalShortcut.register('F12', openMainDevTools);
+    if (!f12Ok) {
+      // F12 is often taken by GPU/game overlays or other apps on Windows.
+      const altOk = globalShortcut.register('CommandOrControl+Shift+I', openMainDevTools);
+      if (altOk) {
+        console.debug('[navio] F12 unavailable for global DevTools; using Ctrl+Shift+I (Cmd+Shift+I on macOS)');
+      } else {
+        console.warn('[navio] DevTools global shortcuts unavailable (F12 and Ctrl+Shift+I). Toggle DevTools from the menu if present.');
+      }
     }
   } catch (e) {
-    console.warn('[navio] globalShortcut register error: F12', e.message);
+    console.warn('[navio] globalShortcut register error (DevTools)', e.message);
   }
 
   function regShortcut(accelerator, action) {
