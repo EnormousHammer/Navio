@@ -15,6 +15,7 @@ from playwright.sync_api import sync_playwright
 # ── Paths ────────────────────────────────────────────────────────────────────
 EXCEL_PATH = (
     r"G:\My Drive\Canoil\April 2026, CC Price Increase"
+    r"\MOV, vVSG, REOLUBE Email Drafts"
     r"\MOV, VSG, Reolube - price increase April 2026 including contacts.xlsx"
 )
 OUTPUT_DIR = r"G:\My Drive\Canoil\April 2026, CC Price Increase\PDF Letters"
@@ -119,10 +120,10 @@ def build_html(company: str, contacts: list[str], rows: list[dict], logo_uri: st
     }}
     .lh-canada-ltd {{
       font-family: Arial, Helvetica, sans-serif;
-      font-size: 18px;
+      font-size: 22px;
       font-weight: 400;
       color: #1f1f1f;
-      letter-spacing: 0.11em;
+      letter-spacing: 0.17em;
       margin-top: 5px;
       line-height: 1.15;
       text-transform: uppercase;

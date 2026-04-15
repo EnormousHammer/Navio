@@ -3,10 +3,12 @@ Generates one professional PDF letter per customer from the Other Greases price 
 Same letter layout as generate_pdf_letters.py; different Excel structure.
 
 Run:  python generate_pdf_letters_other_greases.py
+Test (first company only, fixed filename):  python generate_pdf_letters_other_greases.py --test
 """
 
 import os
 import re
+import sys
 
 import pandas as pd
 from playwright.sync_api import sync_playwright
@@ -109,10 +111,10 @@ def build_html(company: str, contacts: list[str], rows: list[dict], logo_uri: st
     }}
     .lh-canada-ltd {{
       font-family: Arial, Helvetica, sans-serif;
-      font-size: 18px;
+      font-size: 22px;
       font-weight: 400;
       color: #1f1f1f;
-      letter-spacing: 0.11em;
+      letter-spacing: 0.17em;
       margin-top: 5px;
       line-height: 1.15;
       text-transform: uppercase;
@@ -328,9 +330,15 @@ def parse_other_greases_excel() -> list[dict]:
 
 
 def main():
+    test_only = "--test" in sys.argv or "-t" in sys.argv
+
     print("Reading Other Greases Excel...")
     companies = parse_other_greases_excel()
     print(f"Found {len(companies)} companies.\n")
+
+    to_generate = companies[:1] if test_only else companies
+    if test_only:
+        print("TEST MODE: Other Greases only — first company, letterhead preview.\n")
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     print(f"Output folder: {OUTPUT_DIR}\n")
@@ -343,7 +351,8 @@ def main():
         page = browser.new_page()
         tmp_html = os.path.join(OUTPUT_DIR, "_tmp_letter.html")
 
-        for idx, entry in enumerate(companies, 1):
+        total = len(to_generate)
+        for idx, entry in enumerate(to_generate, 1):
             company = entry["company"]
             contacts = entry["contacts"]
             rows = entry["rows"]
@@ -352,8 +361,10 @@ def main():
                 f.write(html)
             page.goto(f"file:///{tmp_html.replace(os.sep, '/')}")
             page.wait_for_load_state("networkidle")
-            pdf_name = safe_filename(company) + ".pdf"
-            pdf_path = os.path.join(OUTPUT_DIR, pdf_name)
+            if test_only:
+                pdf_path = os.path.join(OUTPUT_DIR, "_TEST_Other_Greases_Letterhead.pdf")
+            else:
+                pdf_path = os.path.join(OUTPUT_DIR, safe_filename(company) + ".pdf")
             page.pdf(
                 path=pdf_path,
                 format="Letter",
@@ -361,7 +372,7 @@ def main():
                 margin={"top": "18mm", "right": "20mm", "bottom": "20mm", "left": "20mm"},
             )
             cstr = f"{len(contacts)} contact(s)" if contacts else "NO CONTACTS"
-            print(f"  [{idx:02d}/{len(companies)}] {company:45s}  {len(rows)} product(s)  |  {cstr}")
+            print(f"  [{idx:02d}/{total}] {company:45s}  {len(rows)} product(s)  |  {cstr}")
 
         browser.close()
 
@@ -370,7 +381,10 @@ def main():
     except Exception:
         pass
 
-    print(f"\nDone. {len(companies)} PDF letters saved to:\n{OUTPUT_DIR}")
+    if test_only:
+        print(f"\nDone. Test PDF:\n{os.path.join(OUTPUT_DIR, '_TEST_Other_Greases_Letterhead.pdf')}")
+    else:
+        print(f"\nDone. {len(companies)} PDF letters saved to:\n{OUTPUT_DIR}")
 
 
 if __name__ == "__main__":

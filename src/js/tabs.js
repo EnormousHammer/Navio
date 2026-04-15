@@ -387,15 +387,21 @@ class TabManagerClass {
     // BrowserWindow when the renderer "new-window" event has no URL yet.
 
     wv.addEventListener('did-fail-load', (e) => {
+      if (e.isMainFrame === false) return;
       if (e.errorCode === -3) return; // Aborted/cancelled, ignore
+      const validated = String(e.validatedURL || '');
+      if (validated.startsWith('data:')) return;
+
       tab.loading = false;
       tab.title = 'Error';
       this.updateTabUI(tab);
       App.showLoading(false);
-      // Show an inline error page inside the webview
       if (tab.id === this.activeTabId) {
-        const errHtml = this._buildErrorPage(e.errorDescription || 'Failed to load', tab.url);
-        wv.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errHtml)}`).catch(() => {});
+        this._scheduleWebviewInlineError(
+          wv,
+          e.errorDescription || 'Failed to load',
+          tab.url || validated
+        );
       }
     });
 
@@ -484,6 +490,43 @@ class TabManagerClass {
         }
       } catch {}
     });
+  }
+
+  /**
+   * Inline error document as data URL. Base64 avoids long percent-encoded URLs that
+   * often race with pending navigations and surface as ERR_ABORTED in the guest.
+   */
+  _utf8ToBase64(str) {
+    try {
+      return btoa(unescape(encodeURIComponent(str)));
+    } catch {
+      try {
+        return btoa(str);
+      } catch {
+        return '';
+      }
+    }
+  }
+
+  _scheduleWebviewInlineError(wv, description, pageUrl) {
+    const errHtml = this._buildErrorPage(description, pageUrl);
+    const b64 = this._utf8ToBase64(errHtml);
+    const dataUrl = b64
+      ? `data:text/html;charset=UTF-8;base64,${b64}`
+      : `data:text/html;charset=utf-8,${encodeURIComponent(errHtml)}`;
+    const inject = () => {
+      try {
+        if (typeof wv.stop === 'function') wv.stop();
+      } catch {
+        /* ignore */
+      }
+      try {
+        wv.loadURL(dataUrl).catch(() => {});
+      } catch {
+        /* ignore */
+      }
+    };
+    requestAnimationFrame(() => requestAnimationFrame(inject));
   }
 
   _buildErrorPage(description, url) {

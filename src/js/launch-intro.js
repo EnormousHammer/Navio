@@ -1,6 +1,6 @@
 /**
- * Launch intro: optional full-screen video, or a short handoff animation when video is off.
- * Returning users: browser session starts before the handoff so the first tab loads underneath.
+ * Launch intro: optional full-screen video, or a subtle shell handoff when the video is off.
+ * Prelude cover shows immediately for returning users (masks IPC delay + empty webview flash).
  */
 
 const LaunchIntro = {
@@ -12,45 +12,73 @@ const LaunchIntro = {
     }
   },
 
-  /**
-   * Zoom-in settle, then scale up + fade (fly-past) so the shell underneath is already live.
-   */
-  _playStartupHandoff() {
-    const root = document.getElementById('startup-handoff');
-    if (!root) return Promise.resolve();
+  _wait(ms) {
+    return new Promise((r) => setTimeout(r, ms));
+  },
 
-    if (!this._motionOk()) {
-      return Promise.resolve();
-    }
-
-    /* ~880ms total: quick approach, short read, decisive fly-past + fade (buffer matches longest CSS transition) */
-    const ENTER_MS = 280;
-    const HOLD_MS = 85;
-    const EXIT_MS = 560;
-
+  _waitForOpacityTransition(el, fallbackMs) {
     return new Promise((resolve) => {
-      root.setAttribute('aria-hidden', 'false');
-      root.classList.add('visible');
-
-      const runEnter = () => {
-        root.classList.add('enter');
-      };
-      requestAnimationFrame(() => requestAnimationFrame(runEnter));
-
-      window.setTimeout(() => {
-        root.classList.remove('enter');
-        root.classList.add('exit');
-      }, ENTER_MS + HOLD_MS);
-
-      window.setTimeout(() => {
-        root.classList.remove('visible', 'enter', 'exit');
-        root.setAttribute('aria-hidden', 'true');
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
         resolve();
-      }, ENTER_MS + HOLD_MS + EXIT_MS);
+      };
+      const t = setTimeout(finish, fallbackMs);
+      const onEnd = (e) => {
+        if (e.target !== el || e.propertyName !== 'opacity') return;
+        clearTimeout(t);
+        el.removeEventListener('transitionend', onEnd);
+        finish();
+      };
+      el.addEventListener('transitionend', onEnd);
     });
   },
 
-  _playVideo(url) {
+  _resetStartupHandoff(root) {
+    if (!root) return;
+    root.classList.remove(
+      'is-active',
+      'is-exiting',
+      'reveal-brand',
+      'startup-handoff--prelude'
+    );
+    root.setAttribute('aria-hidden', 'true');
+  },
+
+  /** Solid cover, no animation — masks shell until we know video vs handoff. */
+  _showPreludeCover(root) {
+    if (!root) return;
+    root.setAttribute('aria-hidden', 'false');
+    root.classList.add('is-active', 'startup-handoff--prelude');
+  },
+
+  /**
+   * No video: prelude is already up → gentle brand in → crossfade whole layer out.
+   */
+  async _runNoVideoHandoff(root) {
+    if (!root) return;
+
+    if (!this._motionOk()) {
+      root.classList.remove('startup-handoff--prelude');
+      root.classList.add('is-exiting');
+      await this._waitForOpacityTransition(root, 80);
+      this._resetStartupHandoff(root);
+      return;
+    }
+
+    await this._wait(16);
+    root.classList.remove('startup-handoff--prelude');
+    root.classList.add('reveal-brand');
+
+    await this._wait(420);
+
+    root.classList.add('is-exiting');
+    await this._waitForOpacityTransition(root, 620);
+    this._resetStartupHandoff(root);
+  },
+
+  _playVideo(url, handoffRoot) {
     const root = document.getElementById('launch-intro');
     const video = document.getElementById('launch-intro-video');
     const skipBtn = document.getElementById('launch-intro-skip');
@@ -59,24 +87,45 @@ const LaunchIntro = {
     return new Promise((resolve) => {
       let finished = false;
 
-      const finish = async () => {
-        if (finished) return;
-        finished = true;
+      const cleanup = () => {
         try {
           video.pause();
           video.removeAttribute('src');
           video.load();
         } catch (e) { /* ignore */ }
+        root.classList.remove('visible', 'exiting');
+        root.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('launch-intro-active');
+        document.removeEventListener('keydown', onKey);
+        resolve();
+      };
+
+      const finish = async () => {
+        if (finished) return;
+        finished = true;
         try {
           if (window.navio && typeof window.navio.saveConfig === 'function') {
             await window.navio.saveConfig({ showLaunchIntro: false });
           }
         } catch (e) { /* ignore */ }
-        root.classList.remove('visible');
-        root.setAttribute('aria-hidden', 'true');
-        document.body.classList.remove('launch-intro-active');
-        document.removeEventListener('keydown', onKey);
-        resolve();
+
+        if (!this._motionOk()) {
+          cleanup();
+          return;
+        }
+
+        const t = setTimeout(() => {
+          root.removeEventListener('transitionend', onEnd);
+          cleanup();
+        }, 650);
+        const onEnd = (e) => {
+          if (e.target !== root || e.propertyName !== 'opacity') return;
+          clearTimeout(t);
+          root.removeEventListener('transitionend', onEnd);
+          cleanup();
+        };
+        root.addEventListener('transitionend', onEnd);
+        root.classList.add('exiting');
       };
 
       const onKey = (e) => {
@@ -85,7 +134,9 @@ const LaunchIntro = {
 
       document.body.classList.add('launch-intro-active');
       root.setAttribute('aria-hidden', 'false');
+      root.classList.remove('exiting');
       root.classList.add('visible');
+      if (handoffRoot) this._resetStartupHandoff(handoffRoot);
 
       video.addEventListener('ended', () => void finish(), { once: true });
       video.addEventListener('error', () => void finish(), { once: true });
@@ -111,22 +162,28 @@ const LaunchIntro = {
     } catch (e) {
       return;
     }
+
     const onboardingDone = !!cfg.onboardingComplete;
+    const handoffRoot = document.getElementById('startup-handoff');
+
+    if (onboardingDone) {
+      this._showPreludeCover(handoffRoot);
+    }
 
     let url = null;
     try {
       url = await window.navio.getIntroVideoUrl();
     } catch (e) {
-      return;
+      url = null;
     }
 
     if (url) {
-      await this._playVideo(url);
+      await this._playVideo(url, onboardingDone ? handoffRoot : null);
       return;
     }
 
     if (onboardingDone) {
-      await this._playStartupHandoff();
+      await this._runNoVideoHandoff(handoffRoot);
     }
   }
 };
