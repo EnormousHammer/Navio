@@ -2048,6 +2048,41 @@ function navioGmailExtractPlainBody(payload) {
   return '';
 }
 
+/** Strip HTML parts to rough plain text when there is no text/plain part (common in rich drafts). */
+function navioGmailExtractHtmlPlainFallback(payload) {
+  if (!payload) return '';
+  if (payload.mimeType === 'text/html' && payload.body?.data) {
+    let html = Buffer.from(payload.body.data, 'base64').toString('utf-8');
+    html = html
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|tr|h[1-6])\s*>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return navioRepairUtf8Mojibake(html);
+  }
+  for (const part of payload.parts || []) {
+    const found = navioGmailExtractHtmlPlainFallback(part);
+    if (found) return found;
+  }
+  return '';
+}
+
+/** Attachment filenames from a full message payload (recursive parts). */
+function navioGmailCollectAttachmentFilenames(payload) {
+  const names = [];
+  (function walk(p) {
+    if (!p) return;
+    const fn = (p.filename || '').trim();
+    if (fn) names.push(fn);
+    for (const part of p.parts || []) walk(part);
+  })(payload);
+  return names;
+}
+
 async function navioGmailGetMessageForTool(token, messageId, maxBodyChars = 32000) {
   const r = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=full`,
@@ -2249,9 +2284,38 @@ const toolExecutors = {
 
   async scroll(wc, args) {
     const amount = Math.min(args.amount || 600, 3000);
-    const dir = args.direction === 'up' ? -amount : amount;
+    const scrollDown = args.direction !== 'up';
     try {
-      await wc.executeJavaScript(`window.scrollBy(0, ${dir})`);
+      await wc.executeJavaScript(`
+        (function() {
+          const dir = ${scrollDown ? 1 : -1};
+          const amt = ${amount};
+
+          function canScroll(el) {
+            if (!el || el === document.documentElement) return false;
+            const s = window.getComputedStyle(el);
+            return /auto|scroll/.test(s.overflow + s.overflowY) && el.scrollHeight > el.clientHeight + 4;
+          }
+
+          const beforeY = window.scrollY;
+          window.scrollBy(0, dir * amt);
+          if (Math.abs(window.scrollY - beforeY) > 2) return;
+
+          let el = document.activeElement;
+          while (el && el !== document.body && el !== document.documentElement) {
+            if (canScroll(el)) { el.scrollBy(0, dir * amt); return; }
+            el = el.parentElement;
+          }
+
+          let best = null, bestArea = 0;
+          for (const node of document.querySelectorAll('*')) {
+            if (!canScroll(node)) continue;
+            const area = node.scrollHeight * node.offsetWidth;
+            if (area > bestArea) { best = node; bestArea = area; }
+          }
+          if (best) best.scrollBy(0, dir * amt);
+        })()
+      `);
       return { success: true };
     } catch (e) {
       return { error: e.message };
@@ -2457,6 +2521,99 @@ const toolExecutors = {
       return data;
     } catch (e) {
       return { error: 'gmail_get_message failed: ' + e.message };
+    }
+  },
+
+  async gmail_list_drafts(_wc, args) {
+    try {
+      const { token, error } = await resolveGmailToolToken(args);
+      if (!token) return { error };
+
+      let maxList = Math.min(Math.max(Number(args.max_results) > 0 ? Number(args.max_results) : 30, 1), 100);
+      const pageToken = (args.page_token || '').trim() || null;
+      const maxBodyChars = Math.min(
+        Number(args.max_body_chars) > 0 ? Number(args.max_body_chars) : 12000,
+        120000
+      );
+
+      const listParams = new URLSearchParams({ maxResults: String(maxList) });
+      if (pageToken) listParams.set('pageToken', pageToken);
+
+      const listRes = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/drafts?${listParams}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const listData = await listRes.json();
+      if (!listRes.ok) {
+        const msg = listData.error?.message || 'Failed to list drafts.';
+        if (/insufficient.*scope|scope.*insufficient|Request had insufficient/i.test(msg)) {
+          return {
+            error:
+              'SCOPE_ERROR: Gmail needs read access to list drafts. Go to Navio Settings → Connected Apps → disconnect Google → reconnect it.'
+          };
+        }
+        return { error: msg };
+      }
+
+      const draftRefs = listData.drafts || [];
+      const nextTok = listData.nextPageToken || null;
+
+      const detailRows = await Promise.all(
+        draftRefs.map(async (dr) => {
+          const id = dr.id;
+          if (!id) return null;
+          let r;
+          let d;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            r = await fetch(
+              `https://gmail.googleapis.com/gmail/v1/users/me/drafts/${encodeURIComponent(id)}?format=full`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            d = await r.json();
+            if (r.ok || !navioGmailApiTransientError(d.error?.message || '')) break;
+            await navioSleep(400 * (attempt + 1));
+          }
+          if (!r.ok) {
+            return { draft_id: id, error: d.error?.message || 'Could not load draft.' };
+          }
+          const msg = d.message || {};
+          const headers = msg.payload?.headers || [];
+          const get = (name) =>
+            headers.find((h) => h.name && h.name.toLowerCase() === name.toLowerCase())?.value || '';
+          let body = navioGmailExtractPlainBody(msg.payload);
+          if (!body.trim()) body = navioGmailExtractHtmlPlainFallback(msg.payload);
+          body = navioRepairUtf8Mojibake(body || '');
+          if (body.length > maxBodyChars) {
+            body = `${body.slice(0, maxBodyChars)}\n\n… [body truncated by Navio]`;
+          }
+          const attachment_filenames = navioGmailCollectAttachmentFilenames(msg.payload);
+          return {
+            draft_id: id,
+            message_id: msg.id || '',
+            thread_id: msg.threadId || '',
+            subject: get('Subject'),
+            to: get('To'),
+            snippet: msg.snippet || d.snippet || '',
+            body,
+            attachment_filenames
+          };
+        })
+      );
+
+      const drafts = detailRows.filter(Boolean);
+      const n = drafts.length;
+      return {
+        drafts,
+        count: n,
+        next_page_token: nextTok,
+        note:
+          `Loaded ${n} draft(s) with bodies and attachment filenames via API (no Gmail UI).` +
+          (nextTok
+            ? ' More drafts: call gmail_list_drafts again with the same max_results and page_token set to next_page_token.'
+            : '')
+      };
+    } catch (e) {
+      return { error: 'gmail_list_drafts failed: ' + e.message };
     }
   },
 

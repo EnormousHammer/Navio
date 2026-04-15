@@ -1797,6 +1797,7 @@ class AssistantManagerClass {
       case 'run_workflow': return `Running workflow: ${result?.workflow_name || ''}`;
       case 'gmail_search': return `Gmail: ${result?.results?.length ?? 0} message(s)`;
       case 'gmail_get_message': return `Gmail: opened message`;
+      case 'gmail_list_drafts': return `Gmail: ${result?.count ?? result?.drafts?.length ?? 0} draft(s)`;
       default: return tool;
     }
   }

@@ -162,7 +162,8 @@ const NAVIO_TOOLS = [
   },
   {
     name: 'scroll',
-    description: 'Scroll the page up or down.',
+    description:
+      'Scroll up or down. Uses the window first, then the focused element’s scrollable parents, then the largest scrollable region — needed for Gmail/Docs-style nested panes where window.scrollBy does nothing.',
     parameters: {
       type: 'object',
       properties: {
@@ -454,6 +455,32 @@ const NAVIO_TOOLS = [
         ...GMAIL_ACCOUNT_CHOICE
       },
       required: ['message_id']
+    }
+  },
+
+  {
+    name: 'gmail_list_drafts',
+    description:
+      'List Gmail drafts via the API with full detail for each: subject, To, snippet, plain-text body (or HTML stripped if needed), ' +
+      'and every attachment filename. Use this to verify many drafts at once (e.g. "Dear X Team" vs PDF prefix) without clicking each row in the Gmail UI. ' +
+      'Paginate with next_page_token until null. Requires Google OAuth.',
+    parameters: {
+      type: 'object',
+      properties: {
+        max_results: {
+          type: 'number',
+          description: 'Drafts to fetch in this request (1–100). Default 30.'
+        },
+        page_token: {
+          type: 'string',
+          description: 'Pagination: next_page_token from the previous gmail_list_drafts result.'
+        },
+        max_body_chars: {
+          type: 'number',
+          description: 'Max characters of body text per draft (default 12000, max 120000).'
+        },
+        ...GMAIL_ACCOUNT_CHOICE
+      }
     }
   },
 
