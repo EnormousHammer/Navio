@@ -23,9 +23,10 @@ const LaunchIntro = {
       return Promise.resolve();
     }
 
-    const ENTER_MS = 340;
-    const HOLD_MS = 120;
-    const EXIT_MS = 580;
+    /* ~880ms total: quick approach, short read, decisive fly-past + fade (buffer matches longest CSS transition) */
+    const ENTER_MS = 280;
+    const HOLD_MS = 85;
+    const EXIT_MS = 560;
 
     return new Promise((resolve) => {
       root.setAttribute('aria-hidden', 'false');
