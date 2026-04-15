@@ -830,6 +830,14 @@ ipcMain.on('window-maximize', () => {
 ipcMain.on('window-close', () => mainWindow?.close());
 
 ipcMain.handle('get-config', () => loadConfig());
+ipcMain.handle('navio-internal-chat-page-url', () => {
+  try {
+    const p = path.join(__dirname, '..', 'src', 'pages', 'navio-chat-tab.html');
+    return pathToFileURL(p).href;
+  } catch {
+    return '';
+  }
+});
 ipcMain.handle('save-config', (event, partial) => {
   saveConfig(partial);
   return true;

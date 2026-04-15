@@ -140,6 +140,8 @@ class AssistantManagerClass {
     this._takeoverAuthResume = null;
     this._agentLogEntries = [];
     this._lastProactiveUrlKey = '';
+    /** When set, agent activity + final reply render in the full-page chat webview. */
+    this._guestChatWebview = null;
 
     // Minimal placeholder — the authoritative prompt is loaded from
     // navio-system-prompt.txt (or -legacy.txt) and injected by
@@ -796,7 +798,7 @@ class AssistantManagerClass {
     }
 
     if (scope === 'selection') {
-      const wv = TabManager.getActiveWebview();
+      const wv = TabManager.getBrowserTargetWebview?.() || TabManager.getActiveWebview();
       let selText = '';
       if (wv) {
         try {
@@ -890,13 +892,22 @@ class AssistantManagerClass {
 
     const messages = [{ role: 'system', content: this.systemPrompt }];
 
-    // ── Always inject active tab so the AI knows what page the user is on ──
+    // ── Browsing surface (when Navio AI tab is focused, use another tab as context) ──
     if (!isQuickAction && typeof TabManager !== 'undefined') {
-      const activeTab = TabManager.getActiveTab();
-      if (activeTab && activeTab.url && !activeTab.url.startsWith('about:')) {
+      const surface = TabManager.getActiveTab();
+      const browserTab = TabManager.getBrowserContextTab?.() || surface;
+      const onChatSurface = !!(surface && TabManager.isNavioChatTabUrl?.(surface.url || ''));
+      if (onChatSurface) {
         messages.push({
           role: 'system',
-          content: `[Active tab]\nTitle: ${TabManager.getTabDisplayTitle(activeTab) || '(untitled)'}${activeTab.customTitle ? ` (page: ${activeTab.title || '—'})` : ''}\nURL: ${activeTab.url}`
+          content:
+            '[Interface]\nThe user is in the **Navio AI** full-page tab. Page snapshots and browsing context refer to the **browsing context tab** below unless they switch tabs.'
+        });
+      }
+      if (browserTab && browserTab.url && !browserTab.url.startsWith('about:')) {
+        messages.push({
+          role: 'system',
+          content: `[Browsing context tab]${browserTab.id === surface?.id ? ' (focused)' : ''}\nTitle: ${TabManager.getTabDisplayTitle(browserTab) || '(untitled)'}${browserTab.customTitle ? ` (page: ${browserTab.title || '—'})` : ''}\nURL: ${browserTab.url}`
         });
       }
     }
@@ -1020,21 +1031,189 @@ class AssistantManagerClass {
     this.isProcessing = false;
   }
 
+  _guestDeliver(guestWv, msg) {
+    if (!guestWv || typeof guestWv.executeJavaScript !== 'function') return Promise.resolve();
+    const encoded = JSON.stringify(JSON.stringify(msg));
+    return guestWv
+      .executeJavaScript(
+        `void (function(){try{var m=${encoded};if(window.__navioGuestHost&&window.__navioGuestHost.deliver)window.__navioGuestHost.deliver(JSON.parse(m));}catch(e){console.error(e);}})()`
+      )
+      .catch(() => {});
+  }
+
+  handleGuestChatHostMessage(tab, guestWv, payload) {
+    if (!payload || !guestWv) return;
+    if (payload.action === 'planAck') {
+      try {
+        if (payload.approved) window.navio.toolProposePlanAck({ approved: true, title: payload.title });
+        else window.navio.toolProposePlanAck({ cancelled: true, title: payload.title });
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    if (payload.action === 'deepResearch') {
+      const topic = (payload.topic || payload.text || '').trim();
+      if (topic) void this._guestDeepResearch(guestWv, topic);
+      return;
+    }
+    if (payload.action === 'send' && payload.text) {
+      void this.processGuestChatMessage(guestWv, String(payload.text).trim());
+    }
+  }
+
+  async _guestDeepResearch(guestWv, topic) {
+    const q = (topic || '').trim();
+    if (!q || !guestWv) return;
+    this._guestDeliver(guestWv, { type: 'researchStart' });
+    try {
+      const r = await window.navio.deepResearch({ query: q });
+      if (r && r.error) this._guestDeliver(guestWv, { type: 'assistant', error: true, content: r.error });
+      else this._guestDeliver(guestWv, { type: 'assistant', content: (r && r.content) || '' });
+    } catch (e) {
+      this._guestDeliver(guestWv, { type: 'assistant', error: true, content: e.message || String(e) });
+    }
+  }
+
+  async processGuestChatMessage(guestWv, text) {
+    if (!text || !guestWv) return;
+    if (this.isProcessing) {
+      this._guestDeliver(guestWv, { type: 'toast', text: 'Still working on the last message…' });
+      return;
+    }
+    const config = await window.navio.getConfig();
+    if (config.aiKillSwitch) {
+      this._guestDeliver(guestWv, { type: 'assistant', error: true, content: 'AI is turned off (kill switch). Enable it in Settings → AI → Policy.' });
+      return;
+    }
+    if (!config.hasApiKey) {
+      this._guestDeliver(guestWv, { type: 'assistant', error: true, content: 'Add an API key in **Settings → AI** first.' });
+      return;
+    }
+    this.isProcessing = true;
+    try {
+      if (config.aiUseToolCalling !== false) {
+        await this._processWithTools(text, config, this._historyLabelForAttachments(text), guestWv);
+      } else {
+        await this._processGuestLegacyAi(guestWv, text, config);
+      }
+    } catch (err) {
+      this._guestDeliver(guestWv, { type: 'assistant', error: true, content: err.message || String(err) });
+    }
+    this.isProcessing = false;
+  }
+
+  async _processGuestLegacyAi(guestWv, text, config) {
+    const messages = [{ role: 'system', content: this.systemPrompt }];
+    if (typeof TabManager !== 'undefined') {
+      const surface = TabManager.getActiveTab();
+      const browserTab = TabManager.getBrowserContextTab?.() || surface;
+      const onChatSurface = !!(surface && TabManager.isNavioChatTabUrl?.(surface.url || ''));
+      if (onChatSurface) {
+        messages.push({
+          role: 'system',
+          content:
+            '[Interface]\nThe user is in the **Navio AI** full-page tab. Use browsing context from the tab below when relevant.'
+        });
+      }
+      if (browserTab && browserTab.url && !browserTab.url.startsWith('about:')) {
+        messages.push({
+          role: 'system',
+          content: `[Browsing context tab]\nTitle: ${TabManager.getTabDisplayTitle(browserTab) || '(untitled)'}\nURL: ${browserTab.url}`
+        });
+      }
+      const allTabs = TabManager.tabs.filter((t) => t.url && !t.url.startsWith('about:')).slice(0, 20);
+      if (allTabs.length > 1) {
+        const tabList = allTabs.map((t, i) => `${i + 1}. ${TabManager.getTabDisplayTitle(t) || t.url} — ${t.url}`).join('\n');
+        messages.push({ role: 'system', content: `[Open tabs (${allTabs.length})]\n${tabList}` });
+      }
+    }
+    if (typeof ConnectorsManager !== 'undefined') {
+      const connectorCtx = await this._buildConnectorContext(text);
+      if (connectorCtx) messages.push({ role: 'system', content: connectorCtx });
+    }
+    const recentHistory = this.conversationHistory.slice(-40);
+    messages.push(...recentHistory);
+    messages.push({ role: 'user', content: text });
+    const userHistory = this._historyLabelForAttachments(text);
+
+    this._clearStreamListeners();
+    let buffer = '';
+    const unChunk = window.navio.onAiStreamChunk((chunk) => {
+      buffer += typeof chunk === 'string' ? chunk : '';
+      this._guestDeliver(guestWv, { type: 'streamDelta', text: typeof chunk === 'string' ? chunk : '' });
+    });
+    const unDone = window.navio.onAiStreamDone(async () => {
+      this._clearStreamListeners();
+      if (buffer) {
+        this.conversationHistory.push({ role: 'user', content: userHistory }, { role: 'assistant', content: buffer });
+        this._trimHistory();
+        this._guestDeliver(guestWv, { type: 'streamFinalize', content: buffer });
+        const graphTab = TabManager.getActiveTab?.() || null;
+        await window.navio.contextGraph({
+          op: 'addTurn',
+          role: 'assistant',
+          summary: buffer.slice(0, 200),
+          tabId: graphTab?.id,
+          url: graphTab?.url || ''
+        });
+      }
+    });
+    const unErr = window.navio.onAiStreamError(async (msg) => {
+      this._clearStreamListeners();
+      if (!buffer) {
+        const fallback = await window.navio.aiRequest({ messages });
+        if (fallback.error) {
+          this._guestDeliver(guestWv, { type: 'assistant', error: true, content: fallback.error || msg });
+        } else {
+          this.conversationHistory.push(
+            { role: 'user', content: userHistory },
+            { role: 'assistant', content: fallback.content }
+          );
+          this._trimHistory();
+          this._guestDeliver(guestWv, { type: 'assistant', content: fallback.content });
+        }
+      } else {
+        this.conversationHistory.push({ role: 'user', content: userHistory }, { role: 'assistant', content: buffer });
+        this._trimHistory();
+        this._guestDeliver(guestWv, { type: 'streamFinalize', content: buffer });
+      }
+    });
+    this._streamUnsubs.push(unChunk, unDone, unErr);
+    await window.navio.aiRequestStream({ messages });
+  }
+
   /**
    * Tool-calling path: builds context messages, sets up navigate/progress
    * listeners, calls the main-process agentic loop, and displays results.
    */
-  async _processWithTools(text, config, historyUserLabel) {
+  async _processWithTools(text, config, historyUserLabel, guestWv = null) {
+    this._guestChatWebview = guestWv || null;
+    try {
     // Build context messages (same as legacy path but without page snapshot —
     // the model will call read_page itself via tools)
     const messages = [{ role: 'system', content: this.systemPrompt }];
 
     if (typeof TabManager !== 'undefined') {
-      const activeTab = TabManager.getActiveTab();
-      if (activeTab && activeTab.url && !activeTab.url.startsWith('about:')) {
+      const surface = TabManager.getActiveTab();
+      const browserTab = TabManager.getBrowserContextTab?.() || surface;
+      const onChatSurface = !!(surface && TabManager.isNavioChatTabUrl?.(surface.url || ''));
+      if (onChatSurface) {
         messages.push({
           role: 'system',
-          content: `[Active tab]\nTitle: ${TabManager.getTabDisplayTitle(activeTab) || '(untitled)'}${activeTab.customTitle ? ` (page: ${activeTab.title || '—'})` : ''}\nURL: ${activeTab.url}`
+          content:
+            '[Interface]\nThe user is in the **Navio AI** full-page tab. Browser tools (read_page, click, navigate, etc.) operate on the **browsing context tab** below — not this chat UI.'
+        });
+      }
+      if (browserTab && browserTab.url && !browserTab.url.startsWith('about:')) {
+        messages.push({
+          role: 'system',
+          content: `[Browsing context tab]${browserTab.id === surface?.id ? ' (focused)' : ''}\nTitle: ${TabManager.getTabDisplayTitle(browserTab) || '(untitled)'}${browserTab.customTitle ? ` (page: ${browserTab.title || '—'})` : ''}\nURL: ${browserTab.url}`
+        });
+      } else if (browserTab) {
+        messages.push({
+          role: 'system',
+          content: `[Browsing context tab]\nEmpty / new tab — use **navigate** or **open_tab** when you need a URL.\nTab id: ${browserTab.id}`
         });
       }
     }
@@ -1093,30 +1272,38 @@ class AssistantManagerClass {
     messages.push(...recentHistory);
     messages.push({ role: 'user', content: this._buildAttachmentPayloadForApi(text) });
 
-    // Create the agent activity feed element
-    const activityEl = document.createElement('div');
-    activityEl.className = 'navio-agent-activity';
-    activityEl.innerHTML = '<div class="naa-header"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg> Navio is working...</div><div class="naa-steps"></div>';
-    this.messagesEl.appendChild(activityEl);
-    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
-    this._currentActivityEl = activityEl;
+    // Agent activity UI — sidebar DOM or guest tab via executeJavaScript
+    let activityEl = null;
+    let stopBtn = null;
+    if (!guestWv) {
+      activityEl = document.createElement('div');
+      activityEl.className = 'navio-agent-activity';
+      activityEl.innerHTML = '<div class="naa-header"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg> Navio is working...</div><div class="naa-steps"></div>';
+      this.messagesEl.appendChild(activityEl);
+      this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+      this._currentActivityEl = activityEl;
+    } else {
+      this._currentActivityEl = null;
+      this._guestDeliver(guestWv, { type: 'activityStart' });
+    }
 
     // Set up navigate handler
     const unNav = window.navio.onToolNavigate(async ({ url }) => {
       this._appendActivityStep('navigate', `Navigating to ${new URL(url).hostname}...`);
       try {
-        const loadResult = await TabManager.navigateActiveAndWaitForLoad(url);
+        const loadResult = await TabManager.navigateForAgentAndWaitForLoad(url);
+        const ctxTab = TabManager.getBrowserContextTab?.() || TabManager.getActiveTab();
         if (!loadResult.ok) {
           window.navio.toolNavigateAck({
             success: false,
             error: loadResult.error || 'load failed',
-            url: TabManager.getActiveTab()?.url || url
+            url: ctxTab?.url || url
           });
           return;
         }
         window.navio.toolNavigateAck({
           success: true,
-          url: TabManager.getActiveTab()?.url || url,
+          url: ctxTab?.url || url,
           timedOut: !!loadResult.timedOut
         });
       } catch (e) {
@@ -1222,6 +1409,16 @@ class AssistantManagerClass {
     // Set up plan approval handler
     const unProposePlan = window.navio.onToolProposePlan?.(({ title, steps, estimated_time, risks }) => {
       this._appendActivityStep('propose_plan', `Plan: ${title}`);
+      if (guestWv) {
+        this._guestDeliver(guestWv, {
+          type: 'plan',
+          title: title || '',
+          steps: steps || [],
+          estimated_time: estimated_time || '',
+          risks: risks || ''
+        });
+        return;
+      }
       const planEl = document.createElement('div');
       planEl.className = 'navio-plan-card';
       let html = `<div class="npc-title">${this._escapeHtml(title)}</div>`;
@@ -1260,20 +1457,26 @@ class AssistantManagerClass {
       this._appendActivityStep(tool, label);
     });
 
-    // Set up abort
+    // Set up abort (sidebar only — guest tab can add stop later via host message)
     let aborted = false;
-    const stopBtn = document.createElement('button');
-    stopBtn.className = 'navio-agent-stop-btn';
-    stopBtn.type = 'button';
-    stopBtn.textContent = 'Stop';
-    stopBtn.addEventListener('click', () => { aborted = true; });
-    activityEl.querySelector('.naa-header').appendChild(stopBtn);
+    if (activityEl) {
+      stopBtn = document.createElement('button');
+      stopBtn.className = 'navio-agent-stop-btn';
+      stopBtn.type = 'button';
+      stopBtn.textContent = 'Stop';
+      stopBtn.addEventListener('click', () => {
+        aborted = true;
+      });
+      activityEl.querySelector('.naa-header').appendChild(stopBtn);
+    }
 
-    // Call the tool-calling IPC
-    const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
+    if (typeof TabManager !== 'undefined') {
+      TabManager.ensureBrowserContextTab?.();
+    }
+    const toolWv = typeof TabManager !== 'undefined' ? TabManager.getBrowserTargetWebview?.() : null;
     const response = await window.navio.aiRequestWithTools({
       messages,
-      webContentsId: wv?.getWebContentsId()
+      webContentsId: toolWv?.getWebContentsId?.()
     });
 
     // Cleanup
@@ -1288,15 +1491,22 @@ class AssistantManagerClass {
     this.removeTypingIndicator();
 
     // Update activity feed to done state
-    const header = activityEl.querySelector('.naa-header');
-    if (header) {
-      stopBtn.remove();
-      const stepsCount = (response.toolLog || []).length;
-      header.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Done${stepsCount ? ` (${stepsCount} steps)` : ''}`;
+    if (activityEl) {
+      const header = activityEl.querySelector('.naa-header');
+      if (header) {
+        if (stopBtn) stopBtn.remove();
+        const stepsCount = (response.toolLog || []).length;
+        header.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Done${stepsCount ? ` (${stepsCount} steps)` : ''}`;
+      }
+    } else if (guestWv) {
+      this._guestDeliver(guestWv, {
+        type: 'activityDone',
+        stepsCount: (response.toolLog || []).length
+      });
     }
 
     // Offer to save as workflow if the tool loop had multiple steps
-    if (response.toolLog && response.toolLog.length >= 2 && !response.error) {
+    if (!guestWv && activityEl && response.toolLog && response.toolLog.length >= 2 && !response.error) {
       if (this._workflowRecording) {
         this._recordedSteps = (this._recordedSteps || []).concat(
           response.toolLog.map(t => ({ tool: t.tool, args: t.args }))
@@ -1321,26 +1531,36 @@ class AssistantManagerClass {
 
     // Display final response
     if (response.error) {
-      this.addMessage('assistant', response.error, 'error');
+      if (guestWv) this._guestDeliver(guestWv, { type: 'assistant', error: true, content: response.error });
+      else this.addMessage('assistant', response.error, 'error');
     } else if (response.content) {
-      this.addMessage('assistant', response.content);
+      if (guestWv) this._guestDeliver(guestWv, { type: 'assistant', content: response.content });
+      else this.addMessage('assistant', response.content);
       const userHistory = historyUserLabel || this._historyLabelForAttachments(text);
       this.conversationHistory.push(
         { role: 'user', content: userHistory },
         { role: 'assistant', content: response.content }
       );
       this._trimHistory();
+      const graphTab = TabManager.getActiveTab?.() || null;
       await window.navio.contextGraph({
         op: 'addTurn',
         role: 'assistant',
         summary: response.content.slice(0, 200),
-        tabId: TabManager.getActiveTab()?.id,
-        url: TabManager.getActiveTab()?.url || ''
+        tabId: graphTab?.id,
+        url: graphTab?.url || ''
       });
+    }
+    } finally {
+      this._guestChatWebview = null;
     }
   }
 
   _appendActivityStep(tool, label) {
+    if (this._guestChatWebview) {
+      this._guestDeliver(this._guestChatWebview, { type: 'toolStep', tool, label });
+      return;
+    }
     if (!this._currentActivityEl) return;
     const stepsEl = this._currentActivityEl.querySelector('.naa-steps');
     if (!stepsEl) return;
@@ -3359,7 +3579,10 @@ ${pageInfo}${snapText}`;
 
   async _getPageSnapshotText() {
     try {
-      const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
+      const wv =
+        typeof TabManager !== 'undefined'
+          ? TabManager.getBrowserTargetWebview?.() || TabManager.getActiveWebview()
+          : null;
       if (!wv) return '';
       const snap = await window.navio.pageSnapshot(wv.getWebContentsId());
       if (!snap || snap.error || !snap.elements?.length) return '';

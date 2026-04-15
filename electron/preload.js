@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('navio', {
   },
 
   getConfig: () => ipcRenderer.invoke('get-config'),
+  /** file:// URL of the full-page in-tab AI chat (Navio AI tab). */
+  getInternalChatPageUrl: () => ipcRenderer.invoke('navio-internal-chat-page-url'),
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),
   getApiKeyForSettings: () => ipcRenderer.invoke('get-api-key-for-settings'),
 

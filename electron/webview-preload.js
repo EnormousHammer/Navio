@@ -5,7 +5,31 @@
  * Communicates with the renderer (tabs.js) via ipcRenderer.sendToHost().
  */
 try {
-  const { ipcRenderer } = require('electron');
+  const { ipcRenderer, contextBridge } = require('electron');
+
+  function isNavioChatTabPage() {
+    try {
+      const pn = String((typeof location !== 'undefined' && location.pathname) || '')
+        .replace(/\\/g, '/')
+        .toLowerCase();
+      const href = String((typeof location !== 'undefined' && location.href) || '').toLowerCase();
+      return pn.endsWith('navio-chat-tab.html') || href.includes('navio-chat-tab.html');
+    } catch {
+      return false;
+    }
+  }
+
+  /** Full-page in-tab chat — host runs the full agent (tools, connectors); guest only renders + postToHost. */
+  if (isNavioChatTabPage()) {
+    try {
+      contextBridge.exposeInMainWorld('navioChatTab', {
+        getConfig: () => ipcRenderer.invoke('get-config'),
+        postToHost: (payload) => ipcRenderer.sendToHost('navio-chat-host', payload)
+      });
+    } catch (e) {
+      console.error('[navio] navioChatTab preload bridge failed:', e && e.message ? e.message : e);
+    }
+  }
 
   // ── Find the username field in a form ──────────────────────────────────────
   function findUsernameField(root) {

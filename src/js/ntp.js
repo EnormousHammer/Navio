@@ -1291,33 +1291,75 @@ const NTP = (() => {
 
   // ── Search input ──────────────────────────────────────────────────────────
 
+  /**
+   * New Tab search → full-page in-tab AI chat (ChatGPT / Perplexity–style), not the sidebar.
+   * Task mode keeps the sidebar assistant so browser tools still work.
+   */
+  async function _openAssistantInNewTab(val, opts = {}) {
+    const taskMode = !!opts.taskMode;
+    if (!val || typeof TabManager === 'undefined') return;
+    const raw = val.trim();
+
+    let chatBase = '';
+    try {
+      if (typeof window.navio.getInternalChatPageUrl === 'function') {
+        chatBase = await window.navio.getInternalChatPageUrl();
+      }
+    } catch {
+      chatBase = '';
+    }
+    if (chatBase) {
+      const sep = chatBase.includes('?') ? '&' : '?';
+      TabManager.createTab(`${chatBase}${sep}initial=${encodeURIComponent(raw)}`);
+      return;
+    }
+
+    TabManager.createTab('about:blank');
+    if (raw.startsWith('>>')) {
+      const q = raw.slice(2).trim();
+      if (q && typeof AssistantManager !== 'undefined') {
+        AssistantManager.open();
+        AssistantManager.addMessage('user', `>> ${q}`);
+        AssistantManager.runDeepResearch(q);
+      }
+      return;
+    }
+    if (raw.startsWith('?')) {
+      const qq = raw.slice(1).trim();
+      if (typeof App !== 'undefined' && App._sendToAI) App._sendToAI(qq);
+      return;
+    }
+    if (typeof App !== 'undefined' && App._sendToAI) App._sendToAI(raw);
+    else if (typeof AssistantManager !== 'undefined') {
+      AssistantManager.open();
+      setTimeout(() => {
+        if (AssistantManager.inputEl) {
+          AssistantManager.inputEl.value = raw;
+          AssistantManager.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+          AssistantManager.sendMessage();
+        }
+      }, 150);
+    }
+  }
+
   function _bindSearchInput() {
     const input = document.getElementById('ntp-search-input');
     const sendBtn = document.getElementById('ntp-search-send');
     if (!input) return;
 
-    const submit = () => {
+    const submit = async () => {
       const val = input.value.trim();
       if (!val) return;
       if (_mode === 'ai') {
-        // Show inline results panel on the NTP
-        _showInlineAIResults(val);
+        await _openAssistantInNewTab(val, { taskMode: false });
       } else if (_mode === 'task') {
-        // Full assistant (tool-calling) — open panel (never toggle closed) and send
-        if (typeof AssistantManager !== 'undefined') {
-          AssistantManager.open();
-          setTimeout(() => {
-            if (AssistantManager.inputEl) {
-              AssistantManager.inputEl.value = val;
-              AssistantManager.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-              AssistantManager.sendMessage();
-            }
-          }, 200);
-        }
+        await _openAssistantInNewTab(val, { taskMode: true });
       } else {
-        // Auto-detect: question-like goes to inline results, otherwise web search
-        if (typeof App !== 'undefined' && App._isAIQuery && App._isAIQuery(val)) {
-          _showInlineAIResults(val);
+        const raw = val;
+        if (raw.startsWith('>>') || raw.startsWith('?')) {
+          await _openAssistantInNewTab(val, { taskMode: false });
+        } else if (typeof App !== 'undefined' && App._isAIQuery && App._isAIQuery(val)) {
+          await _openAssistantInNewTab(val, { taskMode: false });
         } else {
           if (typeof App !== 'undefined') App.handleSearch(val);
         }
@@ -1325,8 +1367,8 @@ const NTP = (() => {
       input.value = '';
     };
 
-    input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
-    sendBtn?.addEventListener('click', submit);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') void submit(); });
+    sendBtn?.addEventListener('click', () => void submit());
   }
 
   // ── Quick links shortcuts ─────────────────────────────────────────────────

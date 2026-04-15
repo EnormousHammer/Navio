@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Navio AI</title>
+  <style>
+    :root {
+      --bg: #060910;
+      --panel: #0c111c;
+      --elev: #111827;
+      --border: rgba(0, 216, 255, 0.14);
+      --text: #e8edf5;
+      --muted: #8b9bb4;
+      --accent: #00d8ff;
+      --accent2: #5468ff;
+      --violet: #9f6fff;
+      --user-bg: rgba(84, 104, 255, 0.2);
+      --radius: 14px;
+      --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      --header-h: 56px;
+      --drawer-w: 300px;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 15px;
+      line-height: 1.55;
+    }
+    body {
+      background:
+        radial-gradient(1200px 600px at 20% -10%, rgba(0, 216, 255, 0.12), transparent 55%),
+        radial-gradient(900px 500px at 95% 0%, rgba(159, 111, 255, 0.1), transparent 50%),
+        var(--bg);
+    }
+    .app {
+      display: grid;
+      grid-template-columns: 1fr minmax(0, 880px) var(--drawer-w);
+      grid-template-rows: var(--header-h) 1fr auto;
+      height: 100%;
+      max-width: 1480px;
+      margin: 0 auto;
+    }
+    @media (max-width: 1100px) {
+      .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: var(--header-h) minmax(140px, 22vh) 1fr auto;
+      }
+      .drawer { border-left: none; border-bottom: 1px solid var(--border); }
+    }
+    header {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(12, 17, 28, 0.85);
+      backdrop-filter: blur(16px);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .logo {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2) 60%, var(--violet));
+      box-shadow: 0 0 24px rgba(0, 216, 255, 0.25);
+    }
+    .brand-text h1 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      background: linear-gradient(120deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .brand-text p { margin: 2px 0 0; font-size: 11px; color: var(--muted); }
+    .hdr-actions { display: flex; align-items: center; gap: 10px; }
+    .pill {
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      max-width: 220px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    button.btn {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 14px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.btn:hover { background: rgba(255,255,255,0.1); }
+    button.btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none;
+      color: #fff;
+    }
+    .main {
+      grid-column: 2;
+      grid-row: 2;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      padding: 0 18px 12px;
+    }
+    @media (max-width: 1100px) {
+      .main { grid-column: 1; grid-row: 3; }
+    }
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 0 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .msg {
+      max-width: 94%;
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .msg .role {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .msg.user {
+      align-self: flex-end;
+      background: var(--user-bg);
+      border: 1px solid rgba(84, 104, 255, 0.28);
+    }
+    .msg.assistant {
+      align-self: flex-start;
+      background: var(--elev);
+      border: 1px solid var(--border);
+    }
+    .msg.assistant.error { border-color: rgba(255, 100, 100, 0.35); color: #ffc9c9; }
+    .msg.assistant.streaming { border-color: rgba(0, 216, 255, 0.25); }
+    .drawer {
+      grid-column: 3;
+      grid-row: 2 / 4;
+      border-left: 1px solid var(--border);
+      background: rgba(12, 17, 28, 0.65);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    @media (max-width: 1100px) {
+      .drawer { grid-column: 1; grid-row: 2; }
+    }
+    .drawer-h {
+      padding: 12px 14px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .drawer-h span.ok { color: var(--accent); font-weight: 600; text-transform: none; letter-spacing: 0; }
+    #agent-steps {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px 16px;
+      font-size: 12px;
+    }
+    .step-row {
+      padding: 8px 10px;
+      margin-bottom: 6px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .step-row .t { color: var(--accent); font-weight: 600; font-size: 10px; text-transform: uppercase; }
+    .step-row .l { color: var(--text); margin-top: 4px; line-height: 1.4; }
+    .plan-card {
+      align-self: flex-start;
+      max-width: 96%;
+      padding: 14px 16px;
+      border-radius: var(--radius);
+      background: var(--panel);
+      border: 1px solid rgba(159, 111, 255, 0.25);
+    }
+    .plan-card h3 { margin: 0 0 10px; font-size: 14px; }
+    .plan-card ol { margin: 0; padding-left: 18px; color: var(--text); font-size: 13px; }
+    .plan-card .meta { font-size: 11px; color: var(--muted); margin-top: 8px; }
+    .plan-actions { display: flex; gap: 8px; margin-top: 12px; }
+    .composer-wrap {
+      grid-column: 2;
+      grid-row: 3;
+      padding: 0 18px 18px;
+    }
+    @media (max-width: 1100px) {
+      .composer-wrap { grid-column: 1; grid-row: 4; }
+    }
+    .composer {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 10px 12px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    }
+    #input {
+      flex: 1;
+      min-height: 48px;
+      max-height: 180px;
+      resize: none;
+      border: none;
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      line-height: 1.45;
+      outline: none;
+    }
+    #input::placeholder { color: var(--muted); }
+    #send {
+      flex-shrink: 0;
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #send:disabled { opacity: 0.45; cursor: not-allowed; }
+    .hint {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 8px;
+      text-align: center;
+    }
+    .empty-hint {
+      text-align: center;
+      color: var(--muted);
+      padding: 40px 20px;
+      font-size: 14px;
+      line-height: 1.65;
+    }
+    .empty-hint strong { color: var(--accent); }
+    .typing {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+    }
+    .typing i {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      opacity: 0.35;
+      animation: bounce 1.2s infinite ease-in-out;
+    }
+    .typing i:nth-child(2) { animation-delay: 0.15s; }
+    .typing i:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: scale(0.7); opacity: 0.35; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--elev);
+      border: 1px solid var(--border);
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-size: 13px;
+      z-index: 100;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand">
+        <div class="logo" aria-hidden="true"></div>
+        <div class="brand-text">
+          <h1>Navio AI</h1>
+          <p id="subhead">Full browser agent · same brain as the sidebar</p>
+        </div>
+      </div>
+      <div class="hdr-actions">
+        <span class="pill" id="model-pill" title="Configured model">—</span>
+        <button type="button" class="btn" id="btn-new">New chat</button>
+      </div>
+    </header>
+
+    <section class="main">
+      <div id="messages"></div>
+    </section>
+
+    <aside class="drawer" id="drawer">
+      <div class="drawer-h">
+        Agent activity
+        <span class="ok" id="drawer-status"></span>
+      </div>
+      <div id="agent-steps"></div>
+    </aside>
+
+    <div class="composer-wrap">
+      <div class="composer">
+        <textarea id="input" rows="1" placeholder="Ask anything, run tasks on the web, use @tabs, email, connectors…" autocomplete="off"></textarea>
+        <button type="button" id="send" title="Send" aria-label="Send">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22l-4-9-9-4 20-7z"/></svg>
+        </button>
+      </div>
+      <p class="hint"><kbd>Enter</kbd> send · <kbd>Shift</kbd>+<kbd>Enter</kbd> new line · Tools run in your other tabs (a blank tab opens if needed)</p>
+    </div>
+  </div>
+
+  <script>
+(function () {
+  const api = window.navioChatTab;
+  const messagesEl = document.getElementById('messages');
+  const agentStepsEl = document.getElementById('agent-steps');
+  const drawerStatus = document.getElementById('drawer-status');
+  const modelPill = document.getElementById('model-pill');
+  const subhead = document.getElementById('subhead');
+  const inputEl = document.getElementById('input');
+  const sendBtn = document.getElementById('send');
+  const btnNew = document.getElementById('btn-new');
+
+  let busy = false;
+  let streamBubble = null;
+  let streamBody = null;
+
+  function post(payload) {
+    if (api && api.postToHost) api.postToHost(payload);
+  }
+
+  function esc(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function clearEmpty() {
+    messagesEl.querySelector('.empty-hint')?.remove();
+  }
+
+  function addUserBubble(text) {
+    clearEmpty();
+    const wrap = document.createElement('div');
+    wrap.className = 'msg user';
+    wrap.innerHTML = '<div class="role">You</div><div class="body"></div>';
+    wrap.querySelector('.body').textContent = text || '';
+    messagesEl.appendChild(wrap);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function toast(t) {
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.textContent = t;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3200);
+  }
+
+  function ensureStreamBubble() {
+    if (streamBubble) return;
+    clearEmpty();
+    streamBubble = document.createElement('div');
+    streamBubble.className = 'msg assistant streaming';
+    streamBubble.innerHTML = '<div class="role">Navio</div><div class="body"></div>';
+    streamBody = streamBubble.querySelector('.body');
+    streamBody.textContent = '';
+    messagesEl.appendChild(streamBubble);
+  }
+
+  function finalizeStream(text) {
+    if (streamBubble && streamBody) {
+      streamBody.textContent = text || '';
+      streamBubble.classList.remove('streaming');
+    }
+    streamBubble = null;
+    streamBody = null;
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function addAssistantBubble(text, isError) {
+    clearEmpty();
+    finalizeStream('');
+    const wrap = document.createElement('div');
+    wrap.className = 'msg assistant' + (isError ? ' error' : '');
+    wrap.innerHTML = '<div class="role">Navio</div><div class="body"></div>';
+    wrap.querySelector('.body').textContent = text || '';
+    messagesEl.appendChild(wrap);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function resetAgentPanel() {
+    agentStepsEl.innerHTML = '';
+    drawerStatus.textContent = '';
+  }
+
+  window.__navioGuestHost = {
+    deliver: function (msg) {
+      if (!msg || !msg.type) return;
+      switch (msg.type) {
+        case 'toast':
+          toast(msg.text || '');
+          break;
+        case 'activityStart':
+          resetAgentPanel();
+          drawerStatus.textContent = 'Working…';
+          break;
+        case 'toolStep': {
+          const row = document.createElement('div');
+          row.className = 'step-row';
+          row.innerHTML = '<div class="t">' + esc(msg.tool) + '</div><div class="l">' + esc(msg.label) + '</div>';
+          agentStepsEl.appendChild(row);
+          agentStepsEl.scrollTop = agentStepsEl.scrollHeight;
+          break;
+        }
+        case 'activityDone':
+          drawerStatus.textContent = msg.stepsCount ? 'Done · ' + msg.stepsCount + ' steps' : 'Done';
+          break;
+        case 'plan': {
+          clearEmpty();
+          const card = document.createElement('div');
+          card.className = 'plan-card';
+          let html = '<h3>' + esc(msg.title) + '</h3><ol>';
+          (msg.steps || []).forEach(function (s) {
+            const a = s && s.action ? esc(s.action) : '';
+            const d = s && s.details ? esc(s.details) : '';
+            html += '<li><strong>' + a + '</strong>' + (d ? ' — ' + d : '') + '</li>';
+          });
+          html += '</ol>';
+          if (msg.estimated_time) html += '<div class="meta">Estimated: ' + esc(msg.estimated_time) + '</div>';
+          if (msg.risks) html += '<div class="meta">Note: ' + esc(msg.risks) + '</div>';
+          html += '<div class="plan-actions">';
+          html += '<button type="button" class="btn btn-primary" data-plan="approve">Approve & run</button>';
+          html += '<button type="button" class="btn" data-plan="cancel">Cancel</button></div>';
+          card.innerHTML = html;
+          card.querySelector('[data-plan="approve"]').addEventListener('click', function () {
+            post({ action: 'planAck', approved: true, title: msg.title });
+            card.querySelector('.plan-actions').innerHTML = '<span style="color:var(--accent);font-size:12px">Approved — running…</span>';
+          });
+          card.querySelector('[data-plan="cancel"]').addEventListener('click', function () {
+            post({ action: 'planAck', approved: false, title: msg.title });
+            card.querySelector('.plan-actions').innerHTML = '<span style="color:var(--muted);font-size:12px">Cancelled</span>';
+          });
+          messagesEl.appendChild(card);
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+          break;
+        }
+        case 'streamDelta':
+          ensureStreamBubble();
+          if (streamBody) streamBody.textContent += msg.text || '';
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+          break;
+        case 'streamFinalize':
+          finalizeStream(msg.content || '');
+          busy = false;
+          sendBtn.disabled = false;
+          inputEl.disabled = false;
+          break;
+        case 'assistant':
+          document.getElementById('research-wait')?.remove();
+          busy = false;
+          sendBtn.disabled = false;
+          inputEl.disabled = false;
+          addAssistantBubble(msg.content, !!msg.error);
+          break;
+        case 'researchStart':
+          clearEmpty();
+          busy = true;
+          sendBtn.disabled = true;
+          inputEl.disabled = true;
+          const r = document.createElement('div');
+          r.className = 'msg assistant streaming';
+          r.id = 'research-wait';
+          r.innerHTML = '<div class="role">Navio</div><div class="body"><span class="typing"><i></i><i></i><i></i></span> Deep research…</div>';
+          messagesEl.appendChild(r);
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+          break;
+        default:
+          break;
+      }
+    }
+  };
+
+  async function loadModelHint() {
+    try {
+      if (!api || !api.getConfig) return;
+      const cfg = await api.getConfig();
+      const m = (cfg && cfg.aiModel) ? cfg.aiModel : '';
+      if (m) modelPill.textContent = m;
+      if (cfg && cfg.aiUseToolCalling === false) {
+        subhead.textContent = 'Streaming mode (enable tool calling in Settings for full agent)';
+      }
+    } catch {}
+  }
+
+  function send(text) {
+    const t = (text || '').trim();
+    if (!t || busy) return;
+    busy = true;
+    sendBtn.disabled = true;
+    inputEl.disabled = true;
+    addUserBubble(t);
+    post({ action: 'send', text: t });
+  }
+
+  function wire() {
+    inputEl.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        send(inputEl.value);
+        inputEl.value = '';
+        inputEl.style.height = 'auto';
+      }
+    });
+    inputEl.addEventListener('input', function () {
+      inputEl.style.height = 'auto';
+      inputEl.style.height = Math.min(inputEl.scrollHeight, 180) + 'px';
+    });
+    sendBtn.addEventListener('click', function () {
+      send(inputEl.value);
+      inputEl.value = '';
+      inputEl.style.height = 'auto';
+    });
+    btnNew.addEventListener('click', function () {
+      if (busy) return;
+      messagesEl.innerHTML = '';
+      resetAgentPanel();
+      streamBubble = null;
+      streamBody = null;
+      messagesEl.innerHTML = '<div class="empty-hint">New conversation in this tab only. <strong>Sidebar history</strong> is separate.</div>';
+      inputEl.focus();
+    });
+  }
+
+  function boot() {
+    if (!api || !api.postToHost) {
+      messagesEl.innerHTML = '<div class="empty-hint">Open this tab from <strong>Navio</strong> (New Tab → Ask AI). It cannot run standalone.</div>';
+      return;
+    }
+    wire();
+    loadModelHint();
+    try {
+      const params = new URLSearchParams(window.location.search || '');
+      const initial = params.get('initial');
+      if (initial) {
+        const raw = decodeURIComponent(initial);
+        if (raw.trim().startsWith('>>')) {
+          const q = raw.replace(/^>>\s*/, '').trim();
+          addUserBubble(raw.trim());
+          post({ action: 'deepResearch', topic: q });
+        } else {
+          const sendText = raw.trim().startsWith('?') ? raw.trim().slice(1).trim() : raw.trim();
+          if (sendText) send(sendText);
+        }
+      } else {
+        messagesEl.innerHTML =
+          '<div class="empty-hint">This is your <strong>unrestricted</strong> workspace: same agent as the sidebar — ' +
+          '<strong>tools</strong>, <strong>tabs</strong>, <strong>connectors</strong>, and <strong>plans</strong> run from here. ' +
+          'Browsing actions apply to your <strong>other tabs</strong> (Navio opens a blank tab if needed).</div>';
+      }
+    } catch {
+      messagesEl.innerHTML = '<div class="empty-hint">Ask anything below.</div>';
+    }
+    inputEl.focus();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+  </script>
+</body>
+</html>

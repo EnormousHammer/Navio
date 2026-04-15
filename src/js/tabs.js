@@ -184,17 +184,100 @@ class TabManagerClass {
 
     this.tabs.push(tab);
     this.renderTabItem(tab);
-    this.switchToTab(id);
+    const doSwitch = opts.switchTo !== false;
+    if (doSwitch) {
+      this.switchToTab(id);
+    }
 
     if (!url) {
-      this.showNewTabPage();
-      setTimeout(() => {
-        const ntpInput = document.getElementById('ntp-search-input');
-        if (ntpInput) ntpInput.focus();
-      }, 100);
+      if (doSwitch) {
+        this.showNewTabPage();
+        setTimeout(() => {
+          const ntpInput = document.getElementById('ntp-search-input');
+          if (ntpInput) ntpInput.focus();
+        }, 100);
+      }
     }
 
     return tab;
+  }
+
+  /** Internal full-page AI chat (`navio-chat-tab.html`) — not a normal browsing surface. */
+  isNavioChatTabUrl(url) {
+    const u = (url || '').toLowerCase();
+    return u.includes('navio-chat-tab.html');
+  }
+
+  /**
+   * First non–chat-tab webview (for tools + page reads while the user stays on Navio AI tab).
+   * Prefers a tab with a real URL; otherwise a blank tab.
+   */
+  getBrowserContextTab() {
+    for (const t of this.tabs) {
+      if (!t.webview) continue;
+      const u = t.url || '';
+      if (this.isNavioChatTabUrl(u)) continue;
+      return t;
+    }
+    return null;
+  }
+
+  /** Webview the agent should drive (never the chat UI webview). */
+  getBrowserTargetWebview() {
+    const t = this.getBrowserContextTab();
+    return t && t.webview ? t.webview : null;
+  }
+
+  /**
+   * Ensures at least one non-chat tab exists for agent tools; opens a background blank tab if needed.
+   */
+  ensureBrowserContextTab() {
+    if (this.getBrowserContextTab()) return;
+    this.createTab('about:blank', { switchTo: false });
+  }
+
+  /** Navigate a specific tab (used when the focused tab is the chat surface). */
+  navigateTab(tab, resolvedUrl) {
+    if (!tab || !tab.webview) return false;
+    tab.url = resolvedUrl;
+    tab.favicon = null;
+    tab.title = 'Loading…';
+    this.updateTabUI(tab);
+    if (tab.id === this.activeTabId) {
+      this.hideNewTabPage();
+    }
+    const wv = tab.webview;
+    if (wv._domReady) {
+      const run = () => wv.loadURL(resolvedUrl).catch((err) => console.warn('navigateTab loadURL failed:', err));
+      if (typeof queueMicrotask === 'function') queueMicrotask(run);
+      else setTimeout(run, 0);
+    } else {
+      wv._pendingUrl = resolvedUrl;
+    }
+    return true;
+  }
+
+  /** Load a URL into the browsing-context tab (not the Navio AI chat tab). */
+  async navigateBrowserContextAndWaitForLoad(resolvedUrl, options = {}) {
+    this.ensureBrowserContextTab();
+    const tab = this.getBrowserContextTab();
+    if (!tab || !tab.webview) return { ok: false, error: 'no browser tab' };
+    const timeoutMs = options.timeoutMs ?? 45000;
+    const settleMs = options.settleMs ?? 200;
+    const wv = tab.webview;
+    const loadPromise = this._waitForNextWebviewLoad(wv, { timeoutMs, settleMs });
+    const started = this.navigateTab(tab, resolvedUrl);
+    if (!started) return { ok: false, error: 'navigation not started' };
+    return loadPromise;
+  }
+
+  /** Agent navigation: uses browsing context when the user is focused on the AI chat tab. */
+  async navigateForAgentAndWaitForLoad(resolvedUrl, options = {}) {
+    const active = this.getActiveTab();
+    if (active && this.isNavioChatTabUrl(active.url || '')) {
+      return this.navigateBrowserContextAndWaitForLoad(resolvedUrl, options);
+    }
+    return this.navigateActiveAndWaitForLoad(resolvedUrl, options);
   }
 
   bindWebviewEvents(tab) {
@@ -259,6 +342,10 @@ class TabManagerClass {
       if (raw && raw !== 'about:blank' && !raw.startsWith('data:')) {
         tab.url = raw;
         this._historyAdd(tab, wv, raw);
+        if (raw.toLowerCase().includes('navio-chat-tab.html')) {
+          tab.title = 'Navio AI';
+          this.updateTabUI(tab);
+        }
       } else if ((raw === 'about:blank' || raw === '') && !wv._pendingUrl) {
         // Back/forward to the initial blank document — clear the tab model so we
         // show the NTP again. (If we keep the old https URL, hideNewTabPage runs
@@ -387,6 +474,11 @@ class TabManagerClass {
           }
         } else if (e.channel === 'navio-selection-cleared') {
           if (typeof InlineAI !== 'undefined') InlineAI.hide();
+        } else if (e.channel === 'navio-chat-host') {
+          const payload = data;
+          if (payload && typeof AssistantManager !== 'undefined' && AssistantManager.handleGuestChatHostMessage) {
+            AssistantManager.handleGuestChatHostMessage(tab, wv, payload);
+          }
         }
       } catch {}
     });
@@ -838,7 +930,7 @@ class TabManagerClass {
   }
 
   async getActivePageContent() {
-    const wv = this.getActiveWebview();
+    const wv = this.getBrowserTargetWebview() || this.getActiveWebview();
     if (!wv) return null;
 
     try {
