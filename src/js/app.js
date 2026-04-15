@@ -272,9 +272,10 @@ class NavioApp {
   bindShortcuts() {
     // Handle "open in new tab" requests from the context menu
     window.navio.onOpenUrlInNewTab((url, opts = {}) => {
-      if (url && typeof TabManager !== 'undefined') {
-        TabManager.createTab(url, { incognito: !!opts.incognito });
-      }
+      if (typeof TabManager === 'undefined') return;
+      const u = url == null ? '' : String(url);
+      if (u) TabManager.createTab(u, { incognito: !!opts.incognito });
+      else TabManager.createTab(null, { incognito: !!opts.incognito });
     });
 
     // ── Download toasts ───────────────────────────────────────────────────

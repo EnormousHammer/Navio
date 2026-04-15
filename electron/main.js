@@ -23,6 +23,7 @@ const { startMonitoring, getConsoleMessages, getNetworkRequests, stopMonitoring 
 const { loadWorkflow, saveWorkflow, listWorkflows, deleteWorkflow } = require('./navio-workflows');
 const { getMcpTools, callMcpTool, isMcpTool, initFromConfig: initMcpFromConfig, registerMcpIpc } = require('./navio-mcp');
 const { initScheduler, registerSchedulerIpc, stopAll: stopAllSchedulers } = require('./navio-scheduler');
+const { shouldBlockWebPopup } = require('./ad-block-patterns');
 
 function getProfileIdFromLaunch() {
   const a = process.argv.find((x) => typeof x === 'string' && x.startsWith('--navio-profile='));
@@ -674,6 +675,89 @@ function buildActionFixMessages(originalMessages, brokenResponse) {
   ];
 }
 
+/** Parse width= / height= from window.open(..., 'features') for popup heuristics. */
+function navioPopupDimsFromFeatures(feat) {
+  const f = typeof feat === 'string' ? feat : '';
+  const wM = /(?:^|[,;\s])width\s*=\s*(\d+)/i.exec(f);
+  const hM = /(?:^|[,;\s])height\s*=\s*(\d+)/i.exec(f);
+  return {
+    width: wM ? parseInt(wM[1], 10) : undefined,
+    height: hM ? parseInt(hM[1], 10) : undefined
+  };
+}
+
+/** One setWindowOpenHandler per guest webContents (did-attach + web-contents-created may both run). */
+const navioGuestWindowOpenBound = new WeakSet();
+let navioWebviewGuestPopupRoutingInstalled = false;
+
+/**
+ * Route guest <webview> window.open / target=_blank into Navio tabs instead of a
+ * standalone BrowserWindow (Drive "new window", Gmail account switch, OAuth).
+ * Must register on the guest as early as possible: did-attach-webview alone is
+ * not reliable on current Electron, so we also use app 'web-contents-created'.
+ */
+function bindNavioGuestWindowOpenOnce(guestContents) {
+  if (!guestContents || navioGuestWindowOpenBound.has(guestContents)) return;
+  navioGuestWindowOpenBound.add(guestContents);
+
+  guestContents.setWindowOpenHandler((details) => {
+    const url = (details && details.url) || '';
+    if (/^(mailto|tel|sms|callto):/i.test(url)) {
+      try {
+        shell.openExternal(url);
+      } catch {
+        /* ignore */
+      }
+      return { action: 'deny' };
+    }
+    const cfg = loadConfig();
+    const { width, height } = navioPopupDimsFromFeatures(details && details.features);
+    const block = shouldBlockWebPopup({
+      url,
+      disposition: (details && details.disposition) || 'default',
+      optionsWidth: width,
+      optionsHeight: height,
+      cfg: {
+        adBlockEnabled: cfg.adBlockEnabled !== false,
+        adStrictPopupBlock: cfg.adStrictPopupBlock !== false
+      }
+    });
+    if (block) return { action: 'deny' };
+
+    let incognito = false;
+    try {
+      incognito = guestContents.session === session.fromPartition(NAVIO_PARTITION_INCOGNITO);
+    } catch {
+      incognito = false;
+    }
+    const openUrl = url && url !== '' ? url : 'about:blank';
+    const mw = mainWindow;
+    if (!mw || (typeof mw.isDestroyed === 'function' && mw.isDestroyed())) {
+      return { action: 'deny' };
+    }
+    try {
+      mw.webContents.send('open-url-in-new-tab', { url: openUrl, incognito });
+    } catch {
+      /* ignore */
+    }
+    return { action: 'deny' };
+  });
+}
+
+function installNavioWebviewGuestPopupRouting() {
+  if (navioWebviewGuestPopupRoutingInstalled) return;
+  navioWebviewGuestPopupRoutingInstalled = true;
+  app.on('web-contents-created', (_event, contents) => {
+    try {
+      if (typeof contents.getType === 'function' && contents.getType() === 'webview') {
+        bindNavioGuestWindowOpenOnce(contents);
+      }
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
 function createMainWindow() {
   const config = loadConfig();
   const isDark = config.theme !== 'light';
@@ -705,6 +789,22 @@ function createMainWindow() {
 
 
   mainWindow.loadFile(path.join(__dirname, '..', 'src', 'index.html'));
+
+  // Prefer Electron tab routing over Chromium's native paired BrowserWindow for
+  // window.open when this key still exists on the guest webPreferences object.
+  mainWindow.webContents.on('will-attach-webview', (_event, webPreferences) => {
+    try {
+      if (webPreferences && 'nativeWindowOpen' in webPreferences) {
+        webPreferences.nativeWindowOpen = false;
+      }
+    } catch {
+      /* ignore */
+    }
+  });
+
+  mainWindow.webContents.on('did-attach-webview', (_event, guestContents) => {
+    bindNavioGuestWindowOpenOnce(guestContents);
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -5685,6 +5785,8 @@ app.whenReady().then(async () => {
     loadConfig,
     saveConfig
   });
+
+  installNavioWebviewGuestPopupRouting();
 
   createMainWindow();
 

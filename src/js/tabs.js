@@ -26,6 +26,8 @@ class TabManagerClass {
       this.createTab(null, { incognito: true })
     );
 
+    this._ensureTabListTrail();
+
     this.tabListEl.addEventListener('wheel', (e) => {
       if (e.deltaY !== 0) {
         e.preventDefault();
@@ -79,6 +81,30 @@ class TabManagerClass {
     } catch (_) {}
   }
 
+  /** Trailing flex area in the tab strip with a second "new tab" control beside empty space after the last tab. */
+  _ensureTabListTrail() {
+    if (this._tabListTrail) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'tab-list-trail';
+    wrap.innerHTML = `
+      <button type="button" class="tab-strip-new tab-strip-new-inline" id="btn-new-tab-inline" title="New Tab (Ctrl+T)" aria-label="New tab">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+    `;
+    this._tabListTrail = wrap;
+    wrap.querySelector('#btn-new-tab-inline')?.addEventListener('click', () => this.createTab());
+    this.tabListEl.appendChild(wrap);
+  }
+
+  _appendNodeToTabList(node) {
+    const trail = this._tabListTrail;
+    if (trail && trail.parentNode === this.tabListEl) {
+      this.tabListEl.insertBefore(node, trail);
+    } else {
+      this.tabListEl.appendChild(node);
+    }
+  }
+
   _reorderPinnedTabs() {
     const pinned = this.tabs.filter((t) => t.pinned);
     const rest = this.tabs.filter((t) => !t.pinned);
@@ -123,6 +149,8 @@ class TabManagerClass {
     const webview = document.createElement('webview');
     webview.setAttribute('id', `wv-${id}`);
     webview.setAttribute('allowpopups', '');
+    // Route window.open through main setWindowOpenHandler (tabs) instead of a bare BrowserWindow.
+    webview.setAttribute('webpreferences', 'nativeWindowOpen=no');
     webview.setAttribute('partition', incognito ? NAVIO_INCOGNITO_PARTITION : 'persist:navio');
     webview.setAttribute('useragent', cleanUA);
     // Always set src="about:blank" so Electron starts the guest renderer
@@ -254,35 +282,9 @@ class TabManagerClass {
       }
     });
 
-    wv.addEventListener('new-window', (e) => {
-      if (!e.url) return;
-      // External protocols clicked inside a page — open in OS, don't load in a tab
-      if (/^(mailto|tel|sms|callto):/i.test(e.url)) {
-        e.preventDefault();
-        window.navio.openExternal(e.url).catch(() => {});
-        return;
-      }
-      // Block ad / tracker / strict script pop-ups (main process; sync IPC)
-      try {
-        const o = e.options || {};
-        if (
-          typeof window.navio.evalPopupBlock === 'function' &&
-          window.navio.evalPopupBlock({
-            url: e.url || '',
-            disposition: e.disposition || 'default',
-            optionsWidth: o.width,
-            optionsHeight: o.height
-          })
-        ) {
-          e.preventDefault();
-          return;
-        }
-      } catch {
-        /* ignore */
-      }
-      e.preventDefault();
-      this.createTab(e.url, { incognito: !!tab.incognito });
-    });
+    // window.open / target=_blank is handled in the main process (did-attach-webview
+    // → setWindowOpenHandler) so blank OAuth popups do not fall through as a new
+    // BrowserWindow when the renderer "new-window" event has no URL yet.
 
     wv.addEventListener('did-fail-load', (e) => {
       if (e.errorCode === -3) return; // Aborted/cancelled, ignore
@@ -652,7 +654,7 @@ class TabManagerClass {
       });
     }
 
-    this.tabListEl.appendChild(el);
+    this._appendNodeToTabList(el);
 
     requestAnimationFrame(() => {
       el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
@@ -818,9 +820,11 @@ class TabManagerClass {
       if (!group) continue;
       const collapsed = group.collapsed || false;
       const header = this._buildGroupHeader(group, groupTabs.length, collapsed);
-      this.tabListEl.appendChild(header);
+      this._appendNodeToTabList(header);
       if (!collapsed) groupTabs.forEach(t => this._appendTabItem(t));
     }
+
+    if (this._tabListTrail) this.tabListEl.appendChild(this._tabListTrail);
   }
 
   _buildGroupHeader(group, tabCount, collapsed) {
@@ -849,7 +853,7 @@ class TabManagerClass {
     const existing = document.getElementById(`tabitem-${tab.id}`);
     if (existing) {
       // Move existing element to correct position
-      this.tabListEl.appendChild(existing);
+      this._appendNodeToTabList(existing);
       this.updateTabUI(tab);
     } else {
       this.renderTabItem(tab);

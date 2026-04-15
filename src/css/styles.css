@@ -534,6 +534,18 @@ body.tabstrip-hidden .tab-strip {
 
 .tab-strip-list::-webkit-scrollbar { display: none; }
 
+/* Grows after the last tab so a second “+” sits in the strip’s free space (horizontal). */
+.tab-list-trail {
+  flex: 1;
+  min-width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-shrink: 0;
+  align-self: stretch;
+  padding-left: 2px;
+}
+
 .tab-strip-new {
   width: 26px;
   height: 26px;
