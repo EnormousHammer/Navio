@@ -739,6 +739,7 @@ function bindNavioGuestWindowOpenOnce(guestContents) {
       features: (details && details.features) || '',
       hasPostBody: !!(details && details.postBody),
       siteAllowsPopups,
+      openerOrigin,
       cfg: {
         adBlockEnabled: cfg.adBlockEnabled !== false,
         popupBlockerEnabled: cfg.popupBlockerEnabled !== false,
@@ -1267,6 +1268,36 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
   let currentMessages = [...messages];
   const provider = cfg.aiProvider || 'openai';
   let activeWc = wc; // mutable — tab tools can change the target webContents
+  /** After successful draft/send mutations, open Gmail for the user once the run completes (read-only API runs skip this). */
+  let gmailDeferredView = null; // 'sent' | 'drafts'
+
+  const finishAgentRun = (payload) => {
+    if (gmailDeferredView) {
+      payload.gmailOpenWhenDone = {
+        url:
+          gmailDeferredView === 'sent'
+            ? 'https://mail.google.com/mail/u/0/#sent'
+            : 'https://mail.google.com/mail/u/0/#drafts',
+        view: gmailDeferredView
+      };
+    }
+    return payload;
+  };
+
+  const recordGmailMutationForDeferredNav = (toolName, toolResult) => {
+    if (!toolResult || toolResult.error) return;
+    if (toolName === 'gmail_send_draft' && toolResult.success) {
+      gmailDeferredView = 'sent';
+      return;
+    }
+    if (
+      toolName === 'gmail_create_reply_draft' ||
+      toolName === 'gmail_update_draft' ||
+      toolName === 'gmail_delete_draft'
+    ) {
+      if (gmailDeferredView !== 'sent') gmailDeferredView = 'drafts';
+    }
+  };
 
   try {
     await waitForWebContentsSettled(activeWc, { settleMs: 80 });
@@ -1280,7 +1311,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
   for (let step = 0; step < maxSteps; step++) {
     const result = await performAiFetchResilient(cfg, apiKey, currentMessages, { tools });
 
-    if (result.error) return { error: result.error, toolLog };
+    if (result.error) return finishAgentRun({ error: result.error, toolLog });
 
     // Emit any intermediate reasoning text the model produced alongside tool calls
     if (result.content && result.toolCalls && result.toolCalls.length) {
@@ -1289,7 +1320,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
 
     if (!result.toolCalls || !result.toolCalls.length) {
       if (result.content) extractAndSaveMemory(result.content);
-      return { content: result.content || '', toolLog };
+      return finishAgentRun({ content: result.content || '', toolLog });
     }
 
     currentMessages = appendAssistantToolCalls(currentMessages, result, provider);
@@ -1317,6 +1348,20 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
           const toolResult = gmIntercept.result;
           currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
           toolLog.push({ tool: 'navigate', args: tc.arguments, result: toolResult, gmail_api_intercept: true });
+          sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
+          continue;
+        }
+        const browseIntercept = await maybeInterceptGmailBrowseNavForAgent(navUrl);
+        if (browseIntercept) {
+          const toolResult = browseIntercept.result;
+          currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
+          toolLog.push({
+            tool: 'navigate',
+            args: tc.arguments,
+            result: toolResult,
+            gmail_api_intercept: true,
+            gmail_browse_intercept: true
+          });
           sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
           continue;
         }
@@ -1360,7 +1405,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
         toolLog.push({ tool: tc.name, args: tc.arguments, result: planResult });
         sender.send('tool-progress', { step, tool: tc.name, result: planResult });
         if (planResult.cancelled) {
-          return { content: 'Plan was cancelled by the user.', toolLog };
+          return finishAgentRun({ content: 'Plan was cancelled by the user.', toolLog });
         }
         continue;
       }
@@ -1374,6 +1419,20 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
             const toolResult = gmIntercept.result;
             currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
             toolLog.push({ tool: 'open_tab', args: tc.arguments, result: toolResult, gmail_api_intercept: true });
+            sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
+            continue;
+          }
+          const browseIntercept = await maybeInterceptGmailBrowseNavForAgent(openUrl);
+          if (browseIntercept) {
+            const toolResult = browseIntercept.result;
+            currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
+            toolLog.push({
+              tool: 'open_tab',
+              args: tc.arguments,
+              result: toolResult,
+              gmail_api_intercept: true,
+              gmail_browse_intercept: true
+            });
             sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
             continue;
           }
@@ -1417,17 +1476,18 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
       }
 
       const toolResult = await executor(activeWc, tc.arguments);
+      recordGmailMutationForDeferredNav(tc.name, toolResult);
       currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
       toolLog.push({ tool: tc.name, args: tc.arguments, result: toolResult });
       sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
     }
   }
-  return {
+  return finishAgentRun({
     content:
       `[Agent step limit (${maxSteps}) reached — work may be incomplete. Say **continue** or **keep going** and Navio will resume (or raise aiAgentMaxToolSteps in navio-config.json, max 500).]`,
     toolLog,
     stepLimitReached: true
-  };
+  });
 }
 
 /**
@@ -2690,6 +2750,76 @@ const toolExecutors = {
     }
   }
 };
+
+/**
+ * Agent tool loop: opening mail.google.com to “browse” Gmail is fragile (SPA, nested scroll).
+ * Route Drafts to gmail_list_drafts; other labels to gmail_search. Single-message #inbox/ID is handled
+ * separately by maybeLoadGmailMessageUrlViaApi.
+ */
+async function maybeInterceptGmailBrowseNavForAgent(url) {
+  const raw = (url || '').trim();
+  if (!raw || (!raw.includes('mail.google.com') && !raw.includes('//mail.google'))) return null;
+  let u;
+  try {
+    u = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (!/^mail\.google\.com$/i.test(u.hostname)) return null;
+  if (extractGmailMessageIdFromNavUrl(raw)) return null;
+
+  const hashRaw = (u.hash || '').replace(/^#/, '');
+  let hashLc = hashRaw.toLowerCase();
+  try {
+    hashLc = decodeURIComponent(hashLc);
+  } catch {
+    /* keep hashLc */
+  }
+  hashLc = hashLc.toLowerCase();
+
+  const isDrafts =
+    hashLc.startsWith('drafts') ||
+    hashLc.includes('in:drafts') ||
+    hashLc.includes('in%3adrafts');
+
+  const token = await getValidOAuthToken('google');
+  if (!token) {
+    return {
+      intercept: true,
+      result: {
+        error:
+          'Connect Google in Navio Settings → Connected Apps. Gmail is handled via API during agent runs — no embedded Gmail browsing until you sign in.',
+        navio_gmail_use_api: true
+      }
+    };
+  }
+
+  if (isDrafts) {
+    const apiRes = await toolExecutors.gmail_list_drafts(null, { max_results: 50 });
+    const extra =
+      apiRes.error
+        ? ''
+        : ' Navio loaded Drafts via the Gmail API instead of opening the Drafts page in the browser.';
+    return {
+      intercept: true,
+      result: {
+        ...apiRes,
+        note: apiRes.note ? `${apiRes.note}${extra}` : extra.trim()
+      }
+    };
+  }
+
+  return {
+    intercept: true,
+    result: {
+      error:
+        'Opening Gmail in the browser is skipped during agent runs. Use **gmail_search** with the right query ' +
+        '(e.g. `in:inbox`, `in:sent`, `label:…`) or **gmail_list_drafts** for Drafts. ' +
+        'If you created, updated, deleted, or sent a draft via API in this run, Navio will open Gmail to Drafts or Sent when the run finishes.',
+      navio_gmail_use_api: true
+    }
+  };
+}
 
 /**
  * Internal helper: execute a browser action on a webContents without going

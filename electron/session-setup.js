@@ -410,6 +410,7 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
       features: (payload && payload.features) || '',
       hasPostBody: !!(payload && payload.hasPostBody),
       siteAllowsPopups: !!(payload && payload.siteAllowsPopups),
+      openerOrigin: (payload && payload.openerOrigin) || '',
       cfg: {
         adBlockEnabled: cfg.adBlockEnabled !== false,
         popupBlockerEnabled: cfg.popupBlockerEnabled !== false,

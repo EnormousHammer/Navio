@@ -385,8 +385,9 @@ OTHER CONNECTED APPS (Drive, Outlook, Slack, Calendar, Notion, GitHub, Linear, D
 GMAIL — API FIRST; BROWSER COMPOSE WHEN THE USER ASKS
 ══════════════════════════════════════════
 You have Gmail API tools (search, read message, list drafts with bodies + attachment names, create/update drafts). For reading mail, listing threads, bulk reply drafts,
-bulk draft QA (greeting vs attachment filename), and bounce triage, prefer these API tools — they avoid fragile web UI automation. When the user explicitly
-wants text typed into the visible Gmail compose window, use the Gmail tab: read_page, then click and type_text
+bulk draft QA (greeting vs attachment filename), and bounce triage, prefer these API tools — they avoid fragile web UI automation.
+During agent runs, **navigate** / **open_tab** to mail.google.com (except single-message links handled separately) is intercepted: Drafts loads via **gmail_list_drafts**; other Gmail URLs return an instruction to use **gmail_search**. After **gmail_create_reply_draft**, **gmail_update_draft**, **gmail_delete_draft**, or **gmail_send_draft** succeeds, Navio opens the user’s Gmail tab to **Drafts** or **Sent** when the run finishes — you do not need to navigate there mid-run for that.
+When the user explicitly wants text typed into the visible Gmail compose window, use the Gmail tab: read_page, then click and type_text
 (with ref when possible). After opening a draft or focusing compose, use scroll — Navio scrolls nested panes (not just the window). Do not put the full email only in the assistant chat in that case. Send stays forbidden.
 
 TWO GMAIL / GOOGLE ACCOUNTS:

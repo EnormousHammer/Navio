@@ -1680,6 +1680,25 @@ class AssistantManagerClass {
     unProgress();
     this.removeTypingIndicator();
 
+    // After API draft/send work, open Gmail to Drafts or Sent (read-only API runs omit this).
+    if (!response.error && response.gmailOpenWhenDone?.url && typeof TabManager !== 'undefined') {
+      try {
+        await TabManager.navigateForAgentAndWaitForLoad(response.gmailOpenWhenDone.url);
+        if (activityEl) {
+          const stepsEl = activityEl.querySelector('.naa-steps');
+          if (stepsEl) {
+            const view = response.gmailOpenWhenDone.view === 'sent' ? 'Sent' : 'Drafts';
+            const step = document.createElement('div');
+            step.className = 'naa-step';
+            step.innerHTML = `<span class="naa-tool">gmail</span> <span class="naa-label">Opened Gmail (${this._escapeHtml(view)})</span>`;
+            stepsEl.appendChild(step);
+          }
+        }
+      } catch (e) {
+        console.warn('[Navio] gmailOpenWhenDone', e);
+      }
+    }
+
     // Update activity feed to done state
     if (activityEl) {
       const header = activityEl.querySelector('.naa-header');

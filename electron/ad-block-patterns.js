@@ -122,6 +122,38 @@ function urlMatchesAdBlock(url) {
   return AD_BLOCK_PATTERNS.some((p) => url.includes(p));
 }
 
+/**
+ * Gmail attachments, inline images, and Drive/Docs viewer targets opened via window.open.
+ * These often use small chrome-stripped windows and must not be classified as ad popups.
+ */
+function isGoogleMailDownloadOrContentUrl(url) {
+  if (!url || typeof url !== 'string' || url === 'about:blank') return false;
+  try {
+    const u = new URL(url);
+    const h = u.hostname.toLowerCase();
+    if (h === 'mail.google.com' || h.endsWith('.mail.google.com')) return true;
+    if (h === 'inbox.google.com') return true;
+    if (h.endsWith('.googleusercontent.com')) return true;
+    if (h === 'drive.google.com' || h.endsWith('.drive.google.com')) return true;
+    if (h === 'docs.google.com') return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/** Opener page is Gmail — used to allow a blank pre-navigation download window with script-like features. */
+function isMailGoogleOpenerOrigin(openerOrigin) {
+  if (!openerOrigin || typeof openerOrigin !== 'string') return false;
+  try {
+    const u = new URL(openerOrigin);
+    const h = u.hostname.toLowerCase();
+    return h === 'mail.google.com' || h.endsWith('.mail.google.com') || h === 'inbox.google.com';
+  } catch {
+    return false;
+  }
+}
+
 /** Avoid blocking OAuth / SSO flows that use small or blank pop-up windows. */
 function isOAuthOrLoginUrl(url) {
   if (!url || url === 'about:blank') return false;
@@ -164,7 +196,7 @@ function featuresSuggestScriptPopup(features) {
 }
 
 /**
- * @param {{ url?: string, disposition?: string, optionsWidth?: number, optionsHeight?: number, features?: string, hasPostBody?: boolean, siteAllowsPopups?: boolean, cfg: { adBlockEnabled?: boolean, popupBlockerEnabled?: boolean, adStrictPopupBlock?: boolean } }} payload
+ * @param {{ url?: string, disposition?: string, optionsWidth?: number, optionsHeight?: number, features?: string, hasPostBody?: boolean, siteAllowsPopups?: boolean, openerOrigin?: string, cfg: { adBlockEnabled?: boolean, popupBlockerEnabled?: boolean, adStrictPopupBlock?: boolean } }} payload
  */
 function shouldBlockWebPopup(payload) {
   const url = (payload && payload.url) || '';
@@ -174,6 +206,7 @@ function shouldBlockWebPopup(payload) {
   const features = (payload && payload.features) || '';
   const hasPostBody = !!(payload && payload.hasPostBody);
   const siteAllowsPopups = !!(payload && payload.siteAllowsPopups);
+  const openerOrigin = (payload && payload.openerOrigin) || '';
   const cfg = payload && payload.cfg;
   if (!cfg) return false;
 
@@ -186,6 +219,7 @@ function shouldBlockWebPopup(payload) {
 
   if (disposition === 'foreground-tab' || disposition === 'background-tab') return false;
   if (isOAuthOrLoginUrl(url)) return false;
+  if (isGoogleMailDownloadOrContentUrl(url)) return false;
 
   const noUrl = !url || url === 'about:blank';
   const small = isLikelyAdSizedPopup(width, height);
@@ -196,11 +230,17 @@ function shouldBlockWebPopup(payload) {
     (width >= 480 || height >= 520);
   if (oauthSizedBlank) return false;
 
-  if (featuresSuggestScriptPopup(features)) return true;
+  if (featuresSuggestScriptPopup(features)) {
+    if (noUrl && isMailGoogleOpenerOrigin(openerOrigin)) return false;
+    return true;
+  }
 
   if (cfg.adStrictPopupBlock === false) return false;
 
-  if (noUrl && small) return true;
+  if (noUrl && small) {
+    if (isMailGoogleOpenerOrigin(openerOrigin)) return false;
+    return true;
+  }
   if (!noUrl && small && !isOAuthOrLoginUrl(url)) return true;
   return false;
 }
@@ -209,6 +249,8 @@ module.exports = {
   AD_BLOCK_PATTERNS,
   urlMatchesAdBlock,
   isOAuthOrLoginUrl,
+  isGoogleMailDownloadOrContentUrl,
+  isMailGoogleOpenerOrigin,
   isLikelyAdSizedPopup,
   featuresSuggestScriptPopup,
   shouldBlockWebPopup

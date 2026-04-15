@@ -94,6 +94,35 @@ test('shouldBlockWebPopup: chrome-stripped features blocked', () => {
   );
 });
 
+test('shouldBlockWebPopup: Gmail attachment googleusercontent not blocked', () => {
+  assert.strictEqual(
+    shouldBlockWebPopup({
+      url: 'https://mail-attachment.googleusercontent.com/attachment/u/0/?ui=2',
+      disposition: 'new-window',
+      optionsWidth: 400,
+      optionsHeight: 320,
+      features: 'menubar=no,toolbar=no,width=400,height=320',
+      cfg: baseCfg
+    }),
+    false
+  );
+});
+
+test('shouldBlockWebPopup: Gmail blank download shell with script-like features allowed', () => {
+  assert.strictEqual(
+    shouldBlockWebPopup({
+      url: 'about:blank',
+      disposition: 'new-window',
+      optionsWidth: 400,
+      optionsHeight: 300,
+      features: 'menubar=no,toolbar=no,width=400,height=300',
+      openerOrigin: 'https://mail.google.com',
+      cfg: baseCfg
+    }),
+    false
+  );
+});
+
 test('urlMatchesAdBlock is used only with adBlockEnabled', () => {
   assert.strictEqual(
     shouldBlockWebPopup({

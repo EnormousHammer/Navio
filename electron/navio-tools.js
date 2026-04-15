@@ -27,6 +27,8 @@ const NAVIO_TOOLS = [
     name: 'navigate',
     description:
       'Navigate the active browser tab to a URL. Always use a full https:// URL. ' +
+      'During agent runs, **mail.google.com** browsing is routed to Gmail API tools (Drafts → data from gmail_list_drafts; other views → use gmail_search). ' +
+      'After you create/update/delete drafts or send mail via API, Navio opens Gmail to Drafts or Sent automatically. ' +
       'NEVER navigate to mail.google.com URLs that point at one message (e.g. #inbox/MESSAGE_ID) — those fail in Navio (ERR_ABORTED). ' +
       'Use gmail_get_message with the message id from gmail_search instead.',
     parameters: {
@@ -242,6 +244,7 @@ const NAVIO_TOOLS = [
     description:
       'Open a new browser tab and optionally navigate it to a URL. Returns the new tab\'s ID. ' +
       'Use this for parallel research across multiple sites. ' +
+      'Same Gmail rule as navigate: during agent runs, mail.google.com opens are routed to Gmail API tools; use those instead of expecting a new Gmail tab mid-task. ' +
       'NEVER open_tab to mail.google.com single-message URLs (#inbox/MESSAGE_ID) — use gmail_get_message instead (embedded Gmail aborts).',
     parameters: {
       type: 'object',
