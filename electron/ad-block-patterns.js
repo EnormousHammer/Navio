@@ -151,17 +151,39 @@ function isLikelyAdSizedPopup(width, height) {
 }
 
 /**
- * @param {{ url?: string, disposition?: string, optionsWidth?: number, optionsHeight?: number, cfg: { adBlockEnabled: boolean, adStrictPopupBlock: boolean } }} payload
+ * window.open features that strip multiple chrome UI pieces — common for ad pop-unders
+ * and script-driven windows (Chrome blocks these aggressively).
+ */
+function featuresSuggestScriptPopup(features) {
+  const f = String(features || '');
+  if (!f.trim()) return false;
+  const stripped = ['menubar', 'toolbar', 'location', 'status', 'scrollbars'].filter((name) =>
+    new RegExp(`${name}\\s*=\\s*(no|0|false)`, 'i').test(f)
+  );
+  return stripped.length >= 2;
+}
+
+/**
+ * @param {{ url?: string, disposition?: string, optionsWidth?: number, optionsHeight?: number, features?: string, hasPostBody?: boolean, siteAllowsPopups?: boolean, cfg: { adBlockEnabled?: boolean, popupBlockerEnabled?: boolean, adStrictPopupBlock?: boolean } }} payload
  */
 function shouldBlockWebPopup(payload) {
   const url = (payload && payload.url) || '';
   const disposition = (payload && payload.disposition) || 'default';
   const width = payload && payload.optionsWidth;
   const height = payload && payload.optionsHeight;
+  const features = (payload && payload.features) || '';
+  const hasPostBody = !!(payload && payload.hasPostBody);
+  const siteAllowsPopups = !!(payload && payload.siteAllowsPopups);
   const cfg = payload && payload.cfg;
-  if (!cfg || cfg.adBlockEnabled === false) return false;
-  if (urlMatchesAdBlock(url)) return true;
-  if (cfg.adStrictPopupBlock === false) return false;
+  if (!cfg) return false;
+
+  if (cfg.adBlockEnabled !== false && urlMatchesAdBlock(url)) return true;
+
+  if (hasPostBody) return false;
+  if (siteAllowsPopups) return false;
+
+  if (cfg.popupBlockerEnabled === false) return false;
+
   if (disposition === 'foreground-tab' || disposition === 'background-tab') return false;
   if (isOAuthOrLoginUrl(url)) return false;
 
@@ -173,6 +195,11 @@ function shouldBlockWebPopup(payload) {
     typeof height === 'number' &&
     (width >= 480 || height >= 520);
   if (oauthSizedBlank) return false;
+
+  if (featuresSuggestScriptPopup(features)) return true;
+
+  if (cfg.adStrictPopupBlock === false) return false;
+
   if (noUrl && small) return true;
   if (!noUrl && small && !isOAuthOrLoginUrl(url)) return true;
   return false;
@@ -183,5 +210,6 @@ module.exports = {
   urlMatchesAdBlock,
   isOAuthOrLoginUrl,
   isLikelyAdSizedPopup,
+  featuresSuggestScriptPopup,
   shouldBlockWebPopup
 };

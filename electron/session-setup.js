@@ -59,6 +59,13 @@ function originHostname(origin) {
   }
 }
 
+/** Count of pop-ups denied by shouldBlockWebPopup (main + sync IPC). */
+let adPopupBlockedCount = 0;
+
+function recordNavioPopupBlocked() {
+  adPopupBlockedCount++;
+}
+
 /**
  * Webview session, downloads, certs, ad blocker, permissions, global shortcuts.
  * Call after createStore + createMainWindow from main.js.
@@ -370,7 +377,6 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   let adBlockEnabled = cfg0.adBlockEnabled !== false;
   let adBlockCount = 0;
   let adBlockBytes = 0;
-  let adPopupBlockedCount = 0;
   const AD_AVG_BYTES = 40 * 1024;
 
   function attachAdBlocker(ses) {
@@ -401,13 +407,33 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
       disposition: (payload && payload.disposition) || 'default',
       optionsWidth: payload && payload.optionsWidth,
       optionsHeight: payload && payload.optionsHeight,
+      features: (payload && payload.features) || '',
+      hasPostBody: !!(payload && payload.hasPostBody),
+      siteAllowsPopups: !!(payload && payload.siteAllowsPopups),
       cfg: {
         adBlockEnabled: cfg.adBlockEnabled !== false,
+        popupBlockerEnabled: cfg.popupBlockerEnabled !== false,
         adStrictPopupBlock: cfg.adStrictPopupBlock !== false
       }
     });
-    if (block) adPopupBlockedCount++;
+    if (block) recordNavioPopupBlocked();
     event.returnValue = block;
+  });
+
+  ipcMain.handle('navio-site-popups-set', (_, { origin, allowed }) => {
+    const o = typeof origin === 'string' ? origin.trim() : '';
+    if (!o) return { ok: false, error: 'origin required' };
+    const ud = userData();
+    if (allowed) sitePerms.set(ud, o, 'popups', true);
+    else sitePerms.set(ud, o, 'popups', false);
+    return { ok: true };
+  });
+
+  ipcMain.handle('navio-site-popups-get', (_, { origin }) => {
+    const o = typeof origin === 'string' ? origin.trim() : '';
+    if (!o) return { allowed: null };
+    const v = sitePerms.get(userData(), o, 'popups');
+    return { allowed: v };
   });
 
   ipcMain.handle('set-ad-blocker', async (_, { enabled }) => {
@@ -490,4 +516,4 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   }
 }
 
-module.exports = { setupSessionInfrastructure };
+module.exports = { setupSessionInfrastructure, recordNavioPopupBlocked };

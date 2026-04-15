@@ -188,6 +188,15 @@ contextBridge.exposeInMainWorld('navio', {
    */
   evalPopupBlock: (payload) => ipcRenderer.sendSync('navio-eval-popup-block', payload || {}),
 
+  onPopupBlocked: (callback) => {
+    const handler = (_, data) => callback(data || {});
+    ipcRenderer.on('navio-popup-blocked', handler);
+    return () => ipcRenderer.removeListener('navio-popup-blocked', handler);
+  },
+  sitePopupsSet: (origin, allowed) =>
+    ipcRenderer.invoke('navio-site-popups-set', { origin: String(origin || ''), allowed: !!allowed }),
+  sitePopupsGet: (origin) => ipcRenderer.invoke('navio-site-popups-get', { origin: String(origin || '') }),
+
   // Browser Memory
   memoryGet: () => ipcRenderer.invoke('memory-get'),
   memoryAdd: (content) => ipcRenderer.invoke('memory-add', { content }),

@@ -162,6 +162,35 @@ class NavioApp {
       if (raw) { this._sendToAI(raw); urlInput.value = ''; urlInput.blur(); }
     });
 
+    const popupBlockedBtn = document.getElementById('url-popup-blocked');
+    if (popupBlockedBtn && typeof window.navio.onPopupBlocked === 'function') {
+      window.navio.onPopupBlocked((data) => {
+        const origin = (data && data.openerOrigin) || '';
+        if (origin) {
+          popupBlockedBtn.hidden = false;
+          popupBlockedBtn.dataset.origin = origin;
+        }
+        const tip = data && data.blockedUrl ? String(data.blockedUrl).slice(0, 72) : '';
+        _showAppToast(tip ? `Pop-up blocked: ${tip}` : 'Pop-up blocked', 'warning');
+      });
+      popupBlockedBtn.addEventListener('click', async () => {
+        const o = popupBlockedBtn.dataset.origin || '';
+        if (!o || typeof window.navio.sitePopupsSet !== 'function') return;
+        try {
+          const r = await window.navio.sitePopupsSet(o, true);
+          if (r && r.ok) {
+            popupBlockedBtn.hidden = true;
+            delete popupBlockedBtn.dataset.origin;
+            _showAppToast('Pop-ups allowed for this site', 'success');
+          } else {
+            _showAppToast('Could not save site permission', 'error');
+          }
+        } catch {
+          _showAppToast('Could not save site permission', 'error');
+        }
+      });
+    }
+
     urlInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -581,6 +610,11 @@ class NavioApp {
   }
 
   updateUrlBar(url) {
+    const popupChip = document.getElementById('url-popup-blocked');
+    if (popupChip) {
+      popupChip.hidden = true;
+      delete popupChip.dataset.origin;
+    }
     const urlInput = document.getElementById('url-input');
     const sslIndicator = document.getElementById('url-ssl');
     const incog =

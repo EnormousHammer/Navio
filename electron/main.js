@@ -8,7 +8,8 @@ const { NAVIO_PARTITION_INCOGNITO } = require('./navio-partitions');
 const { clearRendererCodeCachesIfDev } = require('./clear-code-cache-dev');
 const { resolveTranslateTargetLang } = require('./translate-locale');
 const { createStore } = require('./navio-store');
-const { setupSessionInfrastructure } = require('./session-setup');
+const { setupSessionInfrastructure, recordNavioPopupBlocked } = require('./session-setup');
+const sitePerms = require('./site-permissions');
 const { loadConfig, saveConfig } = require('./config-store');
 const { registerBookmarksIpc } = require('./bookmarks-ipc');
 const { registerHistoryIpc } = require('./history-ipc');
@@ -675,6 +676,16 @@ function buildActionFixMessages(originalMessages, brokenResponse) {
   ];
 }
 
+function navioOpenerOriginFromGuest(guestContents) {
+  try {
+    const u = (guestContents && guestContents.getURL && guestContents.getURL()) || '';
+    if (/^https?:/i.test(u)) return new URL(u).origin;
+  } catch {
+    /* ignore */
+  }
+  return '';
+}
+
 /** Parse width= / height= from window.open(..., 'features') for popup heuristics. */
 function navioPopupDimsFromFeatures(feat) {
   const f = typeof feat === 'string' ? feat : '';
@@ -712,17 +723,50 @@ function bindNavioGuestWindowOpenOnce(guestContents) {
     }
     const cfg = loadConfig();
     const { width, height } = navioPopupDimsFromFeatures(details && details.features);
+    const openerOrigin = navioOpenerOriginFromGuest(guestContents);
+    let siteAllowsPopups = false;
+    try {
+      siteAllowsPopups =
+        !!openerOrigin && sitePerms.get(app.getPath('userData'), openerOrigin, 'popups') === true;
+    } catch {
+      siteAllowsPopups = false;
+    }
     const block = shouldBlockWebPopup({
       url,
       disposition: (details && details.disposition) || 'default',
       optionsWidth: width,
       optionsHeight: height,
+      features: (details && details.features) || '',
+      hasPostBody: !!(details && details.postBody),
+      siteAllowsPopups,
       cfg: {
         adBlockEnabled: cfg.adBlockEnabled !== false,
+        popupBlockerEnabled: cfg.popupBlockerEnabled !== false,
         adStrictPopupBlock: cfg.adStrictPopupBlock !== false
       }
     });
-    if (block) return { action: 'deny' };
+    if (block) {
+      recordNavioPopupBlocked();
+      try {
+        const win = mainWindow;
+        if (win && typeof win.isDestroyed === 'function' && !win.isDestroyed()) {
+          win.webContents.send('navio-popup-blocked', {
+            blockedUrl: url,
+            openerOrigin,
+            openerUrl: (() => {
+              try {
+                return guestContents.getURL() || '';
+              } catch {
+                return '';
+              }
+            })()
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+      return { action: 'deny' };
+    }
 
     let incognito = false;
     try {

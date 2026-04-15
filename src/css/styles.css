@@ -1037,6 +1037,28 @@ body.navio-incognito-active .url-bar-container {
 
 .url-icon { color: var(--text-tertiary); flex-shrink: 0; }
 
+.url-popup-blocked {
+  display: none;
+  align-items: center;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 2px 8px;
+  max-width: 120px;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--warning, #f59e0b);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.url-popup-blocked:hover { filter: brightness(1.08); }
+.url-popup-blocked:not([hidden]) { display: inline-flex; }
+
 #url-input {
   flex: 1;
   border: none;

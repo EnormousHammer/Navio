@@ -78,6 +78,7 @@
         <div class="url-bar-container" style="position:relative">
           <div class="url-bar">
             <svg class="url-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <button type="button" id="url-popup-blocked" class="url-popup-blocked" hidden title="Pop-up was blocked — click to allow for this site">Pop-up blocked</button>
             <input type="text" id="url-input" placeholder="Search, URL, or ask a question…" spellcheck="false" autocomplete="off">
             <button class="url-ai-hint" id="url-ai-hint" title="Ask AI (detected a question — Shift+Enter to search web instead)">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
@@ -1146,17 +1147,22 @@
 
           <div class="settings-panel" id="settings-panel-privacy" role="tabpanel">
             <div class="settings-section">
-              <h3>Ad &amp; Tracker Blocker</h3>
+              <h3>Pop-ups &amp; ads</h3>
               <label class="setting-toggle-row">
+                <input type="checkbox" id="setting-popup-blocker" checked>
+                <span>Block pop-ups (recommended)</span>
+              </label>
+              <p class="settings-inline-hint" style="margin-top:4px">Like Chrome or Brave: stops script-driven and chrome-stripped windows. Forms that open a new tab and sign-in flows are allowed. You can allow a site from the address bar when Navio blocks a pop-up.</p>
+              <label class="setting-toggle-row" style="margin-top:10px">
                 <input type="checkbox" id="setting-ad-block" checked>
                 <span>Block ads and trackers</span>
               </label>
               <label class="setting-toggle-row" style="margin-top:10px">
                 <input type="checkbox" id="setting-ad-strict-popup" checked>
-                <span>Strict pop-up blocking</span>
+                <span>Strict size rules for pop-ups</span>
               </label>
               <p class="settings-inline-hint" id="ad-block-stats-hint">Blocks requests and ad pop-up windows from known ad networks, tracking pixels, and data brokers.</p>
-              <p class="settings-inline-hint" style="margin-top:6px">Strict mode also closes small or empty script pop-ups (common for ads). Turn off if a site’s sign-in pop-up is blocked — then use the site’s “open in same tab” option if available.</p>
+              <p class="settings-inline-hint" style="margin-top:6px">Strict mode also targets small or empty script pop-ups (common for ads). Turn off if a rare sign-in window is blocked.</p>
             </div>
             <div class="settings-section">
               <h3>Your data</h3>

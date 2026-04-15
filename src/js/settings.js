@@ -76,6 +76,7 @@ class SettingsManagerClass {
       ledgerStatus: document.getElementById('ledger-export-status'),
       importScan: document.getElementById('btn-settings-import-scan'),
       importScanStatus: document.getElementById('settings-import-scan-status'),
+      popupBlocker: document.getElementById('setting-popup-blocker'),
       adBlock: document.getElementById('setting-ad-block'),
       adStrictPopup: document.getElementById('setting-ad-strict-popup'),
       adBlockStats: document.getElementById('ad-block-stats-hint'),
@@ -374,10 +375,11 @@ class SettingsManagerClass {
     if (this.elements.syncEnabled) this.elements.syncEnabled.checked = !!this.config.syncEnabled;
     if (this.elements.extensionsAI) this.elements.extensionsAI.checked = !!this.config.extensionsAllowAI;
     if (this.elements.formAutofill) this.elements.formAutofill.checked = this.config.formAutofillAssist !== false;
+    if (this.elements.popupBlocker) this.elements.popupBlocker.checked = this.config.popupBlockerEnabled !== false;
     if (this.elements.adBlock) this.elements.adBlock.checked = this.config.adBlockEnabled !== false;
     if (this.elements.adStrictPopup) {
       this.elements.adStrictPopup.checked = this.config.adStrictPopupBlock !== false;
-      this.elements.adStrictPopup.disabled = !!(this.elements.adBlock && !this.elements.adBlock.checked);
+      this.elements.adStrictPopup.disabled = !!(this.elements.popupBlocker && !this.elements.popupBlocker.checked);
     }
 
     this.elements.provider.value = this.config.aiProvider || 'openai';
@@ -578,14 +580,22 @@ class SettingsManagerClass {
     this._refreshProfilesList();
 
     // Live ad-blocker toggle (takes effect immediately without Save)
+    if (this.elements.popupBlocker && !this.elements.popupBlocker._navioPopupBound) {
+      this.elements.popupBlocker._navioPopupBound = true;
+      this.elements.popupBlocker.addEventListener('change', async () => {
+        const on = this.elements.popupBlocker.checked;
+        await window.navio.saveConfig({ popupBlockerEnabled: on });
+        if (this.elements.adStrictPopup) {
+          this.elements.adStrictPopup.disabled = !on;
+        }
+        this._refreshAdBlockStats();
+      });
+    }
     if (this.elements.adBlock && !this.elements.adBlock._navioAdBlockBound) {
       this.elements.adBlock._navioAdBlockBound = true;
       this.elements.adBlock.addEventListener('change', async () => {
         const enabled = this.elements.adBlock.checked;
         await window.navio.setAdBlocker(enabled);
-        if (this.elements.adStrictPopup) {
-          this.elements.adStrictPopup.disabled = !enabled;
-        }
         this._refreshAdBlockStats();
       });
     }
@@ -1142,6 +1152,7 @@ class SettingsManagerClass {
       syncEnabled: !!(this.elements.syncEnabled && this.elements.syncEnabled.checked),
       extensionsAllowAI: !!(this.elements.extensionsAI && this.elements.extensionsAI.checked),
       formAutofillAssist: !!(this.elements.formAutofill && this.elements.formAutofill.checked),
+      popupBlockerEnabled: !!(this.elements.popupBlocker && this.elements.popupBlocker.checked),
       adBlockEnabled: !!(this.elements.adBlock && this.elements.adBlock.checked),
       adStrictPopupBlock: !!(this.elements.adStrictPopup && this.elements.adStrictPopup.checked),
       aiProvider: this.elements.provider.value,
