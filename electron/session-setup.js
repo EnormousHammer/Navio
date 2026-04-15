@@ -424,22 +424,26 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
     popupsBlocked: adPopupBlockedCount
   }));
 
-  function openMainDevTools() {
-    getMainWindow()?.webContents.openDevTools({ mode: 'detach' });
+  /** F12 / Ctrl+Shift+I: DevTools for the active page tab (guest webview), not the shell UI. */
+  function openActiveTabDevToolsShortcut() {
+    getMainWindow()?.webContents.send('shortcut', 'devtools-active-tab');
   }
   try {
-    const f12Ok = globalShortcut.register('F12', openMainDevTools);
+    const f12Ok = globalShortcut.register('F12', openActiveTabDevToolsShortcut);
     if (!f12Ok) {
-      // F12 is often taken by GPU/game overlays or other apps on Windows.
-      const altOk = globalShortcut.register('CommandOrControl+Shift+I', openMainDevTools);
-      if (altOk) {
-        console.debug('[navio] F12 unavailable for global DevTools; using Ctrl+Shift+I (Cmd+Shift+I on macOS)');
-      } else {
-        console.warn('[navio] DevTools global shortcuts unavailable (F12 and Ctrl+Shift+I). Toggle DevTools from the menu if present.');
-      }
+      console.debug('[navio] F12 unavailable (often claimed by GPU overlays); Ctrl+Shift+I still opens tab DevTools.');
     }
   } catch (e) {
-    console.warn('[navio] globalShortcut register error (DevTools)', e.message);
+    console.warn('[navio] globalShortcut register error (F12 → tab DevTools)', e.message);
+  }
+
+  function sendShortcut(action) {
+    getMainWindow()?.webContents.send('shortcut', action);
+  }
+  try {
+    globalShortcut.register('F5', () => sendShortcut('reload'));
+  } catch (e) {
+    console.warn('[navio] globalShortcut register error (F5 → reload)', e.message);
   }
 
   function regShortcut(accelerator, action) {
@@ -458,6 +462,7 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   regShortcut('CommandOrControl+T', 'new-tab');
   regShortcut('CommandOrControl+Shift+N', 'new-private-tab');
   regShortcut('CommandOrControl+W', 'close-tab');
+  regShortcut('CommandOrControl+Shift+T', 'reopen-last-tab');
   regShortcut('CommandOrControl+L', 'focus-url');
   regShortcut('CommandOrControl+Shift+A', 'toggle-assistant');
   regShortcut('CommandOrControl+Shift+C', 'toggle-connectors');
@@ -467,6 +472,22 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   regShortcut('CommandOrControl+Shift+O', 'tab-search');
   regShortcut('CommandOrControl+Shift+E', 'tab-search');
   regShortcut('CommandOrControl+Shift+B', 'bookmarks-panel');
+  regShortcut('CommandOrControl+Shift+I', 'devtools-active-tab');
+
+  regShortcut('CommandOrControl+R', 'reload');
+  regShortcut('CommandOrControl+Shift+R', 'hard-reload');
+
+  regShortcut('Alt+Left', 'go-back');
+  regShortcut('Alt+Right', 'go-forward');
+
+  regShortcut('CommandOrControl+Tab', 'next-tab');
+  regShortcut('CommandOrControl+Shift+Tab', 'prev-tab');
+  regShortcut('CommandOrControl+PageDown', 'next-tab');
+  regShortcut('CommandOrControl+PageUp', 'prev-tab');
+
+  for (let i = 1; i <= 9; i++) {
+    regShortcut(`CommandOrControl+${i}`, `tab-${i}`);
+  }
 }
 
 module.exports = { setupSessionInfrastructure };

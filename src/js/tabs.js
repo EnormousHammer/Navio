@@ -17,6 +17,9 @@ class TabManagerClass {
     this._groupCounter = 0;
     this._GROUP_COLORS = ['#06b6d4','#8b5cf6','#22c55e','#ef4444','#f97316','#eab308','#ec4899'];
 
+    /** Recent closed tabs for Ctrl+Shift+T (Chrome-style). */
+    this._recentlyClosed = [];
+
     this.tabListEl = document.getElementById('tab-list');
     this.browserContainer = document.getElementById('browser-container');
     this.newTabPage = document.getElementById('new-tab-page');
@@ -546,6 +549,12 @@ class TabManagerClass {
     // Cancel any pending passive-memory timer so it doesn't fire on a dead tab
     if (tab._memTimer) { clearTimeout(tab._memTimer); tab._memTimer = null; }
 
+    const u = (tab.url || '').trim();
+    if (u.startsWith('http')) {
+      this._recentlyClosed.unshift({ url: u, incognito: !!tab.incognito });
+      if (this._recentlyClosed.length > 15) this._recentlyClosed.length = 15;
+    }
+
     // Remove webview from DOM
     if (tab.webview && tab.webview.parentNode) {
       tab.webview.parentNode.removeChild(tab.webview);
@@ -586,6 +595,57 @@ class TabManagerClass {
   getActiveWebview() {
     const tab = this.getActiveTab();
     return tab ? tab.webview : null;
+  }
+
+  /** Normal reload, or hard reload (bypass cache) when supported by the webview. */
+  reloadActive(ignoreCache = false) {
+    const wv = this.getActiveWebview();
+    if (!wv) return;
+    try {
+      if (ignoreCache && typeof wv.reloadIgnoringCache === 'function') {
+        wv.reloadIgnoringCache();
+      } else {
+        wv.reload();
+      }
+    } catch {
+      try {
+        wv.reload();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  switchToAdjacentTab(delta) {
+    if (!this.tabs.length) return;
+    const idx = this.tabs.findIndex((t) => t.id === this.activeTabId);
+    const cur = idx < 0 ? 0 : idx;
+    const len = this.tabs.length;
+    const next = (cur + delta + len * 10) % len;
+    this.switchToTab(this.tabs[next].id);
+  }
+
+  /** `n` 1–8: switch to that tab index; `9`: last tab (Chrome-style). */
+  switchToTabOrdinal(n) {
+    if (!this.tabs.length || n < 1 || n > 9) return;
+    if (n === 9) {
+      this.switchToTab(this.tabs[this.tabs.length - 1].id);
+      return;
+    }
+    const i = n - 1;
+    if (i < this.tabs.length) {
+      this.switchToTab(this.tabs[i].id);
+    }
+  }
+
+  reopenLastClosedTab() {
+    while (this._recentlyClosed.length) {
+      const rec = this._recentlyClosed.shift();
+      if (rec && rec.url && rec.url.startsWith('http')) {
+        this.createTab(rec.url, { incognito: !!rec.incognito });
+        return;
+      }
+    }
   }
 
   showNewTabPage() {

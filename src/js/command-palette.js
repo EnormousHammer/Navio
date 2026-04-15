@@ -81,7 +81,10 @@ class CommandPaletteClass {
         label: 'New private tab',
         run: () => TabManager.createTab(null, { incognito: true })
       },
+      { id: 'reload', label: 'Reload page (Ctrl+R)', run: () => TabManager.reloadActive(false) },
+      { id: 'hard-reload', label: 'Hard reload — empty cache (Ctrl+Shift+R)', run: () => TabManager.reloadActive(true) },
       { id: 'close-tab', label: 'Close active tab', run: () => TabManager.closeActiveTab() },
+      { id: 'reopen-last-tab', label: 'Reopen last closed tab (Ctrl+Shift+T)', run: () => TabManager.reopenLastClosedTab() },
       { id: 'focus-url', label: 'Focus address bar', run: () => document.getElementById('url-input').focus() },
       { id: 'assistant', label: 'Toggle Navio AI', run: () => AssistantManager.toggle() },
       { id: 'connectors', label: 'Open Connectors Hub', run: () => ConnectorsManager.toggleHub?.() },

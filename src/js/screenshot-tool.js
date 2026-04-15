@@ -32,6 +32,9 @@ class ScreenshotToolClass {
   async openDevtools() {
     const wv = TabManager.getActiveWebview();
     if (!wv) return;
+    const now = Date.now();
+    if (this._lastOpenDevtoolsAt && now - this._lastOpenDevtoolsAt < 400) return;
+    this._lastOpenDevtoolsAt = now;
     try {
       await window.navio.openDevtoolsActive(wv.getWebContentsId());
     } catch (e) {

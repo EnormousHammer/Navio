@@ -381,7 +381,7 @@
     }
 
     document.addEventListener('keydown', (e) => {
-      if (e.ctrlKey && e.key === 'f') {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
         e.preventDefault();
         openFind();
       }
@@ -626,42 +626,6 @@
     close && close.addEventListener('click', () => (overlay.hidden = true));
   }
 
-  function bindGlobalShortcuts() {
-    if (!window.navio.onShortcut) return;
-    window.navio.onShortcut((action) => {
-      if (action === 'history-panel') {
-        const overlay = document.getElementById('history-overlay');
-        const q = document.getElementById('history-overlay-search');
-        if (overlay) {
-          overlay.hidden = false;
-          if (q) q.value = '';
-          fillHistoryOverlayList('');
-          if (q) q.focus();
-        }
-      }
-      if (action === 'tab-search') {
-        const overlay = document.getElementById('tab-search-overlay');
-        const input = document.getElementById('tab-search-input');
-        if (overlay && input) {
-          overlay.hidden = false;
-          input.value = '';
-          input.dispatchEvent(new Event('input'));
-          input.focus();
-        }
-      }
-      if (action === 'bookmarks-panel') {
-        const overlay = document.getElementById('bookmarks-overlay');
-        if (overlay) {
-          overlay.hidden = false;
-          const inp = document.getElementById('bookmarks-overlay-search');
-          if (inp) inp.value = '';
-          fillBookmarksOverlayList('');
-          inp && inp.focus();
-        }
-      }
-    });
-  }
-
   function bindBookmarkStar() {
     const star = document.getElementById('btn-bookmark-page');
     if (!star) return;
@@ -765,7 +729,6 @@
     bindHistoryPanel();
     bindBookmarksOverlay();
     bindTabSearch();
-    bindGlobalShortcuts();
     bindBookmarkStar();
     bindTabStripResize();
     refreshExtensionToolbar();

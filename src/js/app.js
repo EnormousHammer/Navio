@@ -350,8 +350,33 @@ class NavioApp {
         case 'close-tab':
           runDedupedShortcut('close-tab', () => TabManager.closeActiveTab());
           break;
+        case 'reopen-last-tab':
+          TabManager.reopenLastClosedTab();
+          break;
         case 'focus-url':
           runDedupedShortcut('focus-url', () => document.getElementById('url-input').focus());
+          break;
+        case 'history-panel':
+          window.__navioOpenHistoryOverlay?.();
+          break;
+        case 'bookmarks-panel':
+          window.__navioOpenBookmarksOverlay?.();
+          break;
+        case 'tab-search': {
+          const overlay = document.getElementById('tab-search-overlay');
+          const input = document.getElementById('tab-search-input');
+          if (overlay && input) {
+            overlay.hidden = false;
+            input.value = '';
+            input.dispatchEvent(new Event('input'));
+            input.focus();
+          }
+          break;
+        }
+        case 'devtools-active-tab':
+          if (typeof ScreenshotTool !== 'undefined' && ScreenshotTool.openDevtools) {
+            ScreenshotTool.openDevtools();
+          }
           break;
         case 'toggle-assistant':
           AssistantManager.toggle();
@@ -366,14 +391,95 @@ class NavioApp {
             CommandPalette.toggle();
           }
           break;
+        case 'reload':
+          TabManager.reloadActive(false);
+          break;
+        case 'hard-reload':
+          TabManager.reloadActive(true);
+          break;
+        case 'go-back': {
+          const wvb = TabManager.getActiveWebview();
+          if (wvb && wvb.canGoBack()) wvb.goBack();
+          break;
+        }
+        case 'go-forward': {
+          const wvf = TabManager.getActiveWebview();
+          if (wvf && wvf.canGoForward()) wvf.goForward();
+          break;
+        }
+        case 'next-tab':
+          TabManager.switchToAdjacentTab(1);
+          break;
+        case 'prev-tab':
+          TabManager.switchToAdjacentTab(-1);
+          break;
+        default:
+          if (/^tab-[1-9]$/.test(action)) {
+            TabManager.switchToTabOrdinal(parseInt(action.slice(4), 10));
+          }
+          break;
       }
     });
 
     // Fallback when the shell has focus (and to support Cmd on macOS in the UI process).
     // Deduped with onShortcut because globalShortcut and keydown can both fire.
     document.addEventListener('keydown', (e) => {
+      // F12: page DevTools (matches globalShortcut; dedupe rapid double-fire).
+      if ((e.key || '') === 'F12') {
+        e.preventDefault();
+        runDedupedShortcut('devtools-active-tab', () => {
+          if (typeof ScreenshotTool !== 'undefined' && ScreenshotTool.openDevtools) {
+            ScreenshotTool.openDevtools();
+          }
+        });
+        return;
+      }
+
+      if ((e.key || '') === 'F5') {
+        e.preventDefault();
+        TabManager.reloadActive(false);
+        return;
+      }
+
+      // Alt+Left / Alt+Right: history navigation (same as Chrome).
+      if (e.altKey && !e.ctrlKey && !e.metaKey) {
+        const ak = e.key;
+        if (ak === 'ArrowLeft' || ak === 'Left') {
+          e.preventDefault();
+          const wv = TabManager.getActiveWebview();
+          if (wv && wv.canGoBack()) wv.goBack();
+          return;
+        }
+        if (ak === 'ArrowRight' || ak === 'Right') {
+          e.preventDefault();
+          const wv = TabManager.getActiveWebview();
+          if (wv && wv.canGoForward()) wv.goForward();
+          return;
+        }
+      }
+
       const mod = e.ctrlKey || e.metaKey;
-      if (!mod || e.altKey) return;
+      if (!mod) return;
+
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        if (e.shiftKey) TabManager.switchToAdjacentTab(-1);
+        else TabManager.switchToAdjacentTab(1);
+        return;
+      }
+
+      if (!e.shiftKey && (e.key === 'PageDown' || e.code === 'PageDown')) {
+        e.preventDefault();
+        TabManager.switchToAdjacentTab(1);
+        return;
+      }
+      if (!e.shiftKey && (e.key === 'PageUp' || e.code === 'PageUp')) {
+        e.preventDefault();
+        TabManager.switchToAdjacentTab(-1);
+        return;
+      }
+
+      if (e.altKey) return;
       const k = (e.key || '').toLowerCase();
       if (k === 't' && !e.shiftKey) {
         e.preventDefault();
@@ -383,6 +489,10 @@ class NavioApp {
         e.preventDefault();
         runDedupedShortcut('new-private-tab', () => TabManager.createTab(null, { incognito: true }));
       }
+      if (k === 't' && e.shiftKey) {
+        e.preventDefault();
+        TabManager.reopenLastClosedTab();
+      }
       if (k === 'w' && !e.shiftKey) {
         e.preventDefault();
         runDedupedShortcut('close-tab', () => TabManager.closeActiveTab());
@@ -390,6 +500,41 @@ class NavioApp {
       if (k === 'l' && !e.shiftKey) {
         e.preventDefault();
         runDedupedShortcut('focus-url', () => document.getElementById('url-input').focus());
+      }
+      if (k === 'r') {
+        e.preventDefault();
+        TabManager.reloadActive(!!e.shiftKey);
+      }
+      if (!e.shiftKey && /^[1-9]$/.test(e.key)) {
+        e.preventDefault();
+        TabManager.switchToTabOrdinal(parseInt(e.key, 10));
+      }
+      if (k === 'h' && !e.shiftKey) {
+        e.preventDefault();
+        window.__navioOpenHistoryOverlay?.();
+      }
+      if (k === 'i' && e.shiftKey) {
+        e.preventDefault();
+        runDedupedShortcut('devtools-active-tab', () => {
+          if (typeof ScreenshotTool !== 'undefined' && ScreenshotTool.openDevtools) {
+            ScreenshotTool.openDevtools();
+          }
+        });
+      }
+      if (k === 'b' && e.shiftKey) {
+        e.preventDefault();
+        window.__navioOpenBookmarksOverlay?.();
+      }
+      if (k === 'o' && e.shiftKey) {
+        e.preventDefault();
+        const overlay = document.getElementById('tab-search-overlay');
+        const input = document.getElementById('tab-search-input');
+        if (overlay && input) {
+          overlay.hidden = false;
+          input.value = '';
+          input.dispatchEvent(new Event('input'));
+          input.focus();
+        }
       }
     });
   }
