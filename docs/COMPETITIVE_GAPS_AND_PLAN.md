@@ -66,9 +66,9 @@ These are **epistemic** limits (not just missing buttons):
 
 ### 2.5 Internal consistency / tech debt (worth fixing in-plan)
 
-- **ROADMAP Phase 4** still describes MCP as “stub”; **`electron/navio-mcp.js` implements the official SDK** — docs should be reconciled.
-- **Settings MCP hint** (`src/js/settings.js`) calls `mcpConfig({ op: 'list-tools-stub' })`; IPC handler in `navio-mcp.js` exposes **`list-tools`**, not `list-tools-stub` — hint likely wrong or always empty.
-- **`src/index.html`** MCP copy still says “Stub host… Full MCP SDK wiring is a future release” — misleading given current code.
+- **ROADMAP Phase 4** — reconciled with real MCP SDK wiring (see `docs/ROADMAP.md`).
+- **Settings MCP hint** — uses `list-tools` + `get`; shows tool count when MCP is enabled.
+- **`src/index.html`** MCP copy — updated to describe SDK-based integration (not a stub).
 
 ---
 
@@ -96,10 +96,10 @@ Principles: **minimal invasive changes**, preserve ADR-002 email MVP (no silent 
 
 | Task | Exit criterion |
 |------|----------------|
-| **Explicit toggles** in assistant panel: “Include web search (Perplexity)” / “Include mail context” when connected — overrides fragile regex-only routing for power users. | User can force connector path regardless of wording. |
-| **Improve intent routing:** lightweight classifier or expanded heuristics + fallback (“no connector fired — did you mean to search the web?”). | Fewer silent misses on Gmail/Perplexity queries. |
-| **Optional “tab digest” mode:** user-triggered or setting to attach **one-line summaries** or first N chars per tab (cap tokens), not default-on. | Multi-tab research feels closer to Comet/Dia demos; receipt shows what was included. |
-| **Citations UX** for Perplexity path: render sources as clickable list in assistant bubble. | Citations visible without reading raw markdown. |
+| **Explicit toggles** in assistant panel: “Include web search (Perplexity)” / “Include mail context” when connected — overrides fragile regex-only routing for power users. | **Done:** Web/Mail selects (auto / always / off) + persist in `navio-config.json`. |
+| **Improve intent routing:** lightweight classifier or expanded heuristics + fallback (“no connector fired — did you mean to search the web?”). | Partially addressed by toggles; classifier optional. |
+| **Optional “tab digest” mode:** user-triggered or setting to attach **one-line summaries** or first N chars per tab (cap tokens), not default-on. | **Done:** “Tab digest” checkbox (off by default); capped excerpts per open tab. |
+| **Citations UX** for Perplexity path: render sources as clickable list in assistant bubble. | **Done:** “Sources” chips under assistant replies when Perplexity returns citations. |
 
 **Dependencies:** Phase A optional but helps MCP users.
 

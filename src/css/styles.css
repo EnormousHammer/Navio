@@ -6811,6 +6811,85 @@ body.onboarding-active #app {
   background: var(--bg-deep);
 }
 
+.assistant-connector-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 6px 12px 8px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.assistant-connector-select {
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  max-width: 118px;
+}
+
+.assistant-tab-digest-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  user-select: none;
+  margin-left: auto;
+}
+
+.assistant-tab-digest-label input {
+  accent-color: var(--accent);
+}
+
+.navio-msg-citations {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.navio-msg-citations-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+}
+
+.navio-msg-citations-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+a.navio-citation-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+  background: var(--bg-surface);
+  color: var(--accent);
+  text-decoration: none;
+  max-width: 100%;
+  word-break: break-all;
+}
+
+a.navio-citation-chip:hover {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+
 /* Custom scope pill that wraps the native <select> */
 .scope-pill-wrap {
   display: inline-flex;

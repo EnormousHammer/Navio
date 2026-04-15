@@ -61,6 +61,12 @@ const DEFAULT_CONFIG = {
   /** Max agent loop iterations (50-500). Higher = bulk Gmail/API jobs less likely to stop early. */
   aiAgentMaxToolSteps: 200,
   aiUseToolCalling: true,
+  /** Perplexity web search in assistant: auto = keyword intent, always = every message (if key), never = off */
+  assistantConnectorWeb: 'auto',
+  /** Gmail (and mail connector prefetch): auto = natural intent, always = include inbox context when connected, never = off */
+  assistantConnectorMail: 'auto',
+  /** When true, assistant receives short text excerpts from each open tab (capped). */
+  assistantTabDigest: false,
   /**
    * New tab page — bottom SPORTS ticker: curated streamed.pk slugs (id = /matches/{id}).
    * Edit in navio-config.json to add/remove/reorder. Empty array [] falls back to app defaults in ntp.js.

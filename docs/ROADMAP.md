@@ -46,8 +46,9 @@ Phases match the approved AI-native browser plan. **Exit criteria** must pass be
 
 **Exit criteria**
 
-- [x] MCP panel in settings; enable/disable; stub broker logs tool intent.
-- [x] At least one documented path to attach a real MCP server (future: SDK).
+- [x] MCP panel in settings; enable/disable; servers loaded from config on startup.
+- [x] Real `@modelcontextprotocol/sdk` integration (stdio + SSE); `mcp-config` IPC lists tools and proxies calls in the agent loop.
+- [x] Settings hint uses `list-tools` and reflects connected tool count.
 
 ---
 

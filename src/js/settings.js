@@ -515,9 +515,18 @@ class SettingsManagerClass {
     const el = this.elements.mcpToolsHint;
     if (!el) return;
     try {
-      const r = await window.navio.mcpConfig({ op: 'list-tools-stub' });
-      const n = (r.tools || []).length;
-      el.textContent = n ? `Stub tools visible: ${n}` : 'Enable MCP to list stub tools.';
+      const list = await window.navio.mcpConfig({ op: 'list-tools' });
+      const g = await window.navio.mcpConfig({ op: 'get' });
+      const n = (list.tools || []).length;
+      const srv = Array.isArray(g?.servers) ? g.servers.length : 0;
+      if (!g?.enabled) {
+        el.textContent = 'MCP is off. Enable above and configure servers (stdio/SSE) to expose tools to the agent.';
+        return;
+      }
+      el.textContent =
+        n > 0
+          ? `${n} MCP tool(s) loaded · ${srv} server(s) in config (@modelcontextprotocol/sdk).`
+          : 'MCP enabled — no tools yet. Check server command/URL and that the process starts correctly.';
     } catch {
       el.textContent = '';
     }
@@ -1188,6 +1197,7 @@ class SettingsManagerClass {
 
     if (typeof AssistantManager !== 'undefined') {
       AssistantManager.syncScopeFromConfig();
+      AssistantManager.syncConnectorTogglesFromConfig();
     }
 
     this.close(false);

@@ -567,6 +567,24 @@
         </label>
       </div>
 
+      <div class="assistant-connector-row" title="Control live web (Perplexity) and mail context without relying on phrasing">
+        <label class="sr-only" for="assistant-connector-web">Web search</label>
+        <select id="assistant-connector-web" class="assistant-connector-select">
+          <option value="auto">Web: auto</option>
+          <option value="always">Web: always</option>
+          <option value="never">Web: off</option>
+        </select>
+        <label class="sr-only" for="assistant-connector-mail">Mail context</label>
+        <select id="assistant-connector-mail" class="assistant-connector-select">
+          <option value="auto">Mail: auto</option>
+          <option value="always">Mail: always</option>
+          <option value="never">Mail: off</option>
+        </select>
+        <label class="assistant-tab-digest-label" title="Attach a short text excerpt from each open tab (slower)">
+          <input type="checkbox" id="assistant-tab-digest-toggle">
+          <span>Tab digest</span>
+        </label>
+      </div>
 
       <details id="assistant-agent-log" class="assistant-agent-log" hidden>
         <summary>Agent log <span class="assistant-agent-log-summary">0 step(s)</span></summary>
@@ -1207,7 +1225,7 @@
 
             <div class="settings-section">
               <h3>Model Context Protocol (MCP)</h3>
-              <p class="settings-inline-hint">Stub host: enable to surface tool placeholders and ledger entries. Full MCP SDK wiring is a future release.</p>
+              <p class="settings-inline-hint">Uses the official <code>@modelcontextprotocol/sdk</code> (stdio and SSE). Add server entries in <code>navio-config.json</code> or via your workflow; when enabled, discovered tools join the AI agent loop.</p>
               <label class="setting-toggle-row">
                 <input type="checkbox" id="setting-mcp-enabled">
                 <span>Enable MCP integration (experimental)</span>

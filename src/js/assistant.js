@@ -142,6 +142,8 @@ class AssistantManagerClass {
     this._lastProactiveUrlKey = '';
     /** When set, agent activity + final reply render in the full-page chat webview. */
     this._guestChatWebview = null;
+    /** URLs from last Perplexity connector call this turn (for citation chips in the assistant bubble). */
+    this._pendingConnectorCitations = null;
 
     // Minimal placeholder — the authoritative prompt is loaded from
     // navio-system-prompt.txt (or -legacy.txt) and injected by
@@ -180,6 +182,21 @@ class AssistantManagerClass {
     if (this.scopeSelect) {
       this.scopeSelect.addEventListener('change', () => this.persistScopeFromUI());
     }
+
+    const webSel = document.getElementById('assistant-connector-web');
+    const mailSel = document.getElementById('assistant-connector-mail');
+    const digestCb = document.getElementById('assistant-tab-digest-toggle');
+    const persistConnector = async () => {
+      const cfg = await window.navio.getConfig();
+      if (webSel) cfg.assistantConnectorWeb = webSel.value || 'auto';
+      if (mailSel) cfg.assistantConnectorMail = mailSel.value || 'auto';
+      if (digestCb) cfg.assistantTabDigest = !!digestCb.checked;
+      await window.navio.saveConfig(cfg);
+      if (typeof App !== 'undefined') App.config = cfg;
+    };
+    if (webSel) webSel.addEventListener('change', () => persistConnector());
+    if (mailSel) mailSel.addEventListener('change', () => persistConnector());
+    if (digestCb) digestCb.addEventListener('change', () => persistConnector());
 
     const stepToggle = document.getElementById('assistant-step-mode-toggle');
     if (stepToggle) {
@@ -627,10 +644,34 @@ class AssistantManagerClass {
     this.isOpen = true;
     this.panel.classList.add('open');
     await this.syncScopeFromConfig();
+    await this.syncConnectorTogglesFromConfig();
     if (this.messagesEl && this.messagesEl.children.length === 0) {
       await this._showGreeting();
     }
     setTimeout(() => this.inputEl.focus(), 300);
+  }
+
+  async syncConnectorTogglesFromConfig() {
+    try {
+      const cfg = await window.navio.getConfig();
+      const webSel = document.getElementById('assistant-connector-web');
+      const mailSel = document.getElementById('assistant-connector-mail');
+      const digestCb = document.getElementById('assistant-tab-digest-toggle');
+      const wm = cfg.assistantConnectorWeb || 'auto';
+      const mm = cfg.assistantConnectorMail || 'auto';
+      if (webSel && ['auto', 'always', 'never'].includes(wm)) webSel.value = wm;
+      if (mailSel && ['auto', 'always', 'never'].includes(mm)) mailSel.value = mm;
+      if (digestCb) digestCb.checked = !!cfg.assistantTabDigest;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  _connectorOptsFromConfig(cfg) {
+    return {
+      webMode: cfg.assistantConnectorWeb || 'auto',
+      mailMode: cfg.assistantConnectorMail || 'auto'
+    };
   }
 
   async _showGreeting() {
@@ -941,6 +982,11 @@ class AssistantManagerClass {
       }
     }
 
+    if (!isQuickAction && config.assistantTabDigest && typeof TabManager !== 'undefined') {
+      const digest = await this._buildTabDigestBlock();
+      if (digest) messages.push({ role: 'system', content: digest });
+    }
+
     const graphNote = await window.navio.contextGraph({ op: 'get' });
     const pinned = graphNote.graph?.pinnedTabIds || [];
     if (pinned.length && typeof TabManager !== 'undefined') {
@@ -962,7 +1008,7 @@ class AssistantManagerClass {
 
     // Inject connected service context when the query seems to target them
     if (!isQuickAction && typeof ConnectorsManager !== 'undefined') {
-      const connectorCtx = await this._buildConnectorContext(text);
+      const connectorCtx = await this._buildConnectorContext(text, this._connectorOptsFromConfig(config));
       if (connectorCtx) messages.push({ role: 'system', content: connectorCtx });
     }
 
@@ -1002,7 +1048,12 @@ class AssistantManagerClass {
         if (result.error) {
           this.addMessage('assistant', result.error, 'error');
         } else {
-          this.addMessage('assistant', result.content);
+          const cite =
+            this._pendingConnectorCitations && this._pendingConnectorCitations.length
+              ? { citations: this._pendingConnectorCitations }
+              : null;
+          this.addMessage('assistant', result.content, '', cite);
+          this._pendingConnectorCitations = null;
           this._checkAndShowActionFormatWarning(result.content, this.messagesEl.querySelector('.assistant-message:last-of-type'));
           if (userHistory) {
             this.conversationHistory.push(
@@ -1129,7 +1180,7 @@ class AssistantManagerClass {
       }
     }
     if (typeof ConnectorsManager !== 'undefined') {
-      const connectorCtx = await this._buildConnectorContext(text);
+      const connectorCtx = await this._buildConnectorContext(text, this._connectorOptsFromConfig(config));
       if (connectorCtx) messages.push({ role: 'system', content: connectorCtx });
     }
     const recentHistory = this.conversationHistory.slice(-40);
@@ -1238,6 +1289,11 @@ class AssistantManagerClass {
       }
     }
 
+    if (config.assistantTabDigest && typeof TabManager !== 'undefined') {
+      const digest = await this._buildTabDigestBlock();
+      if (digest) messages.push({ role: 'system', content: digest });
+    }
+
     // Pinned tabs from context graph
     const graphNote = await window.navio.contextGraph({ op: 'get' });
     const pinned = graphNote.graph?.pinnedTabIds || [];
@@ -1258,7 +1314,7 @@ class AssistantManagerClass {
 
     // Connector context
     if (typeof ConnectorsManager !== 'undefined') {
-      const connectorCtx = await this._buildConnectorContext(text);
+      const connectorCtx = await this._buildConnectorContext(text, this._connectorOptsFromConfig(config));
       if (connectorCtx) messages.push({ role: 'system', content: connectorCtx });
     }
 
@@ -1542,7 +1598,14 @@ class AssistantManagerClass {
       else this.addMessage('assistant', response.error, 'error');
     } else if (response.content) {
       if (guestWv) this._guestDeliver(guestWv, { type: 'assistant', content: response.content });
-      else this.addMessage('assistant', response.content);
+      else {
+        const cite =
+          this._pendingConnectorCitations && this._pendingConnectorCitations.length
+            ? { citations: this._pendingConnectorCitations }
+            : null;
+        this.addMessage('assistant', response.content, '', cite);
+        this._pendingConnectorCitations = null;
+      }
       const userHistory = historyUserLabel || this._historyLabelForAttachments(text);
       this.conversationHistory.push(
         { role: 'user', content: userHistory },
@@ -1645,6 +1708,10 @@ class AssistantManagerClass {
           await this._wireActions(contentEl);
           this._checkAndShowActionFormatWarning(buffer, streamingMsg);
         }
+        if (this._pendingConnectorCitations && this._pendingConnectorCitations.length) {
+          this._appendCitationChips(streamingMsg, this._pendingConnectorCitations);
+        }
+        this._pendingConnectorCitations = null;
       }
       this.conversationHistory.push(
         { role: 'user', content: userHistory },
@@ -1698,7 +1765,12 @@ class AssistantManagerClass {
         if (fallback.error) {
           this.addMessage('assistant', fallback.error || msg, 'error');
         } else {
-          this.addMessage('assistant', fallback.content);
+          const cite =
+            this._pendingConnectorCitations && this._pendingConnectorCitations.length
+              ? { citations: this._pendingConnectorCitations }
+              : null;
+          this.addMessage('assistant', fallback.content, '', cite);
+          this._pendingConnectorCitations = null;
           this._checkAndShowActionFormatWarning(
             fallback.content,
             this.messagesEl.querySelector('.assistant-message:last-of-type')
@@ -1743,7 +1815,61 @@ class AssistantManagerClass {
     }
   }
 
-  addMessage(role, content, type = '') {
+  _appendCitationChips(msgEl, urls) {
+    if (!msgEl || !urls || !urls.length) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'navio-msg-citations';
+    const label = document.createElement('div');
+    label.className = 'navio-msg-citations-label';
+    label.textContent = 'Sources';
+    const row = document.createElement('div');
+    row.className = 'navio-msg-citations-row';
+    let idx = 0;
+    urls.slice(0, 8).forEach((u) => {
+      const raw = String(u).trim();
+      if (!raw) return;
+      idx += 1;
+      const a = document.createElement('a');
+      a.className = 'navio-citation-chip';
+      a.href = raw;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      try {
+        a.textContent = `${idx}. ${new URL(raw).hostname}`;
+      } catch {
+        a.textContent = `${idx}. source`;
+      }
+      row.appendChild(a);
+    });
+    wrap.appendChild(label);
+    wrap.appendChild(row);
+    msgEl.appendChild(wrap);
+  }
+
+  async _buildTabDigestBlock() {
+    if (typeof TabManager === 'undefined' || !TabManager.tabs) return null;
+    const tabs = TabManager.tabs.filter((t) => t.url && !t.url.startsWith('about:')).slice(0, 8);
+    if (!tabs.length) return null;
+    const lines = [];
+    for (let i = 0; i < tabs.length; i++) {
+      const t = tabs[i];
+      if (!t.webview) continue;
+      try {
+        const content = await window.navio.extractPageContent(t.webview.getWebContentsId());
+        if (content && !content.error) {
+          const title = TabManager.getTabDisplayTitle(t) || content.title || t.url;
+          const snippet = (content.text || '').replace(/\s+/g, ' ').trim().slice(0, 400);
+          lines.push(`${i + 1}. **${title}** (${content.url || t.url})\n   ${snippet}`);
+        }
+      } catch {
+        /* skip tab */
+      }
+    }
+    if (!lines.length) return null;
+    return `[Tab digest — ${lines.length} open tab(s); excerpts are truncated for token limits]\n\n${lines.join('\n\n')}`;
+  }
+
+  addMessage(role, content, type = '', meta = null) {
     const msgEl = document.createElement('div');
     msgEl.className = `message ${role}-message${type ? ' message-' + type : ''}`;
 
@@ -1809,6 +1935,9 @@ class AssistantManagerClass {
     }
 
     msgEl.appendChild(contentEl);
+    if (role === 'assistant' && meta && Array.isArray(meta.citations) && meta.citations.length) {
+      this._appendCitationChips(msgEl, meta.citations);
+    }
     this.messagesEl.appendChild(msgEl);
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
   }
@@ -3715,13 +3844,16 @@ ${pageInfo}${snapText}`;
   // Detects which connected services are relevant to the user's query,
   // queries them, and returns a formatted system context block.
 
-  async _buildConnectorContext(text) {
+  async _buildConnectorContext(text, opts = {}) {
+    const webMode = opts.webMode || 'auto';
+    const mailMode = opts.mailMode || 'auto';
     try {
       const connected = ConnectorsManager.getConnectedIntegrations();
       if (connected.length === 0) return null;
 
       // Fresh refs per user turn so subject enrichment only matches this query's messages.
       this._emailRefs.clear();
+      this._pendingConnectorCitations = null;
 
       const results = [];
       const has = (id) => connected.some((c) => c.id === id);
@@ -3730,18 +3862,27 @@ ${pageInfo}${snapText}`;
       const clean = (pattern) => text.replace(pattern, '').replace(/\b(my|the|search|find|in|from|about|show|list|all|open|get|what|are|is|any)\b/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
 
       // ── Perplexity (real-time web search) ──────────────────────────────
-      const webSearchIntent = /\b(search|look up|find out|what is|who is|latest|news|current|today|recent|web)\b/i.test(text);
-      if (has('perplexity') && webSearchIntent) {
-        try {
-          const res = await ConnectorsManager.queryConnector('perplexity', text);
-          if (res?.answer) {
-            results.push(`[Perplexity Web Search]\n${res.answer.slice(0, 1400)}${res.citations?.length ? `\n\nSources: ${res.citations.slice(0, 4).join(', ')}` : ''}`);
-          }
-        } catch (_) {}
+      if (webMode !== 'never' && has('perplexity')) {
+        const webSearchIntent =
+          webMode === 'always' ||
+          /\b(search|look up|find out|what is|who is|latest|news|current|today|recent|web)\b/i.test(text);
+        if (webSearchIntent) {
+          try {
+            const res = await ConnectorsManager.queryConnector('perplexity', text);
+            if (res?.answer) {
+              if (Array.isArray(res.citations) && res.citations.length) {
+                this._pendingConnectorCitations = res.citations.slice(0, 12);
+              }
+              results.push(`[Perplexity Web Search]\n${res.answer.slice(0, 1400)}${res.citations?.length ? `\n\nSources: ${res.citations.slice(0, 4).join(', ')}` : ''}`);
+            }
+          } catch (_) {}
+        }
       }
 
       // ── Gmail ──────────────────────────────────────────────────────────
-      const gmailIntent = navioDetectMailboxIntent(text);
+      let gmailIntent = navioDetectMailboxIntent(text);
+      if (mailMode === 'never') gmailIntent = false;
+      else if (mailMode === 'always' && has('gmail')) gmailIntent = true;
       if (has('gmail') && gmailIntent) {
         const wantsUnread = /\bunread\b/i.test(text);
         const wantsUnreplied =
