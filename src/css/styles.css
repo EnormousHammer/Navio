@@ -616,7 +616,7 @@ body.tabstrip-hidden #app {
   align-items: center;
   background: var(--bg-deep);
   border-bottom: 1px solid var(--border);
-  padding: 0 4px;
+  padding: 0 6px;
   gap: 0;
   overflow: hidden;
   transition: height var(--duration) var(--ease),
@@ -1081,17 +1081,17 @@ body.navio-incognito-active .url-bar-container {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 10px;
+  gap: 8px;
+  padding: 0 8px;
   background: var(--bg-deep);
   border-bottom: 1px solid var(--border);
 }
 
-.nav-controls { display: flex; gap: 2px; }
+.nav-controls { display: flex; gap: 1px; }
 
 .nav-btn {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border: none;
   background: transparent;
   color: var(--text-tertiary);
@@ -1119,7 +1119,7 @@ body.navio-incognito-active .url-bar-container {
 
 .nav-btn.ai-trigger:hover {
   background: var(--accent-glow);
-  box-shadow: var(--shadow-glow);
+  box-shadow: none;
 }
 
 .ai-pulse {
@@ -1137,17 +1137,17 @@ body.navio-incognito-active .url-bar-container {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 34px;
-  padding: 0 14px;
+  height: 32px;
+  padding: 0 12px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
-  transition: all var(--duration) var(--ease);
+  transition: border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease), background var(--duration) var(--ease);
 }
 
 .url-bar:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-glow);
+  border-color: var(--border-accent);
+  box-shadow: 0 0 0 1px var(--accent-glow);
   background: var(--bg-elevated);
 }
 
@@ -1220,7 +1220,13 @@ body.navio-incognito-active .url-bar-container {
 .url-ai-hint:hover { opacity: 0.8; }
 .url-ai-hint.visible { display: inline-flex; }
 
-.nav-actions { display: flex; gap: 2px; }
+.nav-actions {
+  display: flex;
+  gap: 1px;
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
 
 /* ============================================
    Main Content
@@ -7890,14 +7896,14 @@ button:focus-visible,
 /* ── New Tab Page: subtle dot-grid AI pattern ── */
 /* Dark NTP background is handled by .ntp-bg-layer — no ::before override needed */
 
-/* ── URL bar focus: theme-aware inner-glow ── */
+/* ── URL bar focus: restrained rings (cleaner than heavy cyan glow) ── */
 [data-theme="dark"] .url-bar:focus-within {
-  box-shadow: inset 0 0 0 1px rgba(0, 216, 255, 0.26),
-              0 0 20px rgba(0, 216, 255, 0.10);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
 }
 [data-theme="light"] .url-bar:focus-within {
-  box-shadow: 0 0 0 3px rgba(0, 120, 220, 0.14),
-              0 2px 8px rgba(20, 30, 80, 0.08);
+  box-shadow: 0 0 0 2px rgba(0, 120, 220, 0.12);
   border-color: var(--border-accent);
   background: #ffffff;
 }
@@ -9412,50 +9418,64 @@ button:focus-visible,
    Dark + Light mode polished component overrides
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Dark Chrome: titlebar / tabstrip / navbar depth gradient ───────────── */
-[data-theme="dark"] #titlebar {
-  background: linear-gradient(180deg, #0e1626 0%, #0c1220 100%);
-  border-bottom-color: rgba(80,160,255,0.10);
+/* ── Dark Chrome: unified matte strip (Comet/Arc-style — one plane, quiet omnibox) ── */
+[data-theme="dark"] #titlebar,
+[data-theme="dark"] .tab-strip,
+[data-theme="dark"] #navbar {
+  background: #101014;
+  border-bottom: none;
+  box-shadow: none;
 }
 [data-theme="dark"] .tab-strip {
-  background: linear-gradient(180deg, #0a1020 0%, #0c1220 100%);
-  border-bottom-color: rgba(80,160,255,0.10);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.055);
 }
 [data-theme="dark"] #navbar {
-  background: linear-gradient(180deg, #0d1221 0%, #0c1220 100%);
-  border-bottom-color: rgba(80,160,255,0.09);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.055);
 }
 [data-theme="dark"] .tab-item.active {
-  background: rgba(44, 59, 92, 0.85);
+  background: rgba(255, 255, 255, 0.065);
 }
 [data-theme="dark"] .tab-item.active::after {
-  box-shadow: 0 0 10px rgba(0,216,255,0.45);
+  background: rgba(255, 255, 255, 0.42);
+  box-shadow: none;
+  height: 2px;
+  left: 10px;
+  right: 10px;
 }
 [data-theme="dark"] .url-bar {
-  background: rgba(20, 30, 50, 0.75);
-  border-color: rgba(80,160,255,0.13);
+  background: rgba(255, 255, 255, 0.055);
+  border-color: rgba(255, 255, 255, 0.09);
 }
 
-/* ── Light Chrome: titlebar / tabstrip / navbar ─────────────────────────── */
+/* ── Light Chrome: one soft toolbar band + clean pill omnibox ───────────── */
 [data-theme="light"] #titlebar {
   background: #ffffff;
   border-bottom: none;
-  box-shadow: 0 1px 0 rgba(50,70,160,0.09);
+  box-shadow: none;
 }
 [data-theme="light"] .tab-strip {
-  background: #f2f4fb;
+  background: #f3f4f9;
   border-bottom: none;
-  box-shadow: 0 1px 0 rgba(50,70,160,0.08);
+  box-shadow: inset 0 -1px 0 rgba(15, 23, 42, 0.06);
 }
 [data-theme="light"] #navbar {
-  background: #ffffff;
+  background: #f3f4f9;
   border-bottom: none;
-  box-shadow: 0 1px 4px rgba(20,30,80,0.07);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.05);
 }
 [data-theme="light"] .url-bar {
-  background: #f0f2f9;
-  border-color: rgba(50,70,160,0.12);
-  box-shadow: inset 0 1px 3px rgba(20,30,80,0.05);
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.11);
+  box-shadow: none;
+}
+
+[data-theme="dark"] .bookmark-bar {
+  background: #101014;
+  border-bottom-color: rgba(255, 255, 255, 0.055);
+}
+[data-theme="light"] .bookmark-bar {
+  background: #f3f4f9;
+  border-bottom-color: rgba(15, 23, 42, 0.06);
 }
 
 /* ── Light tab items ────────────────────────────────────────────────────── */
@@ -9464,11 +9484,11 @@ button:focus-visible,
 }
 [data-theme="light"] .tab-item.active {
   background: #ffffff;
-  box-shadow: 0 1px 4px rgba(20,30,80,0.10);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 }
 [data-theme="light"] .tab-item.active::after {
   background: linear-gradient(90deg, #0088ee 0%, #5468ff 60%, #9f6fff 100%);
-  box-shadow: 0 0 6px rgba(0,120,220,0.30);
+  box-shadow: none;
 }
 [data-theme="light"] .tab-title { color: var(--text-secondary); }
 [data-theme="light"] .tab-item.active .tab-title { color: var(--text-primary); }
@@ -9476,6 +9496,7 @@ button:focus-visible,
 /* ── Light mode message bubbles ─────────────────────────────────────────── */
 [data-theme="light"] .user-message .message-content {
   background: var(--bg-elevated);
+  color: var(--text-primary);
   border-color: var(--border);
   border-left-color: var(--text-accent);
   box-shadow: none;
@@ -9716,6 +9737,7 @@ button:focus-visible,
   backdrop-filter: blur(6px);
 }
 [data-theme="dark"] .user-message .message-content {
+  color: var(--text-primary);
   box-shadow: none;
 }
 
@@ -9924,14 +9946,7 @@ button:focus-visible,
    ASSISTANT PANEL — ENHANCED DISPLAY
    ═══════════════════════════════════════════════════════ */
 
-/* ── Message bubbles ── */
-.user-message .message-content {
-  background: linear-gradient(135deg, #5468ff 0%, #00d8ff 100%);
-  color: #fff;
-  border-bottom-right-radius: 4px;
-  box-shadow: 0 4px 18px rgba(0, 216, 255, 0.20);
-  border: none;
-}
+/* ── Message bubbles (user styling lives with .message-content above; avoid duplicate rules that forced #fff on light grey) ── */
 
 .assistant-message .message-content {
   background: var(--bg-elevated);

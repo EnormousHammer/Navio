@@ -120,11 +120,11 @@ def build_html(company: str, contacts: list[str], rows: list[dict], logo_uri: st
     }}
     .lh-canada-ltd {{
       font-family: Arial, Helvetica, sans-serif;
-      font-size: 22px;
+      font-size: 18px;
       font-weight: 400;
       color: #1f1f1f;
-      letter-spacing: 0.17em;
-      margin-top: 5px;
+      letter-spacing: 0.11em;
+      margin-top: -2px;
       line-height: 1.15;
       text-transform: uppercase;
       text-align: center;
