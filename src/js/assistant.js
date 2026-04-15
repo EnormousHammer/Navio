@@ -530,15 +530,17 @@ class AssistantManagerClass {
     if (stepToggle) stepToggle.checked = !!cfg.aiAgentStepMode;
   }
 
-  /** Lines for [Open tabs] system messages; includes tab group label when the tab is grouped. */
+  /** Lines for [Open tabs] system messages; includes tab_id for switch_tab and group when grouped. */
   _openTabsAwarenessBlock(allTabs) {
     if (!allTabs.length || typeof TabManager === 'undefined') return '';
+    const activeId = TabManager.activeTabId;
     return allTabs
-      .map((t, i) => {
+      .map((t) => {
         const title = TabManager.getTabDisplayTitle(t) || t.url;
         const g = TabManager.getTabGroupLabel?.(t);
         const gpart = g ? ` [group: ${g}]` : '';
-        return `${i + 1}. ${title} — ${t.url}${gpart}`;
+        const act = t.id === activeId ? ' [active]' : '';
+        return `- tab_id=${t.id}${act} — ${title} — ${t.url}${gpart}`;
       })
       .join('\n');
   }
@@ -1046,7 +1048,7 @@ class AssistantManagerClass {
       if (browserTab && browserTab.url && !browserTab.url.startsWith('about:')) {
         messages.push({
           role: 'system',
-          content: `[Browsing context tab]${browserTab.id === surface?.id ? ' (focused)' : ''}\nTitle: ${TabManager.getTabDisplayTitle(browserTab) || '(untitled)'}${browserTab.customTitle ? ` (page: ${browserTab.title || '—'})` : ''}\nURL: ${browserTab.url}`
+          content: `[Browsing context tab]${browserTab.id === surface?.id ? ' (focused)' : ''}\nTab id: ${browserTab.id}\nTitle: ${TabManager.getTabDisplayTitle(browserTab) || '(untitled)'}${browserTab.customTitle ? ` (page: ${browserTab.title || '—'})` : ''}\nURL: ${browserTab.url}`
         });
       }
     }
@@ -1074,9 +1076,13 @@ class AssistantManagerClass {
     // ── Inject all open tabs (awareness like Arc/Comet) ─────────────────────
     if (!isQuickAction && typeof TabManager !== 'undefined') {
       const allTabs = TabManager.tabs.filter(t => t.url && !t.url.startsWith('about:')).slice(0, 20);
-      if (allTabs.length > 1) {
+      if (allTabs.length > 0) {
         const tabList = this._openTabsAwarenessBlock(allTabs);
-        messages.push({ role: 'system', content: `[Open tabs (${allTabs.length})]\n${tabList}` });
+        messages.push({
+          role: 'system',
+          content:
+            `[Open tabs (${allTabs.length}) — use tab_id with switch_tab / close_tab]\n${tabList}`
+        });
       }
     }
 
@@ -1274,13 +1280,17 @@ class AssistantManagerClass {
       if (browserTab && browserTab.url && !browserTab.url.startsWith('about:')) {
         messages.push({
           role: 'system',
-          content: `[Browsing context tab]\nTitle: ${TabManager.getTabDisplayTitle(browserTab) || '(untitled)'}\nURL: ${browserTab.url}`
+          content: `[Browsing context tab]${browserTab.id === surface?.id ? ' (focused)' : ''}\nTab id: ${browserTab.id}\nTitle: ${TabManager.getTabDisplayTitle(browserTab) || '(untitled)'}\nURL: ${browserTab.url}`
         });
       }
       const allTabs = TabManager.tabs.filter((t) => t.url && !t.url.startsWith('about:')).slice(0, 20);
-      if (allTabs.length > 1) {
+      if (allTabs.length > 0) {
         const tabList = this._openTabsAwarenessBlock(allTabs);
-        messages.push({ role: 'system', content: `[Open tabs (${allTabs.length})]\n${tabList}` });
+        messages.push({
+          role: 'system',
+          content:
+            `[Open tabs (${allTabs.length}) — use tab_id with switch_tab / close_tab]\n${tabList}`
+        });
       }
     }
     if (typeof ConnectorsManager !== 'undefined') {
@@ -1365,7 +1375,7 @@ class AssistantManagerClass {
       if (browserTab && browserTab.url && !browserTab.url.startsWith('about:')) {
         messages.push({
           role: 'system',
-          content: `[Browsing context tab]${browserTab.id === surface?.id ? ' (focused)' : ''}\nTitle: ${TabManager.getTabDisplayTitle(browserTab) || '(untitled)'}${browserTab.customTitle ? ` (page: ${browserTab.title || '—'})` : ''}\nURL: ${browserTab.url}`
+          content: `[Browsing context tab]${browserTab.id === surface?.id ? ' (focused)' : ''}\nTab id: ${browserTab.id}\nTitle: ${TabManager.getTabDisplayTitle(browserTab) || '(untitled)'}${browserTab.customTitle ? ` (page: ${browserTab.title || '—'})` : ''}\nURL: ${browserTab.url}`
         });
       } else if (browserTab) {
         messages.push({
@@ -1389,9 +1399,13 @@ class AssistantManagerClass {
     // Open tabs awareness
     if (typeof TabManager !== 'undefined') {
       const allTabs = TabManager.tabs.filter(t => t.url && !t.url.startsWith('about:')).slice(0, 20);
-      if (allTabs.length > 1) {
+      if (allTabs.length > 0) {
         const tabList = this._openTabsAwarenessBlock(allTabs);
-        messages.push({ role: 'system', content: `[Open tabs (${allTabs.length})]\n${tabList}` });
+        messages.push({
+          role: 'system',
+          content:
+            `[Open tabs (${allTabs.length}) — use tab_id with switch_tab / close_tab]\n${tabList}`
+        });
       }
     }
 
