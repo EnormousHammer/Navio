@@ -251,20 +251,28 @@ class TabManagerClass {
     });
 
     wv.addEventListener('did-navigate', (e) => {
-      // Skip about:blank (initial webview state) and data: error pages so the
-      // NTP tab's url stays '' (falsy) and showNewTabPage() keeps working.
-      if (e.url && e.url !== 'about:blank' && !e.url.startsWith('data:')) {
-        tab.url = e.url;
-        this._historyAdd(tab, wv, e.url);
+      // Subframe navigations must not clobber the tab URL or NTP visibility.
+      if (e && e.isMainFrame === false) return;
+
+      const raw = e.url || '';
+      // Real top-level URL — record history and hide the new-tab overlay.
+      if (raw && raw !== 'about:blank' && !raw.startsWith('data:')) {
+        tab.url = raw;
+        this._historyAdd(tab, wv, raw);
+      } else if ((raw === 'about:blank' || raw === '') && !wv._pendingUrl) {
+        // Back/forward to the initial blank document — clear the tab model so we
+        // show the NTP again. (If we keep the old https URL, hideNewTabPage runs
+        // while the webview is still about:blank and the NTP stacks above it.)
+        tab.url = '';
       }
       if (tab.id === this.activeTabId) {
         App.updateUrlBar(tab.url);
         App.updateNavigationButtons(wv);
         this.updateContextTitle(tab);
-        // Always hide the NTP overlay when a real page navigates — covers all
-        // navigation paths including IPC-driven loadURL() from the main process.
-        if (tab.url && tab.url !== 'about:blank' && !tab.url.startsWith('data:')) {
+        if (tab.url) {
           this.hideNewTabPage();
+        } else {
+          this.showNewTabPage();
         }
       }
     });
@@ -303,6 +311,30 @@ class TabManagerClass {
     });
 
     wv.addEventListener('did-finish-load', async () => {
+      // Safety net: if the guest is blank but our model still has a real URL (and
+      // this tab has session history), resync — avoids a blank webview with NTP
+      // hidden after some back/forward paths that omit a clean did-navigate.
+      try {
+        const live = typeof wv.getURL === 'function' ? (wv.getURL() || '') : '';
+        const hasHistory =
+          (typeof wv.canGoBack === 'function' && wv.canGoBack()) ||
+          (typeof wv.canGoForward === 'function' && wv.canGoForward());
+        if (
+          tab.id === this.activeTabId &&
+          tab.url &&
+          (live === 'about:blank' || live === '') &&
+          !wv._pendingUrl &&
+          !tab.loading &&
+          hasHistory
+        ) {
+          tab.url = '';
+          App.updateUrlBar('');
+          this.showNewTabPage();
+        }
+      } catch {
+        /* ignore */
+      }
+
       this.applyZoomToWebview(wv);
       this._schedulePassiveMemory(tab, wv);
       if (tab.id === this.activeTabId && typeof window.__navioUpdateZoomLabel === 'function') {
