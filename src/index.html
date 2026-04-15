@@ -10,23 +10,10 @@
 </head>
 <body data-theme="dark">
 
-  <!-- Full-window launch intro (public/intro_video/intro_final.mp4) -->
+  <!-- Optional full-window launch video only (see js/launch-intro.js, Settings) -->
   <div id="launch-intro" class="launch-intro" aria-hidden="true">
     <video id="launch-intro-video" class="launch-intro-video" playsinline preload="metadata"></video>
     <button type="button" id="launch-intro-skip" class="launch-intro-skip">Skip</button>
-  </div>
-
-  <!-- Brief handoff when launch video is off: zoom-in then zoom-through fade (browser loads underneath) -->
-  <div id="startup-handoff" class="startup-handoff" aria-hidden="true">
-    <div class="startup-handoff-inner">
-      <div class="startup-handoff-mark" aria-hidden="true">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/>
-        </svg>
-      </div>
-      <span class="startup-handoff-title">NAVIO</span>
-      <span class="startup-handoff-tag">AI browser</span>
-    </div>
   </div>
 
   <!-- Title Bar (drag region only — no brand to save vertical space) -->

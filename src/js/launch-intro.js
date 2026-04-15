@@ -1,6 +1,7 @@
 /**
- * Launch intro: optional full-screen video, or a subtle shell handoff when the video is off.
- * Prelude cover shows immediately for returning users (masks IPC delay + empty webview flash).
+ * Optional full-screen launch video only (public/intro_video + Settings).
+ * First tab / webviews start after this resolves via normal App + Onboarding flow
+ * — no second overlay, prelude, or early startBrowser (avoids empty-shell flashes).
  */
 
 const LaunchIntro = {
@@ -12,73 +13,7 @@ const LaunchIntro = {
     }
   },
 
-  _wait(ms) {
-    return new Promise((r) => setTimeout(r, ms));
-  },
-
-  _waitForOpacityTransition(el, fallbackMs) {
-    return new Promise((resolve) => {
-      let done = false;
-      const finish = () => {
-        if (done) return;
-        done = true;
-        resolve();
-      };
-      const t = setTimeout(finish, fallbackMs);
-      const onEnd = (e) => {
-        if (e.target !== el || e.propertyName !== 'opacity') return;
-        clearTimeout(t);
-        el.removeEventListener('transitionend', onEnd);
-        finish();
-      };
-      el.addEventListener('transitionend', onEnd);
-    });
-  },
-
-  _resetStartupHandoff(root) {
-    if (!root) return;
-    root.classList.remove(
-      'is-active',
-      'is-exiting',
-      'reveal-brand',
-      'startup-handoff--prelude'
-    );
-    root.setAttribute('aria-hidden', 'true');
-  },
-
-  /** Solid cover, no animation — masks shell until we know video vs handoff. */
-  _showPreludeCover(root) {
-    if (!root) return;
-    root.setAttribute('aria-hidden', 'false');
-    root.classList.add('is-active', 'startup-handoff--prelude');
-  },
-
-  /**
-   * No video: prelude is already up → gentle brand in → crossfade whole layer out.
-   */
-  async _runNoVideoHandoff(root) {
-    if (!root) return;
-
-    if (!this._motionOk()) {
-      root.classList.remove('startup-handoff--prelude');
-      root.classList.add('is-exiting');
-      await this._waitForOpacityTransition(root, 80);
-      this._resetStartupHandoff(root);
-      return;
-    }
-
-    await this._wait(16);
-    root.classList.remove('startup-handoff--prelude');
-    root.classList.add('reveal-brand');
-
-    await this._wait(420);
-
-    root.classList.add('is-exiting');
-    await this._waitForOpacityTransition(root, 620);
-    this._resetStartupHandoff(root);
-  },
-
-  _playVideo(url, handoffRoot) {
+  _playVideo(url) {
     const root = document.getElementById('launch-intro');
     const video = document.getElementById('launch-intro-video');
     const skipBtn = document.getElementById('launch-intro-skip');
@@ -136,7 +71,6 @@ const LaunchIntro = {
       root.setAttribute('aria-hidden', 'false');
       root.classList.remove('exiting');
       root.classList.add('visible');
-      if (handoffRoot) this._resetStartupHandoff(handoffRoot);
 
       video.addEventListener('ended', () => void finish(), { once: true });
       video.addEventListener('error', () => void finish(), { once: true });
@@ -156,34 +90,15 @@ const LaunchIntro = {
   async playIfAvailable() {
     if (!window.navio || typeof window.navio.getIntroVideoUrl !== 'function') return;
 
-    let cfg = {};
-    try {
-      cfg = await window.navio.getConfig();
-    } catch (e) {
-      return;
-    }
-
-    const onboardingDone = !!cfg.onboardingComplete;
-    const handoffRoot = document.getElementById('startup-handoff');
-
-    if (onboardingDone) {
-      this._showPreludeCover(handoffRoot);
-    }
-
     let url = null;
     try {
       url = await window.navio.getIntroVideoUrl();
     } catch (e) {
-      url = null;
-    }
-
-    if (url) {
-      await this._playVideo(url, onboardingDone ? handoffRoot : null);
       return;
     }
 
-    if (onboardingDone) {
-      await this._runNoVideoHandoff(handoffRoot);
-    }
+    if (!url) return;
+
+    await this._playVideo(url);
   }
 };
