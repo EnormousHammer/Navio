@@ -1,23 +1,59 @@
 /**
- * Plays public/intro_video/intro_final.mp4 on startup before onboarding / main UI.
+ * Launch intro: optional full-screen video, or a short handoff animation when video is off.
+ * Returning users: browser session starts before the handoff so the first tab loads underneath.
  */
 
 const LaunchIntro = {
-  async playIfAvailable() {
-    if (!window.navio || typeof window.navio.getIntroVideoUrl !== 'function') return;
-
-    let url;
+  _motionOk() {
     try {
-      url = await window.navio.getIntroVideoUrl();
+      return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     } catch (e) {
-      return;
+      return true;
     }
-    if (!url) return;
+  },
 
+  /**
+   * Zoom-in settle, then scale up + fade (fly-past) so the shell underneath is already live.
+   */
+  _playStartupHandoff() {
+    const root = document.getElementById('startup-handoff');
+    if (!root) return Promise.resolve();
+
+    if (!this._motionOk()) {
+      return Promise.resolve();
+    }
+
+    const ENTER_MS = 340;
+    const HOLD_MS = 120;
+    const EXIT_MS = 580;
+
+    return new Promise((resolve) => {
+      root.setAttribute('aria-hidden', 'false');
+      root.classList.add('visible');
+
+      const runEnter = () => {
+        root.classList.add('enter');
+      };
+      requestAnimationFrame(() => requestAnimationFrame(runEnter));
+
+      window.setTimeout(() => {
+        root.classList.remove('enter');
+        root.classList.add('exit');
+      }, ENTER_MS + HOLD_MS);
+
+      window.setTimeout(() => {
+        root.classList.remove('visible', 'enter', 'exit');
+        root.setAttribute('aria-hidden', 'true');
+        resolve();
+      }, ENTER_MS + HOLD_MS + EXIT_MS);
+    });
+  },
+
+  _playVideo(url) {
     const root = document.getElementById('launch-intro');
     const video = document.getElementById('launch-intro-video');
     const skipBtn = document.getElementById('launch-intro-skip');
-    if (!root || !video) return;
+    if (!root || !video) return Promise.resolve();
 
     return new Promise((resolve) => {
       let finished = false;
@@ -63,5 +99,33 @@ const LaunchIntro = {
 
       requestAnimationFrame(() => skipBtn?.focus());
     });
+  },
+
+  async playIfAvailable() {
+    if (!window.navio || typeof window.navio.getIntroVideoUrl !== 'function') return;
+
+    let cfg = {};
+    try {
+      cfg = await window.navio.getConfig();
+    } catch (e) {
+      return;
+    }
+    const onboardingDone = !!cfg.onboardingComplete;
+
+    let url = null;
+    try {
+      url = await window.navio.getIntroVideoUrl();
+    } catch (e) {
+      return;
+    }
+
+    if (url) {
+      await this._playVideo(url);
+      return;
+    }
+
+    if (onboardingDone) {
+      await this._playStartupHandoff();
+    }
   }
 };

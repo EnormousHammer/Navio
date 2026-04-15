@@ -110,9 +110,16 @@ def build_html(company: str, contacts: list[str], rows: list[dict], logo_uri: st
       margin-left: auto;
       margin-right: auto;
     }}
+    /* Shift subtitle right so it centers under "CANOIL" only (icon is left in PNG). ~10.5% of logo width from 650px asset. */
+    .lh-canada-ltd-wrap {{
+      display: block;
+      width: 100%;
+      text-align: center;
+      transform: translateX(10.5%);
+    }}
     .lh-canada-ltd {{
       font-family: Arial, Helvetica, sans-serif;
-      font-size: 15px;
+      font-size: 18px;
       font-weight: 400;
       color: #1f1f1f;
       letter-spacing: 0.11em;
@@ -228,7 +235,9 @@ def build_html(company: str, contacts: list[str], rows: list[dict], logo_uri: st
       <td class="lh-logo" style="vertical-align:middle; width:50%;">
         <div class="lh-lockup">
           <img src="{logo_uri}" alt="Canoil">
-          <div class="lh-canada-ltd">CANADA LTD.</div>
+          <div class="lh-canada-ltd-wrap">
+            <div class="lh-canada-ltd">CANADA LTD.</div>
+          </div>
         </div>
       </td>
       <td style="text-align:right; vertical-align:middle;">

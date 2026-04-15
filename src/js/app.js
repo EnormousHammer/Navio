@@ -16,6 +16,10 @@ class NavioApp {
     this.applyTheme(this.config.theme || 'dark');
     this.applyLayoutFromConfig(this.config);
 
+    if (this.config.onboardingComplete) {
+      this.startBrowser();
+    }
+
     if (typeof LaunchIntro !== 'undefined') {
       await LaunchIntro.playIfAvailable();
       this.config = await window.navio.getConfig();
@@ -47,6 +51,8 @@ class NavioApp {
   }
 
   startBrowser() {
+    if (this._sessionStarted) return;
+    this._sessionStarted = true;
     setTimeout(() => {
       if (typeof TabManager === 'undefined') return;
       this._maybeProactiveTip();

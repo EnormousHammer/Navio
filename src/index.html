@@ -16,6 +16,19 @@
     <button type="button" id="launch-intro-skip" class="launch-intro-skip">Skip</button>
   </div>
 
+  <!-- Brief handoff when launch video is off: zoom-in then zoom-through fade (browser loads underneath) -->
+  <div id="startup-handoff" class="startup-handoff" aria-hidden="true">
+    <div class="startup-handoff-inner">
+      <div class="startup-handoff-mark" aria-hidden="true">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/>
+        </svg>
+      </div>
+      <span class="startup-handoff-title">NAVIO</span>
+      <span class="startup-handoff-tag">AI browser</span>
+    </div>
+  </div>
+
   <!-- Title Bar (drag region only — no brand to save vertical space) -->
   <div id="titlebar">
     <div class="titlebar-drag" aria-hidden="true"></div>
@@ -683,7 +696,7 @@
         </div>
         <div class="assistant-input-hint">
           <span id="voice-hint">Enter to send &middot; Shift+Enter for new line &middot; Paste or attach files</span>
-          <span class="ai-powered-badge">✦ Navio AI</span>
+          <span class="ai-powered-badge">Navio AI</span>
         </div>
       </div>
     </aside>
@@ -1327,8 +1340,8 @@
     </div>
   </div>
 
-  <!-- Onboarding -->
-  <div id="onboarding" class="ob">
+  <!-- Onboarding (hidden until first-run check; avoids flash for returning users) -->
+  <div id="onboarding" class="ob hidden">
     <!-- Step 0: Cinematic Intro -->
     <div class="ob-step ob-intro active" data-step="0">
       <div class="ob-stars" id="ob-stars"></div>

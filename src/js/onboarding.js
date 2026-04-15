@@ -25,7 +25,7 @@ class OnboardingManager {
     } catch (e) { /* proceed with onboarding */ }
 
     document.body.classList.add('onboarding-active');
-    this.el.classList.remove('hidden');
+    if (this.el) this.el.classList.remove('hidden');
     this.initStarField('ob-stars');
     this.initStarField('ob-stars-2');
     this.bindEvents();
