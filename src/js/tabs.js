@@ -10,6 +10,8 @@ class TabManagerClass {
   constructor() {
     this.tabs = [];
     this.activeTabId = null;
+    /** Tab receiving AI browser automation (takeover / tools); drives `tab-agent-controlled` UI. */
+    this._agentControlledTabId = null;
     this.tabCounter = 0;
 
     // ── Tab Groups ────────────────────────────────────────────────────────
@@ -689,10 +691,14 @@ class TabManagerClass {
     if (tabEl) tabEl.remove();
 
     const hadGroup = tab.groupId;
+    if (this._agentControlledTabId === id) {
+      this._agentControlledTabId = null;
+    }
     this.tabs.splice(index, 1);
 
     // If the closed tab was in a group, rebuild the strip to update counts/remove empty headers
     if (hadGroup) this._reRenderTabList();
+    else this._applyAgentControlledTabClasses();
 
     // If closing active tab, switch to another
     if (this.activeTabId === id) {
@@ -719,6 +725,59 @@ class TabManagerClass {
   getActiveWebview() {
     const tab = this.getActiveTab();
     return tab ? tab.webview : null;
+  }
+
+  findTabIdForWebview(wv) {
+    if (!wv) return null;
+    const t = this.tabs.find((x) => x.webview === wv);
+    return t ? t.id : null;
+  }
+
+  /**
+   * Tab that should show the “AI is controlling this tab” highlight during takeover.
+   * When the Navio AI chat tab is focused, automation targets the browsing-context tab.
+   */
+  getTakeoverHighlightTabId() {
+    const active = this.getActiveTab();
+    const surfaceIsChat = !!(active && this.isNavioChatTabUrl?.(active.url || ''));
+    if (surfaceIsChat) {
+      const ctx = this.getBrowserContextTab?.();
+      return ctx?.id ?? null;
+    }
+    return active?.id ?? null;
+  }
+
+  /**
+   * Show which tab is receiving automated clicks/navigation. Pass null to clear.
+   * Updates tab strip + webview outline classes.
+   */
+  setAgentControlledTab(tabId) {
+    const next = tabId || null;
+    const prev = this._agentControlledTabId;
+    this._agentControlledTabId = next;
+    this._applyAgentControlledTabClasses();
+    if (next && next !== prev) {
+      document.getElementById(`tabitem-${next}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'nearest'
+      });
+    }
+  }
+
+  _applyAgentControlledTabClasses() {
+    const id = this._agentControlledTabId;
+    this.tabs.forEach((tab) => {
+      const on = !!(id && tab.id === id);
+      const el = document.getElementById(`tabitem-${tab.id}`);
+      if (el) {
+        el.classList.toggle('tab-agent-controlled', on);
+        if (on) el.title = `${this.getTabDisplayTitle(tab)} — Navio is controlling this tab`;
+        else el.removeAttribute('title');
+      }
+      if (tab.webview) tab.webview.classList.toggle('navio-agent-controlled-webview', on);
+    });
+    document.body.classList.toggle('navio-agent-has-target-tab', !!id);
   }
 
   /** Normal reload, or hard reload (bypass cache) when supported by the webview. */
@@ -1009,6 +1068,7 @@ class TabManagerClass {
     }
 
     if (this._tabListTrail) this.tabListEl.appendChild(this._tabListTrail);
+    this._applyAgentControlledTabClasses();
   }
 
   _buildGroupHeader(group, tabCount, collapsed) {

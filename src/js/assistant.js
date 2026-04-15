@@ -1301,6 +1301,7 @@ class AssistantManagerClass {
           });
           return;
         }
+        if (ctxTab?.id) TabManager.setAgentControlledTab?.(ctxTab.id);
         window.navio.toolNavigateAck({
           success: true,
           url: ctxTab?.url || url,
@@ -1335,6 +1336,7 @@ class AssistantManagerClass {
         }
         const tab = loadResult.tab || TabManager.getActiveTab();
         const wv = tab?.webview;
+        if (tab?.id) TabManager.setAgentControlledTab?.(tab.id);
         window.navio.toolOpenTabAck({
           success: true,
           tab_id: tab?.id || '',
@@ -1354,6 +1356,7 @@ class AssistantManagerClass {
         TabManager.closeTab(tab_id);
         await new Promise(r => setTimeout(r, 300));
         const active = TabManager.getActiveTab();
+        if (active?.id) TabManager.setAgentControlledTab?.(active.id);
         window.navio.toolCloseTabAck({
           success: true,
           active_tab_id: active?.id || '',
@@ -1371,6 +1374,7 @@ class AssistantManagerClass {
         await new Promise(r => setTimeout(r, 500));
         const tab = TabManager.getActiveTab();
         const wv = tab?.webview;
+        if (tab?.id) TabManager.setAgentControlledTab?.(tab.id);
         window.navio.toolSwitchTabAck({
           success: true,
           tab_id: tab?.id || '',
@@ -1474,6 +1478,9 @@ class AssistantManagerClass {
       TabManager.ensureBrowserContextTab?.();
     }
     const toolWv = typeof TabManager !== 'undefined' ? TabManager.getBrowserTargetWebview?.() : null;
+    if (typeof TabManager !== 'undefined') {
+      TabManager.setAgentControlledTab?.(TabManager.findTabIdForWebview?.(toolWv));
+    }
     const response = await window.navio.aiRequestWithTools({
       messages,
       webContentsId: toolWv?.getWebContentsId?.()
@@ -1553,6 +1560,10 @@ class AssistantManagerClass {
     }
     } finally {
       this._guestChatWebview = null;
+      if (typeof TabManager !== 'undefined') {
+        if (this._takeoverMode) TabManager.setAgentControlledTab?.(TabManager.getTakeoverHighlightTabId?.() ?? null);
+        else TabManager.setAgentControlledTab?.(null);
+      }
     }
   }
 
@@ -2247,6 +2258,19 @@ class AssistantManagerClass {
   }
 
   // ── Takeover mode ────────────────────────────────────────────────────────
+  /** Tab strip + banner: show which tab is receiving takeover actions. */
+  _syncTakeoverTabHighlight() {
+    if (typeof TabManager === 'undefined') return;
+    const tid = TabManager.getTakeoverHighlightTabId?.() ?? null;
+    TabManager.setAgentControlledTab?.(tid);
+    const label = document.querySelector('#navio-takeover-banner .ntb-label');
+    if (label && this._takeoverMode) {
+      const tab = tid != null ? TabManager.tabs?.find((t) => t.id === tid) : null;
+      const name = tab ? TabManager.getTabDisplayTitle(tab) : '';
+      label.textContent = name ? `Navio is in control — ${name}` : 'Navio is in control';
+    }
+  }
+
   enableTakeover() {
     this._takeoverMode = true;
     this._takeoverAbort = new AbortController();
@@ -2269,6 +2293,7 @@ class AssistantManagerClass {
       const inputArea = this.panel.querySelector('.assistant-input-area');
       if (inputArea) this.panel.insertBefore(banner, inputArea);
     }
+    this._syncTakeoverTabHighlight();
     // Also show the visual agent bar with the animated orb
     if (window.NavioAIBoost) {
       const bar = window.NavioAIBoost.buildAgentTakeoverBar('Agent is working...', '');
@@ -2280,6 +2305,7 @@ class AssistantManagerClass {
   }
 
   disableTakeover() {
+    if (typeof TabManager !== 'undefined') TabManager.setAgentControlledTab?.(null);
     this._takeoverMode = false;
     this._autoFollowCount = 0;
     if (window.NavioAIBoost) window.NavioAIBoost.setOrbThinking(false);
@@ -2365,6 +2391,7 @@ class AssistantManagerClass {
     const fn = this._takeoverAuthResume;
     this._takeoverAuthResume = null;
     if (typeof fn === 'function') fn();
+    if (this._takeoverMode) this._syncTakeoverTabHighlight();
   }
 
   _showAuthGatePill(hostname) {
@@ -3395,6 +3422,8 @@ class AssistantManagerClass {
           });
           this._takeoverAuthResume = null;
         }
+
+        if (fromTakeover && this._takeoverMode) this._syncTakeoverTabHighlight();
 
         card.classList.add('bac-done');
         card.querySelector('.bac-btns').innerHTML = '<span class="bac-status bac-ok"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>Done</span>';
