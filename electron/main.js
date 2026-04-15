@@ -2353,8 +2353,8 @@ const toolExecutors = {
 
   async gmail_send_draft(_wc, args) {
     try {
-      const token = await getValidOAuthToken('google');
-      if (!token) return { error: 'not_signed_in — connect Google in Navio Settings → Connected Apps first.' };
+      const { token, error } = await resolveGmailToolToken(args);
+      if (!token) return { error };
       const draftId = (args.draft_id || '').trim();
       if (!draftId) return { error: 'draft_id is required.' };
       const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/drafts/send`, {
@@ -2372,8 +2372,8 @@ const toolExecutors = {
 
   async gmail_delete_draft(_wc, args) {
     try {
-      const token = await getValidOAuthToken('google');
-      if (!token) return { error: 'not_signed_in — connect Google in Navio Settings → Connected Apps first.' };
+      const { token, error } = await resolveGmailToolToken(args);
+      if (!token) return { error };
       const draftId = (args.draft_id || '').trim();
       if (!draftId) return { error: 'draft_id is required.' };
       const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/drafts/${encodeURIComponent(draftId)}`, {
@@ -2392,7 +2392,7 @@ const toolExecutors = {
     try {
       const draftId = (args.draft_id || '').trim();
       const body = args.body || '';
-      return await gmailUpdateDraftApi(draftId, body);
+      return await gmailUpdateDraftApi(draftId, body, args);
     } catch (e) {
       return { error: 'gmail_update_draft failed: ' + e.message };
     }
@@ -2400,8 +2400,8 @@ const toolExecutors = {
 
   async gmail_search(_wc, args) {
     try {
-      const token = await getValidOAuthToken('google');
-      if (!token) return { error: 'not_signed_in — connect Google in Navio Settings → Connected Apps first.' };
+      const { token, error } = await resolveGmailToolToken(args);
+      if (!token) return { error };
       const query = (args.query || '').trim();
       if (!query) return { error: 'query is required.' };
       let maxResults = Math.min(Number(args.max_results) > 0 ? Number(args.max_results) : 25, 200);
@@ -2442,8 +2442,8 @@ const toolExecutors = {
 
   async gmail_get_message(_wc, args) {
     try {
-      const token = await getValidOAuthToken('google');
-      if (!token) return { error: 'not_signed_in — connect Google in Navio Settings → Connected Apps first.' };
+      const { token, error } = await resolveGmailToolToken(args);
+      if (!token) return { error };
       const mid = (args.message_id || args.id || '').trim();
       if (!mid) return { error: 'message_id is required.' };
       const maxC = Math.min(Number(args.max_body_chars) > 0 ? Number(args.max_body_chars) : 32000, 120000);
@@ -2462,8 +2462,8 @@ const toolExecutors = {
 
   async gmail_create_reply_draft(_wc, args) {
     try {
-      const token = await getValidOAuthToken('google');
-      if (!token) return { error: 'not_signed_in — connect Google in Navio Settings → Connected Apps first.' };
+      const { token, error } = await resolveGmailToolToken(args);
+      if (!token) return { error };
 
       const mid = (args.message_id || '').trim();
       if (!mid) return { error: 'message_id is required.' };
@@ -3670,6 +3670,30 @@ const OAUTH_PROVIDERS = {
     consoleUrl: 'https://console.cloud.google.com/apis/credentials',
     consoleHint: 'Create an OAuth 2.0 Client ID (Desktop app type). Add redirect URI: http://127.0.0.1:56789/oauth/callback'
   },
+  google_2: {
+    name: 'Google (2nd account)',
+    buttonLabel: 'Sign in with Google (2nd account)',
+    buttonColor: '#fff',
+    buttonTextColor: '#3c4043',
+    buttonBorder: '1px solid #dadce0',
+    logo: 'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg',
+    authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+    tokenUrl: 'https://oauth2.googleapis.com/token',
+    revokeUrl: 'https://oauth2.googleapis.com/revoke',
+    scopes: [
+      'openid', 'email', 'profile',
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.compose',
+      'https://www.googleapis.com/auth/gmail.settings.basic',
+      'https://www.googleapis.com/auth/drive.readonly',
+      'https://www.googleapis.com/auth/calendar.readonly'
+    ],
+    serviceIds: ['gmail_2'],
+    configKey: 'oauthGoogleClientId',
+    secretKey: 'oauthGoogleClientSecret',
+    consoleUrl: 'https://console.cloud.google.com/apis/credentials',
+    consoleHint: 'Same Desktop OAuth client as the first Google connection. Use this only for a second Gmail/workspace login.'
+  },
   microsoft: {
     name: 'Microsoft',
     buttonLabel: 'Sign in with Microsoft',
@@ -3862,6 +3886,30 @@ async function getValidOAuthToken(providerId) {
   }
   // Expired — try to refresh
   return await refreshOAuthToken(providerId);
+}
+
+/** Gmail agent tools: primary Google vs second-account slot (google_2). */
+function gmailToolOAuthProviderId(args) {
+  const raw = args && (args.google_account != null ? args.google_account : args.account);
+  const s = String(raw == null ? 'primary' : raw).toLowerCase().trim();
+  if (s === 'secondary' || s === 'second' || s === '2' || s === 'google_2' || s === 'other') return 'google_2';
+  return 'google';
+}
+
+async function resolveGmailToolToken(args) {
+  const providerId = gmailToolOAuthProviderId(args || {});
+  const token = await getValidOAuthToken(providerId);
+  if (!token) {
+    if (providerId === 'google_2') {
+      return {
+        token: null,
+        error:
+          'Second Google account not connected. Connect **Gmail (2nd account)** in the Connectors hub, or use google_account **primary**.'
+      };
+    }
+    return { token: null, error: 'not_signed_in — connect Google in Navio Settings → Connected Apps first.' };
+  }
+  return { token, error: null };
 }
 
 // Fetch user profile info after connecting (Google, Microsoft, GitHub, etc.)
@@ -4216,6 +4264,7 @@ ipcMain.handle('connector-get-keys', () => {
     // Also include services covered by OAuth tokens
     const oauthServiceMap = {
       google: ['gmail', 'gdrive', 'gcalendar'],
+      google_2: ['gmail_2'],
       microsoft: ['outlook', 'onedrive'],
       dropbox: ['dropbox'],
       slack: ['slack'],
@@ -4255,6 +4304,7 @@ ipcMain.handle('connector-query', async (event, { serviceId, query, options }) =
     // Check OAuth tokens first (Google, Microsoft, Dropbox, Slack, GitHub, Notion)
     const oauthProviderForService = {
       gmail: 'google', gdrive: 'google', gcalendar: 'google',
+      gmail_2: 'google_2',
       outlook: 'microsoft', onedrive: 'microsoft',
       dropbox: 'dropbox', slack: 'slack', github: 'github', notion: 'notion'
     };
@@ -4273,7 +4323,7 @@ ipcMain.handle('connector-query', async (event, { serviceId, query, options }) =
     if (serviceId === 'notion') return await queryNotion(token, query, options);
     if (serviceId === 'perplexity') return await queryPerplexity(token, query, options);
     if (serviceId === 'linear') return await queryLinear(token, query, options);
-    if (serviceId === 'gmail') return await queryGmail(token, query, options);
+    if (serviceId === 'gmail' || serviceId === 'gmail_2') return await queryGmail(token, query, options);
     if (serviceId === 'gdrive') return await queryGoogleDrive(token, query, options);
     if (serviceId === 'gcalendar') return await queryGoogleCalendar(token, query, options);
     if (serviceId === 'dropbox') return await queryDropbox(token, query, options);
@@ -5247,9 +5297,9 @@ function parseEmailAddressFromHeader(fromVal) {
  * Rewrite an existing Gmail draft's plain-text body (same threading headers).
  * Used when the user edits the draft in the assistant before Send.
  */
-async function gmailUpdateDraftApi(draftId, bodyText) {
-  const token = await getValidOAuthToken('google');
-  if (!token) return { error: 'not_signed_in' };
+async function gmailUpdateDraftApi(draftId, bodyText, args = {}) {
+  const { token, error } = await resolveGmailToolToken(args);
+  if (!token) return { error: error || 'not_signed_in' };
   const id = (draftId || '').trim();
   if (!id) return { error: 'draft_id is required.' };
   const text = navioRepairUtf8Mojibake((bodyText || '').trim());
@@ -5322,7 +5372,7 @@ ipcMain.handle('gmail-send-draft', async (_, { draftId }) => {
 // ── Gmail API: update draft body (assistant edits before send) ─────────────
 ipcMain.handle('gmail-update-draft', async (_, { draftId, body }) => {
   try {
-    return await gmailUpdateDraftApi(draftId, body);
+    return await gmailUpdateDraftApi(draftId, body, {});
   } catch (e) {
     return { error: e.message };
   }

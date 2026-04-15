@@ -130,6 +130,8 @@ class AssistantManagerClass {
     this._emailBodyCache = new Map();
     this._lastGmailPageToken = null;
     this._lastGmailQuery = '';
+    /** @type {'gmail'|'gmail_2'} Last Gmail connector used (for "load more"). */
+    this._lastGmailServiceId = 'gmail';
     this._pendingScreenshotDataUrl = null;
     /** @type {Array<{ id: string, name: string, status: string, kind?: string, dataUrl?: string, base64?: string, text?: string, thumb?: string, error?: string }>} */
     this._attachmentQueue = [];
@@ -528,6 +530,19 @@ class AssistantManagerClass {
     if (stepToggle) stepToggle.checked = !!cfg.aiAgentStepMode;
   }
 
+  /** Lines for [Open tabs] system messages; includes tab group label when the tab is grouped. */
+  _openTabsAwarenessBlock(allTabs) {
+    if (!allTabs.length || typeof TabManager === 'undefined') return '';
+    return allTabs
+      .map((t, i) => {
+        const title = TabManager.getTabDisplayTitle(t) || t.url;
+        const g = TabManager.getTabGroupLabel?.(t);
+        const gpart = g ? ` [group: ${g}]` : '';
+        return `${i + 1}. ${title} — ${t.url}${gpart}`;
+      })
+      .join('\n');
+  }
+
   // ── @tab mention picker ───────────────────────────────────────────────
   // Typing "@" in the input shows a list of open tabs. Clicking one inserts
   // @[Tab Title] into the input. These references are resolved before sending,
@@ -608,32 +623,115 @@ class AssistantManagerClass {
     if (picker) picker.hidden = true;
   }
 
-  // Resolve @[Tab Title] references → fetch page content for each → build system messages
-  async _resolveAtMentions(text) {
+  _tabIdsFromAtMentions(text) {
+    const ids = new Set();
     const matches = [...text.matchAll(/@\[([^\]]+)\]/g)];
-    if (!matches.length) return [];
-    const tabs = typeof TabManager !== 'undefined' ? TabManager.tabs : [];
-    const contextMessages = [];
+    if (!matches.length || typeof TabManager === 'undefined') return ids;
+    const tabs = TabManager.tabs;
     for (const m of matches) {
       const title = m[1];
       const tab = tabs.find((t) => {
         const d = TabManager.getTabDisplayTitle(t);
         return d === title || d.toLowerCase() === title.toLowerCase() || t.title === title || (t.title || '').toLowerCase() === title.toLowerCase();
       });
-      if (!tab || !tab.webview) continue;
+      if (tab) ids.add(tab.id);
+    }
+    return ids;
+  }
+
+  /**
+   * Tabs whose title, page title, or tab-group name appears in the user message (no @ required).
+   */
+  _inferReferencedTabsFromMessage(text) {
+    if (!text || typeof TabManager === 'undefined') return [];
+    const low = text.toLowerCase();
+    const tabs = TabManager.tabs.filter((t) => t.webview && t.url && !t.url.startsWith('about:'));
+    const byId = new Map(tabs.map((t) => [t.id, t]));
+    const picked = new Set();
+
+    const tryPick = (id) => {
+      if (byId.has(id)) picked.add(id);
+    };
+
+    for (const t of tabs) {
+      const disp = TabManager.getTabDisplayTitle(t);
+      const dlow = disp.toLowerCase().trim();
+      if (dlow.length >= 4 && low.includes(dlow)) tryPick(t.id);
+      else if (dlow.length >= 3) {
+        try {
+          const re = new RegExp(`\\b${dlow.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+          if (re.test(text)) tryPick(t.id);
+        } catch {
+          /* ignore */
+        }
+      }
+      const pageTitle = (t.title && String(t.title).toLowerCase().trim()) || '';
+      if (pageTitle.length >= 4 && pageTitle !== dlow && low.includes(pageTitle)) tryPick(t.id);
+    }
+
+    for (const t of tabs) {
+      const g = TabManager.getTabGroupLabel?.(t);
+      if (!g) continue;
+      const gl = g.toLowerCase();
+      if (gl.length < 2) continue;
+      if (low.includes(gl)) {
+        TabManager.tabs.filter((x) => x.groupId === t.groupId).forEach((x) => tryPick(x.id));
+      }
+    }
+
+    return [...picked]
+      .map((id) => byId.get(id))
+      .filter(Boolean)
+      .slice(0, 6);
+  }
+
+  async _fetchTabContextForTabs(tabs, labelPrefix) {
+    const contextMessages = [];
+    for (const tab of tabs) {
+      if (!tab?.webview) continue;
+      const title = TabManager.getTabDisplayTitle(tab);
       try {
         const wc = tab.webview.getWebContentsId();
         const content = await window.navio.extractPageContent(wc);
         if (content && !content.error) {
           const body = (content.text || '').slice(0, 15000);
+          const g = TabManager.getTabGroupLabel?.(tab);
+          const gline = g ? `\nTab group: ${g}` : '';
           contextMessages.push({
             role: 'system',
-            content: `[Referenced tab: "${title}"]\nURL: ${content.url}\nTitle: ${content.title}\n\n${body}`
+            content: `[${labelPrefix}: "${title}"]${gline}\nURL: ${content.url}\nTitle: ${content.title}\n\n${body}`
           });
         }
-      } catch {}
+      } catch {
+        /* ignore */
+      }
     }
     return contextMessages;
+  }
+
+  // Resolve @[Tab Title] references → fetch page content for each → build system messages
+  async _resolveAtMentions(text) {
+    const matches = [...text.matchAll(/@\[([^\]]+)\]/g)];
+    if (!matches.length) return [];
+    const tabs = typeof TabManager !== 'undefined' ? TabManager.tabs : [];
+    const picked = [];
+    for (const m of matches) {
+      const title = m[1];
+      const tab = tabs.find((t) => {
+        const d = TabManager.getTabDisplayTitle(t);
+        return d === title || d.toLowerCase() === title.toLowerCase() || t.title === title || (t.title || '').toLowerCase() === title.toLowerCase();
+      });
+      if (tab) picked.push(tab);
+    }
+    return this._fetchTabContextForTabs(picked, 'Referenced tab');
+  }
+
+  async _resolveImplicitTabContext(text, excludeTabIds) {
+    const inferred = this._inferReferencedTabsFromMessage(text);
+    const ex = excludeTabIds || new Set();
+    const toFetch = inferred.filter((t) => !ex.has(t.id));
+    if (!toFetch.length) return [];
+    return this._fetchTabContextForTabs(toFetch, 'Matched tab from your message');
   }
 
   toggle() {
@@ -977,7 +1075,7 @@ class AssistantManagerClass {
     if (!isQuickAction && typeof TabManager !== 'undefined') {
       const allTabs = TabManager.tabs.filter(t => t.url && !t.url.startsWith('about:')).slice(0, 20);
       if (allTabs.length > 1) {
-        const tabList = allTabs.map((t, i) => `${i + 1}. ${TabManager.getTabDisplayTitle(t) || t.url} — ${t.url}`).join('\n');
+        const tabList = this._openTabsAwarenessBlock(allTabs);
         messages.push({ role: 'system', content: `[Open tabs (${allTabs.length})]\n${tabList}` });
       }
     }
@@ -999,11 +1097,17 @@ class AssistantManagerClass {
       }
     }
 
-    // Resolve @[Tab Title] mentions — inject referenced tabs' content
+    // @mentions + tabs whose title/group appears in the message (no @ required)
     const mentionMsgs = await this._resolveAtMentions(text);
-    if (mentionMsgs.length) {
-      messages.push({ role: 'system', content: `[Multi-tab context — ${mentionMsgs.length} tab(s) referenced by the user]` });
-      messages.push(...mentionMsgs);
+    const atTabIds = this._tabIdsFromAtMentions(text);
+    const implicitTabMsgs = await this._resolveImplicitTabContext(text, atTabIds);
+    const tabCtxN = mentionMsgs.length + implicitTabMsgs.length;
+    if (tabCtxN) {
+      messages.push({
+        role: 'system',
+        content: `[Multi-tab context — ${tabCtxN} tab(s)${mentionMsgs.length ? ' (@mention and/or wording match)' : ''}]`
+      });
+      messages.push(...mentionMsgs, ...implicitTabMsgs);
     }
 
     // Inject connected service context when the query seems to target them
@@ -1175,7 +1279,7 @@ class AssistantManagerClass {
       }
       const allTabs = TabManager.tabs.filter((t) => t.url && !t.url.startsWith('about:')).slice(0, 20);
       if (allTabs.length > 1) {
-        const tabList = allTabs.map((t, i) => `${i + 1}. ${TabManager.getTabDisplayTitle(t) || t.url} — ${t.url}`).join('\n');
+        const tabList = this._openTabsAwarenessBlock(allTabs);
         messages.push({ role: 'system', content: `[Open tabs (${allTabs.length})]\n${tabList}` });
       }
     }
@@ -1241,6 +1345,8 @@ class AssistantManagerClass {
   async _processWithTools(text, config, historyUserLabel, guestWv = null) {
     this._guestChatWebview = guestWv || null;
     try {
+    if (this.inputEl && typeof this.inputEl.blur === 'function') this.inputEl.blur();
+
     // Build context messages (same as legacy path but without page snapshot —
     // the model will call read_page itself via tools)
     const messages = [{ role: 'system', content: this.systemPrompt }];
@@ -1284,7 +1390,7 @@ class AssistantManagerClass {
     if (typeof TabManager !== 'undefined') {
       const allTabs = TabManager.tabs.filter(t => t.url && !t.url.startsWith('about:')).slice(0, 20);
       if (allTabs.length > 1) {
-        const tabList = allTabs.map((t, i) => `${i + 1}. ${TabManager.getTabDisplayTitle(t) || t.url} — ${t.url}`).join('\n');
+        const tabList = this._openTabsAwarenessBlock(allTabs);
         messages.push({ role: 'system', content: `[Open tabs (${allTabs.length})]\n${tabList}` });
       }
     }
@@ -1305,11 +1411,16 @@ class AssistantManagerClass {
       if (titles) messages.push({ role: 'system', content: `[Pinned tabs in workspace]\n${titles}` });
     }
 
-    // @mentions
     const mentionMsgs = await this._resolveAtMentions(text);
-    if (mentionMsgs.length) {
-      messages.push({ role: 'system', content: `[Multi-tab context — ${mentionMsgs.length} tab(s) referenced by the user]` });
-      messages.push(...mentionMsgs);
+    const atTabIds = this._tabIdsFromAtMentions(text);
+    const implicitTabMsgs = await this._resolveImplicitTabContext(text, atTabIds);
+    const tabCtxN = mentionMsgs.length + implicitTabMsgs.length;
+    if (tabCtxN) {
+      messages.push({
+        role: 'system',
+        content: `[Multi-tab context — ${tabCtxN} tab(s)${mentionMsgs.length ? ' (@mention and/or wording match)' : ''}]`
+      });
+      messages.push(...mentionMsgs, ...implicitTabMsgs);
     }
 
     // Connector context
@@ -1453,7 +1564,9 @@ class AssistantManagerClass {
             title: TabManager.getTabDisplayTitle(t) || '(untitled)',
             url: t.url || '',
             active: t.id === TabManager.activeTabId,
-            webContentsId: t.webview?.getWebContentsId?.() || null
+            webContentsId: t.webview?.getWebContentsId?.() || null,
+            group_id: t.groupId || null,
+            group_name: TabManager.getTabGroupLabel?.(t) || null
           }));
         window.navio.toolListTabsAck({ success: true, tabs });
       } catch (e) {
@@ -3844,12 +3957,43 @@ ${pageInfo}${snapText}`;
   // Detects which connected services are relevant to the user's query,
   // queries them, and returns a formatted system context block.
 
+  /**
+   * When two Google accounts are connected, route connector Gmail queries by email substring in the user text.
+   */
+  _pickGmailConnectorServiceId(text, oauthSt) {
+    const hasPrimary = !!(oauthSt && oauthSt.google && oauthSt.google.email);
+    const hasSec = !!(oauthSt && oauthSt.google_2 && oauthSt.google_2.email);
+    if (!hasSec) return 'gmail';
+    if (!hasPrimary) return 'gmail_2';
+    const low = text.toLowerCase();
+    const tryMatch = (email, svc) => {
+      if (!email) return null;
+      const e = email.toLowerCase();
+      if (e.length >= 3 && low.includes(e)) return svc;
+      const local = e.split('@')[0] || '';
+      if (local.length >= 2 && low.includes(local)) return svc;
+      return null;
+    };
+    return (
+      tryMatch(oauthSt.google_2.email, 'gmail_2') ||
+      tryMatch(oauthSt.google.email, 'gmail') ||
+      'gmail'
+    );
+  }
+
   async _buildConnectorContext(text, opts = {}) {
     const webMode = opts.webMode || 'auto';
     const mailMode = opts.mailMode || 'auto';
     try {
       const connected = ConnectorsManager.getConnectedIntegrations();
       if (connected.length === 0) return null;
+
+      let oauthSt = {};
+      try {
+        oauthSt = (await window.navio.oauthStatus()) || {};
+      } catch {
+        oauthSt = {};
+      }
 
       // Fresh refs per user turn so subject enrichment only matches this query's messages.
       this._emailRefs.clear();
@@ -3882,8 +4026,19 @@ ${pageInfo}${snapText}`;
       // ── Gmail ──────────────────────────────────────────────────────────
       let gmailIntent = navioDetectMailboxIntent(text);
       if (mailMode === 'never') gmailIntent = false;
-      else if (mailMode === 'always' && has('gmail')) gmailIntent = true;
-      if (has('gmail') && gmailIntent) {
+      else if (mailMode === 'always' && (has('gmail') || has('gmail_2'))) gmailIntent = true;
+      const gmailApiConnected = has('gmail') || has('gmail_2');
+      if (gmailApiConnected && gmailIntent && oauthSt?.google?.email && oauthSt?.google_2?.email) {
+        results.push(
+          `[Two Gmail API accounts: **${oauthSt.google.email}** (primary) and **${oauthSt.google_2.email}** (secondary). ` +
+            `This turn's inbox prefetch follows the address or keyword you used; agent tools use **google_account** primary|secondary.]`
+        );
+      }
+      if (gmailApiConnected && gmailIntent) {
+        const gmailSvc = this._pickGmailConnectorServiceId(text, oauthSt);
+        let activeGmailSvc = gmailSvc;
+        if (!has(activeGmailSvc)) activeGmailSvc = has('gmail_2') ? 'gmail_2' : 'gmail';
+        const gmailLabel = activeGmailSvc === 'gmail_2' ? 'Gmail (2nd account)' : 'Gmail';
         const wantsUnread = /\bunread\b/i.test(text);
         const wantsUnreplied =
           /\b(unreplied|unanswered|didn.?t\s*(respond|reply)|not\s*(respond|replied|reply)|no\s*response|pending\s*(reply|response)|haven.?t\s*(respond|replied|reply)|need\s*to\s*(respond|reply)|need\s+a\s*reply|needs?\s+replies?|that\s+need(s)?\s+(a\s+)?reply|still\s+.*\b(reply|respond)|awaiting\s+(a\s+)?response|waiting\s+for\s+(a\s+)?reply|follow.?up)\b/i.test(
@@ -3960,12 +4115,12 @@ ${pageInfo}${snapText}`;
         }
 
         try {
-          const res = await ConnectorsManager.queryConnector('gmail', gmailQuery, {
+          const res = await ConnectorsManager.queryConnector(activeGmailSvc, gmailQuery, {
             maxResults: fetchCount,
             pages: fetchCount > 25 ? 2 : 1
           });
           if (res?.error) {
-            results.push(`[Gmail connector error: ${res.error}]`);
+            results.push(`[${gmailLabel} connector error: ${res.error}]`);
           } else if (res?.results?.length) {
             const lines = res.results.map((r, idx) => {
               const gmailUrl = r.id ? `https://mail.google.com/mail/u/0/#inbox/${r.id}` : '';
@@ -3986,12 +4141,13 @@ ${pageInfo}${snapText}`;
             }).join('\n');
             this._lastGmailPageToken = res.nextPageToken || null;
             this._lastGmailQuery = gmailQuery;
+            this._lastGmailServiceId = activeGmailSvc;
             const totalInfo = res.total > res.results.length
               ? ` (showing ${res.results.length} of ~${res.total} total)`
               : '';
-            results.push(`[Gmail — ${res.results.length} result(s) for "${gmailQuery}"${totalInfo}]\n${lines}${res.nextPageToken ? '\n\n(More results available — user can ask to "load more" or "show more emails")' : ''}`);
+            results.push(`[${gmailLabel} — ${res.results.length} result(s) for "${gmailQuery}"${totalInfo}]\n${lines}${res.nextPageToken ? '\n\n(More results available — user can ask to "load more" or "show more emails")' : ''}`);
           } else {
-            results.push(`[Gmail — 0 results for "${gmailQuery}"]`);
+            results.push(`[${gmailLabel} — 0 results for "${gmailQuery}"]`);
           }
         } catch (_) {}
       }
@@ -3999,14 +4155,16 @@ ${pageInfo}${snapText}`;
       // ── Gmail "load more" / continuation ────────────────────────────────
       const wantsMore = /\b(more|next|continue|load more|show more|rest of|remaining)\b/i.test(text)
         && /\b(email|mail|gmail|result|inbox)\b/i.test(text);
-      if (has('gmail') && wantsMore && this._lastGmailPageToken && !gmailIntent) {
+      const moreSvc = this._lastGmailServiceId || 'gmail';
+      if (gmailApiConnected && has(moreSvc === 'gmail_2' ? 'gmail_2' : 'gmail') && wantsMore && this._lastGmailPageToken && !gmailIntent) {
         try {
-          const res = await ConnectorsManager.queryConnector('gmail', this._lastGmailQuery, {
+          const res = await ConnectorsManager.queryConnector(moreSvc, this._lastGmailQuery, {
             maxResults: 25,
             pageToken: this._lastGmailPageToken,
             pages: 1
           });
           if (res?.results?.length) {
+            const moreLabel = moreSvc === 'gmail_2' ? 'Gmail (2nd account)' : 'Gmail';
             const lines = res.results.map((r, idx) => {
               const gmailUrl = r.id ? `https://mail.google.com/mail/u/0/#inbox/${r.id}` : '';
               if (r.id) {
@@ -4022,7 +4180,7 @@ ${pageInfo}${snapText}`;
               return `${idx + 1}. [${r.subject || '(no subject)'}](${gmailUrl}) — From: ${r.from || '?'}${dateStr}${snippet}`;
             }).join('\n');
             this._lastGmailPageToken = res.nextPageToken || null;
-            results.push(`[Gmail — next ${res.results.length} result(s)]\n${lines}${res.nextPageToken ? '\n\n(Still more available)' : '\n\n(End of results)'}`);
+            results.push(`[${moreLabel} — next ${res.results.length} result(s)]\n${lines}${res.nextPageToken ? '\n\n(Still more available)' : '\n\n(End of results)'}`);
           }
         } catch (_) {}
       }
@@ -4032,7 +4190,7 @@ ${pageInfo}${snapText}`;
         /\boutlook|hotmail|live\.com|office\s*365|microsoft\s*365|exchange\b/i.test(text);
       const outlookMailIntent =
         has('outlook') &&
-        (outlookExplicit || (!has('gmail') && navioDetectMailboxIntent(text)));
+        (outlookExplicit || (!(has('gmail') || has('gmail_2')) && navioDetectMailboxIntent(text)));
       if (outlookMailIntent) {
         const wantsUnreadOutlook = /\bunread\b/i.test(text);
         const rawOutlookQ = clean(/\b(outlook|email|mail|inbox|message)\b/gi);

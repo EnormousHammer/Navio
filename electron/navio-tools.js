@@ -12,6 +12,16 @@
 // Each entry: { name, description, parameters } where `parameters` is a
 // JSON-Schema-style object (type "object", properties, required).
 
+const GMAIL_ACCOUNT_CHOICE = {
+  google_account: {
+    type: 'string',
+    enum: ['primary', 'secondary'],
+    description:
+      '**primary** = first Google sign-in (default). **secondary** = **Gmail (2nd account)** when connected. ' +
+      'Use **secondary** when the user names that inbox, group, or email.'
+  }
+};
+
 const NAVIO_TOOLS = [
   {
     name: 'navigate',
@@ -274,7 +284,8 @@ const NAVIO_TOOLS = [
   {
     name: 'list_tabs',
     description:
-      'List all open browser tabs with their IDs, titles, and URLs. Use to find a specific tab before switching to it.',
+      'List all open browser tabs with IDs, titles, URLs, and optional tab-group metadata (group_id, group_name). ' +
+      'When the user names a workspace or group (e.g. research batch), match group_name and use switch_tab on every tab in that group for multi-tab tasks.',
     parameters: { type: 'object', properties: {} }
   },
 
@@ -416,7 +427,8 @@ const NAVIO_TOOLS = [
           type: 'string',
           description:
             'Pagination: pass next_page_token from the previous gmail_search result to fetch the next batch (same query).'
-        }
+        },
+        ...GMAIL_ACCOUNT_CHOICE
       },
       required: ['query']
     }
@@ -438,7 +450,8 @@ const NAVIO_TOOLS = [
         max_body_chars: {
           type: 'number',
           description: 'Max characters of body to return (default 32000, max 120000).'
-        }
+        },
+        ...GMAIL_ACCOUNT_CHOICE
       },
       required: ['message_id']
     }
@@ -450,7 +463,8 @@ const NAVIO_TOOLS = [
     parameters: {
       type: 'object',
       properties: {
-        draft_id: { type: 'string', description: 'The Gmail draft ID to send (from gmail_create_reply_draft result).' }
+        draft_id: { type: 'string', description: 'The Gmail draft ID to send (from gmail_create_reply_draft result).' },
+        ...GMAIL_ACCOUNT_CHOICE
       },
       required: ['draft_id']
     }
@@ -462,7 +476,8 @@ const NAVIO_TOOLS = [
     parameters: {
       type: 'object',
       properties: {
-        draft_id: { type: 'string', description: 'The Gmail draft ID to delete.' }
+        draft_id: { type: 'string', description: 'The Gmail draft ID to delete.' },
+        ...GMAIL_ACCOUNT_CHOICE
       },
       required: ['draft_id']
     }
@@ -503,7 +518,8 @@ const NAVIO_TOOLS = [
         body: {
           type: 'string',
           description: 'The plain-text body of the reply draft.'
-        }
+        },
+        ...GMAIL_ACCOUNT_CHOICE
       },
       required: ['message_id', 'body']
     }

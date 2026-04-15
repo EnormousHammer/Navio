@@ -657,6 +657,12 @@ class TabManagerClass {
       if (typeof window.__navioUpdateZoomLabel === 'function') {
         window.__navioUpdateZoomLabel();
       }
+      // Move keyboard focus to the page so agent type_text / CDP input goes to the webview, not the assistant.
+      if (activeTab.webview) {
+        try {
+          activeTab.webview.focus();
+        } catch (_) {}
+      }
     }
   }
 
@@ -970,6 +976,13 @@ class TabManagerClass {
     return p || 'New Tab';
   }
 
+  /** Group name for UI / assistant context, or null if the tab is not grouped. */
+  getTabGroupLabel(tab) {
+    if (!tab?.groupId || !this.groups[tab.groupId]) return null;
+    const n = this.groups[tab.groupId].name;
+    return n != null && String(n).trim() ? String(n).trim() : null;
+  }
+
   setTabCustomTitle(tabId, nameOrNull) {
     const tab = this.tabs.find((t) => t.id === tabId);
     if (!tab) return;
@@ -1171,6 +1184,18 @@ class TabManagerClass {
       </button>
       <div class="tcm-sep"></div>` : '';
 
+    const otherTabs = this.tabs.filter(t => t.id !== tabId);
+    const maxPair = 16;
+    const pairSection = otherTabs.length
+      ? `<div class="tcm-label">Group with another tab</div>
+      ${otherTabs.slice(0, maxPair).map(ot => `
+        <button class="tcm-item" data-action="new-group-with-tab" data-other-id="${ot.id}">
+          <span class="tcm-dot" style="background:#64748b"></span>${this.escapeHtml(this.getTabDisplayTitle(ot))}
+        </button>`).join('')}
+      ${otherTabs.length > maxPair ? `<div class="tcm-label">${otherTabs.length - maxPair} more tabs — use “Add to group” below</div>` : ''}
+      <div class="tcm-sep"></div>`
+      : '';
+
     const pinLabel = tab.pinned ? 'Unpin tab' : 'Pin tab';
 
     const menu = document.createElement('div');
@@ -1182,6 +1207,7 @@ class TabManagerClass {
       <div class="tcm-sep"></div>
       <button class="tcm-item" data-action="toggle-pin">${pinLabel}</button>
       <div class="tcm-sep"></div>
+      ${pairSection}
       ${removeItem}
       ${groupItems}
       <div class="tcm-label">New group</div>
@@ -1237,6 +1263,19 @@ class TabManagerClass {
           }
         } else if (act === 'remove-from-group') this.removeTabFromGroup(tabId);
         else if (act === 'add-to-group') this.addTabToGroup(tabId, btn.dataset.gid);
+        else if (act === 'new-group-with-tab') {
+          const oid = btn.dataset.otherId;
+          const ot = this.tabs.find(x => x.id === oid);
+          if (ot) {
+            const a = (this.getTabDisplayTitle(tab) || 'Tab').slice(0, 22);
+            const b = (this.getTabDisplayTitle(ot) || 'Tab').slice(0, 22);
+            const name = `${a} / ${b}`.slice(0, 36);
+            const colorIdx = Object.keys(this.groups).length % this._GROUP_COLORS.length;
+            const gid = this.createGroup(name, this._GROUP_COLORS[colorIdx]);
+            this.addTabToGroup(tabId, gid);
+            this.addTabToGroup(ot.id, gid);
+          }
+        }
         this._hideTabContextMenu();
       });
     });

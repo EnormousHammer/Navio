@@ -24,6 +24,7 @@ class ConnectorsManagerClass {
     // Map: serviceId → oauthProviderId
     this.serviceToOAuth = {
       gmail: 'google', gdrive: 'google', gcalendar: 'google',
+      gmail_2: 'google_2',
       outlook: 'microsoft', onedrive: 'microsoft',
       dropbox: 'dropbox', slack: 'slack', github: 'github', notion: 'notion'
     };
@@ -57,6 +58,19 @@ class ConnectorsManagerClass {
         connectionType: 'imap',
         imapServiceId: 'gmail',
         capabilities: ['Search inbox by sender, subject, keyword', 'Read email threads', 'Create drafts in your Drafts folder', 'Check unread count'],
+        category: 'email'
+      },
+      {
+        id: 'gmail_2',
+        name: 'Gmail (2nd account)',
+        tagline: 'Second Google inbox (API)',
+        description:
+          'Connect another Gmail / Google Workspace account for AI search and drafts. Uses the same Google Cloud OAuth client as your first sign-in. Rename your tabs (e.g. HARO vs CSR) and mention that address so Navio picks the right inbox.',
+        icon: 'M',
+        logo: 'https://www.gstatic.com/images/icons/material/product/2x/gmail_48dp.png',
+        logoBg: '#ffffff',
+        gradient: 'linear-gradient(135deg, #c5221f, #f9ab00)',
+        capabilities: ['Search second inbox', 'Read threads', 'Create drafts in that account'],
         category: 'email'
       },
       {

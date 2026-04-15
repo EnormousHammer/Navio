@@ -653,6 +653,8 @@ body.tabstrip-hidden .tab-strip-show {
   height: 28px;
   flex-shrink: 0;
   animation: tab-appear 250ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Ensure right-click / context menu works under a frameless drag region (parent .tab-strip). */
+  -webkit-app-region: no-drag;
 }
 
 @keyframes tab-appear {
@@ -720,6 +722,7 @@ body.navio-incognito-active .url-bar-container {
   flex-shrink: 0;
   border-left: 2px solid var(--tg-color, #888);
   margin: 3px 2px 0;
+  -webkit-app-region: no-drag;
 }
 .tab-group-header:hover { background: rgba(255,255,255,0.05); }
 

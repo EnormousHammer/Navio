@@ -16,6 +16,7 @@ import pandas as pd
 
 EXCEL_PATH = (
     r"G:\My Drive\Canoil\April 2026, CC Price Increase"
+    r"\MOV, vVSG, REOLUBE Email Drafts"
     r"\MOV, VSG, Reolube - price increase April 2026 including contacts.xlsx"
 )
 
@@ -108,15 +109,19 @@ def main():
     js_array = json.dumps(records, indent=2, ensure_ascii=True)
 
     gs = f"""// ============================================================
-// Canoil Canada - Price Increase Gmail Drafts
-// Creates one draft per company with the PDF letter attached.
+// Canoil Canada - MOV/VSG/Reolube - Gmail Drafts (PDF attached)
+//
+// Each draft MUST be: short email + PDF attachment + your signature.
+// If you see a long HTML table or "Kathleen Bevan" in the body, that is an
+// OLD draft — delete it. Those were not created by this script.
+//
+// BEFORE RUNNING: In Gmail, delete old wrong drafts for this campaign.
+//
 // HOW TO USE:
-//   1. Open script.google.com
-//   2. Paste this entire file into the editor
-//   3. Go to Editor -> Services -> Add "Gmail API" (v1) and click Add
-//   4. Click Run -> createAllDrafts
-//   5. Approve permissions when prompted
-//   6. Check Gmail Drafts folder
+//   1. Paste this ENTIRE file (including getGmailSignature at top).
+//   2. Services -> Add Gmail API v1
+//   3. Run function: createAllDrafts  (NOT getGmailSignature)
+//   4. Approve permissions; check Drafts
 // ============================================================
 
 function getGmailSignature() {{

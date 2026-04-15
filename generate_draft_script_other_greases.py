@@ -99,8 +99,13 @@ def main():
 
     gs = f"""// ============================================================
 // Canoil Canada - Other Greases - Gmail Drafts (PDF attached)
-// 1. Services -> Add Gmail API v1
-// 2. Run createAllDraftsOtherGreases
+//
+// Each draft: short email + PDF + signature. Delete any old drafts that
+// show a full price table in the message body.
+//
+// 1. Paste ENTIRE file (including getGmailSignature).
+// 2. Services -> Add Gmail API v1
+// 3. Run: createAllDraftsOtherGreases  (NOT getGmailSignature)
 // ============================================================
 
 function getGmailSignature() {{

@@ -126,7 +126,7 @@ function createAllDraftsOtherGreases() {
   },
   {
     "company": "Harpoon Motorsports",
-    "to": "",
+    "to": "packerd_00@yahoo.com",
     "cc": "gamil@canoilcanadaltd.com, kathleen@canoilcanadaltd.com",
     "subject": "Canoil Canada Ltd. - Price Increase Effective April 15, 2026",
     "body": "Dear Harpoon Motorsports Team,\n\nPlease find attached our formal price increase notification for the products your company purchases from Canoil Canada.\n\nAs outlined in the attached letter, the updated prices will be effective April 15, 2026.\n\nShould you have any questions or require additional information, please do not hesitate to contact us.",
