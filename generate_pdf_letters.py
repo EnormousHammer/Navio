@@ -99,9 +99,27 @@ def build_html(company: str, contacts: list[str], rows: list[dict], logo_uri: st
       border-bottom: 3px solid #1a3c6e;
       margin-bottom: 22px;
     }}
-    .lh-logo img {{
+    .lh-lockup {{
+      display: inline-block;
+      text-align: center;
+    }}
+    .lh-lockup img {{
       height: 56px;
+      width: auto;
       display: block;
+      margin-left: auto;
+      margin-right: auto;
+    }}
+    .lh-canada-ltd {{
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 15px;
+      font-weight: 400;
+      color: #1f1f1f;
+      letter-spacing: 0.11em;
+      margin-top: 5px;
+      line-height: 1.15;
+      text-transform: uppercase;
+      text-align: center;
     }}
     .lh-address {{
       text-align: right;
@@ -208,7 +226,10 @@ def build_html(company: str, contacts: list[str], rows: list[dict], logo_uri: st
   <table class="lh-table">
     <tr>
       <td class="lh-logo" style="vertical-align:middle; width:50%;">
-        <img src="{logo_uri}" alt="Canoil Canada">
+        <div class="lh-lockup">
+          <img src="{logo_uri}" alt="Canoil">
+          <div class="lh-canada-ltd">CANADA LTD.</div>
+        </div>
       </td>
       <td style="text-align:right; vertical-align:middle;">
         <table style="border-collapse:collapse; display:inline-table; text-align:left;">
