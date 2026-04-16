@@ -702,14 +702,15 @@ body.navio-assistant-open #app {
 
 .tab-strip-list {
   display: flex;
-  align-items: center;
-  gap: 2px;
+  align-items: flex-end;
+  gap: 0;
   flex: 1;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
-  padding: 3px 0;
+  /* Tabs sit on the bottom edge of the strip (Chrome-style) */
+  padding: 2px 4px 0;
 }
 
 .tab-strip-list::-webkit-scrollbar { display: none; }
@@ -766,21 +767,43 @@ body.navio-assistant-open #app {
   padding: 4px 10px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all var(--duration) var(--ease), transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease),
+    opacity 0.15s ease;
   position: relative;
-  max-width: 200px;
+  max-width: 220px;
   min-width: 40px;
   min-height: 32px;
   height: 32px;
   flex-shrink: 0;
-  animation: tab-appear 250ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: tab-appear 0.18s ease-out;
+  z-index: 0;
   /* Ensure right-click / context menu works under a frameless drag region (parent .tab-strip). */
   -webkit-app-region: no-drag;
 }
 
+/* Horizontal strip: Chrome-like overlapping tabs with rounded top corners only */
+body:not(.navio-vertical-tabs) .tab-item {
+  border-radius: 8px 8px 0 0;
+  min-height: 34px;
+  height: 34px;
+}
+/* Adjacent tabs only — avoids overlapping tab-group headers */
+body:not(.navio-vertical-tabs) .tab-strip-list .tab-item + .tab-item {
+  margin-left: -6px;
+}
+body:not(.navio-vertical-tabs) .tab-item:hover {
+  z-index: 1;
+}
+body:not(.navio-vertical-tabs) .tab-item.active {
+  z-index: 2;
+}
+
 @keyframes tab-appear {
-  from { opacity: 0; transform: scale(0.85) translateY(4px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .tab-item:active {
@@ -992,19 +1015,19 @@ body.navio-incognito-active .url-bar-container {
 .tab-item.active::after {
   content: '';
   position: absolute;
-  left: 8px;
-  right: 8px;
+  left: 0;
+  right: 0;
   bottom: 0;
   height: 2px;
   background: var(--gradient-primary);
-  border-radius: 2px 2px 0 0;
-  box-shadow: 0 0 6px rgba(0, 216, 255, 0.3);
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .tab-favicon {
-  width: 14px;
-  height: 14px;
-  border-radius: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -1014,9 +1037,9 @@ body.navio-incognito-active .url-bar-container {
 }
 
 .tab-favicon img {
-  width: 13px;
-  height: 13px;
-  border-radius: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
 }
 
 .tab-title {
@@ -1024,7 +1047,9 @@ body.navio-incognito-active .url-bar-container {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11.5px;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
   color: var(--text-secondary);
   transition: color var(--duration) var(--ease);
   min-width: 0;
@@ -1076,20 +1101,20 @@ body.navio-incognito-active .url-bar-container {
 
 .tab-close {
   opacity: 0;
-  width: 28px;
-  height: 28px;
-  min-width: 28px;
-  min-height: 28px;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
   border: none;
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 9999px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: all var(--duration) var(--ease);
+  transition: background var(--duration) var(--ease), color var(--duration) var(--ease), opacity var(--duration) var(--ease);
 }
 
 .tab-item:hover .tab-close { opacity: 1; }
@@ -9950,11 +9975,11 @@ button:focus-visible,
   background: rgba(255, 255, 255, 0.065);
 }
 [data-theme="dark"] .tab-item.active::after {
-  background: rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.38);
   box-shadow: none;
   height: 2px;
-  left: 10px;
-  right: 10px;
+  left: 0;
+  right: 0;
 }
 [data-theme="dark"] .url-bar {
   background: rgba(255, 255, 255, 0.055);
@@ -9998,10 +10023,12 @@ button:focus-visible,
 }
 [data-theme="light"] .tab-item.active {
   background: #ffffff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.05);
 }
+/* Chrome-style solid accent on the active tab (reads cleaner than a full gradient strip) */
 [data-theme="light"] .tab-item.active::after {
-  background: linear-gradient(90deg, #0088ee 0%, #5468ff 60%, #9f6fff 100%);
+  background: #1a73e8;
+  height: 3px;
   box-shadow: none;
 }
 [data-theme="light"] .tab-title { color: var(--text-secondary); }
