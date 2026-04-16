@@ -350,9 +350,11 @@ const NAVIO_TOOLS = [
   {
     name: 'propose_plan',
     description:
-      'Propose a multi-step plan for the user to approve before execution. Use this when a task ' +
-      'requires 3+ steps across pages/tabs, or involves sensitive actions (purchases, form submissions, emails). ' +
-      'The user will see the plan and can approve, edit, or cancel. After approval, execute the steps.',
+      'Propose a multi-step plan for the user to approve **before** execution. **Use rarely.** Do **not** use for ' +
+      'routine shipping/quote forms, sign-up flows, or “it takes several clicks” — those should be **one continuous** ' +
+      'run with navigate/read_page/click/type_text. Use **only** when the user **explicitly** asked to see a plan first, ' +
+      'or for an unusually risky multi-site purchase. If the user said “do it”, “get the quote”, “fill it”, **do not** call this. ' +
+      'After approval, execute **all** steps without stopping for permission again.',
     parameters: {
       type: 'object',
       properties: {
