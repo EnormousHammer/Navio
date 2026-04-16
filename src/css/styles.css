@@ -3172,21 +3172,21 @@ button.ntp-ticker-sport--stream:focus-visible {
   z-index: 1;
   padding: 0 clamp(8px, 3vw, 20px);
   width: 100%;
-  max-width: min(960px, 100%);
+  max-width: min(1100px, 100%);
   margin-left: auto;
   margin-right: auto;
   box-sizing: border-box;
   min-width: 0;
 }
 
-/* Shortcuts: 3-column grid so the clock stays on the true center line; side columns hug the clock */
+/* Shortcuts: 3-column grid — clock centered; left column wider so ~9 icons fit at natural width */
 .ntp-shortcuts-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.75fr) auto minmax(0, 0.85fr);
   align-items: center;
   justify-items: stretch;
   width: 100%;
-  max-width: 920px;
+  max-width: min(1100px, 100%);
   padding: 6px 4px 8px;
   border: none;
   border-radius: 0;
@@ -3215,12 +3215,14 @@ button.ntp-ticker-sport--stream:focus-visible {
   padding-left: min(10px, 1.5vw);
 }
 
-/* Row uses a 9-column grid so we only wrap after 9 icons (flex-wrap was breaking at ~6). */
+/* Up to 9 icons per row: max-content columns (same icon/gap look — not squeezed into equal 1fr slots). */
 .ntp-shortcuts-col:not(.ntp-shortcuts-col--secondary) .ntp-shortcuts-row-inner {
-  justify-items: end;
+  justify-content: end;
+  justify-items: center;
 }
 .ntp-shortcuts-col--secondary .ntp-shortcuts-row-inner {
-  justify-items: start;
+  justify-content: start;
+  justify-items: center;
 }
 
 /* Legacy: optional sep (unused in default NTP; kept for pop-out HTML clones) */
@@ -3244,12 +3246,16 @@ button.ntp-ticker-sport--stream:focus-visible {
 
 .ntp-shortcuts-row-inner {
   display: grid;
-  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(9, max-content);
   gap: clamp(4px, 1.5vw, 8px);
   row-gap: 8px;
   width: 100%;
   min-width: 0;
   align-items: start;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
 }
 
 @media (max-width: 640px) {
@@ -3265,11 +3271,12 @@ button.ntp-ticker-sport--stream:focus-visible {
     padding-right: 0;
   }
   .ntp-shortcuts-row-inner {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(4, max-content);
   }
   .ntp-shortcuts-col:not(.ntp-shortcuts-col--secondary) .ntp-shortcuts-row-inner,
   .ntp-shortcuts-col--secondary .ntp-shortcuts-row-inner {
     justify-items: center;
+    justify-content: center;
   }
   .ntp-shortcuts-center {
     min-width: 0;
