@@ -8,6 +8,7 @@ class NavioApp {
     this.config = {};
     this.tabStripHidden = false;
     this._initialShellReadyScheduled = false;
+    this._urlSuggest = { index: -1, items: [], debounce: null, listEl: null };
     this.init();
   }
 
@@ -205,19 +206,237 @@ class NavioApp {
     }, 150);
   }
 
+  _normalizeOmniboxUrl(url) {
+    try {
+      const u = new URL(url);
+      u.hash = '';
+      return u.href;
+    } catch {
+      return (url || '').trim();
+    }
+  }
+
+  _flattenBookmarksForOmnibox(data) {
+    const out = [];
+    for (const b of data.bar || []) {
+      if (b.url) out.push(b);
+    }
+    const walk = (nodes) => {
+      for (const n of nodes || []) {
+        if (n.url) out.push(n);
+        if (n.children && n.children.length) walk(n.children);
+      }
+    };
+    walk(data.tree || []);
+    return out;
+  }
+
+  /** When true, show history/bookmark rows; when false (long AI-style question), skip to avoid noise. */
+  _shouldOfferUrlSuggestions(raw) {
+    const t = (raw || '').trim();
+    if (!t) return true;
+    if (/^https?:\/\//i.test(t)) return true;
+    if (t.startsWith('?') || t.startsWith('>>')) return false;
+    if (t.includes('.') && t.split(/\s+/).length <= 4) return true;
+    if (this._isAIQuery(t) && !t.includes('/') && !t.includes('.') && t.split(/\s+/).length >= 5) return false;
+    return true;
+  }
+
+  _hideUrlSuggestions() {
+    const list = this._urlSuggest.listEl || document.getElementById('url-suggestions');
+    if (list) {
+      list.hidden = true;
+      list.innerHTML = '';
+    }
+    this._urlSuggest.index = -1;
+    this._urlSuggest.items = [];
+  }
+
+  _highlightUrlSuggestionRows() {
+    const list = this._urlSuggest.listEl;
+    if (!list) return;
+    list.querySelectorAll('.url-suggestion-row').forEach((row, i) => {
+      const on = i === this._urlSuggest.index;
+      row.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+
+  async _collectUrlSuggestions(query) {
+    const q = (query || '').trim();
+    const out = [];
+    const seen = new Set();
+    const add = (item) => {
+      const key = this._normalizeOmniboxUrl(item.url);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      out.push(item);
+    };
+
+    try {
+      if (!window.navio.historySearch) return [];
+
+      if (q) {
+        const { entries = [] } = await window.navio.historySearch(q, 50);
+        if (window.navio.bookmarksGet) {
+          const bdata = await window.navio.bookmarksGet();
+          const flat = this._flattenBookmarksForOmnibox(bdata);
+          const ql = q.toLowerCase();
+          for (const b of flat) {
+            const hay = `${b.title || ''} ${b.url || ''}`.toLowerCase();
+            if (hay.includes(ql)) {
+              add({
+                url: b.url,
+                title: b.title || b.url,
+                badge: 'bookmark',
+                favicon: b.favicon || ''
+              });
+            }
+          }
+        }
+        for (const e of entries) {
+          add({
+            url: e.url,
+            title: e.title || e.url,
+            badge: 'history',
+            visitCount: e.visitCount,
+            visitedAt: e.visitedAt,
+            favicon: e.favicon || ''
+          });
+        }
+        return out.slice(0, 14);
+      }
+
+      const { entries = [] } = await window.navio.historySearch('', 250);
+      if (entries.length) {
+        const byFreq = [...entries].sort((a, b) => (b.visitCount || 0) - (a.visitCount || 0));
+        for (const e of byFreq.slice(0, 6)) {
+          const vc = e.visitCount || 0;
+          add({
+            url: e.url,
+            title: e.title || e.url,
+            badge: vc >= 3 ? 'frequent' : 'recent',
+            visitCount: vc,
+            visitedAt: e.visitedAt,
+            favicon: e.favicon || ''
+          });
+        }
+        const byTime = [...entries].sort((a, b) => (b.visitedAt || 0) - (a.visitedAt || 0));
+        for (const e of byTime.slice(0, 10)) {
+          add({
+            url: e.url,
+            title: e.title || e.url,
+            badge: 'recent',
+            visitCount: e.visitCount,
+            visitedAt: e.visitedAt,
+            favicon: e.favicon || ''
+          });
+        }
+      }
+      if (window.navio.bookmarksGet) {
+        const bdata = await window.navio.bookmarksGet();
+        const flat = this._flattenBookmarksForOmnibox(bdata);
+        for (const b of flat.slice(0, 8)) {
+          add({
+            url: b.url,
+            title: b.title || b.url,
+            badge: 'bookmark',
+            favicon: b.favicon || ''
+          });
+        }
+      }
+      return out.slice(0, 14);
+    } catch (e) {
+      console.warn('[Navio] url suggestions', e);
+      return [];
+    }
+  }
+
+  async _refreshUrlSuggestions(urlInput, aiHint) {
+    if (!urlInput || !this._urlSuggest.listEl) return;
+    const raw = urlInput.value;
+    if (aiHint && aiHint.classList.contains('visible')) {
+      this._hideUrlSuggestions();
+      return;
+    }
+    if (!this._shouldOfferUrlSuggestions(raw)) {
+      this._hideUrlSuggestions();
+      return;
+    }
+    const items = await this._collectUrlSuggestions(raw.trim());
+    const list = this._urlSuggest.listEl;
+    if (!items.length) {
+      this._hideUrlSuggestions();
+      return;
+    }
+    this._urlSuggest.items = items;
+    this._urlSuggest.index = -1;
+    const esc = (s) => {
+      const d = document.createElement('div');
+      d.textContent = s == null ? '' : String(s);
+      return d.innerHTML;
+    };
+    const badgeLabel = (b) => {
+      if (b === 'bookmark') return 'Bookmark';
+      if (b === 'frequent') return 'Top site';
+      return 'History';
+    };
+    const badgeClass = (b) => {
+      if (b === 'bookmark') return 'url-suggestion-badge url-suggestion-badge--bookmark';
+      if (b === 'frequent') return 'url-suggestion-badge url-suggestion-badge--frequent';
+      return 'url-suggestion-badge url-suggestion-badge--recent';
+    };
+    list.innerHTML = items
+      .map((it, i) => {
+        let host = '';
+        try {
+          host = new URL(it.url).hostname.replace(/^www\./, '');
+        } catch {
+          host = it.url;
+        }
+        const fav = it.favicon
+          ? `<img class="url-suggestion-fav" src="${esc(it.favicon)}" alt="" />`
+          : '<span class="url-suggestion-fav" aria-hidden="true"></span>';
+        return `<button type="button" class="url-suggestion-row" role="option" data-i="${i}" aria-selected="false">
+${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc(it.title)}</span><span class="url-suggestion-url">${esc(host)}</span></span>
+<span class="${badgeClass(it.badge)}">${esc(badgeLabel(it.badge))}</span>
+</button>`;
+      })
+      .join('');
+    list.hidden = false;
+    list.querySelectorAll('.url-suggestion-row').forEach((row) => {
+      row.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const i = Number(row.getAttribute('data-i'));
+        const it = this._urlSuggest.items[i];
+        if (it && it.url) {
+          this.navigateTo(it.url);
+          urlInput.blur();
+          this._hideUrlSuggestions();
+        }
+      });
+    });
+  }
+
   bindNavigation() {
     const urlInput = document.getElementById('url-input');
     const btnBack = document.getElementById('btn-back');
     const btnForward = document.getElementById('btn-forward');
     const btnReload = document.getElementById('btn-reload');
+    this._urlSuggest.listEl = document.getElementById('url-suggestions');
 
-    // Show AI hint badge when input looks like a question
+    // Show AI hint badge when input looks like a question; debounce history/bookmark suggestions
     const aiHint = document.getElementById('url-ai-hint');
     urlInput.addEventListener('input', () => {
-      if (!aiHint) return;
       const raw = urlInput.value.trim();
-      const show = raw.length > 3 && !raw.startsWith('http') && this._isAIQuery(raw);
-      aiHint.classList.toggle('visible', show);
+      if (aiHint) {
+        const show = raw.length > 3 && !raw.startsWith('http') && this._isAIQuery(raw);
+        aiHint.classList.toggle('visible', show);
+        if (show) this._hideUrlSuggestions();
+      }
+      clearTimeout(this._urlSuggest.debounce);
+      this._urlSuggest.debounce = setTimeout(() => {
+        void this._refreshUrlSuggestions(urlInput, aiHint);
+      }, 100);
     });
     aiHint?.addEventListener('click', () => {
       const raw = urlInput.value.trim();
@@ -254,7 +473,28 @@ class NavioApp {
     }
 
     urlInput.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        const sug = this._urlSuggest;
+        if (!sug.listEl || sug.listEl.hidden || !sug.items.length) return;
+        e.preventDefault();
+        if (e.key === 'ArrowDown') {
+          sug.index = Math.min(sug.items.length - 1, sug.index + 1);
+          if (sug.index < 0) sug.index = 0;
+        } else {
+          sug.index = Math.max(0, sug.index - 1);
+        }
+        this._highlightUrlSuggestionRows();
+        return;
+      }
       if (e.key === 'Enter') {
+        const sug = this._urlSuggest;
+        if (sug.listEl && !sug.listEl.hidden && sug.index >= 0 && sug.items[sug.index]) {
+          e.preventDefault();
+          this.navigateTo(sug.items[sug.index].url);
+          urlInput.blur();
+          this._hideUrlSuggestions();
+          return;
+        }
         e.preventDefault();
         const raw = urlInput.value.trim();
         if (raw.startsWith('>>')) {
@@ -290,6 +530,11 @@ class NavioApp {
         urlInput.blur();
       }
       if (e.key === 'Escape') {
+        if (this._urlSuggest.listEl && !this._urlSuggest.listEl.hidden) {
+          this._hideUrlSuggestions();
+          e.preventDefault();
+          return;
+        }
         urlInput.blur();
         if (aiHint) aiHint.classList.remove('visible');
         const activeTab = TabManager.getActiveTab();
@@ -299,6 +544,11 @@ class NavioApp {
 
     urlInput.addEventListener('focus', () => {
       urlInput.select();
+      void this._refreshUrlSuggestions(urlInput, aiHint);
+    });
+
+    urlInput.addEventListener('blur', () => {
+      setTimeout(() => this._hideUrlSuggestions(), 200);
     });
 
     btnBack.addEventListener('click', () => {

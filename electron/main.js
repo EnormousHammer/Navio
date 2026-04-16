@@ -2372,7 +2372,7 @@ const toolExecutors = {
         const snap = await wc.executeJavaScript(`
           (() => {
             const items = [];
-            const sel = 'a,button,input,textarea,select,[role="button"],[role="link"],[role="checkbox"],[role="radio"],[role="menuitem"],[role="tab"],[role="option"],[role="switch"],[role="combobox"],[role="searchbox"]';
+            const sel = 'a,button,input,textarea,select,[role="button"],[role="link"],[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"],[role="checkbox"],[role="radio"],[role="tab"],[role="option"],[role="switch"],[role="combobox"],[role="searchbox"],[aria-haspopup]';
             for (const el of document.querySelectorAll(sel)) {
               const r = el.getBoundingClientRect();
               if (r.width < 2 || r.height < 2) continue;

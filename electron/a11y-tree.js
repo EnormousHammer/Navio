@@ -16,10 +16,17 @@ const { ensureGuestWebviewKeyboardFocus } = require('./agent-input-focus');
 // Key: webContentsId, Value: Map<string, { backendDOMNodeId, role, name }>
 const refMaps = new Map();
 
+// Lowercase — Chromium sometimes reports camelCase (e.g. popUpButton); we normalize in isInteractive().
 const INTERACTIVE_ROLES = new Set([
   'button', 'link', 'textbox', 'combobox', 'checkbox', 'radio',
   'menuitem', 'tab', 'option', 'switch', 'searchbox', 'slider',
-  'spinbutton', 'menuitemcheckbox', 'menuitemradio', 'listbox'
+  'spinbutton', 'menuitemcheckbox', 'menuitemradio', 'listbox',
+  // Header / menu triggers often use these roles instead of "button"
+  'popupbutton',
+  'menubutton',
+  'disclosure',
+  'disclosuretriangle',
+  'togglebutton'
 ]);
 
 // Roles that provide structural context but are not themselves interactive
@@ -104,15 +111,40 @@ function buildYamlTree(nodes, filter, maxChars, scopeRefId) {
     return (node.name.value || '').trim();
   }
 
-  // Check if a role is interactive
+  function axBoolProp(node, propName) {
+    const props = node.properties;
+    if (!Array.isArray(props)) return false;
+    for (const p of props) {
+      if (p.name !== propName) continue;
+      const v = p.value;
+      if (v == null) continue;
+      if (v.value === true) return true;
+      if (v.type === 'boolean' && v.value === true) return true;
+    }
+    return false;
+  }
+
+  /** True for roles Navio can click/type via CDP (Chromium uses mixed case for some roles, e.g. popUpButton). */
   function isInteractive(role) {
-    return INTERACTIVE_ROLES.has(role);
+    return INTERACTIVE_ROLES.has(String(role || '').toLowerCase());
+  }
+
+  /** Custom header/nav often exposes a focusable (or explicitly clickable) generic with a name. */
+  function isActionableGeneric(node, role, name) {
+    return (
+      role === 'generic' &&
+      name.length > 1 &&
+      !!node.backendDOMNodeId &&
+      (axBoolProp(node, 'focusable') || axBoolProp(node, 'clickable'))
+    );
   }
 
   // Check if a node or any descendant has interactive content
   function hasInteractiveDescendant(node) {
     const role = getRole(node);
+    const name = getName(node);
     if (isInteractive(role)) return true;
+    if (isActionableGeneric(node, role, name)) return true;
     const children = node.childIds || [];
     for (const cid of children) {
       const child = byId.get(cid);
@@ -145,10 +177,12 @@ function buildYamlTree(nodes, filter, maxChars, scopeRefId) {
 
     const role = getRole(node);
     const name = getName(node);
+    const actionableGeneric = isActionableGeneric(node, role, name);
 
-    // Skip ignored/invisible nodes
-    if (role === 'none' || role === 'generic' || role === 'InlineTextBox' ||
-        role === 'LineBreak' || role === 'StaticText') {
+    // Skip ignored/invisible nodes (but keep focusable named generics — common for app nav)
+    if (role === 'none' || role === 'InlineTextBox' ||
+        role === 'LineBreak' || role === 'StaticText' ||
+        (role === 'generic' && !actionableGeneric)) {
       // For StaticText, emit if filter is 'all' and has meaningful content
       if (role === 'StaticText' && filter === 'all' && name && name.length > 1) {
         emitLine(indentLevel, `text "${truncName(name)}"`);
@@ -162,13 +196,18 @@ function buildYamlTree(nodes, filter, maxChars, scopeRefId) {
     }
 
     // In 'interactive' filter mode, skip non-interactive subtrees entirely
-    if (filter === 'interactive' && !isInteractive(role) && !STRUCTURAL_ROLES.has(role)) {
+    if (
+      filter === 'interactive' &&
+      !isInteractive(role) &&
+      !actionableGeneric &&
+      !STRUCTURAL_ROLES.has(role)
+    ) {
       if (!hasInteractiveDescendant(node)) return;
     }
 
     // Build the line: role [ref_N] ["name"]
     let line = role;
-    if (isInteractive(role) && node.backendDOMNodeId) {
+    if ((isInteractive(role) || actionableGeneric) && node.backendDOMNodeId) {
       const ref = `ref_${refCounter++}`;
       refMap.set(ref, {
         backendDOMNodeId: node.backendDOMNodeId,
