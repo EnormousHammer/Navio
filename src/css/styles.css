@@ -346,20 +346,15 @@ body.shell-prelude-active:not(.shell-browser-reveal) #app {
   pointer-events: none;
 }
 
+/* Shell reveals instantly; only .shell-prelude crossfades — avoids two simultaneous opacity animations (jank). */
 body.shell-prelude-active.shell-browser-reveal #tab-strip,
 body.shell-prelude-active.shell-browser-reveal #btn-tabstrip-show,
 body.shell-prelude-active.shell-browser-reveal #app {
   opacity: 1;
   pointer-events: auto;
-  transition: opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: none;
   transform: translateZ(0);
   backface-visibility: hidden;
-}
-
-body.shell-prelude-fading #tab-strip,
-body.shell-prelude-fading #btn-tabstrip-show,
-body.shell-prelude-fading #app {
-  will-change: opacity;
 }
 
 body.shell-prelude-active.shell-prelude-fading .shell-prelude.shell-prelude-exiting {
@@ -385,8 +380,8 @@ body.shell-prelude-active.shell-prelude-fading .shell-prelude.shell-prelude-exit
   pointer-events: none;
   transform: translateZ(0);
   transition:
-    opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1),
-    visibility 0s linear 0.55s;
+    opacity 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0.48s;
 }
 
 /* Smooth fade-in of the prelude panel */
@@ -404,8 +399,18 @@ body.shell-prelude-active.shell-prelude-in .shell-prelude {
   pointer-events: none;
   visibility: hidden;
   transition:
-    opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1) !important,
-    visibility 0s linear 0.52s !important;
+    opacity 0.42s cubic-bezier(0.22, 1, 0.36, 1) !important,
+    visibility 0s linear 0.45s !important;
+}
+
+/* Must beat `body…shell-prelude-in .shell-prelude { pointer-events: auto }` (higher specificity),
+   or the invisible prelude keeps intercepting clicks (navbar AI, etc.) during / after the fade. */
+body.shell-prelude-active.shell-prelude-in .shell-prelude.shell-prelude-exiting {
+  pointer-events: none !important;
+}
+
+.shell-prelude.shell-prelude-exiting .shell-prelude-inner {
+  animation: none !important;
 }
 
 .shell-prelude-inner {
@@ -470,11 +475,6 @@ body.shell-prelude-active.shell-prelude-in .shell-prelude {
   }
   .shell-prelude,
   .shell-prelude.shell-prelude-exiting {
-    transition-duration: 0.01ms !important;
-  }
-  body.shell-prelude-active.shell-browser-reveal #tab-strip,
-  body.shell-prelude-active.shell-browser-reveal #btn-tabstrip-show,
-  body.shell-prelude-active.shell-browser-reveal #app {
     transition-duration: 0.01ms !important;
   }
 }

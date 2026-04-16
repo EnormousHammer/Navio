@@ -52,7 +52,7 @@ const DEFAULT_CONFIG = {
   /** When true (and pop-up blocking on), also block small / blank script pop-ups unless URL looks like OAuth/SSO. */
   adStrictPopupBlock: true,
   /** When true, each download opens a system Save dialog (pick folder and name). When false, saves to Downloads automatically. */
-  downloadAskWhere: false,
+  downloadAskWhere: true,
   /** When true, open File Explorer to the file after a successful download. Off by default to avoid interrupting browsing. */
   downloadRevealInFolder: false,
   /** Google Translate "translate to" language (e.g. en, es, zh-cn). Empty = use OS locale. */

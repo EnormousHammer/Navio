@@ -7,6 +7,7 @@ class NavioApp {
   constructor() {
     this.config = {};
     this.tabStripHidden = false;
+    this._initialShellReadyScheduled = false;
     this.init();
   }
 
@@ -32,6 +33,8 @@ class NavioApp {
           'shell-browser-reveal'
         );
         document.getElementById('shell-prelude')?.classList.remove('shell-prelude-exiting');
+      } finally {
+        if (this._sessionStarted) this._finishInitialShellReady();
       }
       this.config = await window.navio.getConfig();
     }
@@ -48,16 +51,20 @@ class NavioApp {
     if (!isFirstRun && !this._sessionStarted) {
       void this.startBrowser();
     }
+    if (typeof LaunchIntro === 'undefined' && this._sessionStarted) {
+      this._finishInitialShellReady();
+    }
   }
 
-  onOnboardingComplete() {
+  async onOnboardingComplete() {
     this.config = {};
     window.navio.getConfig().then(c => {
       this.config = c;
       this.applyTheme(this.config.theme || 'dark');
       this.applyLayoutFromConfig(this.config);
     });
-    this.startBrowser();
+    await this.startBrowser();
+    this._finishInitialShellReady();
   }
 
   async startBrowser() {
@@ -74,9 +81,17 @@ class NavioApp {
     } else {
       TabManager.createTab();
     }
-    if (typeof TabManager.waitForInitialShellReady === 'function') {
-      await TabManager.waitForInitialShellReady();
-    }
+    /* waitForInitialShellReady deferred until after prelude fade — avoids layout work competing with the transition */
+  }
+
+  /** Run after launch prelude finishes so NTP “ready” checks don’t block or overlap the crossfade. */
+  _finishInitialShellReady() {
+    if (this._initialShellReadyScheduled) return;
+    if (typeof TabManager === 'undefined' || typeof TabManager.waitForInitialShellReady !== 'function') return;
+    this._initialShellReadyScheduled = true;
+    requestAnimationFrame(() => {
+      void TabManager.waitForInitialShellReady();
+    });
   }
 
   applyTheme(theme) {

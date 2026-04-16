@@ -153,7 +153,9 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
           const defaultPath = path.join(downloadsDir, filename);
           const picked = dialog.showSaveDialogSync(win && !win.isDestroyed() ? win : undefined, {
             title: 'Save file',
-            defaultPath
+            defaultPath,
+            buttonLabel: 'Save',
+            properties: ['showOverwriteConfirmation']
           });
           if (!picked) {
             item.cancel();

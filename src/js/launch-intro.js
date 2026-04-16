@@ -78,8 +78,13 @@ const LaunchIntro = {
         finish();
       };
       el.addEventListener('transitionend', onEnd);
-      const fallback = setTimeout(finish, 700);
-      el.classList.add('shell-prelude-exiting');
+      const fallback = setTimeout(finish, 620);
+      /* Let shell paint at full opacity before prelude opacity animates (less contention on the compositor). */
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          el.classList.add('shell-prelude-exiting');
+        });
+      });
     });
   },
 
