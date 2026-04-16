@@ -1584,5 +1584,12 @@
   <script src="js/connectors.js"></script>
   <script src="js/live-connectors.js"></script>
   <script src="js/navio-ai-boost.js"></script>
+
+  <!-- Toasts (downloads, certs, etc.) — must exist at startup; live-connectors also uses this id -->
+  <div id="live-notif-stack" class="live-notif-stack" aria-live="polite"></div>
+  <!-- Chrome-style bottom bar: visible while files download or briefly after completion -->
+  <div id="download-shelf" class="download-shelf" hidden role="region" aria-label="Downloads">
+    <div id="download-shelf-list" class="download-shelf-list"></div>
+  </div>
 </body>
 </html>

@@ -1536,7 +1536,8 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
       // Navigate: must go through the renderer for NTP overlay handling
       if (tc.name === 'navigate') {
         const navUrl = (tc.arguments && tc.arguments.url) || '';
-        const gmIntercept = await maybeLoadGmailMessageUrlViaApi('navigate', navUrl);
+        const allowGmailWebUi = !!(tc.arguments && tc.arguments.gmail_browser_takeover);
+        const gmIntercept = await maybeLoadGmailMessageUrlViaApi('navigate', navUrl, { allowGmailWebUi });
         if (gmIntercept) {
           const toolResult = gmIntercept.result;
           currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
@@ -1544,7 +1545,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
           sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
           continue;
         }
-        const browseIntercept = await maybeInterceptGmailBrowseNavForAgent(navUrl);
+        const browseIntercept = await maybeInterceptGmailBrowseNavForAgent(navUrl, { allowGmailWebUi });
         if (browseIntercept) {
           const toolResult = browseIntercept.result;
           currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
@@ -1607,7 +1608,8 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
       if (TAB_TOOLS.has(tc.name)) {
         if (tc.name === 'open_tab') {
           const openUrl = tc.arguments?.url || '';
-          const gmIntercept = await maybeLoadGmailMessageUrlViaApi('open_tab', openUrl);
+          const allowGmailWebUiOt = !!(tc.arguments && tc.arguments.gmail_browser_takeover);
+          const gmIntercept = await maybeLoadGmailMessageUrlViaApi('open_tab', openUrl, { allowGmailWebUi: allowGmailWebUiOt });
           if (gmIntercept) {
             const toolResult = gmIntercept.result;
             currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
@@ -1615,7 +1617,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
             sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
             continue;
           }
-          const browseIntercept = await maybeInterceptGmailBrowseNavForAgent(openUrl);
+          const browseIntercept = await maybeInterceptGmailBrowseNavForAgent(openUrl, { allowGmailWebUi: allowGmailWebUiOt });
           if (browseIntercept) {
             const toolResult = browseIntercept.result;
             currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
@@ -2395,8 +2397,10 @@ function extractGmailMessageIdFromNavUrl(raw) {
 /**
  * If url is a Gmail single-message deep link, load it via API and return { intercept: true, result }.
  * Otherwise return null (caller should navigate / open_tab normally).
+ * opts.allowGmailWebUi: skip intercept so the real Gmail tab can load (attachment / UI takeover).
  */
-async function maybeLoadGmailMessageUrlViaApi(toolName, url) {
+async function maybeLoadGmailMessageUrlViaApi(toolName, url, opts = {}) {
+  if (opts.allowGmailWebUi) return null;
   const gmId = extractGmailMessageIdFromNavUrl(url);
   if (!gmId) return null;
   const token = await getValidOAuthToken('google');
@@ -3006,8 +3010,10 @@ const toolExecutors = {
  * Agent tool loop: opening mail.google.com to “browse” Gmail is fragile (SPA, nested scroll).
  * Route Drafts to gmail_list_drafts; other labels to gmail_search. Single-message #inbox/ID is handled
  * separately by maybeLoadGmailMessageUrlViaApi.
+ * If opts.allowGmailWebUi (navigate/open_tab with gmail_browser_takeover), do not intercept — real Gmail UI.
  */
-async function maybeInterceptGmailBrowseNavForAgent(url) {
+async function maybeInterceptGmailBrowseNavForAgent(url, opts = {}) {
+  if (opts.allowGmailWebUi) return null;
   const raw = (url || '').trim();
   if (!raw || (!raw.includes('mail.google.com') && !raw.includes('//mail.google'))) return null;
   let u;

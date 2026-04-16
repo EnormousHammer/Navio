@@ -554,13 +554,62 @@
       return row;
     }
 
-    const orb = document.getElementById('download-activity-orb');
-    const dlBadge = document.getElementById('download-activity-badge');
+    const shelf = document.getElementById('download-shelf');
+    const shelfList = document.getElementById('download-shelf-list');
+    const shelfRowsByPath = new Map();
+    let shelfHideTimer = null;
     let activeDownloadCount = 0;
 
+    function clearShelfHideTimer() {
+      if (shelfHideTimer) {
+        clearTimeout(shelfHideTimer);
+        shelfHideTimer = null;
+      }
+    }
+
+    function scheduleShelfHide() {
+      clearShelfHideTimer();
+      shelfHideTimer = setTimeout(() => {
+        shelfHideTimer = null;
+        if (shelf && activeDownloadCount === 0) {
+          shelf.hidden = true;
+          if (shelfList) shelfList.innerHTML = '';
+          shelfRowsByPath.clear();
+        }
+      }, 6000);
+    }
+
+    function ensureShelfRow(savePath, filename) {
+      if (!shelfList || !savePath) return null;
+      let row = shelfRowsByPath.get(savePath);
+      if (!row) {
+        row = document.createElement('div');
+        row.className = 'download-shelf-row';
+        row.innerHTML = `
+          <div class="download-shelf-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </div>
+          <div class="download-shelf-main">
+            <div class="download-shelf-name"></div>
+            <div class="download-shelf-meta"></div>
+          </div>
+          <div class="download-shelf-actions"></div>
+          <div class="download-shelf-progress"><div class="download-shelf-progress-bar"></div></div>`;
+        shelfList.appendChild(row);
+        shelfRowsByPath.set(savePath, row);
+      }
+      const n = row.querySelector('.download-shelf-name');
+      if (n) n.textContent = filename || savePath;
+      return row;
+    }
+
+    const orb = document.getElementById('download-activity-orb');
+    const dlBadge = document.getElementById('download-activity-badge');
+    const DOWNLOADS_BTN_TITLE_DEFAULT = 'Downloads (Ctrl+J) — open list';
+
     function setDownloadChrome(active) {
-      const wrap = document.querySelector('.nav-downloads-wrap');
-      if (wrap) wrap.classList.toggle('download-active', !!active);
+      const w = document.querySelector('.nav-downloads-wrap');
+      if (w) w.classList.toggle('download-active', !!active);
       if (orb) orb.classList.toggle('download-pulse', !!active);
       if (dlBadge) {
         if (activeDownloadCount > 0) {
@@ -570,9 +619,21 @@
           dlBadge.hidden = true;
         }
       }
+      if (toggle) {
+        toggle.setAttribute('aria-busy', activeDownloadCount > 0 ? 'true' : 'false');
+        if (activeDownloadCount > 0) {
+          toggle.title =
+            activeDownloadCount === 1
+              ? 'Downloading 1 file… — open list (Ctrl+J)'
+              : `Downloading ${activeDownloadCount} files… — open list (Ctrl+J)`;
+        } else {
+          toggle.title = DOWNLOADS_BTN_TITLE_DEFAULT;
+        }
+      }
     }
 
     window.navio.onDownloadStarted((d) => {
+      clearShelfHideTimer();
       const row = ensureRow(d.savePath, d.filename);
       if (!row) return;
       activeDownloadCount++;
@@ -583,6 +644,19 @@
       const bar = row.querySelector('.dd-progress-bar');
       if (bar) bar.style.width = '0%';
       row.querySelector('.dd-actions').innerHTML = '';
+
+      if (shelf && shelfList) {
+        shelf.hidden = false;
+        const srow = ensureShelfRow(d.savePath, d.filename);
+        if (srow) {
+          const sm = srow.querySelector('.download-shelf-meta');
+          if (sm) sm.textContent = d.totalStr ? `Starting… · ${d.totalStr}` : 'Starting…';
+          const sb = srow.querySelector('.download-shelf-progress-bar');
+          if (sb) sb.style.width = '0%';
+          const act = srow.querySelector('.download-shelf-actions');
+          if (act) act.innerHTML = '';
+        }
+      }
     });
     window.navio.onDownloadProgress((d) => {
       if (!d.savePath) return;
@@ -607,6 +681,21 @@
       const st = row.querySelector('.dd-state');
       if (st) {
         st.textContent = total ? `${pct}%` : 'Downloading…';
+      }
+
+      const srow = shelfRowsByPath.get(d.savePath);
+      if (srow) {
+        const sb = srow.querySelector('.download-shelf-progress-bar');
+        if (sb) sb.style.width = `${pct}%`;
+        const sm = srow.querySelector('.download-shelf-meta');
+        if (sm) {
+          const parts = [];
+          if (d.receivedStr && d.totalStr) parts.push(`${d.receivedStr} of ${d.totalStr}`);
+          else if (d.receivedStr) parts.push(d.receivedStr);
+          if (d.bytesPerSec && d.bytesPerSec > 0) parts.push(`${(d.bytesPerSec / 1024).toFixed(0)} KB/s`);
+          if (d.etaStr) parts.push(d.etaStr);
+          sm.textContent = parts.length ? parts.join(' · ') : total ? `${pct}%` : 'Downloading…';
+        }
       }
     });
     window.navio.onDownloadDone((d) => {
@@ -636,6 +725,30 @@
           actions.appendChild(b);
         }
       }
+
+      const srow = d.savePath ? shelfRowsByPath.get(d.savePath) : null;
+      if (srow && d.savePath) {
+        const sb = srow.querySelector('.download-shelf-progress-bar');
+        if (sb) sb.style.width = '100%';
+        const sm = srow.querySelector('.download-shelf-meta');
+        if (sm) {
+          if (d.state === 'completed') {
+            sm.textContent = d.totalStr ? `Finished · ${d.totalStr}` : 'Finished';
+          } else {
+            sm.textContent = String(d.state || 'Failed');
+          }
+        }
+        const act = srow.querySelector('.download-shelf-actions');
+        if (act && d.state === 'completed' && d.savePath) {
+          act.innerHTML = '';
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.textContent = 'Show in folder';
+          b.addEventListener('click', () => window.navio.showInFolder(d.savePath));
+          act.appendChild(b);
+        }
+      }
+
       if (activeDownloadCount === 0) {
         setDownloadChrome(false);
         if (orb && d.state === 'completed') {
@@ -648,6 +761,7 @@
             }
           }, 1400);
         }
+        scheduleShelfHide();
       } else {
         setDownloadChrome(true);
       }

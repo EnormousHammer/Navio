@@ -592,7 +592,7 @@ class AssistantManagerClass {
     messages.push({
       role: 'system',
       content:
-        '[Mail — backend API only]\nGmail is connected in Navio (Settings → Connectors and/or Google sign-in). Those **gmail_*** tools call the **real Gmail API** with the user’s OAuth token — you are not “blocked from the API by Navio”. For this mailbox-related turn use **gmail_search**, **gmail_get_message**, **gmail_list_drafts**, **gmail_create_draft**, **gmail_create_reply_draft**, **gmail_update_draft**, **gmail_delete_draft**, and **gmail_send_draft** only as appropriate. Do not use **navigate** or **open_tab** to mail.google.com and do not use **read_page**, **click**, or **type_text** on Gmail unless the user explicitly asks you to operate the **visible Gmail website**. Navio routes Gmail navigation during agent runs to these API tools when OAuth is valid.'
+        '[Mail — API first, browser when needed]\nGmail is connected in Navio (Settings → Connectors and/or Google sign-in). Prefer **gmail_search**, **gmail_get_message**, **gmail_list_drafts**, and draft tools — they are fast and reliable. **If the API response does not contain what the task requires** (e.g. amounts or text inside an attachment, previews, or anything only visible in the Gmail UI), you MUST NOT stop with “I can’t” — use **navigate** or **open_tab** with **gmail_browser_takeover: true** to open the real Gmail tab, then **read_page**, **click** (open attachment / preview), **screenshot** as needed. Never click Send on email.'
     });
   }
 

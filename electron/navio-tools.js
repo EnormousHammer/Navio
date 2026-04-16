@@ -28,14 +28,19 @@ const NAVIO_TOOLS = [
     name: 'navigate',
     description:
       'Navigate the active browser tab to a URL. Always use a full https:// URL. ' +
-      'During agent runs, **mail.google.com** browsing is routed to Gmail API tools (Drafts → data from gmail_list_drafts; other views → use gmail_search). ' +
+      'During agent runs, **mail.google.com** browsing is usually routed to Gmail API tools (Drafts → gmail_list_drafts; other views → gmail_search). ' +
+      'Set **gmail_browser_takeover: true** when the API cannot supply what the task needs (e.g. attachment contents, previews, or data inside files) — then Navio opens the real Gmail tab instead of intercepting. ' +
       'After you create/update/delete drafts or send mail via API, Navio opens Gmail to Drafts or Sent automatically. ' +
-      'NEVER navigate to mail.google.com URLs that point at one message (e.g. #inbox/MESSAGE_ID) — those fail in Navio (ERR_ABORTED). ' +
-      'Use gmail_get_message with the message id from gmail_search instead.',
+      'Without **gmail_browser_takeover**, avoid mail.google.com single-message URLs (#inbox/MESSAGE_ID) — use gmail_get_message; with **gmail_browser_takeover: true**, real Gmail navigation is allowed.',
     parameters: {
       type: 'object',
       properties: {
-        url: { type: 'string', description: 'Full URL to navigate to (must include https://)' }
+        url: { type: 'string', description: 'Full URL to navigate to (must include https://)' },
+        gmail_browser_takeover: {
+          type: 'boolean',
+          description:
+            'If **true**, open **mail.google.com** in the real browser tab (no API intercept). Use only after Gmail API tools cannot provide the needed data — then read_page / click / screenshot the Gmail UI. Default false.'
+        }
       },
       required: ['url']
     }
@@ -247,14 +252,17 @@ const NAVIO_TOOLS = [
     description:
       'Open a new browser tab and optionally navigate it to a URL. Returns the new tab\'s ID. ' +
       'Use this for parallel research across multiple sites. ' +
-      'Same Gmail rule as navigate: during agent runs, mail.google.com opens are routed to Gmail API tools; use those instead of expecting a new Gmail tab mid-task. ' +
-      'NEVER open_tab to mail.google.com single-message URLs (#inbox/MESSAGE_ID) — use gmail_get_message instead (embedded Gmail aborts).',
+      'Same Gmail behavior as **navigate**: set **gmail_browser_takeover: true** to open a real Gmail tab when the API path is insufficient.',
     parameters: {
       type: 'object',
       properties: {
         url: {
           type: 'string',
           description: 'Full URL to load in the new tab (optional — omit for a blank tab).'
+        },
+        gmail_browser_takeover: {
+          type: 'boolean',
+          description: 'Same as navigate: if **true**, load mail.google.com in a real tab without API intercept.'
         }
       }
     }
