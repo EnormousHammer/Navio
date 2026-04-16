@@ -119,6 +119,8 @@ contextBridge.exposeInMainWorld('navio', {
   webviewPasteClipboard: (params) => ipcRenderer.invoke('webview-paste-clipboard', params),
 
   contextGraph: (payload) => ipcRenderer.invoke('context-graph', payload),
+  assistantChatLoad: () => ipcRenderer.invoke('assistant-chat-load'),
+  assistantChatSave: (payload) => ipcRenderer.invoke('assistant-chat-save', payload),
   workspace: (payload) => ipcRenderer.invoke('workspace', payload),
   mcpConfig: (payload) => ipcRenderer.invoke('mcp-config', payload),
   proactiveTick: (payload) => ipcRenderer.invoke('proactive-tick', payload),

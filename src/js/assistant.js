@@ -83,6 +83,9 @@ const NAVIO_ASSISTANT_INLINE_MAX_BYTES = 4 * 1024 * 1024;
 /** Unknown extensions: try UTF-8 decode when under this size (code, configs, odd MIME). */
 const NAVIO_ASSISTANT_HEURISTIC_TEXT_MAX_BYTES = 768 * 1024;
 
+/** One conversation thread per browser profile (persisted). Tab-scoped keys cannot survive restarts (ephemeral tab ids). */
+const NAVIO_PROFILE_CHAT_KEY = '__profile__';
+
 function navioLooksLikePrintableText(s) {
   if (!s || typeof s !== 'string') return false;
   const sample = s.slice(0, Math.min(12000, s.length));
@@ -215,6 +218,10 @@ class AssistantManagerClass {
     this.isProcessing = false;
     /** @type {Map<string, Array<{ role: string, content: unknown }>>} */
     this._conversationsByTab = new Map();
+    /** @type {Promise<void> | null} */
+    this._assistantHistoryLoadPromise = null;
+    /** @type {ReturnType<typeof setTimeout> | null} */
+    this._assistantPersistTimer = null;
     this._streamUnsubs = [];
     this._autoFollowCount = 0;
     this._emailRefs = new Map();
@@ -249,6 +256,7 @@ class AssistantManagerClass {
     this.systemPrompt = 'You are Navio, an intelligent AI browser assistant.';
 
     this.bindEvents();
+    this._assistantHistoryLoadPromise = this._loadPersistedChat();
   }
 
   /** Re-resolve panel if DOM changed or constructor ran before the node existed. */
@@ -391,13 +399,61 @@ class AssistantManagerClass {
   }
 
   _conversationKey() {
-    if (typeof TabManager !== 'undefined' && TabManager.activeTabId) {
-      return String(TabManager.activeTabId);
-    }
-    return '_none';
+    return NAVIO_PROFILE_CHAT_KEY;
   }
 
-  /** API message history for the active browser tab (sidebar is scoped per tab). */
+  async _ensureAssistantHistoryLoaded() {
+    if (!this._assistantHistoryLoadPromise) {
+      this._assistantHistoryLoadPromise = this._loadPersistedChat();
+    }
+    await this._assistantHistoryLoadPromise;
+  }
+
+  async _loadPersistedChat() {
+    try {
+      if (!window.navio || typeof window.navio.assistantChatLoad !== 'function') return;
+      const data = await window.navio.assistantChatLoad();
+      const raw = data && Array.isArray(data.messages) ? data.messages : [];
+      const messages = [];
+      for (const m of raw) {
+        if (!m || (m.role !== 'user' && m.role !== 'assistant')) continue;
+        if (typeof m.content !== 'string') continue;
+        messages.push({ role: m.role, content: m.content });
+      }
+      if (messages.length) {
+        this._conversationsByTab.set(NAVIO_PROFILE_CHAT_KEY, messages);
+      }
+    } catch (e) {
+      console.warn('[navio-assistant] load persisted chat failed', e);
+    }
+  }
+
+  _schedulePersistAssistantHistory() {
+    if (this._assistantPersistTimer) clearTimeout(this._assistantPersistTimer);
+    this._assistantPersistTimer = setTimeout(() => {
+      this._assistantPersistTimer = null;
+      void this._persistAssistantHistoryNow();
+    }, 400);
+  }
+
+  async _persistAssistantHistoryNow() {
+    try {
+      if (!window.navio || typeof window.navio.assistantChatSave !== 'function') return;
+      const h = this._conversationsByTab.get(NAVIO_PROFILE_CHAT_KEY);
+      if (!h || !h.length) {
+        await window.navio.assistantChatSave({ messages: [] });
+        return;
+      }
+      const messages = h
+        .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+        .map((m) => ({ role: m.role, content: m.content }));
+      await window.navio.assistantChatSave({ messages });
+    } catch (e) {
+      console.warn('[navio-assistant] persist chat failed', e);
+    }
+  }
+
+  /** API message history (profile-wide, persisted). */
   _currentHistory() {
     const k = this._conversationKey();
     if (!this._conversationsByTab.has(k)) {
@@ -407,8 +463,8 @@ class AssistantManagerClass {
   }
 
   /**
-   * When the user switches tabs: stop generation, hide the dock, clear the message list
-   * so another tab’s thread is not shown (Comet-style).
+   * When the user switches tabs: stop generation, hide the dock, clear the message list.
+   * Conversation memory is profile-wide; reopening the assistant restores the same thread from memory/disk.
    */
   onActiveTabChanged(prevTabId, nextTabId) {
     if (!prevTabId || prevTabId === nextTabId) return;
@@ -1105,6 +1161,7 @@ class AssistantManagerClass {
   }
 
   async open() {
+    await this._ensureAssistantHistoryLoaded();
     this._ensurePanel();
     if (!this.panel) {
       navioAssistantDebug('open: ABORT — #assistant-panel not found after _ensurePanel()');
@@ -1197,6 +1254,7 @@ class AssistantManagerClass {
   }
 
   async sendMessage() {
+    await this._ensureAssistantHistoryLoaded();
     const text = this.inputEl.value.trim();
     const hasReadyAttachments = this._attachmentQueue.some((a) => a.status === 'ready');
     if (this._attachmentsStillLoading()) {
@@ -1436,6 +1494,7 @@ class AssistantManagerClass {
   }
 
   async processMessage(text, isQuickAction = false, historyUserLabel = null) {
+    await this._ensureAssistantHistoryLoaded();
     const config = await window.navio.getConfig();
 
     if (config.aiKillSwitch) {
@@ -1697,6 +1756,7 @@ class AssistantManagerClass {
   }
 
   async processGuestChatMessage(guestWv, text) {
+    await this._ensureAssistantHistoryLoaded();
     if (!text || !guestWv) return;
     if (this.isProcessing) {
       this._guestDeliver(guestWv, { type: 'toast', text: 'Still working on the last message…' });
@@ -2503,6 +2563,7 @@ class AssistantManagerClass {
         }
       }
     }
+    this._schedulePersistAssistantHistory();
   }
 
   _appendCitationChips(msgEl, urls) {
@@ -4693,6 +4754,7 @@ ${pageInfo}${snapText}`;
     this.messagesEl.innerHTML = '';
     this._attachmentsSnapshot = null;
     this._clearAttachmentQueue();
+    void this._persistAssistantHistoryNow();
     this._showGreeting();
   }
 

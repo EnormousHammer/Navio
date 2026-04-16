@@ -4180,6 +4180,27 @@ ipcMain.handle('context-graph', (event, payload) => {
   return { error: 'Unknown op' };
 });
 
+ipcMain.handle('assistant-chat-load', () => {
+  if (!store) return { version: 1, messages: [] };
+  try {
+    return store.loadAssistantChat();
+  } catch (e) {
+    console.error('[navio] assistant-chat-load', e.message);
+    return { version: 1, messages: [] };
+  }
+});
+
+ipcMain.handle('assistant-chat-save', (_, payload) => {
+  if (!store) return { ok: false };
+  try {
+    const messages = payload && Array.isArray(payload.messages) ? payload.messages : [];
+    return { ok: store.saveAssistantChat({ messages }) };
+  } catch (e) {
+    console.error('[navio] assistant-chat-save', e.message);
+    return { ok: false };
+  }
+});
+
 ipcMain.handle('workspace', (event, payload) => {
   if (!store) return { error: 'Store not ready' };
   const w = store.loadWorkspace();

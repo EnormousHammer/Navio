@@ -33,6 +33,7 @@ function createStore(userData) {
   const graphPath = path.join(userData, 'navio-context-graph.json');
   const workspacePath = path.join(userData, 'navio-workspace.json');
   const ledgerPath = path.join(userData, 'navio-action-ledger.jsonl');
+  const assistantChatPath = path.join(userData, 'navio-assistant-chat.json');
 
   const defaultGraph = {
     version: 1,
@@ -93,16 +94,43 @@ function createStore(userData) {
     return crypto.createHash('sha256').update(text.slice(0, 2000)).digest('hex').slice(0, 16);
   }
 
+  /** Persisted OpenAI-style turns for the sidebar assistant (user + assistant string content only). */
+  function loadAssistantChat() {
+    const fallback = { version: 1, messages: [] };
+    const data = readJson(assistantChatPath, fallback);
+    if (!data || typeof data !== 'object') return fallback;
+    const messages = Array.isArray(data.messages) ? data.messages : [];
+    return { version: 1, messages };
+  }
+
+  function saveAssistantChat(data) {
+    const raw = data && typeof data === 'object' ? data.messages : null;
+    let messages = Array.isArray(raw) ? raw : [];
+    messages = messages
+      .filter(
+        (m) =>
+          m &&
+          (m.role === 'user' || m.role === 'assistant') &&
+          typeof m.content === 'string'
+      )
+      .map((m) => ({ role: m.role, content: m.content }));
+    if (messages.length > 80) messages = messages.slice(-60);
+    return writeJson(assistantChatPath, { version: 1, messages });
+  }
+
   return {
     graphPath,
     workspacePath,
     ledgerPath,
+    assistantChatPath,
     loadGraph,
     saveGraph,
     loadWorkspace,
     saveWorkspace,
     appendLedger,
-    hashSnippet
+    hashSnippet,
+    loadAssistantChat,
+    saveAssistantChat
   };
 }
 
