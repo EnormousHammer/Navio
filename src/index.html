@@ -228,15 +228,9 @@
           <!-- Full-page dark backdrop for NTP (always dark) -->
           <div class="ntp-bg-layer"></div>
 
-          <!-- Top bar: weather + clock + services -->
+          <!-- Top bar: clock + services (weather lives in the widget grid below; avoids clipped mini pill) -->
           <div class="ntp-topbar">
-            <div class="ntp-topbar-left">
-              <div class="ntp-weather-block" id="ntp-weather-block" style="visibility:hidden">
-                <span id="ntp-weather-icon">☁</span>
-                <span id="ntp-weather-temp"></span>
-                <span id="ntp-weather-desc"></span>
-              </div>
-            </div>
+            <div class="ntp-topbar-left" aria-hidden="true"></div>
             <div class="ntp-topbar-center">
               <div class="ntp-clock-block">
                 <div class="ntp-clock" id="ntp-clock">--:--</div>
@@ -453,17 +447,25 @@
             <!-- Weather — full width: 7-day (2×7 grid) or hourly (2×12) -->
             <div class="ntp-widget ntp-weather-widget" id="ntp-widget-weather">
               <div class="ntp-widget-header ntp-weather-widget-header">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/><circle cx="12" cy="12" r="4"/></svg>
-                Weather
-                <span class="ntp-widget-source ntp-weather-location" id="ntp-weather-location-label" title="From your device location or last saved position"></span>
-                <div class="ntp-weather-view-toggle" role="group" aria-label="Forecast view">
-                  <button type="button" class="ntp-weather-view-btn active" data-weather-view="daily" title="Seven-day outlook">7 days</button>
-                  <button type="button" class="ntp-weather-view-btn" data-weather-view="hourly" title="Next 24 hours">Hourly</button>
+                <div class="ntp-weather-widget-header-top">
+                  <div class="ntp-weather-widget-title">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/><circle cx="12" cy="12" r="4"/></svg>
+                    <span>Weather</span>
+                  </div>
+                  <div class="ntp-weather-widget-header-actions">
+                    <div class="ntp-weather-view-toggle" role="group" aria-label="Forecast view">
+                      <button type="button" class="ntp-weather-view-btn active" data-weather-view="daily" title="Seven-day outlook">7 days</button>
+                      <button type="button" class="ntp-weather-view-btn" data-weather-view="hourly" title="Next 24 hours">Hourly</button>
+                    </div>
+                    <button type="button" class="ntp-widget-action" id="ntp-weather-retry-btn" style="display:none" title="Request location again">⟳ Location</button>
+                    <button type="button" class="ntp-widget-popout" data-widget="weather" title="Open in new tab">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    </button>
+                  </div>
                 </div>
-                <button type="button" class="ntp-widget-action" id="ntp-weather-retry-btn" style="display:none" title="Request location again">⟳ Location</button>
-                <button class="ntp-widget-popout" data-widget="weather" title="Open in new tab">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                </button>
+                <div class="ntp-weather-widget-header-sub">
+                  <span class="ntp-widget-source ntp-weather-location" id="ntp-weather-location-label" title="From your device location or last saved position"></span>
+                </div>
               </div>
               <div class="ntp-widget-body ntp-weather-widget-body" id="ntp-weather-widget-body">
                 <div class="ntp-widget-loading ntp-weather-loading" id="ntp-weather-loading">
