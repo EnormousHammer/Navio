@@ -92,6 +92,7 @@ function messageContentToPlainString(content) {
       if (p.type === 'text') return String(p.text || '');
       if (p.type === 'image_url') return '[image]';
       if (p.type === 'navio_pdf') return `[PDF: ${p.filename || 'file.pdf'}]`;
+      if (p.type === 'navio_inline') return `[File: ${p.filename || 'file'}]`;
       return '';
     })
     .join('\n');
@@ -110,6 +111,22 @@ function normalizeMessagesForOpenAI(messages) {
           text:
             `[Attached PDF: ${part.filename || 'document.pdf'}] This chat mode does not embed PDF bytes for OpenAI. Switch **Settings → AI** to **Anthropic** or **Google** to analyze PDFs, or paste text from the document.`
         });
+        continue;
+      }
+      if (part.type === 'navio_inline' && part.base64) {
+        const mt = part.mimeType || 'application/octet-stream';
+        if (mt.startsWith('image/')) {
+          next.push({
+            type: 'image_url',
+            image_url: { url: `data:${mt};base64,${part.base64}`, detail: 'high' }
+          });
+        } else {
+          next.push({
+            type: 'text',
+            text:
+              `[Attached: ${part.filename || 'file'}] (${mt}) OpenAI Chat Completions cannot send arbitrary binary bytes in this mode. Use **Settings → AI → Google** and attach again, or convert to text/image/PDF.`
+          });
+        }
         continue;
       }
       next.push(part);
@@ -147,6 +164,26 @@ function normalizeMessagesForAnthropic(messages) {
             data: part.base64
           }
         });
+      } else if (part.type === 'navio_inline' && part.base64) {
+        const mt = part.mimeType || 'application/octet-stream';
+        if (mt.startsWith('image/')) {
+          blocks.push({
+            type: 'image',
+            source: { type: 'base64', media_type: mt, data: part.base64 }
+          });
+        } else if (mt === 'application/pdf') {
+          blocks.push({
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: part.base64 }
+          });
+        } else {
+          const maxB64 = 450000;
+          const b64 = part.base64.length > maxB64 ? `${part.base64.slice(0, maxB64)}\n… [truncated]` : part.base64;
+          blocks.push({
+            type: 'text',
+            text: `[Attached file: ${part.filename || 'file'}] (${mt})\n\`\`\`\n${b64}\n\`\`\``
+          });
+        }
       }
     }
     if (!blocks.length) return { ...m, content: '' };
@@ -682,6 +719,40 @@ function injectSystemPrompt(messages) {
   return result;
 }
 
+/** Collapse multiple system messages into one so Gemini/Anthropic/OpenAI receive full context (not only the first block). */
+function systemContentToString(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return content == null ? '' : String(content);
+  return content
+    .map((p) => {
+      if (!p) return '';
+      if (p.type === 'text') return String(p.text || '');
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+function consolidateSystemMessages(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) return messages;
+  const systems = messages.filter((m) => m && m.role === 'system');
+  if (systems.length <= 1) return messages;
+  const merged = systems.map((m) => systemContentToString(m.content)).join('\n\n---\n\n');
+  const out = [];
+  let placed = false;
+  for (const m of messages) {
+    if (m && m.role === 'system') {
+      if (!placed) {
+        out.push({ role: 'system', content: merged });
+        placed = true;
+      }
+    } else {
+      out.push(m);
+    }
+  }
+  return out;
+}
+
 function buildActionFixMessages(originalMessages, brokenResponse) {
   return [
     ...originalMessages,
@@ -1126,6 +1197,13 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
         } else if (part.type === 'navio_pdf' && part.base64) {
           parts.push({
             inlineData: { mimeType: 'application/pdf', data: part.base64 }
+          });
+        } else if (part.type === 'navio_inline' && part.base64) {
+          parts.push({
+            inlineData: {
+              mimeType: part.mimeType || 'application/octet-stream',
+              data: part.base64
+            }
           });
         }
       }
@@ -1630,6 +1708,7 @@ ipcMain.handle('ai-request', async (event, payload) => {
   let processed = Array.isArray(messages) ? messages.map((m) => ({ ...m })) : [];
   if (!ntpBrief) {
     processed = injectSystemPrompt(processed);
+    processed = consolidateSystemMessages(processed);
   }
   if (cfg.aiRedactPII !== false) {
     processed = processed.map((m) => {
@@ -1701,6 +1780,7 @@ ipcMain.handle('ai-request-stream', async (event, { messages }) => {
 
   let processed = Array.isArray(messages) ? messages.map((m) => ({ ...m })) : [];
   processed = injectSystemPrompt(processed);
+  processed = consolidateSystemMessages(processed);
   if (cfg.aiRedactPII !== false) {
     processed = processed.map((m) => {
       if (typeof m.content === 'string') return { ...m, content: redactPII(m.content) };
@@ -1870,6 +1950,7 @@ ipcMain.handle('ai-request-with-tools', async (event, { messages, webContentsId 
 
   let processed = Array.isArray(messages) ? messages.map((m) => ({ ...m })) : [];
   processed = injectSystemPrompt(processed);
+  processed = consolidateSystemMessages(processed);
 
   if (cfg.aiRedactPII !== false) {
     processed = processed.map((m) => {

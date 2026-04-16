@@ -73,6 +73,8 @@ const NAVIO_ASSISTANT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 const NAVIO_ASSISTANT_PDF_MAX_BYTES = 12 * 1024 * 1024;
 const NAVIO_ASSISTANT_TEXT_MAX_CHARS = 180000;
 const NAVIO_ASSISTANT_MAX_ATTACHMENTS = 8;
+/** Non-text files: send as base64 for models that accept inline bytes (Gemini, etc.). */
+const NAVIO_ASSISTANT_INLINE_MAX_BYTES = 4 * 1024 * 1024;
 /** Unknown extensions: try UTF-8 decode when under this size (code, configs, odd MIME). */
 const NAVIO_ASSISTANT_HEURISTIC_TEXT_MAX_BYTES = 768 * 1024;
 
@@ -102,7 +104,52 @@ function navioIsTextLikeFile(file) {
 
 function navioIsImageFile(file) {
   if (file.type && file.type.startsWith('image/')) return true;
-  return /\.(png|jpe?g|gif|webp|bmp|ico)$/i.test(file.name || '');
+  return /\.(png|jpe?g|gif|webp|bmp|ico|tiff?|avif|heic|heif|jxl)$/i.test(file.name || '');
+}
+
+/** When MIME/extension is wrong, detect raster images from magic bytes so vision models still receive them. */
+function navioSniffImageMime(buf) {
+  if (!buf || buf.length < 12) return null;
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) return 'image/gif';
+  if (
+    buf[0] === 0x52 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x46 &&
+    buf[8] === 0x57 &&
+    buf[9] === 0x45 &&
+    buf[10] === 0x42 &&
+    buf[11] === 0x50
+  ) {
+    return 'image/webp';
+  }
+  if (buf[0] === 0x42 && buf[1] === 0x4d) return 'image/bmp';
+  if (
+    (buf[0] === 0x49 && buf[1] === 0x49 && buf[2] === 0x2a && buf[3] === 0x00) ||
+    (buf[0] === 0x4d && buf[1] === 0x4d && buf[2] === 0x00 && buf[3] === 0x2a)
+  ) {
+    return 'image/tiff';
+  }
+  return null;
+}
+
+async function navioPeekImageMime(file) {
+  if (navioIsPdfFile(file)) return null;
+  try {
+    const peek = await file.slice(0, 32).arrayBuffer();
+    return navioSniffImageMime(new Uint8Array(peek));
+  } catch {
+    return null;
+  }
+}
+
+function navioFixDataUrlMime(dataUrl, mime) {
+  if (!mime || !dataUrl) return dataUrl;
+  const m = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
+  if (!m) return dataUrl;
+  return `data:${mime};base64,${m[1]}`;
 }
 
 function navioIsPdfFile(file) {
@@ -358,18 +405,51 @@ class AssistantManagerClass {
     }
   }
 
+  /**
+   * Encode non-text attachments as base64 so providers (e.g. Gemini) can ingest bytes.
+   * Oversized files stay as `binary` with a note in the API payload.
+   */
+  async _attachmentAsInlineOrBinary(file, entry) {
+    if (file.size <= NAVIO_ASSISTANT_INLINE_MAX_BYTES) {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result || ''));
+        r.onerror = () => reject(new Error('Could not read file.'));
+        r.readAsDataURL(file);
+      });
+      const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (!m) throw new Error('Could not encode file.');
+      let mime = (m[1] || file.type || 'application/octet-stream').split(';')[0].trim();
+      if ((!mime || mime === 'application/octet-stream') && file.type) {
+        mime = String(file.type).split(';')[0].trim();
+      }
+      entry.status = 'ready';
+      entry.kind = 'inline';
+      entry.mimeType = mime || 'application/octet-stream';
+      entry.base64 = m[2];
+      entry.thumb = entry.mimeType.startsWith('image/') ? dataUrl : '';
+      return;
+    }
+    entry.status = 'ready';
+    entry.kind = 'binary';
+    entry.text = '';
+    entry.thumb = '';
+  }
+
   async _processAttachmentFile(file, entry) {
     try {
-      if (navioIsImageFile(file)) {
+      const sniffedImg = await navioPeekImageMime(file);
+      if (navioIsImageFile(file) || sniffedImg) {
         if (file.size > NAVIO_ASSISTANT_IMAGE_MAX_BYTES) {
           throw new Error('Image too large (max 8 MB).');
         }
-        const dataUrl = await new Promise((resolve, reject) => {
+        let dataUrl = await new Promise((resolve, reject) => {
           const r = new FileReader();
           r.onload = () => resolve(String(r.result || ''));
           r.onerror = () => reject(new Error('Could not read image.'));
           r.readAsDataURL(file);
         });
+        if (sniffedImg) dataUrl = navioFixDataUrlMime(dataUrl, sniffedImg);
         entry.status = 'ready';
         entry.kind = 'image';
         entry.dataUrl = dataUrl;
@@ -423,16 +503,10 @@ class AssistantManagerClass {
               : decoded;
           entry.thumb = '';
         } else {
-          entry.status = 'ready';
-          entry.kind = 'binary';
-          entry.text = '';
-          entry.thumb = '';
+          await this._attachmentAsInlineOrBinary(file, entry);
         }
       } else {
-        entry.status = 'ready';
-        entry.kind = 'binary';
-        entry.text = '';
-        entry.thumb = '';
+        await this._attachmentAsInlineOrBinary(file, entry);
       }
     } catch (e) {
       entry.status = 'error';
@@ -478,9 +552,49 @@ class AssistantManagerClass {
     return this._attachmentQueue.some((a) => a.status === 'loading');
   }
 
+  /** Comet-style: tell the model the next user message includes real file bytes, not just browsing context. */
+  _maybePushAttachmentSystemHint(messages) {
+    const snap = this._attachmentsSnapshot;
+    if (!Array.isArray(snap) || !snap.some((a) => a && a.status === 'ready')) return;
+    messages.push({
+      role: 'system',
+      content:
+        '[User attachments]\nThe user included file attachments in this message. Their contents appear in the next user message (text, images, PDFs, or other parts). Read and use them as the primary source when answering. Use browser tools only when the task requires live web interaction.'
+    });
+  }
+
+  /** Gmail API is available (connector and/or Google OAuth) and the user is asking about mail — prefer backend tools, not the Gmail web UI. */
+  async _gmailApiMailBackendPreferred(text, config) {
+    if (!navioDetectMailboxIntent(text)) return false;
+    const mailMode = (config && config.assistantConnectorMail) || 'auto';
+    if (mailMode === 'never') return false;
+    let oauth = false;
+    try {
+      const st = await window.navio.oauthStatus();
+      oauth = !!(st && (st.google?.email || st.google_2?.email));
+    } catch {
+      oauth = false;
+    }
+    const hasConnector =
+      typeof ConnectorsManager !== 'undefined' &&
+      (ConnectorsManager.isConnected('gmail') || ConnectorsManager.isConnected('gmail_2'));
+    return hasConnector || oauth;
+  }
+
+  async _maybePushMailBackendOnlyPolicy(messages, text, config, prefKnown) {
+    const use = prefKnown !== undefined ? prefKnown : await this._gmailApiMailBackendPreferred(text, config);
+    if (!use) return;
+    messages.push({
+      role: 'system',
+      content:
+        '[Mail — backend API only]\nGmail is connected in Navio (Settings → Connectors and/or Google sign-in). For this mailbox-related turn use **gmail_search**, **gmail_get_message**, **gmail_list_drafts**, **gmail_create_reply_draft**, **gmail_update_draft**, **gmail_delete_draft**, and **gmail_send_draft** only as appropriate. Do not use **navigate** or **open_tab** to mail.google.com and do not use **read_page**, **click**, or **type_text** on Gmail unless the user explicitly asks you to operate the **visible Gmail website**. Navio routes Gmail navigation during agent runs to these API tools when OAuth is valid.'
+    });
+  }
+
   _buildAttachmentPayloadForApi(baseText) {
     const imageParts = [];
     const pdfParts = [];
+    const inlineParts = [];
     let textExtra = '';
     const ready = (this._attachmentsSnapshot || this._attachmentQueue).filter((a) => a.status === 'ready');
     for (const e of ready) {
@@ -490,13 +604,32 @@ class AssistantManagerClass {
         pdfParts.push({ type: 'navio_pdf', filename: e.name, base64: e.base64 });
       } else if (e.kind === 'text' && e.text) {
         textExtra += `\n\n--- attached: ${e.name} ---\n\`\`\`\n${e.text}\n\`\`\`\n`;
+      } else if (e.kind === 'inline' && e.base64) {
+        const mt = e.mimeType || 'application/octet-stream';
+        if (mt.startsWith('image/')) {
+          imageParts.push({
+            type: 'image_url',
+            image_url: { url: `data:${mt};base64,${e.base64}`, detail: 'high' }
+          });
+        } else if (mt === 'application/pdf') {
+          pdfParts.push({ type: 'navio_pdf', filename: e.name, base64: e.base64 });
+        } else {
+          inlineParts.push({
+            type: 'navio_inline',
+            mimeType: mt,
+            base64: e.base64,
+            filename: e.name
+          });
+        }
       } else if (e.kind === 'binary') {
-        textExtra += `\n\n[Attached file the app could not open as text: **${e.name}** — describe what you need or convert to PDF/image if the model should read it.]`;
+        textExtra += `\n\n[Attached binary **${e.name}** is over ${Math.round(
+          NAVIO_ASSISTANT_INLINE_MAX_BYTES / (1024 * 1024)
+        )} MB or could not be encoded — describe what you need, split the file, or convert to a smaller PDF/image if the model must read it.]`;
       }
     }
     const fullText = (baseText || '') + textExtra;
     const hasShot = !!this._pendingScreenshotDataUrl;
-    if (!imageParts.length && !pdfParts.length && !hasShot) {
+    if (!imageParts.length && !pdfParts.length && !inlineParts.length && !hasShot) {
       return fullText;
     }
     const parts = [];
@@ -507,6 +640,7 @@ class AssistantManagerClass {
     }
     parts.push({ type: 'text', text: head || '(see attachments)' });
     for (const p of pdfParts) parts.push(p);
+    for (const p of inlineParts) parts.push(p);
     for (const p of imageParts) parts.push(p);
     if (hasShot) {
       parts.push({ type: 'image_url', image_url: { url: this._pendingScreenshotDataUrl } });
@@ -1062,7 +1196,7 @@ class AssistantManagerClass {
     await this.processMessage(prompt, true, `${actionLabel} this page`);
   }
 
-  async buildPageContextSystemMessage(config, isQuickAction) {
+  async buildPageContextSystemMessage(config, isQuickAction, opts = {}) {
     if (isQuickAction) return null;
     const scope = (this.scopeSelect && this.scopeSelect.value) || config.aiDataScope || 'excerpt';
     if (scope === 'none') {
@@ -1073,6 +1207,16 @@ class AssistantManagerClass {
     const page = await TabManager.getActivePageContent();
     if (!page || page.error || !page.url) {
       this.setReceipt('No active page context.');
+      return null;
+    }
+
+    if (
+      opts.skipGmailPageExcerpt &&
+      typeof EmailAssistant !== 'undefined' &&
+      EmailAssistant.isMailUrl(page.url) &&
+      /mail\.google\.com/i.test(page.url || '')
+    ) {
+      this.setReceipt('Gmail API is connected — page excerpt skipped (use API tools, not the web UI).');
       return null;
     }
 
@@ -1171,6 +1315,8 @@ class AssistantManagerClass {
     // ── Legacy <navio-actions> path ──────────────────────────────────────────
 
     const messages = [{ role: 'system', content: this.systemPrompt }];
+    const mailBackendPreferred = await this._gmailApiMailBackendPreferred(text, config);
+    const activeUrl = typeof TabManager !== 'undefined' ? TabManager.getActiveTab()?.url || '' : '';
 
     // ── Browsing surface (when Navio AI tab is focused, use another tab as context) ──
     if (!isQuickAction && typeof TabManager !== 'undefined') {
@@ -1192,11 +1338,13 @@ class AssistantManagerClass {
       }
     }
 
-    const ctxMsg = await this.buildPageContextSystemMessage(config, isQuickAction);
+    await this._maybePushMailBackendOnlyPolicy(messages, text, config, mailBackendPreferred);
+    const ctxMsg = await this.buildPageContextSystemMessage(config, isQuickAction, {
+      skipGmailPageExcerpt: mailBackendPreferred
+    });
     if (ctxMsg) messages.push(ctxMsg);
 
-    const activeUrl = TabManager.getActiveTab()?.url || '';
-    if (typeof EmailAssistant !== 'undefined' && EmailAssistant.isMailUrl(activeUrl)) {
+    if (typeof EmailAssistant !== 'undefined' && EmailAssistant.isMailUrl(activeUrl) && !mailBackendPreferred) {
       const hint = EmailAssistant.contextHint(activeUrl);
       if (hint) messages.push({ role: 'system', content: hint });
     }
@@ -1274,7 +1422,17 @@ class AssistantManagerClass {
     const pageFocusAsk = navioDetectPageFocusIntent(text);
     const actionVerbBrowse =
       /\b(click|go to|open|navigate|visit|search|type|fill|scroll|find|press|submit|play|watch|buy|book|login|sign)\b/i.test(text);
-    const wantsPageSnapshot = pageFocusAsk || (!isMailTriageQuery && actionVerbBrowse);
+    const browserForcesGmailUi =
+      /\b(in the browser|gmail window|this tab|visible gmail|what i see|on my screen|on screen|in gmail\s+tab)\b/i.test(text);
+    const suppressGmailUiSnapshot =
+      mailBackendPreferred &&
+      typeof EmailAssistant !== 'undefined' &&
+      EmailAssistant.isMailUrl(activeUrl) &&
+      /mail\.google\.com/i.test(activeUrl) &&
+      !browserForcesGmailUi &&
+      !pageFocusAsk;
+    let wantsPageSnapshot = pageFocusAsk || (!isMailTriageQuery && actionVerbBrowse);
+    if (suppressGmailUiSnapshot) wantsPageSnapshot = !!pageFocusAsk;
     if (wantsPageSnapshot && !isQuickAction) {
       const snapText = await this._getPageSnapshotText();
       if (snapText) messages.push({ role: 'system', content: snapText });
@@ -1282,6 +1440,7 @@ class AssistantManagerClass {
 
     const recentHistory = this.conversationHistory.slice(-40);
     messages.push(...recentHistory);
+    this._maybePushAttachmentSystemHint(messages);
     const userContent = this._buildAttachmentPayloadForApi(text);
     messages.push({ role: 'user', content: userContent });
     const userHistory = historyUserLabel || this._historyLabelForAttachments(text);
@@ -1505,6 +1664,8 @@ class AssistantManagerClass {
     // Build context messages (same as legacy path but without page snapshot —
     // the model will call read_page itself via tools)
     const messages = [{ role: 'system', content: this.systemPrompt }];
+    const mailBackendPreferred = await this._gmailApiMailBackendPreferred(text, config);
+    const activeUrl = typeof TabManager !== 'undefined' ? TabManager.getActiveTab()?.url || '' : '';
 
     if (typeof TabManager !== 'undefined') {
       const surface = TabManager.getActiveTab();
@@ -1530,13 +1691,15 @@ class AssistantManagerClass {
       }
     }
 
+    await this._maybePushMailBackendOnlyPolicy(messages, text, config, mailBackendPreferred);
     // Page context scope (selection/excerpt/full) — still useful for non-browsing queries
-    const ctxMsg = await this.buildPageContextSystemMessage(config, false);
+    const ctxMsg = await this.buildPageContextSystemMessage(config, false, {
+      skipGmailPageExcerpt: mailBackendPreferred
+    });
     if (ctxMsg) messages.push(ctxMsg);
 
-    // Email hint
-    const activeUrl = TabManager.getActiveTab()?.url || '';
-    if (typeof EmailAssistant !== 'undefined' && EmailAssistant.isMailUrl(activeUrl)) {
+    // Email hint (skip when Gmail API path is preferred — avoid nudging the model toward the web UI)
+    if (typeof EmailAssistant !== 'undefined' && EmailAssistant.isMailUrl(activeUrl) && !mailBackendPreferred) {
       const hint = EmailAssistant.contextHint(activeUrl);
       if (hint) messages.push({ role: 'system', content: hint });
     }
@@ -1596,6 +1759,7 @@ class AssistantManagerClass {
         return true;
       });
     messages.push(...recentHistory);
+    this._maybePushAttachmentSystemHint(messages);
     messages.push({ role: 'user', content: this._buildAttachmentPayloadForApi(text) });
 
     // Agent activity UI — sidebar DOM or guest tab via executeJavaScript
@@ -1619,19 +1783,28 @@ class AssistantManagerClass {
       this._appendActivityStep('navigate', `Navigating to ${new URL(url).hostname}...`);
       try {
         const loadResult = await TabManager.navigateForAgentAndWaitForLoad(url);
-        const ctxTab = TabManager.getBrowserContextTab?.() || TabManager.getActiveTab();
+        const drivenTab =
+          TabManager.getAgentControlledTab?.() ||
+          TabManager.getBrowserContextTab?.() ||
+          TabManager.getActiveTab();
+        let drivenUrl = url;
+        try {
+          drivenUrl = drivenTab?.webview?.getURL?.() || drivenTab?.url || url;
+        } catch {
+          drivenUrl = drivenTab?.url || url;
+        }
         if (!loadResult.ok) {
           window.navio.toolNavigateAck({
             success: false,
             error: loadResult.error || 'load failed',
-            url: ctxTab?.url || url
+            url: drivenUrl
           });
           return;
         }
-        if (ctxTab?.id) TabManager.setAgentControlledTab?.(ctxTab.id);
+        if (drivenTab?.id) TabManager.setAgentControlledTab?.(drivenTab.id);
         window.navio.toolNavigateAck({
           success: true,
-          url: ctxTab?.url || url,
+          url: drivenUrl,
           timedOut: !!loadResult.timedOut
         });
       } catch (e) {
@@ -1680,14 +1853,20 @@ class AssistantManagerClass {
     const unCloseTab = window.navio.onToolCloseTab(async ({ tab_id }) => {
       this._appendActivityStep('close_tab', `Closing tab ${tab_id}`);
       try {
+        const agentIdBefore = TabManager.getAgentControlledTab?.()?.id ?? null;
         TabManager.closeTab(tab_id);
         await new Promise(r => setTimeout(r, 300));
-        const active = TabManager.getActiveTab();
-        if (active?.id) TabManager.setAgentControlledTab?.(active.id);
+        if (agentIdBefore != null && agentIdBefore !== tab_id) {
+          TabManager.setAgentControlledTab?.(agentIdBefore);
+        } else {
+          const active = TabManager.getActiveTab();
+          if (active?.id) TabManager.setAgentControlledTab?.(active.id);
+        }
+        const reportTab = TabManager.getAgentControlledTab?.() || TabManager.getActiveTab();
         window.navio.toolCloseTabAck({
           success: true,
-          active_tab_id: active?.id || '',
-          webContentsId: active?.webview?.getWebContentsId?.() || null
+          active_tab_id: reportTab?.id || '',
+          webContentsId: reportTab?.webview?.getWebContentsId?.() || null
         });
       } catch (e) {
         window.navio.toolCloseTabAck({ error: e.message });
@@ -1804,6 +1983,8 @@ class AssistantManagerClass {
     }
 
     if (typeof TabManager !== 'undefined') {
+      // Clear stale agent lock so getBrowserTargetWebview() uses browsing context, not an old tab id.
+      if (!this._takeoverMode) TabManager.setAgentControlledTab?.(null);
       TabManager.ensureBrowserContextTab?.();
     }
     const toolWv = typeof TabManager !== 'undefined' ? TabManager.getBrowserTargetWebview?.() : null;
@@ -3958,16 +4139,17 @@ class AssistantManagerClass {
     if (action === 'navigate') {
       try {
         const url = paramsStr;
-        if (!TabManager || typeof TabManager.navigateActiveAndWaitForLoad !== 'function') {
+        if (!TabManager || typeof TabManager.navigateForAgentAndWaitForLoad !== 'function') {
           throw new Error('TabManager unavailable');
         }
-        const loadResult = await TabManager.navigateActiveAndWaitForLoad(url, {
+        const loadResult = await TabManager.navigateForAgentAndWaitForLoad(url, {
           timeoutMs: 12000,
           settleMs: 600
         });
         if (!loadResult.ok) throw new Error(loadResult.error || 'Navigation failed');
 
-        const wvAfter = TabManager.getActiveWebview();
+        const wvAfter =
+          TabManager.getBrowserTargetWebview?.() || TabManager.getActiveWebview();
 
         let finalUrl = '';
         try {
@@ -3977,7 +4159,7 @@ class AssistantManagerClass {
           /* ignore */
         }
         if (!finalUrl) {
-          const tab = TabManager.getActiveTab();
+          const tab = TabManager.getAgentControlledTab?.() || TabManager.getActiveTab();
           finalUrl = tab?.url || '';
         }
         if (fromTakeover && NAVIO_AUTH_GATE_URL_RE.test(finalUrl)) {

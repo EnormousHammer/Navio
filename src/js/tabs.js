@@ -322,8 +322,20 @@ class TabManagerClass {
     return null;
   }
 
-  /** Webview the agent should drive (never the chat UI webview). */
+  /** Tab currently receiving AI automation (null if none). */
+  getAgentControlledTab() {
+    if (this._agentControlledTabId == null) return null;
+    return this.tabs.find((t) => t.id === this._agentControlledTabId) || null;
+  }
+
+  /**
+   * Webview the agent should drive (never the chat UI webview).
+   * While a tool run has locked `_agentControlledTabId`, always return that tab's webview
+   * so the user can focus other tabs without stealing automation from the AI's tab.
+   */
   getBrowserTargetWebview() {
+    const agentTab = this.getAgentControlledTab();
+    if (agentTab && agentTab.webview) return agentTab.webview;
     const t = this.getBrowserContextTab();
     return t && t.webview ? t.webview : null;
   }
@@ -357,11 +369,9 @@ class TabManagerClass {
     return true;
   }
 
-  /** Load a URL into the browsing-context tab (not the Navio AI chat tab). */
-  async navigateBrowserContextAndWaitForLoad(resolvedUrl, options = {}) {
-    this.ensureBrowserContextTab();
-    const tab = this.getBrowserContextTab();
-    if (!tab || !tab.webview) return { ok: false, error: 'no browser tab' };
+  /** Load a URL into a specific tab and wait for load (does not change which tab is focused). */
+  async navigateTabAndWaitForLoad(tab, resolvedUrl, options = {}) {
+    if (!tab || !tab.webview) return { ok: false, error: 'no tab' };
     const timeoutMs = options.timeoutMs ?? 45000;
     const settleMs = options.settleMs ?? 200;
     const wv = tab.webview;
@@ -371,8 +381,26 @@ class TabManagerClass {
     return loadPromise;
   }
 
-  /** Agent navigation: uses browsing context when the user is focused on the AI chat tab. */
+  /** Load a URL into the browsing-context tab (not the Navio AI chat tab). */
+  async navigateBrowserContextAndWaitForLoad(resolvedUrl, options = {}) {
+    this.ensureBrowserContextTab();
+    const tab = this.getBrowserContextTab();
+    if (!tab || !tab.webview) return { ok: false, error: 'no browser tab' };
+    return this.navigateTabAndWaitForLoad(tab, resolvedUrl, options);
+  }
+
+  /**
+   * Agent navigation: load in the tab the AI is driving, not necessarily the user's focused tab.
+   * When `_agentControlledTabId` is set (tool loop / takeover), URLs load there so the user can
+   * switch tabs freely while automation continues in the background.
+   */
   async navigateForAgentAndWaitForLoad(resolvedUrl, options = {}) {
+    if (this._agentControlledTabId != null) {
+      const agentTab = this.tabs.find((t) => t.id === this._agentControlledTabId);
+      if (agentTab && agentTab.webview) {
+        return this.navigateTabAndWaitForLoad(agentTab, resolvedUrl, options);
+      }
+    }
     const active = this.getActiveTab();
     if (active && this.isNavioChatTabUrl(active.url || '')) {
       return this.navigateBrowserContextAndWaitForLoad(resolvedUrl, options);
