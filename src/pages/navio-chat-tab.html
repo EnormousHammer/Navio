@@ -18,8 +18,8 @@
       --user-bg: rgba(84, 104, 255, 0.2);
       --radius: 14px;
       --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-      --header-h: 56px;
-      --drawer-w: 300px;
+      --header-h: 52px;
+      --drawer-w: min(320px, 100vw);
     }
     * { box-sizing: border-box; }
     html, body {
@@ -38,29 +38,50 @@
         var(--bg);
     }
     .app {
-      display: grid;
-      grid-template-columns: 1fr minmax(0, 880px) var(--drawer-w);
-      grid-template-rows: var(--header-h) 1fr auto;
+      display: flex;
+      flex-direction: column;
       height: 100%;
-      max-width: 1480px;
       margin: 0 auto;
     }
-    @media (max-width: 1100px) {
-      .app {
-        grid-template-columns: 1fr;
-        grid-template-rows: var(--header-h) minmax(140px, 22vh) 1fr auto;
-      }
-      .drawer { border-left: none; border-bottom: 1px solid var(--border); }
+    .shell {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      width: 100%;
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+    body.state-empty .shell {
+      justify-content: center;
+      max-width: 640px;
+    }
+    .chat-stage {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
+    body.state-empty .chat-stage {
+      flex: 0 1 auto;
+      justify-content: center;
+      gap: 28px;
     }
     header {
-      grid-column: 1 / -1;
+      flex-shrink: 0;
       display: flex;
       align-items: center;
       justify-content: space-between;
       padding: 0 20px;
+      min-height: var(--header-h);
       border-bottom: 1px solid var(--border);
       background: rgba(12, 17, 28, 0.85);
       backdrop-filter: blur(16px);
+    }
+    body.state-empty header {
+      border-bottom-color: transparent;
+      background: transparent;
     }
     .brand {
       display: flex;
@@ -85,6 +106,7 @@
       color: transparent;
     }
     .brand-text p { margin: 2px 0 0; font-size: 11px; color: var(--muted); }
+    body.state-empty .brand-text p { display: none; }
     .hdr-actions { display: flex; align-items: center; gap: 10px; }
     .pill {
       font-size: 11px;
@@ -114,15 +136,15 @@
       color: #fff;
     }
     .main {
-      grid-column: 2;
-      grid-row: 2;
       display: flex;
       flex-direction: column;
+      flex: 1;
       min-height: 0;
-      padding: 0 18px 12px;
+      padding: 0 0 12px;
     }
-    @media (max-width: 1100px) {
-      .main { grid-column: 1; grid-row: 3; }
+    body.state-empty .main {
+      flex: 0 0 auto;
+      padding: 0;
     }
     #messages {
       flex: 1;
@@ -158,17 +180,34 @@
     }
     .msg.assistant.error { border-color: rgba(255, 100, 100, 0.35); color: #ffc9c9; }
     .msg.assistant.streaming { border-color: rgba(0, 216, 255, 0.25); }
+    .drawer-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      z-index: 40;
+      backdrop-filter: blur(2px);
+    }
+    body.drawer-open .drawer-backdrop { display: block; }
     .drawer {
-      grid-column: 3;
-      grid-row: 2 / 4;
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: var(--drawer-w);
+      height: 100%;
       border-left: 1px solid var(--border);
-      background: rgba(12, 17, 28, 0.65);
+      background: rgba(10, 14, 22, 0.97);
+      backdrop-filter: blur(20px);
       display: flex;
       flex-direction: column;
       min-height: 0;
+      z-index: 50;
+      transform: translateX(100%);
+      transition: transform 0.22s ease;
+      box-shadow: -12px 0 40px rgba(0, 0, 0, 0.35);
     }
-    @media (max-width: 1100px) {
-      .drawer { grid-column: 1; grid-row: 2; }
+    body.drawer-open .drawer {
+      transform: translateX(0);
     }
     .drawer-h {
       padding: 12px 14px;
@@ -181,7 +220,25 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 10px;
     }
+    .drawer-h .drawer-title { flex: 1; min-width: 0; }
+    #btn-drawer-close {
+      flex-shrink: 0;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.05);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+      padding: 0;
+    }
+    #btn-drawer-close:hover { color: var(--text); background: rgba(255,255,255,0.1); }
+    #btn-activity { display: none; }
+    #btn-activity.visible { display: inline-block; }
     .drawer-h span.ok { color: var(--accent); font-weight: 600; text-transform: none; letter-spacing: 0; }
     #agent-steps {
       flex: 1;
@@ -211,12 +268,11 @@
     .plan-card .meta { font-size: 11px; color: var(--muted); margin-top: 8px; }
     .plan-actions { display: flex; gap: 8px; margin-top: 12px; }
     .composer-wrap {
-      grid-column: 2;
-      grid-row: 3;
-      padding: 0 18px 18px;
+      flex-shrink: 0;
+      padding: 0 0 22px;
     }
-    @media (max-width: 1100px) {
-      .composer-wrap { grid-column: 1; grid-row: 4; }
+    body.state-empty .composer-wrap {
+      padding-bottom: 8px;
     }
     .composer {
       display: flex;
@@ -228,8 +284,36 @@
       padding: 10px 12px;
       box-shadow: 0 12px 40px rgba(0,0,0,0.35);
     }
-    #input {
+    body.state-empty .composer {
+      border-radius: 22px;
+      padding: 14px 16px;
+      align-items: center;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.45);
+    }
+    .composer-inner {
       flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 0;
+    }
+    .composer-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    body.state-empty .composer-toolbar {
+      order: -1;
+      justify-content: flex-end;
+      margin-bottom: 0;
+    }
+    body.state-chat .composer-toolbar {
+      order: 1;
+      justify-content: flex-end;
+    }
+    #input {
+      width: 100%;
       min-height: 48px;
       max-height: 180px;
       resize: none;
@@ -239,6 +323,10 @@
       font: inherit;
       line-height: 1.45;
       outline: none;
+    }
+    body.state-empty #input {
+      min-height: 52px;
+      font-size: 16px;
     }
     #input::placeholder { color: var(--muted); }
     #send {
@@ -261,14 +349,33 @@
       margin-top: 8px;
       text-align: center;
     }
+    body.state-empty .hint { margin-top: 12px; opacity: 0.85; }
     .empty-hint {
       text-align: center;
       color: var(--muted);
-      padding: 40px 20px;
+      padding: 0 8px 8px;
+      font-size: 15px;
+      line-height: 1.55;
+      max-width: 34em;
+      margin: 0 auto;
+    }
+    body.state-empty .empty-hint {
       font-size: 14px;
-      line-height: 1.65;
+      padding: 0 4px 4px;
     }
     .empty-hint strong { color: var(--accent); }
+    .hero-title {
+      text-align: center;
+      margin: 0 0 6px;
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      background: linear-gradient(120deg, var(--text), var(--muted));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    body.state-chat .hero-title { display: none; }
     .typing {
       display: inline-flex;
       gap: 4px;
@@ -303,43 +410,55 @@
     }
   </style>
 </head>
-<body>
+<body class="state-empty">
   <div class="app">
     <header>
       <div class="brand">
         <div class="logo" aria-hidden="true"></div>
         <div class="brand-text">
           <h1>Navio AI</h1>
-          <p id="subhead">Full browser agent · same brain as the sidebar</p>
+          <p id="subhead">Browser assistant</p>
         </div>
       </div>
       <div class="hdr-actions">
-        <span class="pill" id="model-pill" title="Configured model">—</span>
+        <button type="button" class="btn" id="btn-activity" title="Agent activity">Activity</button>
         <button type="button" class="btn" id="btn-new">New chat</button>
       </div>
     </header>
 
-    <section class="main">
-      <div id="messages"></div>
-    </section>
+    <div class="drawer-backdrop" id="drawer-backdrop" aria-hidden="true"></div>
 
-    <aside class="drawer" id="drawer">
+    <div class="shell">
+      <div class="chat-stage">
+        <h2 class="hero-title">What can I help with?</h2>
+        <section class="main">
+          <div id="messages"></div>
+        </section>
+
+        <div class="composer-wrap">
+          <div class="composer">
+            <div class="composer-inner">
+              <div class="composer-toolbar">
+                <span class="pill" id="model-pill" title="Configured model">—</span>
+              </div>
+              <textarea id="input" rows="1" placeholder="Ask anything…" autocomplete="off"></textarea>
+            </div>
+            <button type="button" id="send" title="Send" aria-label="Send">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22l-4-9-9-4 20-7z"/></svg>
+            </button>
+          </div>
+          <p class="hint"><kbd>Enter</kbd> send · <kbd>Shift</kbd>+<kbd>Enter</kbd> new line · Tools use your other tabs when needed</p>
+        </div>
+      </div>
+    </div>
+
+    <aside class="drawer" id="drawer" aria-label="Agent activity">
       <div class="drawer-h">
-        Agent activity
-        <span class="ok" id="drawer-status"></span>
+        <span class="drawer-title">Agent activity <span class="ok" id="drawer-status"></span></span>
+        <button type="button" id="btn-drawer-close" aria-label="Close panel">×</button>
       </div>
       <div id="agent-steps"></div>
     </aside>
-
-    <div class="composer-wrap">
-      <div class="composer">
-        <textarea id="input" rows="1" placeholder="Ask anything, run tasks on the web, use @tabs, email, connectors…" autocomplete="off"></textarea>
-        <button type="button" id="send" title="Send" aria-label="Send">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22l-4-9-9-4 20-7z"/></svg>
-        </button>
-      </div>
-      <p class="hint"><kbd>Enter</kbd> send · <kbd>Shift</kbd>+<kbd>Enter</kbd> new line · Tools run in your other tabs (a blank tab opens if needed)</p>
-    </div>
   </div>
 
   <script>
@@ -353,10 +472,36 @@
   const inputEl = document.getElementById('input');
   const sendBtn = document.getElementById('send');
   const btnNew = document.getElementById('btn-new');
+  const btnActivity = document.getElementById('btn-activity');
+  const btnDrawerClose = document.getElementById('btn-drawer-close');
+  const drawerBackdrop = document.getElementById('drawer-backdrop');
 
   let busy = false;
   let streamBubble = null;
   let streamBody = null;
+  let agentStepIndex = 0;
+
+  function updateLayoutMode() {
+    const conv = messagesEl.querySelector('.msg, .plan-card');
+    document.body.classList.toggle('state-empty', !conv);
+    document.body.classList.toggle('state-chat', !!conv);
+    inputEl.placeholder = conv
+      ? 'Message…'
+      : 'Ask anything…';
+  }
+
+  function openDrawer() {
+    document.body.classList.add('drawer-open');
+  }
+
+  function closeDrawer() {
+    document.body.classList.remove('drawer-open');
+  }
+
+  function toggleDrawer() {
+    if (document.body.classList.contains('drawer-open')) closeDrawer();
+    else openDrawer();
+  }
 
   function post(payload) {
     if (api && api.postToHost) api.postToHost(payload);
@@ -382,6 +527,7 @@
     wrap.querySelector('.body').textContent = text || '';
     messagesEl.appendChild(wrap);
     messagesEl.scrollTop = messagesEl.scrollHeight;
+    updateLayoutMode();
   }
 
   function toast(t) {
@@ -401,6 +547,7 @@
     streamBody = streamBubble.querySelector('.body');
     streamBody.textContent = '';
     messagesEl.appendChild(streamBubble);
+    updateLayoutMode();
   }
 
   function finalizeStream(text) {
@@ -422,6 +569,7 @@
     wrap.querySelector('.body').textContent = text || '';
     messagesEl.appendChild(wrap);
     messagesEl.scrollTop = messagesEl.scrollHeight;
+    updateLayoutMode();
   }
 
   function resetAgentPanel() {
@@ -438,14 +586,19 @@
           break;
         case 'activityStart':
           resetAgentPanel();
+          agentStepIndex = 0;
           drawerStatus.textContent = 'Working…';
+          btnActivity.classList.add('visible');
           break;
         case 'toolStep': {
+          agentStepIndex += 1;
           const row = document.createElement('div');
           row.className = 'step-row';
           row.innerHTML = '<div class="t">' + esc(msg.tool) + '</div><div class="l">' + esc(msg.label) + '</div>';
           agentStepsEl.appendChild(row);
           agentStepsEl.scrollTop = agentStepsEl.scrollHeight;
+          btnActivity.classList.add('visible');
+          if (agentStepIndex === 1) openDrawer();
           break;
         }
         case 'activityDone':
@@ -478,6 +631,7 @@
           });
           messagesEl.appendChild(card);
           messagesEl.scrollTop = messagesEl.scrollHeight;
+          updateLayoutMode();
           break;
         }
         case 'streamDelta':
@@ -509,6 +663,7 @@
           r.innerHTML = '<div class="role">Navio</div><div class="body"><span class="typing"><i></i><i></i><i></i></span> Deep research…</div>';
           messagesEl.appendChild(r);
           messagesEl.scrollTop = messagesEl.scrollHeight;
+          updateLayoutMode();
           break;
         default:
           break;
@@ -562,14 +717,31 @@
       resetAgentPanel();
       streamBubble = null;
       streamBody = null;
-      messagesEl.innerHTML = '<div class="empty-hint">New conversation in this tab only. <strong>Sidebar history</strong> is separate.</div>';
+      btnActivity.classList.remove('visible');
+      agentStepIndex = 0;
+      closeDrawer();
+      messagesEl.innerHTML = '<div class="empty-hint">New chat in this tab. History here is separate from the sidebar panel.</div>';
+      updateLayoutMode();
       inputEl.focus();
+    });
+    btnActivity.addEventListener('click', function () {
+      toggleDrawer();
+    });
+    btnDrawerClose.addEventListener('click', function () {
+      closeDrawer();
+    });
+    drawerBackdrop.addEventListener('click', function () {
+      closeDrawer();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeDrawer();
     });
   }
 
   function boot() {
     if (!api || !api.postToHost) {
       messagesEl.innerHTML = '<div class="empty-hint">Open this tab from <strong>Navio</strong> (New Tab → Ask AI). It cannot run standalone.</div>';
+      updateLayoutMode();
       return;
     }
     wire();
@@ -589,13 +761,13 @@
         }
       } else {
         messagesEl.innerHTML =
-          '<div class="empty-hint">This is your <strong>unrestricted</strong> workspace: same agent as the sidebar — ' +
-          '<strong>tools</strong>, <strong>tabs</strong>, <strong>connectors</strong>, and <strong>plans</strong> run from here. ' +
-          'Browsing actions apply to your <strong>other tabs</strong> (Navio opens a blank tab if needed).</div>';
+          '<div class="empty-hint">Full-page assistant — same capabilities as the sidebar, with room to work. ' +
+          'Tools and browsing use your other tabs when needed.</div>';
       }
     } catch {
       messagesEl.innerHTML = '<div class="empty-hint">Ask anything below.</div>';
     }
+    updateLayoutMode();
     inputEl.focus();
   }
 

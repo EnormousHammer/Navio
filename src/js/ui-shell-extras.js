@@ -61,13 +61,52 @@
     return '';
   }
 
+  function historyHostHue(host) {
+    let h = 0;
+    const s = String(host || '');
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return h % 360;
+  }
+
   function historyFaviconPlaceholder(url) {
     const span = document.createElement('span');
     span.className = 'history-favicon history-favicon--ph';
     const host = historyHostname(url);
     span.textContent = (host[0] || '?').toUpperCase();
+    span.style.setProperty('--letter-hue', String(historyHostHue(host || 'x')));
     span.setAttribute('aria-hidden', 'true');
     return span;
+  }
+
+  /** Letter underlay + favicon (tries Google s2 if stored favicon fails). */
+  function historyFaviconForUrl(url, storedFavicon) {
+    const host = historyHostname(url);
+    const s2 = host ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64` : '';
+    const favSrc = historySafeFavicon(storedFavicon);
+    const wrap = document.createElement('span');
+    wrap.className = 'history-favicon-wrap';
+    const ph = historyFaviconPlaceholder(url);
+    const primary = favSrc || s2;
+    if (!primary) {
+      wrap.classList.add('history-favicon-wrap--letter-only');
+      wrap.appendChild(ph);
+      return wrap;
+    }
+    const img = document.createElement('img');
+    img.className = 'history-favicon history-favicon--img';
+    img.alt = '';
+    img.src = primary;
+    img.addEventListener('error', function onErr() {
+      if (favSrc && s2 && img.dataset.step !== '1') {
+        img.dataset.step = '1';
+        img.src = s2;
+        return;
+      }
+      img.classList.add('is-hidden');
+    });
+    wrap.appendChild(ph);
+    wrap.appendChild(img);
+    return wrap;
   }
 
   async function fillHistoryOverlayList(query) {
@@ -107,19 +146,7 @@
       btn.type = 'button';
       btn.className = 'history-overlay-row';
 
-      const favSrc = historySafeFavicon(e.favicon);
-      if (favSrc) {
-        const img = document.createElement('img');
-        img.className = 'history-favicon';
-        img.alt = '';
-        img.src = favSrc;
-        img.addEventListener('error', () => {
-          img.replaceWith(historyFaviconPlaceholder(e.url));
-        });
-        btn.appendChild(img);
-      } else {
-        btn.appendChild(historyFaviconPlaceholder(e.url));
-      }
+      btn.appendChild(historyFaviconForUrl(e.url, e.favicon));
 
       const body = document.createElement('span');
       body.className = 'history-body';

@@ -29,9 +29,23 @@
     <button type="button" id="launch-intro-skip" class="launch-intro-skip">Skip</button>
   </div>
 
-  <!-- Title Bar (drag region only — no brand to save vertical space) -->
-  <div id="titlebar">
-    <div class="titlebar-drag" aria-hidden="true"></div>
+  <!-- Single top band: tabs + window controls (Comet/Chrome-style — tabs are the top row) -->
+  <div id="top-chrome" class="top-chrome">
+    <div class="top-chrome-drag" id="top-chrome-drag" aria-hidden="true"></div>
+    <div id="tab-strip" class="tab-strip">
+      <div id="tab-list" class="tab-strip-list"></div>
+      <button class="tab-strip-new" id="btn-new-tab" title="New Tab (Ctrl+T)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+      <button class="tab-strip-new tab-strip-private" id="btn-new-private-tab" title="New private tab (Ctrl+Shift+N)" aria-label="New private tab">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </button>
+      <div class="tab-strip-spacer"></div>
+      <button class="tab-strip-toggle" id="btn-tabstrip-toggle" title="Hide tab bar">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+      </button>
+      <div id="tab-strip-resize" class="tab-strip-resize" title="Drag to resize tab sidebar" aria-hidden="true"></div>
+    </div>
     <div class="titlebar-controls">
       <button class="theme-toggle-btn" id="btn-theme-toggle" title="Toggle theme">
         <svg class="icon-sun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -47,22 +61,6 @@
         <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.2"/></svg>
       </button>
     </div>
-  </div>
-
-  <!-- Tab Strip -->
-  <div id="tab-strip" class="tab-strip">
-    <div id="tab-list" class="tab-strip-list"></div>
-    <button class="tab-strip-new" id="btn-new-tab" title="New Tab (Ctrl+T)">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    </button>
-    <button class="tab-strip-new tab-strip-private" id="btn-new-private-tab" title="New private tab (Ctrl+Shift+N)" aria-label="New private tab">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-    </button>
-    <div class="tab-strip-spacer"></div>
-    <button class="tab-strip-toggle" id="btn-tabstrip-toggle" title="Hide tab bar">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-    </button>
-    <div id="tab-strip-resize" class="tab-strip-resize" title="Drag to resize tab sidebar" aria-hidden="true"></div>
   </div>
 
   <!-- Show tab bar handle (visible when tab strip hidden) -->
@@ -403,13 +401,16 @@
               <div class="shortcut-icon"><img src="https://www.google.com/s2/favicons?domain=chat.openai.com&sz=128" alt="ChatGPT" loading="lazy"></div>
               <span>ChatGPT</span>
             </button>
-            <button type="button" class="ntp-shortcut ntp-shortcut-watch-live" data-url="https://predicta-bet.vercel.app/">
-              <div class="shortcut-icon shortcut-icon-watch-live">
-                <img src="https://www.google.com/s2/favicons?domain=predicta-bet.vercel.app&sz=128" alt="Predicta Bet" loading="lazy">
-                <span class="shortcut-watch-live-strip" aria-hidden="true">
-                  <svg class="shortcut-watch-live-play" width="8" height="8" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
-                  <span class="shortcut-watch-live-text">WATCH LIVE</span>
-                </span>
+            <button type="button" class="ntp-shortcut ntp-shortcut-watch-live" data-url="https://predicta-bet.vercel.app/" title="Live sports — Predicta Bet">
+              <div class="shortcut-icon shortcut-icon-watch-live" aria-hidden="true">
+                <svg class="shortcut-tv-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <path d="M8 3.5L9.2 5h5.6L16 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+                  <rect x="4" y="5.5" width="16" height="11.5" rx="2" stroke="currentColor" stroke-width="1.35" fill="currentColor" fill-opacity="0.12"/>
+                  <rect x="6" y="7.5" width="12" height="7.5" rx="1" fill="currentColor" fill-opacity="0.88"/>
+                  <path d="M10.8 10.2v2.6l2.4-1.3-2.4-1.3z" fill="#0a0c14"/>
+                  <rect x="10" y="18.5" width="4" height="2" rx="0.5" fill="currentColor" fill-opacity="0.45"/>
+                  <circle cx="18.5" cy="8" r="1.6" fill="currentColor" fill-opacity="0.55"/>
+                </svg>
               </div>
               <span>Predicta Bet</span>
             </button>

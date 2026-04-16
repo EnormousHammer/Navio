@@ -261,6 +261,54 @@ class NavioApp {
     });
   }
 
+  _hostHue(host) {
+    let h = 0;
+    const s = String(host || '');
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return h % 360;
+  }
+
+  /**
+   * Letter chip underlay + favicon image (Google s2 or stored). Image hides on error so letter shows.
+   */
+  _suggestionIconHtml(url, storedFavicon) {
+    const esc = (s) => {
+      const d = document.createElement('div');
+      d.textContent = s == null ? '' : String(s);
+      return d.innerHTML;
+    };
+    let host = '';
+    try {
+      host = new URL(url).hostname.replace(/^www\./, '');
+    } catch {
+      host = '';
+    }
+    const letter = (host[0] || '?').toUpperCase();
+    const hue = this._hostHue(host || '?');
+    const s2 = host ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64` : '';
+    const letterHtml = `<span class="url-suggestion-fav url-suggestion-fav--letter" style="--letter-hue:${hue}">${esc(letter)}</span>`;
+    const primary = storedFavicon || s2;
+    if (!primary) return letterHtml;
+    const needFallback = !!(storedFavicon && s2 && String(storedFavicon).trim() !== String(s2).trim());
+    const fallbackAttr = needFallback ? ` data-fallback-s2="${esc(s2)}"` : '';
+    return `<span class="url-suggestion-fav-wrap">${letterHtml}<img class="url-suggestion-fav url-suggestion-fav--img" src="${esc(primary)}" alt="" loading="lazy"${fallbackAttr} /></span>`;
+  }
+
+  _wireUrlSuggestionImgFallbacks(listEl) {
+    if (!listEl) return;
+    listEl.querySelectorAll('.url-suggestion-fav--img').forEach((img) => {
+      img.addEventListener('error', function onImgErr() {
+        const s2 = this.getAttribute('data-fallback-s2');
+        if (s2 && !this.dataset.triedS2) {
+          this.dataset.triedS2 = '1';
+          this.src = s2;
+          return;
+        }
+        this.classList.add('is-hidden');
+      });
+    });
+  }
+
   async _collectUrlSuggestions(query) {
     const q = (query || '').trim();
     const out = [];
@@ -393,15 +441,14 @@ class NavioApp {
         } catch {
           host = it.url;
         }
-        const fav = it.favicon
-          ? `<img class="url-suggestion-fav" src="${esc(it.favicon)}" alt="" />`
-          : '<span class="url-suggestion-fav" aria-hidden="true"></span>';
+        const fav = this._suggestionIconHtml(it.url, it.favicon);
         return `<button type="button" class="url-suggestion-row" role="option" data-i="${i}" aria-selected="false">
 ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc(it.title)}</span><span class="url-suggestion-url">${esc(host)}</span></span>
 <span class="${badgeClass(it.badge)}">${esc(badgeLabel(it.badge))}</span>
 </button>`;
       })
       .join('');
+    this._wireUrlSuggestionImgFallbacks(list);
     list.hidden = false;
     list.querySelectorAll('.url-suggestion-row').forEach((row) => {
       row.addEventListener('mousedown', (e) => {

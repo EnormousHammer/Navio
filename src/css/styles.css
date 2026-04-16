@@ -21,7 +21,8 @@
   /* Shell chrome — comfortable for mouse + touch (WCAG ~44px targets) */
   --hit-min: 44px;
   --hit-compact: 40px;
-  --titlebar-height: 36px;
+  /* Title bar merged into #top-chrome with tab strip (single top band). */
+  --titlebar-height: 0px;
   --tabstrip-height: 40px;
   --navbar-height: 52px;
   --assistant-width: 420px;
@@ -169,7 +170,7 @@
 }
 
 /* ── Theme transition ── */
-html, body, #titlebar, #navbar, #main-content,
+html, body, #top-chrome, #navbar, #main-content,
 .tab-strip, .assistant-panel, .modal, .connectors-hub,
 .new-tab-page, .url-bar, .tab-item,
 .connector-card, .quick-action, .message-content,
@@ -304,7 +305,7 @@ html, body {
 
 .launch-intro-skip {
   position: absolute;
-  top: calc(var(--titlebar-height) + 10px);
+  top: calc(var(--tabstrip-height) + 10px);
   right: 16px;
   z-index: 2;
   padding: 8px 16px;
@@ -341,7 +342,7 @@ body.launch-intro-active #launch-intro {
 /* Hide chrome only while the splash is actually visible (see #shell-prelude aria-hidden in launch-intro.js).
    Git regression: body kept class shell-prelude-active without a visible prelude, which left #app at
    pointer-events: none forever — toolbar (AI button) and shortcuts bound after init felt “dead”. */
-body.shell-prelude-active:has(#shell-prelude:not([aria-hidden="true"])) #tab-strip,
+body.shell-prelude-active:has(#shell-prelude:not([aria-hidden="true"])) #top-chrome,
 body.shell-prelude-active:has(#shell-prelude:not([aria-hidden="true"])) #btn-tabstrip-show,
 body.shell-prelude-active:has(#shell-prelude:not([aria-hidden="true"])) #app {
   opacity: 0;
@@ -353,7 +354,7 @@ body.shell-prelude-active:has(#shell-prelude:not([aria-hidden="true"])) #app {
   z-index: 10040;
   left: 0;
   right: 0;
-  top: var(--titlebar-height);
+  top: var(--tabstrip-height);
   bottom: 0;
   display: flex;
   align-items: center;
@@ -431,19 +432,42 @@ body.shell-prelude-active.shell-prelude-in .shell-prelude {
 }
 
 /* ============================================
-   Title Bar
+   Top chrome — tabs + window controls (one row, Comet/Chrome-style)
    ============================================ */
 
-#titlebar {
-  height: var(--titlebar-height);
+#top-chrome {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: row;
+  align-items: stretch;
+  min-height: var(--tabstrip-height);
   background: var(--bg-deep);
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
   position: relative;
   z-index: 1000;
+}
+
+.top-chrome-drag {
+  display: none;
+  flex: 1;
+  min-width: 0;
+  -webkit-app-region: drag;
+}
+
+body.tabstrip-hidden:not(.navio-vertical-tabs) .top-chrome-drag,
+body.navio-vertical-tabs .top-chrome-drag {
+  display: block;
+}
+
+#top-chrome .tab-strip {
+  flex: 1;
+  min-width: 0;
+  border-bottom: none;
+  background: transparent;
+}
+
+body.tabstrip-hidden:not(.navio-vertical-tabs) #top-chrome .tab-strip {
+  display: none;
 }
 
 .titlebar-drag {
@@ -483,6 +507,14 @@ body.shell-prelude-active.shell-prelude-in .shell-prelude {
   height: 100%;
   align-items: center;
   gap: 0;
+  flex-shrink: 0;
+  align-self: stretch;
+  border-left: 1px solid var(--border);
+  padding-left: 2px;
+}
+
+#top-chrome .titlebar-controls {
+  min-height: var(--tabstrip-height);
 }
 
 .titlebar-btn {
@@ -560,7 +592,7 @@ body.navio-assistant-open #app {
 }
 
 body.tabstrip-hidden #app {
-  height: calc(100% - var(--titlebar-height));
+  height: calc(100% - var(--titlebar-height) - var(--tabstrip-height));
 }
 
 /* ── AI Orb (animated presence indicator) ── */
@@ -682,13 +714,6 @@ body.tabstrip-hidden #app {
   -webkit-app-region: drag;
 }
 
-body.tabstrip-hidden .tab-strip {
-  height: 0;
-  border-bottom: none;
-  opacity: 0;
-  pointer-events: none;
-}
-
 .tab-strip-list {
   display: flex;
   align-items: center;
@@ -783,7 +808,7 @@ body.tabstrip-hidden .tab-strip-toggle svg {
 
 .tab-strip-show {
   position: fixed;
-  top: var(--titlebar-height);
+  top: var(--tabstrip-height);
   right: 10px;
   min-width: var(--hit-compact);
   min-height: 28px;
@@ -3232,45 +3257,21 @@ button.ntp-ticker-sport--stream:focus-visible {
   border-radius: 4px;
 }
 
-/* Predicta — “watch live” mark on shortcut icon */
+/* Predicta — TV + live dot (live sports) */
 .shortcut-icon-watch-live {
-  position: relative;
-  padding-bottom: 12px;
+  padding: 8px;
+  color: var(--accent);
 }
-.shortcut-icon-watch-live img {
-  max-height: 26px;
-  width: auto;
-  height: auto;
-  object-fit: contain;
+.shortcut-tv-icon {
+  width: 100%;
+  height: 100%;
+  max-width: 30px;
+  max-height: 30px;
+  display: block;
+  filter: drop-shadow(0 0 10px rgba(0, 216, 255, 0.22));
 }
-.shortcut-watch-live-strip {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  min-height: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  padding: 2px 3px 3px;
-  background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);
-  color: #fff;
-  border-top: 1px solid rgba(255, 255, 255, 0.28);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  line-height: 1;
-}
-.shortcut-watch-live-play {
-  flex-shrink: 0;
-  opacity: 0.95;
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.35));
-}
-.shortcut-watch-live-text {
-  font-size: 6px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  white-space: nowrap;
+.ntp-shortcut-watch-live:hover .shortcut-icon-watch-live {
+  color: var(--accent-hover, #33e5ff);
 }
 
 .ntp-shortcut:hover .shortcut-icon {
@@ -3328,11 +3329,11 @@ button.ntp-ticker-sport--stream:focus-visible {
 }
 
 body.tabstrip-hidden .assistant-panel {
-  top: var(--titlebar-height);
+  top: var(--tabstrip-height);
 }
 
 body.navio-vertical-tabs .assistant-panel {
-  top: var(--titlebar-height);
+  top: var(--tabstrip-height);
 }
 
 .assistant-panel::before {
@@ -5147,10 +5148,6 @@ body.navio-vertical-tabs .assistant-panel {
   display: none;
 }
 
-body.tabstrip-hidden .loading-indicator {
-  top: calc(var(--titlebar-height) + var(--navbar-height));
-}
-
 .loading-indicator.visible { display: block; }
 
 .loading-spinner {
@@ -6366,8 +6363,7 @@ body.tabstrip-hidden .loading-indicator {
   display: none;
 }
 
-body.onboarding-active #titlebar,
-body.onboarding-active #tab-strip,
+body.onboarding-active #top-chrome,
 body.onboarding-active .tab-strip-show,
 body.onboarding-active #app {
   display: none;
@@ -9782,14 +9778,14 @@ button:focus-visible,
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Dark Chrome: unified matte strip (Comet/Arc-style — one plane, quiet omnibox) ── */
-[data-theme="dark"] #titlebar,
+[data-theme="dark"] #top-chrome,
 [data-theme="dark"] .tab-strip,
 [data-theme="dark"] #navbar {
   background: #101014;
   border-bottom: none;
   box-shadow: none;
 }
-[data-theme="dark"] .tab-strip {
+[data-theme="dark"] #top-chrome .tab-strip {
   box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.055);
 }
 [data-theme="dark"] #navbar {
@@ -9811,13 +9807,13 @@ button:focus-visible,
 }
 
 /* ── Light Chrome: one soft toolbar band + clean pill omnibox ───────────── */
-[data-theme="light"] #titlebar {
-  background: #ffffff;
-  border-bottom: none;
-  box-shadow: none;
-}
-[data-theme="light"] .tab-strip {
+[data-theme="light"] #top-chrome {
   background: #f3f4f9;
+  border-bottom: none;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.05);
+}
+[data-theme="light"] #top-chrome .tab-strip {
+  background: transparent;
   border-bottom: none;
   box-shadow: inset 0 -1px 0 rgba(15, 23, 42, 0.06);
 }
@@ -11592,14 +11588,48 @@ button:focus-visible,
 .url-suggestion-row[aria-selected="true"] {
   background: var(--bg-hover);
 }
-.url-suggestion-fav {
+.url-suggestion-fav-wrap {
+  position: relative;
   width: 18px;
   height: 18px;
   flex-shrink: 0;
-  border-radius: 3px;
-  object-fit: cover;
   margin-top: 2px;
+}
+.url-suggestion-fav--letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.95);
+  border-radius: 4px;
+  background: hsl(var(--letter-hue, 200) 38% 34%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-sizing: border-box;
+}
+.url-suggestion-fav-wrap .url-suggestion-fav--letter {
+  position: absolute;
+  inset: 0;
+  margin-top: 0;
+}
+.url-suggestion-fav--img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  object-fit: cover;
+  border-radius: 4px;
   background: var(--bg-deep);
+  z-index: 1;
+}
+.url-suggestion-fav--img.is-hidden {
+  display: none !important;
 }
 .url-suggestion-body {
   flex: 1;
