@@ -18,7 +18,8 @@ const GMAIL_ACCOUNT_CHOICE = {
     enum: ['primary', 'secondary'],
     description:
       '**primary** = first Google sign-in (default). **secondary** = **Gmail (2nd account)** when connected. ' +
-      'Use **secondary** when the user names that inbox, group, or email.'
+      'Use **secondary** when the user names that inbox, group, or email. ' +
+      'If both are connected and the user asks about mail/inbox/unread without naming which account, run the tool **twice** (primary then secondary) and merge.'
   }
 };
 

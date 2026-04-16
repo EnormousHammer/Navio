@@ -467,6 +467,7 @@ TWO GMAIL / GOOGLE ACCOUNTS:
 - The user can connect a **second** inbox via **Gmail (2nd account)** (same Google Cloud OAuth client as the first sign-in).
 - Every Gmail tool accepts optional **google_account**: **primary** (default) or **secondary** for that second login.
 - When connector context shows two addresses, or the user names a tab group / address (HARO vs CSR), pick **primary** vs **secondary** to match — do not mix message ids across accounts.
+- **If two accounts are connected and the user does NOT name which one** (no address / obvious alias in the text), you MUST consult **both** before answering questions about mail, unread, inbox, "anything new", triage, or "do I have…" — e.g. run **gmail_search** (or list tools) once per account with **google_account** primary and secondary, then merge results. Never assume the active tab or primary account alone unless the user scoped the question.
 
 ▸ gmail_search  — search with Gmail query syntax; returns next_page_token so you can list every match.
 ▸ gmail_get_message  — fetch full plain-text body + headers for one message id (bounces, NDRs, failed recipients).

@@ -9,21 +9,20 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg: #03050a;
-      --panel: rgba(12, 16, 28, 0.72);
-      --elev: rgba(14, 18, 32, 0.88);
-      --border: rgba(0, 216, 255, 0.18);
-      --text: #eef2fb;
-      --muted: #8b97b5;
-      --accent: #22d8ff;
-      --accent2: #6b7cff;
-      --violet: #b388ff;
-      --user-bg: rgba(84, 104, 255, 0.2);
-      --radius: 16px;
+      --bg: #0c0c0e;
+      --panel: rgba(28, 28, 32, 0.65);
+      --elev: rgba(32, 32, 38, 0.92);
+      --border: rgba(255, 255, 255, 0.09);
+      --text: #ececee;
+      --muted: #98989d;
+      --accent: #5ac8fa;
+      --accent2: #7b8cff;
+      --violet: #a78bfa;
+      --user-bg: rgba(255, 255, 255, 0.08);
+      --radius: 18px;
       --font: "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-      --header-h: 56px;
+      --header-h: 52px;
       --drawer-w: min(320px, 100vw);
-      --glass: rgba(10, 14, 26, 0.55);
     }
     * { box-sizing: border-box; }
     html, body {
@@ -36,18 +35,7 @@
       line-height: 1.55;
     }
     body {
-      background:
-        radial-gradient(ellipse 120% 70% at 50% 0%, rgba(0, 200, 255, 0.08), transparent 52%),
-        linear-gradient(180deg, #070a12 0%, #03050a 38%, #020308 100%);
-    }
-    body::after {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
-      opacity: 0.45;
-      pointer-events: none;
-      z-index: 0;
+      background: linear-gradient(180deg, #121214 0%, #0c0c0e 28%, #0a0a0c 100%);
     }
     .app {
       position: relative;
@@ -63,11 +51,10 @@
       top: 0;
       left: 0;
       right: 0;
-      height: 3px;
-      background: linear-gradient(90deg, transparent 0%, rgba(0, 220, 255, 0.65) 28%, rgba(110, 130, 255, 0.75) 52%, rgba(180, 130, 255, 0.55) 78%, transparent 100%);
-      opacity: 0.95;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
+      opacity: 0.9;
       pointer-events: none;
-      box-shadow: 0 0 24px rgba(0, 220, 255, 0.25);
     }
     .shell {
       flex: 1;
@@ -75,13 +62,13 @@
       flex-direction: column;
       min-height: 0;
       width: 100%;
-      max-width: 920px;
+      max-width: 880px;
       margin: 0 auto;
-      padding: 0 20px;
+      padding: 0 24px;
     }
     body.state-empty .shell {
       justify-content: center;
-      max-width: 640px;
+      max-width: 720px;
     }
     .chat-stage {
       display: flex;
@@ -99,22 +86,21 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 22px;
+      padding: 0 24px;
       min-height: var(--header-h);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-      background: linear-gradient(180deg, rgba(8, 12, 24, 0.92) 0%, rgba(4, 6, 14, 0.88) 100%);
-      backdrop-filter: blur(24px) saturate(1.3);
-      -webkit-backdrop-filter: blur(24px) saturate(1.3);
+      border-bottom: 1px solid var(--border);
+      background: rgba(10, 10, 12, 0.72);
+      backdrop-filter: blur(20px) saturate(1.15);
+      -webkit-backdrop-filter: blur(20px) saturate(1.15);
       position: relative;
     }
     body.state-empty header {
       border-bottom-color: transparent;
-      background: rgba(4, 6, 14, 0.35);
+      background: transparent;
     }
     body.state-chat header {
-      background: linear-gradient(180deg, rgba(6, 10, 22, 0.94) 0%, rgba(3, 5, 12, 0.9) 100%);
-      border-bottom-color: rgba(0, 220, 255, 0.1);
-      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55), inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+      background: rgba(10, 10, 12, 0.88);
+      border-bottom-color: var(--border);
     }
     body.state-chat .brand-text h1 {
       font-size: 17px;
@@ -127,61 +113,58 @@
       gap: 14px;
     }
     .logo {
-      width: 36px;
-      height: 36px;
-      border-radius: 11px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2) 55%, var(--violet));
-      box-shadow:
-        0 0 0 1px rgba(255, 255, 255, 0.12),
-        0 4px 20px rgba(0, 216, 255, 0.22),
-        0 12px 40px rgba(84, 104, 255, 0.15);
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: linear-gradient(145deg, #2a2a30 0%, #1a1a1e 100%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
       display: flex;
       align-items: center;
       justify-content: center;
     }
     .logo svg {
-      width: 20px;
-      height: 20px;
-      opacity: 0.95;
-      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+      width: 18px;
+      height: 18px;
+      opacity: 0.88;
+      stroke: rgba(255, 255, 255, 0.88);
     }
     .brand-text h1 {
       margin: 0;
-      font-size: 17px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      background: linear-gradient(120deg, var(--accent), var(--accent2));
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--text);
     }
     .brand-text p { margin: 2px 0 0; font-size: 11px; color: var(--muted); }
     body.state-empty .brand-text p { display: none; }
     .hdr-actions { display: flex; align-items: center; gap: 10px; }
     .pill {
-      font-size: 10px;
-      font-weight: 600;
-      padding: 5px 11px;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 6px 12px;
       border-radius: 999px;
-      border: 1px solid rgba(0, 216, 255, 0.22);
-      color: var(--text);
-      background: rgba(0, 216, 255, 0.08);
-      max-width: 220px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.04);
+      max-width: 200px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     button.btn {
-      background: rgba(255,255,255,0.06);
+      background: rgba(255, 255, 255, 0.06);
       border: 1px solid var(--border);
       color: var(--text);
-      padding: 8px 14px;
-      border-radius: 10px;
+      padding: 7px 14px;
+      border-radius: 999px;
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 500;
+      font-family: inherit;
       cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
     }
-    button.btn:hover { background: rgba(255,255,255,0.1); }
+    button.btn:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.14); }
     button.btn-primary {
       background: linear-gradient(135deg, var(--accent), var(--accent2));
       border: none;
@@ -209,10 +192,10 @@
       scroll-behavior: smooth;
     }
     body.state-chat #messages {
-      max-width: 680px;
+      max-width: 640px;
       width: 100%;
       margin: 0 auto;
-      padding: 20px 12px 120px;
+      padding: 24px 8px 140px;
       box-sizing: border-box;
     }
     .msg {
@@ -237,23 +220,20 @@
     }
     .msg.user {
       align-self: flex-end;
-      border-radius: 20px 20px 6px 20px;
-      background: linear-gradient(155deg, rgba(84, 104, 255, 0.28), rgba(40, 52, 100, 0.45));
-      border: 1px solid rgba(130, 150, 255, 0.38);
-      box-shadow:
-        0 2px 0 rgba(255, 255, 255, 0.06) inset,
-        0 12px 40px rgba(40, 60, 140, 0.25);
+      border-radius: 22px 22px 6px 22px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
     }
     .msg.assistant {
       align-self: flex-start;
-      border-radius: 20px 20px 20px 6px;
-      background: linear-gradient(180deg, rgba(22, 28, 42, 0.98) 0%, rgba(14, 18, 30, 0.95) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.09);
-      border-left: 3px solid rgba(0, 216, 255, 0.55);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      border-radius: 22px 22px 22px 6px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      box-shadow: 0 2px 16px rgba(0, 0, 0, 0.25);
     }
     .msg.assistant.error { border-color: rgba(255, 100, 100, 0.35); color: #ffc9c9; }
-    .msg.assistant.streaming { border-color: rgba(0, 216, 255, 0.25); }
+    .msg.assistant.streaming { border-color: rgba(255, 255, 255, 0.12); }
     .drawer-backdrop {
       display: none;
       position: fixed;
@@ -333,10 +313,10 @@
       align-self: flex-start;
       max-width: min(96%, 560px);
       padding: 16px 18px;
-      border-radius: 16px;
-      background: linear-gradient(180deg, rgba(28, 22, 48, 0.55) 0%, rgba(14, 18, 30, 0.95) 100%);
-      border: 1px solid rgba(159, 111, 255, 0.35);
-      box-shadow: 0 12px 40px rgba(80, 60, 140, 0.15);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
     }
     .plan-card h3 { margin: 0 0 10px; font-size: 14px; }
     .plan-card ol { margin: 0; padding-left: 18px; color: var(--text); font-size: 13px; }
@@ -350,97 +330,93 @@
       position: sticky;
       bottom: 0;
       z-index: 5;
-      max-width: 680px;
+      max-width: 640px;
       width: 100%;
       margin-left: auto;
       margin-right: auto;
-      padding: 32px 12px 28px;
-      margin-top: -40px;
+      padding: 28px 8px 32px;
+      margin-top: -36px;
       box-sizing: border-box;
-      background: linear-gradient(180deg, rgba(6, 9, 16, 0) 0%, rgba(6, 9, 16, 0.55) 18%, rgba(6, 9, 16, 0.96) 45%, #060910 100%);
+      background: linear-gradient(180deg, rgba(12, 12, 14, 0) 0%, rgba(12, 12, 14, 0.7) 25%, rgba(12, 12, 14, 0.98) 55%, var(--bg) 100%);
     }
     body.state-empty .composer-wrap {
-      padding-bottom: 8px;
+      padding-bottom: 12px;
     }
     .composer {
       display: flex;
-      gap: 10px;
-      align-items: flex-end;
-      background: linear-gradient(180deg, rgba(20, 26, 40, 0.95) 0%, rgba(12, 16, 28, 0.98) 100%);
+      flex-direction: column;
+      align-items: stretch;
+      background: rgba(30, 30, 34, 0.85);
       border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 16px;
-      padding: 10px 12px;
-      box-shadow:
-        0 0 0 1px rgba(0, 216, 255, 0.06),
-        0 16px 48px rgba(0, 0, 0, 0.5);
+      border-radius: 26px;
+      padding: 0;
+      overflow: hidden;
+      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
     }
     body.state-chat .composer {
-      border-radius: 22px;
-      padding: 12px 14px;
-      box-shadow:
-        0 0 0 1px rgba(0, 216, 255, 0.12),
-        0 0 40px rgba(0, 216, 255, 0.06),
-        0 20px 56px rgba(0, 0, 0, 0.55);
+      border-radius: 26px;
     }
     body.state-empty .composer {
-      border-radius: 22px;
-      padding: 14px 16px;
-      align-items: center;
-      box-shadow: 0 16px 48px rgba(0,0,0,0.45);
+      border-radius: 28px;
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
     }
     .composer-inner {
       flex: 1;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 0;
       min-width: 0;
+      width: 100%;
     }
-    .composer-toolbar {
+    .composer-footer {
       display: flex;
       align-items: center;
-      justify-content: flex-end;
-      gap: 8px;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 14px 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      flex-shrink: 0;
     }
-    body.state-empty .composer-toolbar {
-      order: -1;
-      justify-content: flex-end;
-      margin-bottom: 0;
-    }
-    body.state-chat .composer-toolbar {
-      order: 1;
-      justify-content: flex-end;
+    .composer-footer .pill {
+      flex: 1;
+      min-width: 0;
+      text-align: left;
     }
     #input {
       width: 100%;
       min-height: 48px;
-      max-height: 180px;
+      max-height: 200px;
       resize: none;
       border: none;
       background: transparent;
       color: var(--text);
       font: inherit;
-      line-height: 1.45;
+      line-height: 1.5;
       outline: none;
+      padding: 16px 18px 8px;
     }
     body.state-empty #input {
-      min-height: 52px;
-      font-size: 16px;
+      min-height: 56px;
+      font-size: 17px;
+      padding-top: 18px;
     }
     #input::placeholder { color: var(--muted); }
     #send {
       flex-shrink: 0;
       width: 44px;
       height: 44px;
-      border-radius: 12px;
+      border-radius: 50%;
       border: none;
       cursor: pointer;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      color: #fff;
+      background: var(--text);
+      color: #0c0c0e;
       display: flex;
       align-items: center;
       justify-content: center;
+      transition: transform 0.15s, opacity 0.15s;
     }
-    #send:disabled { opacity: 0.45; cursor: not-allowed; }
+    #send:hover:not(:disabled) { transform: scale(1.04); }
+    #send:disabled { opacity: 0.35; cursor: not-allowed; }
     .hint {
       font-size: 11px;
       color: var(--muted);
@@ -462,18 +438,28 @@
       padding: 0 4px 4px;
     }
     .empty-hint strong { color: var(--accent); }
-    .hero-title {
+    .hero-block {
       text-align: center;
-      margin: 0 0 6px;
-      font-size: 26px;
-      font-weight: 650;
-      letter-spacing: -0.03em;
-      background: linear-gradient(120deg, #f0f4fc 0%, var(--muted) 100%);
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
+      margin: 0 0 8px;
+      padding: 0 12px;
     }
-    body.state-chat .hero-title { display: none; }
+    .hero-title {
+      margin: 0 0 10px;
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: -0.035em;
+      color: var(--text);
+    }
+    .hero-sub {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--muted);
+      max-width: 28em;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    body.state-chat .hero-block { display: none; }
     .typing {
       display: inline-flex;
       gap: 4px;
@@ -533,7 +519,10 @@
 
     <div class="shell">
       <div class="chat-stage">
-        <h2 class="hero-title">What can I help with?</h2>
+        <div class="hero-block">
+          <h2 class="hero-title">What can I help with?</h2>
+          <p class="hero-sub">Ask in natural language — browsing and tools use your other tabs when needed.</p>
+        </div>
         <section class="main">
           <div id="messages"></div>
         </section>
@@ -541,14 +530,14 @@
         <div class="composer-wrap">
           <div class="composer">
             <div class="composer-inner">
-              <div class="composer-toolbar">
-                <span class="pill" id="model-pill" title="Configured model">—</span>
-              </div>
               <textarea id="input" rows="1" placeholder="Ask anything…" autocomplete="off"></textarea>
+              <div class="composer-footer">
+                <span class="pill" id="model-pill" title="Configured model">—</span>
+                <button type="button" id="send" title="Send" aria-label="Send">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22l-4-9-9-4 20-7z"/></svg>
+                </button>
+              </div>
             </div>
-            <button type="button" id="send" title="Send" aria-label="Send">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22l-4-9-9-4 20-7z"/></svg>
-            </button>
           </div>
           <p class="hint"><kbd>Enter</kbd> send · <kbd>Shift</kbd>+<kbd>Enter</kbd> new line · Tools use your other tabs when needed</p>
         </div>
@@ -807,7 +796,7 @@
     });
     inputEl.addEventListener('input', function () {
       inputEl.style.height = 'auto';
-      inputEl.style.height = Math.min(inputEl.scrollHeight, 180) + 'px';
+      inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + 'px';
     });
     sendBtn.addEventListener('click', function () {
       send(inputEl.value);

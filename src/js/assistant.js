@@ -37,6 +37,11 @@ function navioDetectMailboxIntent(text) {
   return !!(mailThing || mailPlusCasual || inboxPhrases || threadStuff || mailCasual);
 }
 
+/** OAuth row from `oauth-status`: connected and token not past expiresAt. */
+function navioOAuthSlotActive(entry) {
+  return !!(entry && entry.connected && !entry.expired);
+}
+
 /** User is asking about the visible page/tab in plain language (no "click"/"navigate" verbs). */
 function navioDetectPageFocusIntent(text) {
   const s = (text || '').trim();
@@ -571,7 +576,7 @@ class AssistantManagerClass {
     let oauth = false;
     try {
       const st = await window.navio.oauthStatus();
-      oauth = !!(st && (st.google?.email || st.google_2?.email));
+      oauth = !!(st && (navioOAuthSlotActive(st.google) || navioOAuthSlotActive(st.google_2)));
     } catch {
       oauth = false;
     }
@@ -589,6 +594,49 @@ class AssistantManagerClass {
       content:
         '[Mail — backend API only]\nGmail is connected in Navio (Settings → Connectors and/or Google sign-in). Those **gmail_*** tools call the **real Gmail API** with the user’s OAuth token — you are not “blocked from the API by Navio”. For this mailbox-related turn use **gmail_search**, **gmail_get_message**, **gmail_list_drafts**, **gmail_create_draft**, **gmail_create_reply_draft**, **gmail_update_draft**, **gmail_delete_draft**, and **gmail_send_draft** only as appropriate. Do not use **navigate** or **open_tab** to mail.google.com and do not use **read_page**, **click**, or **type_text** on Gmail unless the user explicitly asks you to operate the **visible Gmail website**. Navio routes Gmail navigation during agent runs to these API tools when OAuth is valid.'
     });
+  }
+
+  /** Injects which Google / Microsoft OAuth slots exist so the model never assumes a single account. */
+  async _maybePushGoogleAccountsPolicy(messages, { isQuickAction = false } = {}) {
+    if (isQuickAction) return;
+    let oauthSt = {};
+    try {
+      oauthSt = (await window.navio.oauthStatus()) || {};
+    } catch {
+      return;
+    }
+    const gPri = navioOAuthSlotActive(oauthSt.google);
+    const gSec = navioOAuthSlotActive(oauthSt.google_2);
+    const ms = navioOAuthSlotActive(oauthSt.microsoft);
+    if (!gPri && !gSec && !ms) return;
+    const label = (e, fallback) => ((e && e.email) || fallback).trim() || fallback;
+    if (gPri && gSec) {
+      messages.push({
+        role: 'system',
+        content:
+          `[Navio — two Google accounts in this profile]\n` +
+          `**Primary:** ${label(oauthSt.google, '(signed in)')} — tools use \`google_account: "primary"\` (default).\n` +
+          `**Secondary:** ${label(oauthSt.google_2, '(2nd account)')} — tools use \`google_account: "secondary"\`.\n\n` +
+          `If the user asks about mail, unread, inbox, triage, "anything new", Drive, or Calendar **without** naming which account, you MUST consider **both** Google slots (run the relevant tool/query twice with primary vs secondary when applicable, then merge). ` +
+          `Do not infer from the active browser tab alone.`
+      });
+    } else if (gPri) {
+      messages.push({
+        role: 'system',
+        content: `[Navio — Google account] **${label(oauthSt.google, 'Primary')}** — use \`google_account: "primary"\` when a tool accepts it.`
+      });
+    } else if (gSec) {
+      messages.push({
+        role: 'system',
+        content: `[Navio — Google account] **${label(oauthSt.google_2, 'Secondary')}** only — use \`google_account: "secondary"\` for Gmail API tools.`
+      });
+    }
+    if (ms && oauthSt.microsoft?.email) {
+      messages.push({
+        role: 'system',
+        content: `[Navio — Microsoft account] **${oauthSt.microsoft.email}** — Outlook / OneDrive connectors use this login when connected.`
+      });
+    }
   }
 
   _buildAttachmentPayloadForApi(baseText) {
@@ -1339,6 +1387,7 @@ class AssistantManagerClass {
     }
 
     await this._maybePushMailBackendOnlyPolicy(messages, text, config, mailBackendPreferred);
+    await this._maybePushGoogleAccountsPolicy(messages, { isQuickAction });
     const ctxMsg = await this.buildPageContextSystemMessage(config, isQuickAction, {
       skipGmailPageExcerpt: mailBackendPreferred
     });
@@ -1597,6 +1646,7 @@ class AssistantManagerClass {
         });
       }
     }
+    await this._maybePushGoogleAccountsPolicy(messages, { isQuickAction: false });
     if (typeof ConnectorsManager !== 'undefined') {
       const connectorCtx = await this._buildConnectorContext(text, this._connectorOptsFromConfig(config));
       if (connectorCtx) messages.push({ role: 'system', content: connectorCtx });
@@ -1692,6 +1742,7 @@ class AssistantManagerClass {
     }
 
     await this._maybePushMailBackendOnlyPolicy(messages, text, config, mailBackendPreferred);
+    await this._maybePushGoogleAccountsPolicy(messages, { isQuickAction: false });
     // Page context scope (selection/excerpt/full) — still useful for non-browsing queries
     const ctxMsg = await this.buildPageContextSystemMessage(config, false, {
       skipGmailPageExcerpt: mailBackendPreferred
@@ -4540,13 +4591,38 @@ ${pageInfo}${snapText}`;
     );
   }
 
+  /**
+   * Which Gmail connector id(s) to prefetch: both when two accounts exist and the text
+   * does not clearly name one mailbox; otherwise one side.
+   */
+  _gmailConnectorPrefetchServices(text, oauthSt, has) {
+    const pri = has('gmail');
+    const sec = has('gmail_2');
+    if (!pri && !sec) return [];
+    if (!sec) return ['gmail'];
+    if (!pri) return ['gmail_2'];
+    const low = (text || '').toLowerCase();
+    const hit = (email) => {
+      const e = (email || '').toLowerCase();
+      if (!e) return false;
+      if (low.includes(e)) return true;
+      const loc = e.split('@')[0] || '';
+      return loc.length >= 2 && low.includes(loc);
+    };
+    const g1 = oauthSt.google?.email || '';
+    const g2 = oauthSt.google_2?.email || '';
+    const h1 = hit(g1);
+    const h2 = hit(g2);
+    if (h2 && !h1) return ['gmail_2'];
+    if (h1 && !h2) return ['gmail'];
+    if (h1 && h2) return [this._pickGmailConnectorServiceId(text, oauthSt)];
+    return ['gmail', 'gmail_2'];
+  }
+
   async _buildConnectorContext(text, opts = {}) {
     const webMode = opts.webMode || 'auto';
     const mailMode = opts.mailMode || 'auto';
     try {
-      const connected = ConnectorsManager.getConnectedIntegrations();
-      if (connected.length === 0) return null;
-
       let oauthSt = {};
       try {
         oauthSt = (await window.navio.oauthStatus()) || {};
@@ -4554,12 +4630,33 @@ ${pageInfo}${snapText}`;
         oauthSt = {};
       }
 
+      const oauthGoogle = navioOAuthSlotActive(oauthSt.google);
+      const oauthGoogle2 = navioOAuthSlotActive(oauthSt.google_2);
+      const oauthMicrosoft = navioOAuthSlotActive(oauthSt.microsoft);
+
+      const connected = ConnectorsManager.getConnectedIntegrations();
+      const connectedIdSet = new Set(connected.map((c) => c.id));
+
+      const has = (id) => {
+        if (connectedIdSet.has(id)) return true;
+        if (id === 'gmail' && oauthGoogle) return true;
+        if (id === 'gmail_2' && oauthGoogle2) return true;
+        if (id === 'gdrive' && oauthGoogle) return true;
+        if (id === 'gcalendar' && oauthGoogle) return true;
+        if (id === 'outlook' && oauthMicrosoft) return true;
+        if (id === 'onedrive' && oauthMicrosoft) return true;
+        return false;
+      };
+
+      if (!connected.length && !oauthGoogle && !oauthGoogle2 && !oauthMicrosoft) {
+        return null;
+      }
+
       // Fresh refs per user turn so subject enrichment only matches this query's messages.
       this._emailRefs.clear();
       this._pendingConnectorCitations = null;
 
       const results = [];
-      const has = (id) => connected.some((c) => c.id === id);
 
       // Helper: extract a clean search term from the user query
       const clean = (pattern) => text.replace(pattern, '').replace(/\b(my|the|search|find|in|from|about|show|list|all|open|get|what|are|is|any)\b/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
@@ -4587,17 +4684,14 @@ ${pageInfo}${snapText}`;
       if (mailMode === 'never') gmailIntent = false;
       else if (mailMode === 'always' && (has('gmail') || has('gmail_2'))) gmailIntent = true;
       const gmailApiConnected = has('gmail') || has('gmail_2');
-      if (gmailApiConnected && gmailIntent && oauthSt?.google?.email && oauthSt?.google_2?.email) {
+      if (gmailApiConnected && gmailIntent && oauthGoogle && oauthGoogle2 && oauthSt?.google?.email && oauthSt?.google_2?.email) {
         results.push(
           `[Two Gmail API accounts: **${oauthSt.google.email}** (primary) and **${oauthSt.google_2.email}** (secondary). ` +
-            `This turn's inbox prefetch follows the address or keyword you used; agent tools use **google_account** primary|secondary.]`
+            `When the user's wording does not name one address, this prefetch includes **both** inboxes below. Agent tools use **google_account** primary|secondary.]`
         );
       }
       if (gmailApiConnected && gmailIntent) {
-        const gmailSvc = this._pickGmailConnectorServiceId(text, oauthSt);
-        let activeGmailSvc = gmailSvc;
-        if (!has(activeGmailSvc)) activeGmailSvc = has('gmail_2') ? 'gmail_2' : 'gmail';
-        const gmailLabel = activeGmailSvc === 'gmail_2' ? 'Gmail (2nd account)' : 'Gmail';
+        const prefetchSvcs = this._gmailConnectorPrefetchServices(text, oauthSt, has);
         const wantsUnread = /\bunread\b/i.test(text);
         const wantsUnreplied =
           /\b(unreplied|unanswered|didn.?t\s*(respond|reply)|not\s*(respond|replied|reply)|no\s*response|pending\s*(reply|response)|haven.?t\s*(respond|replied|reply)|need\s*to\s*(respond|reply)|need\s+a\s*reply|needs?\s+replies?|that\s+need(s)?\s+(a\s+)?reply|still\s+.*\b(reply|respond)|awaiting\s+(a\s+)?response|waiting\s+for\s+(a\s+)?reply|follow.?up)\b/i.test(
@@ -4673,45 +4767,57 @@ ${pageInfo}${snapText}`;
           gmailQuery = `in:inbox is:unread ${dateFilter}`.replace(/\s+/g, ' ').trim();
         }
 
-        try {
-          const res = await ConnectorsManager.queryConnector(activeGmailSvc, gmailQuery, {
-            maxResults: fetchCount,
-            pages: fetchCount > 25 ? 2 : 1
-          });
-          if (res?.error) {
-            results.push(`[${gmailLabel} connector error: ${res.error}]`);
-          } else if (res?.results?.length) {
-            const gSlot = activeGmailSvc === 'gmail_2' ? 1 : 0;
-            const lines = res.results.map((r, idx) => {
-              const gmailUrl = r.id ? this._gmailWebInboxUrl(r.id, gSlot) : '';
-              if (r.id) {
-                this._emailRefs.set(r.id, {
-                  subject: r.subject || '(no subject)',
-                  from: r.from || '',
-                  snippet: r.snippet || '',
-                  url: gmailUrl,
-                  serviceId: activeGmailSvc,
-                  gmailUSlot: gSlot
-                });
+        const dualPrefetch = prefetchSvcs.length > 1;
+        for (const activeGmailSvc of prefetchSvcs) {
+          if (!has(activeGmailSvc)) continue;
+          const gmailLabel = activeGmailSvc === 'gmail_2' ? 'Gmail (2nd account)' : 'Gmail';
+          try {
+            const res = await ConnectorsManager.queryConnector(activeGmailSvc, gmailQuery, {
+              maxResults: fetchCount,
+              pages: fetchCount > 25 ? 2 : 1
+            });
+            if (res?.error) {
+              results.push(`[${gmailLabel} connector error: ${res.error}]`);
+            } else if (res?.results?.length) {
+              const gSlot = activeGmailSvc === 'gmail_2' ? 1 : 0;
+              const lines = res.results.map((r, idx) => {
+                const gmailUrl = r.id ? this._gmailWebInboxUrl(r.id, gSlot) : '';
+                if (r.id) {
+                  this._emailRefs.set(r.id, {
+                    subject: r.subject || '(no subject)',
+                    from: r.from || '',
+                    snippet: r.snippet || '',
+                    url: gmailUrl,
+                    serviceId: activeGmailSvc,
+                    gmailUSlot: gSlot
+                  });
+                }
+                const snippet = r.snippet ? `\n  "${r.snippet.slice(0, 150)}"` : '';
+                const dateStr = r.date ? ` · ${r.date}` : '';
+                const num = `${idx + 1}.`;
+                return gmailUrl
+                  ? `${num} [${r.subject || '(no subject)'}](${gmailUrl}) — From: ${r.from || '?'}${dateStr}${snippet}`
+                  : `${num} From: ${r.from || '?'} · Subject: ${r.subject || '(no subject)'}${dateStr}${snippet}`;
+              }).join('\n');
+              if (!dualPrefetch) {
+                this._lastGmailPageToken = res.nextPageToken || null;
+                this._lastGmailQuery = gmailQuery;
+                this._lastGmailServiceId = activeGmailSvc;
               }
-              const snippet = r.snippet ? `\n  "${r.snippet.slice(0, 150)}"` : '';
-              const dateStr = r.date ? ` · ${r.date}` : '';
-              const num = `${idx + 1}.`;
-              return gmailUrl
-                ? `${num} [${r.subject || '(no subject)'}](${gmailUrl}) — From: ${r.from || '?'}${dateStr}${snippet}`
-                : `${num} From: ${r.from || '?'} · Subject: ${r.subject || '(no subject)'}${dateStr}${snippet}`;
-            }).join('\n');
-            this._lastGmailPageToken = res.nextPageToken || null;
-            this._lastGmailQuery = gmailQuery;
-            this._lastGmailServiceId = activeGmailSvc;
-            const totalInfo = res.total > res.results.length
-              ? ` (showing ${res.results.length} of ~${res.total} total)`
-              : '';
-            results.push(`[${gmailLabel} — ${res.results.length} result(s) for "${gmailQuery}"${totalInfo}]\n${lines}${res.nextPageToken ? '\n\n(More results available — user can ask to "load more" or "show more emails")' : ''}`);
-          } else {
-            results.push(`[${gmailLabel} — 0 results for "${gmailQuery}"]`);
-          }
-        } catch (_) {}
+              const totalInfo = res.total > res.results.length
+                ? ` (showing ${res.results.length} of ~${res.total} total)`
+                : '';
+              results.push(`[${gmailLabel} — ${res.results.length} result(s) for "${gmailQuery}"${totalInfo}]\n${lines}${res.nextPageToken ? '\n\n(More results available — user can ask to "load more" or "show more emails")' : ''}`);
+            } else {
+              results.push(`[${gmailLabel} — 0 results for "${gmailQuery}"]`);
+            }
+          } catch (_) {}
+        }
+        if (dualPrefetch) {
+          this._lastGmailPageToken = null;
+          this._lastGmailQuery = gmailQuery;
+          this._lastGmailServiceId = 'gmail';
+        }
       }
 
       // ── Gmail "load more" / continuation ────────────────────────────────
