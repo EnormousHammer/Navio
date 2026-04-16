@@ -21,8 +21,8 @@ class NavioApp {
     if (typeof LaunchIntro !== 'undefined') {
       try {
         await LaunchIntro.playIfAvailable({
-          preloadBrowser:
-            !isFirstRun && !Onboarding.ready ? () => this.startBrowser() : null
+          /* Returning users only — first run finishes onboarding first, then onOnboardingComplete → startBrowser */
+          preloadBrowser: !isFirstRun ? () => this.startBrowser() : null
         });
       } catch (e) {
         console.warn('[Navio] Launch intro failed:', e);
@@ -43,9 +43,9 @@ class NavioApp {
     this.bindTabStrip();
     this.bindNewTabPage();
 
-    // startBrowser runs inside LaunchIntro when preloadBrowser is set (returning user).
-    // First-run onboarding: dismiss() → onOnboardingComplete() → startBrowser().
-    if (!isFirstRun && !Onboarding.ready && !this._sessionStarted) {
+    // If LaunchIntro did not run startBrowser (e.g. intro error, or no LaunchIntro), still open a tab for returning users.
+    // First-run: onboarding → onOnboardingComplete() → startBrowser().
+    if (!isFirstRun && !this._sessionStarted) {
       void this.startBrowser();
     }
   }
