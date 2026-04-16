@@ -587,7 +587,7 @@ class AssistantManagerClass {
     messages.push({
       role: 'system',
       content:
-        '[Mail — backend API only]\nGmail is connected in Navio (Settings → Connectors and/or Google sign-in). For this mailbox-related turn use **gmail_search**, **gmail_get_message**, **gmail_list_drafts**, **gmail_create_draft**, **gmail_create_reply_draft**, **gmail_update_draft**, **gmail_delete_draft**, and **gmail_send_draft** only as appropriate. Do not use **navigate** or **open_tab** to mail.google.com and do not use **read_page**, **click**, or **type_text** on Gmail unless the user explicitly asks you to operate the **visible Gmail website**. Navio routes Gmail navigation during agent runs to these API tools when OAuth is valid.'
+        '[Mail — backend API only]\nGmail is connected in Navio (Settings → Connectors and/or Google sign-in). Those **gmail_*** tools call the **real Gmail API** with the user’s OAuth token — you are not “blocked from the API by Navio”. For this mailbox-related turn use **gmail_search**, **gmail_get_message**, **gmail_list_drafts**, **gmail_create_draft**, **gmail_create_reply_draft**, **gmail_update_draft**, **gmail_delete_draft**, and **gmail_send_draft** only as appropriate. Do not use **navigate** or **open_tab** to mail.google.com and do not use **read_page**, **click**, or **type_text** on Gmail unless the user explicitly asks you to operate the **visible Gmail website**. Navio routes Gmail navigation during agent runs to these API tools when OAuth is valid.'
     });
   }
 
