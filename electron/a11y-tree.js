@@ -10,6 +10,8 @@
 
 'use strict';
 
+const { ensureGuestWebviewKeyboardFocus } = require('./agent-input-focus');
+
 // ── Module-level ref maps ────────────────────────────────────────────────────
 // Key: webContentsId, Value: Map<string, { backendDOMNodeId, role, name }>
 const refMaps = new Map();
@@ -222,6 +224,7 @@ async function clickByRef(wc, refId) {
   if (!refMap || !refMap.has(refId)) {
     return { error: `Unknown ref "${refId}". Call read_page to refresh the element list.` };
   }
+  await ensureGuestWebviewKeyboardFocus(wc);
   const { backendDOMNodeId } = refMap.get(refId);
   let attachedHere = false;
   try {
@@ -263,6 +266,7 @@ async function typeByRef(wc, refId, value) {
   if (!refMap || !refMap.has(refId)) {
     return { error: `Unknown ref "${refId}". Call read_page to refresh the element list.` };
   }
+  await ensureGuestWebviewKeyboardFocus(wc);
   const { backendDOMNodeId } = refMap.get(refId);
   let attachedHere = false;
   try {

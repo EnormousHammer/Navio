@@ -103,7 +103,7 @@ RULES:
 - screenshot: captures the active tab; the next AI turn may include the image — use it to pick xy= clicks or verify state.
 - NEVER use ACTION0, ACTION1, ACTION2 or any numbered placeholders.
 - NEVER use [[ACTION:...]] tokens — only use the <navio-actions> block.
-- Do NOT ask "shall I proceed?" — just do it.
+- Do NOT ask "shall I proceed?", "do you want me to continue?", "should I keep going?" — just output the next <navio-actions> until the task is done or STEP 0 forces questions first.
 
 ══════════════════════════════════════════
 BEST TOOLS — USE THE RIGHT SITE FOR EACH TASK

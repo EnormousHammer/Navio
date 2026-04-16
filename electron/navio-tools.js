@@ -103,7 +103,8 @@ const NAVIO_TOOLS = [
   {
     name: 'select_option',
     description:
-      'Select an option from a native <select> dropdown. Identify the dropdown by "ref" or "text".',
+      'Select an option from a native <select> dropdown. Identify the dropdown by "ref" or "text". ' +
+      'On freight sites, often used for LTL vs FTL / mode before clicking Get quote.',
     parameters: {
       type: 'object',
       properties: {
@@ -127,7 +128,8 @@ const NAVIO_TOOLS = [
     name: 'read_page',
     description:
       'Get an accessibility tree representation of the current page. Returns interactive elements ' +
-      'with ref IDs you can use for click/type_text. Call this after every navigation or page change.',
+      'with ref IDs you can use for click/type_text. Call this after every navigation or page change. ' +
+      'For freight/shipping quote flows (LTL/FTL), use filter "all" once to capture header/nav (e.g. Get quote) plus mode dropdowns.',
     parameters: {
       type: 'object',
       properties: {

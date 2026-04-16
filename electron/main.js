@@ -26,6 +26,7 @@ const { getMcpTools, callMcpTool, isMcpTool, initFromConfig: initMcpFromConfig, 
 const { initScheduler, registerSchedulerIpc, stopAll: stopAllSchedulers } = require('./navio-scheduler');
 const { shouldBlockWebPopup } = require('./ad-block-patterns');
 const { wcCanGoBack, wcCanGoForward } = require('./wc-nav-history');
+const { ensureGuestWebviewKeyboardFocus } = require('./agent-input-focus');
 
 function getProfileIdFromLaunch() {
   const a = process.argv.find((x) => typeof x === 'string' && x.startsWith('--navio-profile='));
@@ -1367,7 +1368,7 @@ async function performAiFetchResilient(cfg, apiKey, messages, fetchOpts, attempt
  */
 async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
   const configured = Number(cfg.aiAgentMaxToolSteps);
-  maxSteps = Math.min(500, Math.max(50, Number.isFinite(configured) && configured > 0 ? Math.round(configured) : 200));
+  maxSteps = Math.min(500, Math.max(50, Number.isFinite(configured) && configured > 0 ? Math.round(configured) : 300));
   // Merge native tools with any connected MCP tools
   const mcpTools = cfg.mcpEnabled !== false ? getMcpTools() : [];
   const tools = [...NAVIO_TOOLS, ...mcpTools];
@@ -2935,6 +2936,9 @@ async function maybeInterceptGmailBrowseNavForAgent(url) {
  */
 async function executeBrowserActionInternal(wc, action, params) {
   try {
+    if (action === 'click' || action === 'type' || action === 'pressKey' || action === 'insertText') {
+      await ensureGuestWebviewKeyboardFocus(wc);
+    }
     switch (action) {
       case 'click': {
         const sel = (params.selector || '').trim();

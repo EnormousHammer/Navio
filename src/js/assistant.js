@@ -503,7 +503,7 @@ class AssistantManagerClass {
     let head = fullText;
     if (hasShot) {
       head +=
-        '\n\n[Attached: screenshot of the active tab after the last action. Use it to choose precise click:xy= coordinates or verify UI state.]';
+        '\n\n[Attached: screenshot of the active browsing tab after the last action. First infer what the user wants from the conversation, then describe only what you see in the image, then decide the next tool (read_page, click, navigate, scroll, screenshot) until their goal is met — do not stop after this image alone unless the task is clearly complete or blocked.]';
     }
     parts.push({ type: 'text', text: head || '(see attachments)' });
     for (const p of pdfParts) parts.push(p);
