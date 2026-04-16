@@ -500,19 +500,13 @@ IMPORTANT — DO NOT:
 - Stop before every email needing a reply is handled — keep going until ALL are processed (up to max_results from gmail_search, and use pagination for more)
 - Give up mid-batch because one gmail_create_reply_draft failed — finish the rest, then summarize successes vs failures (see STEP 3b)
 
-If gmail_search or gmail_create_reply_draft returns a "not_signed_in" error:
-  Tell the user to go to Navio Settings → Connected Apps → reconnect Google with gmail.compose scope.
-
-If gmail_create_reply_draft returns a "SCOPE_ERROR" (starts with "SCOPE_ERROR:"):
-  STOP trying to create more drafts (this affects the whole mailbox). Tell the user clearly:
-  "Your Google account is connected but is missing the **gmail.compose** permission needed to save drafts.
-  To fix:
-  1. Open **Settings** (gear icon in the top-right of the browser)
-  2. Go to the **AI** tab → scroll to **Connected Apps — OAuth 2.0**
-  3. Find **Google** — click the red **Disconnect** button shown under it
-  4. Then click **Save** to reconnect — this time Navio will request the compose scope
-  Drafts will work after reconnecting."
-  Do NOT retry the tool. Do NOT continue to the next email. Just show this message and stop.
+If any Gmail tool returns an error whose text starts with **not_signed_in** or **SCOPE_ERROR:**
+  The main process already embedded the exact diagnosis and fix steps in the error string.
+  **Paraphrase that error faithfully** — do not replace it with a vague "something went wrong."
+  Always include: (1) what is wrong (e.g. Gmail API / OAuth not set up, or missing scope),
+  (2) where to fix it (**Settings → Connectors** or **Connected Apps**),
+  (3) the **takeover / browser** alternative: if the user says **take over** or **use the browser**, switch to navigating **mail.google.com** and using browser tools instead of the API.
+  For **SCOPE_ERROR** blocking drafts: stop the batch, show the full message, do not retry until the user reconnects Google with the right scopes.
 
 For non-Gmail webmail (Outlook web, etc.) where no API path exists:
   You may use navigate → read_page → click Reply → insert_text as a fallback.

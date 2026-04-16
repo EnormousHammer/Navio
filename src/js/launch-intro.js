@@ -1,16 +1,65 @@
 /**
- * Optional full-screen launch video only (public/intro_video + Settings).
- * First tab / webviews start after this resolves via normal App + Onboarding flow
- * — no second overlay, prelude, or early startBrowser (avoids empty-shell flashes).
+ * Startup sequence: branded shell prelude (always) → optional intro video → fade to browser.
+ * Prelude runs before App.startBrowser so no empty webview flashes before the new tab page.
  */
 
 const LaunchIntro = {
+  MIN_PRELUDE_MS: 780,
+  PRELUDE_MS_REDUCED: 320,
+
+  _sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  },
+
   _motionOk() {
     try {
       return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     } catch (e) {
       return true;
     }
+  },
+
+  _preludeHoldMs() {
+    return this._motionOk() ? this.MIN_PRELUDE_MS : this.PRELUDE_MS_REDUCED;
+  },
+
+  _stripPrelude() {
+    const el = document.getElementById('shell-prelude');
+    document.body.classList.remove('shell-prelude-active');
+    if (el) {
+      el.classList.remove('shell-prelude-exiting');
+      el.setAttribute('aria-hidden', 'true');
+    }
+  },
+
+  /**
+   * Fade out the shell prelude overlay; removes `shell-prelude-active` from body when done.
+   */
+  async _fadeOutPrelude() {
+    const el = document.getElementById('shell-prelude');
+    if (!el || !document.body.classList.contains('shell-prelude-active')) {
+      this._stripPrelude();
+      return;
+    }
+
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        el.removeEventListener('transitionend', onEnd);
+        clearTimeout(fallback);
+        this._stripPrelude();
+        resolve();
+      };
+      const onEnd = (e) => {
+        if (e.target !== el || e.propertyName !== 'opacity') return;
+        finish();
+      };
+      el.addEventListener('transitionend', onEnd);
+      const fallback = setTimeout(finish, 700);
+      el.classList.add('shell-prelude-exiting');
+    });
   },
 
   _playVideo(url) {
@@ -27,7 +76,9 @@ const LaunchIntro = {
           video.pause();
           video.removeAttribute('src');
           video.load();
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          /* ignore */
+        }
         root.classList.remove('visible', 'exiting');
         root.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('launch-intro-active');
@@ -42,7 +93,9 @@ const LaunchIntro = {
           if (window.navio && typeof window.navio.saveConfig === 'function') {
             await window.navio.saveConfig({ showLaunchIntro: false });
           }
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          /* ignore */
+        }
 
         if (!this._motionOk()) {
           cleanup();
@@ -87,18 +140,28 @@ const LaunchIntro = {
     });
   },
 
+  /**
+   * Full startup: prelude (always) → optional video → ready for first tab.
+   */
   async playIfAvailable() {
-    if (!window.navio || typeof window.navio.getIntroVideoUrl !== 'function') return;
+    if (!window.navio) {
+      this._stripPrelude();
+      return;
+    }
+
+    await this._sleep(this._preludeHoldMs());
 
     let url = null;
     try {
       url = await window.navio.getIntroVideoUrl();
     } catch (e) {
-      return;
+      url = null;
     }
 
-    if (!url) return;
+    await this._fadeOutPrelude();
 
-    await this._playVideo(url);
+    if (url) {
+      await this._playVideo(url);
+    }
   }
 };

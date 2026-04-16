@@ -1464,7 +1464,7 @@ const NTP = (() => {
         // Signed in via Google OAuth — read inbox from Gmail API
         emailList.innerHTML = '<div class="ntp-widget-loading"><span></span><span></span><span></span></div>';
         const gmailResult = await window.navio.ntpGmailInbox();
-        if (gmailResult?.error && gmailResult.error === 'not_signed_in') {
+        if (gmailResult?.error && String(gmailResult.error).startsWith('not_signed_in')) {
           // Token was invalidated, fall through to sign-in prompt
           googleAlreadyConnected = false;
         } else if (gmailResult?.error) {

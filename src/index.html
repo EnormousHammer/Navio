@@ -8,9 +8,22 @@
   <title>Navio</title>
   <link rel="stylesheet" href="css/styles.css">
 </head>
-<body data-theme="dark">
+<body data-theme="dark" class="shell-prelude-active">
 
-  <!-- Optional full-window launch video only (see js/launch-intro.js, Settings) -->
+  <!-- Branded startup (always): covers chrome below title bar until JS fades it — no empty webview flash -->
+  <div id="shell-prelude" class="shell-prelude" aria-hidden="false" role="presentation">
+    <div class="shell-prelude-inner">
+      <div class="shell-prelude-orb" aria-hidden="true">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/>
+        </svg>
+      </div>
+      <div class="shell-prelude-title">Navio</div>
+      <p class="shell-prelude-tag">Your intelligent browser</p>
+    </div>
+  </div>
+
+  <!-- Optional full-window launch video (after prelude; see js/launch-intro.js, Settings) -->
   <div id="launch-intro" class="launch-intro" aria-hidden="true">
     <video id="launch-intro-video" class="launch-intro-video" playsinline preload="metadata"></video>
     <button type="button" id="launch-intro-skip" class="launch-intro-skip">Skip</button>

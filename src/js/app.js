@@ -17,7 +17,13 @@ class NavioApp {
     this.applyLayoutFromConfig(this.config);
 
     if (typeof LaunchIntro !== 'undefined') {
-      await LaunchIntro.playIfAvailable();
+      try {
+        await LaunchIntro.playIfAvailable();
+      } catch (e) {
+        console.warn('[Navio] Launch intro failed:', e);
+        document.body.classList.remove('shell-prelude-active');
+        document.getElementById('shell-prelude')?.classList.remove('shell-prelude-exiting');
+      }
       this.config = await window.navio.getConfig();
     }
 

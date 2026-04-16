@@ -2547,7 +2547,7 @@ const toolExecutors = {
       }
       if (data.error) {
         if (/insufficient.*scope|scope.*insufficient|Request had insufficient/i.test(data.error)) {
-          return { error: 'SCOPE_ERROR: Your Google account is missing required Gmail permissions. Go to Navio Settings → Connected Apps → disconnect Google → reconnect it.' };
+          return { error: navioGmailScopeErrorMessage('generic') };
         }
         return { error: data.error };
       }
@@ -2607,10 +2607,7 @@ const toolExecutors = {
       if (!listRes.ok) {
         const msg = listData.error?.message || 'Failed to list drafts.';
         if (/insufficient.*scope|scope.*insufficient|Request had insufficient/i.test(msg)) {
-          return {
-            error:
-              'SCOPE_ERROR: Gmail needs read access to list drafts. Go to Navio Settings → Connected Apps → disconnect Google → reconnect it.'
-          };
+          return { error: navioGmailScopeErrorMessage('read_drafts') };
         }
         return { error: msg };
       }
@@ -2732,7 +2729,7 @@ const toolExecutors = {
       if (!draftRes.ok) {
         const msg = draftData.error?.message || 'Failed to create Gmail draft.';
         if (/insufficient.*scope|scope.*insufficient|Request had insufficient/i.test(msg)) {
-          return { error: 'SCOPE_ERROR: Your Google account is connected but missing the gmail.compose permission. Go to Navio Settings → Connected Apps → disconnect Google → reconnect it. This will request the compose scope so drafts can be created.' };
+          return { error: navioGmailScopeErrorMessage('compose') };
         }
         return { error: msg };
       }
@@ -4183,18 +4180,61 @@ function gmailToolOAuthProviderId(args) {
   return 'google';
 }
 
+/**
+ * Gmail API unavailable — OAuth missing or expired. Keep the `not_signed_in` prefix so
+ * renderers can detect it; body is shown to the user and to the model verbatim.
+ */
+function navioGmailNotConnectedMessage(providerId) {
+  const head = 'not_signed_in';
+  if (providerId === 'google_2') {
+    return (
+      `${head}\n\n` +
+      '**Second Google account** is not connected in Navio, so the **Gmail API** cannot use that mailbox.\n\n' +
+      "**What's wrong:** There is no valid OAuth token for the **second Gmail** slot — search, read, and draft tools cannot run for that account.\n\n" +
+      '**Fix:** Open **Settings** → **Connectors** (or **AI → Connected Apps**) → connect **Gmail (2nd account)** and approve Gmail access.\n\n' +
+      '**Or:** If your **primary** Google account is already connected, pass `google_account: "primary"` (or the equivalent) so tools use that mailbox.\n\n' +
+      '**Alternative:** Say **take over** or **use the browser** — Navio can drive **mail.google.com** in a tab instead (no Gmail API; slower but works).'
+    );
+  }
+  return (
+    `${head}\n\n` +
+    '**Gmail (Google) is not connected** — the **Gmail API** is not set up for this Navio profile, so inbox search, reading messages, and API drafts cannot run.\n\n' +
+    "**What's wrong:** Google OAuth with Gmail scopes has not been completed (or the token expired) under **Connected Apps**.\n\n" +
+    '**Fix:** **Settings** → **Connectors** (or **AI → Connected Apps**) → **Connect Google** → sign in and **allow Gmail** when prompted.\n\n' +
+    '**Alternative:** Say **take over** or **use the browser** — I can **operate Gmail in the website** for you (tab automation; no API required).'
+  );
+}
+
+/** Missing Gmail OAuth scopes after connect — user must disconnect/reconnect. */
+function navioGmailScopeErrorMessage(kind) {
+  const tail =
+    '\n\n**Alternative:** If you prefer not to change permissions yet, say **take over** — I can use the Gmail website in a tab instead (browser automation).';
+  if (kind === 'compose') {
+    return (
+      'SCOPE_ERROR: Your Google account is connected but **gmail.compose** (and related) permission is missing, so Navio cannot create or update drafts via the API.\n\n' +
+      '**Fix:** **Settings** → **Connected Apps** → **Disconnect** Google → **Save** → connect again and approve **Gmail** when asked.' +
+      tail
+    );
+  }
+  if (kind === 'read_drafts') {
+    return (
+      'SCOPE_ERROR: Gmail needs **read** permission to list drafts. Your connection is missing a required scope.\n\n' +
+      '**Fix:** **Settings** → **Connected Apps** → **Disconnect** Google → reconnect and approve full Gmail access.' +
+      tail
+    );
+  }
+  return (
+    'SCOPE_ERROR: Your Google account is missing **required Gmail API permissions**.\n\n' +
+    '**Fix:** **Settings** → **Connected Apps** → **Disconnect** Google → **reconnect** and approve Gmail when prompted.' +
+    tail
+  );
+}
+
 async function resolveGmailToolToken(args) {
   const providerId = gmailToolOAuthProviderId(args || {});
   const token = await getValidOAuthToken(providerId);
   if (!token) {
-    if (providerId === 'google_2') {
-      return {
-        token: null,
-        error:
-          'Second Google account not connected. Connect **Gmail (2nd account)** in the Connectors hub, or use google_account **primary**.'
-      };
-    }
-    return { token: null, error: 'not_signed_in — connect Google in Navio Settings → Connected Apps first.' };
+    return { token: null, error: navioGmailNotConnectedMessage(providerId) };
   }
   return { token, error: null };
 }
@@ -4604,7 +4644,12 @@ ipcMain.handle('connector-query', async (event, { serviceId, query, options }) =
       if (map[serviceId]) token = decryptConnectorKey(map[serviceId]);
     }
 
-    if (!token) return { error: 'Service not connected — click Connect in the Connectors Hub.' };
+    if (!token) {
+      if (serviceId === 'gmail' || serviceId === 'gmail_2') {
+        return { error: navioGmailNotConnectedMessage(serviceId === 'gmail_2' ? 'google_2' : 'google') };
+      }
+      return { error: 'Service not connected — open **Settings → Connectors**, click **Connect** for this service, then try again.' };
+    }
 
     if (serviceId === 'github') return await queryGitHub(token, query, options);
     if (serviceId === 'notion') return await queryNotion(token, query, options);
@@ -5355,7 +5400,7 @@ ipcMain.handle('streamed-pk-api', async (_, { path: apiPath }) => {
 ipcMain.handle('ntp-gmail-inbox', async () => {
   try {
     const token = await getValidOAuthToken('google');
-    if (!token) return { error: 'not_signed_in' };
+    if (!token) return { error: navioGmailNotConnectedMessage('google') };
 
     // Fetch inbox message IDs
     const listResp = await fetch(
@@ -5405,7 +5450,7 @@ ipcMain.handle('ntp-gmail-inbox', async () => {
 ipcMain.handle('gmail-get-message-body', async (_, { id }) => {
   try {
     const token = await getValidOAuthToken('google');
-    if (!token) return { error: 'not_signed_in' };
+    if (!token) return { error: navioGmailNotConnectedMessage('google') };
 
     const r = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=full`,
@@ -5586,7 +5631,7 @@ function parseEmailAddressFromHeader(fromVal) {
  */
 async function gmailUpdateDraftApi(draftId, bodyText, args = {}) {
   const { token, error } = await resolveGmailToolToken(args);
-  if (!token) return { error: error || 'not_signed_in' };
+  if (!token) return { error: error || navioGmailNotConnectedMessage(gmailToolOAuthProviderId(args)) };
   const id = (draftId || '').trim();
   if (!id) return { error: 'draft_id is required.' };
   const text = navioRepairUtf8Mojibake((bodyText || '').trim());
@@ -5644,7 +5689,7 @@ async function gmailUpdateDraftApi(draftId, bodyText, args = {}) {
 ipcMain.handle('gmail-send-draft', async (_, { draftId }) => {
   try {
     const token = await getValidOAuthToken('google');
-    if (!token) return { error: 'not_signed_in' };
+    if (!token) return { error: navioGmailNotConnectedMessage('google') };
     const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts/send', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -5669,7 +5714,7 @@ ipcMain.handle('gmail-update-draft', async (_, { draftId, body }) => {
 ipcMain.handle('gmail-get-signature-plain', async () => {
   try {
     const token = await getValidOAuthToken('google');
-    if (!token) return { error: 'not_signed_in' };
+    if (!token) return { error: navioGmailNotConnectedMessage('google') };
     return await gmailFetchSendAsSignaturePlainResult(token);
   } catch (e) {
     return { error: e.message };
@@ -5680,7 +5725,7 @@ ipcMain.handle('gmail-get-signature-plain', async () => {
 ipcMain.handle('gmail-delete-draft', async (_, { draftId }) => {
   try {
     const token = await getValidOAuthToken('google');
-    if (!token) return { error: 'not_signed_in' };
+    if (!token) return { error: navioGmailNotConnectedMessage('google') };
     const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/drafts/${encodeURIComponent(draftId)}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` }
@@ -5695,7 +5740,7 @@ ipcMain.handle('gmail-delete-draft', async (_, { draftId }) => {
 ipcMain.handle('gmail-create-reply-draft', async (_, { messageId, body: replyBody }) => {
   try {
     const token = await getValidOAuthToken('google');
-    if (!token) return { error: 'not_signed_in' };
+    if (!token) return { error: navioGmailNotConnectedMessage('google') };
 
     const mid = (messageId || '').trim();
     if (!mid) return { error: 'Missing Gmail message id' };

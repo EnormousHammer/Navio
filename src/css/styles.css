@@ -286,6 +286,113 @@ body.launch-intro-active #launch-intro {
 }
 
 /* ============================================
+   Shell prelude — always-on quick intro before first tab (no empty webview)
+   ============================================ */
+
+.shell-prelude {
+  position: fixed;
+  z-index: 10040;
+  left: 0;
+  right: 0;
+  top: var(--titlebar-height);
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-void);
+  background-image: radial-gradient(120% 80% at 50% 20%, rgba(0, 216, 255, 0.09) 0%, transparent 55%);
+  -webkit-app-region: no-drag;
+  box-sizing: border-box;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.5s cubic-bezier(0.33, 0, 0.2, 1),
+    visibility 0s linear 0.55s;
+}
+
+body.shell-prelude-active .shell-prelude {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition:
+    opacity 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0s;
+}
+
+.shell-prelude.shell-prelude-exiting {
+  opacity: 0 !important;
+  pointer-events: none;
+  transition: opacity 0.48s cubic-bezier(0.33, 0, 0.2, 1);
+}
+
+.shell-prelude-inner {
+  text-align: center;
+  max-width: 320px;
+  padding: 24px;
+  animation: shell-prelude-inner-in 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes shell-prelude-inner-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.shell-prelude-orb {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(145deg, rgba(0, 216, 255, 0.15), rgba(124, 58, 237, 0.08));
+  border: 1px solid rgba(0, 216, 255, 0.22);
+  color: var(--text-accent);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+}
+
+.shell-prelude-title {
+  margin: 0 0 6px;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+
+.shell-prelude-tag {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  letter-spacing: 0.02em;
+}
+
+[data-theme="light"] .shell-prelude {
+  background: #eef1f8;
+  background-image: radial-gradient(120% 80% at 50% 18%, rgba(0, 120, 220, 0.08) 0%, transparent 55%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell-prelude-inner {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .shell-prelude,
+  .shell-prelude.shell-prelude-exiting {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================
    Title Bar
    ============================================ */
 
