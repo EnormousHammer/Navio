@@ -873,6 +873,15 @@ body.tabstrip-hidden .tab-strip-show {
 .tab-item.tab-incognito {
   border-left: 2px solid rgba(139, 92, 246, 0.75);
 }
+
+/* Background tab unloaded to save memory (see tabDiscardIdleMinutes) */
+.tab-item.tab-discarded:not(.active) {
+  opacity: 0.78;
+}
+.tab-item.tab-discarded:not(.active) .tab-favicon {
+  filter: grayscale(0.35);
+}
+
 .tab-strip-new.tab-strip-private {
   opacity: 0.88;
 }

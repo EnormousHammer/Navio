@@ -464,7 +464,40 @@
     const panel = document.getElementById('downloads-drawer');
     const list = document.getElementById('downloads-drawer-list');
     const toggle = document.getElementById('btn-downloads-drawer');
+    const wrap = document.querySelector('.nav-downloads-wrap');
     if (!panel || !list) return;
+
+    /** Anchor the drawer under the toolbar Downloads control (not bottom-right of the window). */
+    function positionDownloadsDrawer() {
+      if (!panel || panel.hidden) return;
+      const anchor = wrap || toggle;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const margin = 8;
+      const gap = 6;
+      const panelWidth = Math.min(320, window.innerWidth - margin * 2);
+      panel.style.width = `${panelWidth}px`;
+      let left = rect.right - panelWidth;
+      if (left < margin) left = margin;
+      if (left + panelWidth > window.innerWidth - margin) {
+        left = window.innerWidth - margin - panelWidth;
+      }
+      const maxH = Math.min(280, window.innerHeight - margin * 2);
+      panel.style.maxHeight = `${maxH}px`;
+      let top = rect.bottom + gap;
+      if (top + maxH > window.innerHeight - margin) {
+        top = Math.max(margin, rect.top - maxH - gap);
+      }
+      panel.style.top = `${top}px`;
+      panel.style.left = `${left}px`;
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+    }
+
+    function onDownloadsReposition() {
+      positionDownloadsDrawer();
+    }
+    window.addEventListener('resize', onDownloadsReposition);
     const rowsByPath = new Map();
     const order = [];
 
@@ -591,10 +624,37 @@
         setDownloadChrome(true);
       }
     });
+    function closeIfOutside(e) {
+      if (panel.hidden) return;
+      const t = e.target;
+      if (wrap && wrap.contains(t)) return;
+      if (panel.contains(t)) return;
+      panel.hidden = true;
+    }
+    document.addEventListener('click', closeIfOutside, true);
+
     toggle &&
-      toggle.addEventListener('click', () => {
+      toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
         panel.hidden = !panel.hidden;
+        if (!panel.hidden) positionDownloadsDrawer();
       });
+
+    const folderBtn = document.getElementById('btn-downloads-open-folder');
+    folderBtn &&
+      folderBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        try {
+          window.navio.openDownloadsFolder?.();
+        } catch {
+          /* ignore */
+        }
+      });
+
+    window.__navioToggleDownloadsDrawer = () => {
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden) positionDownloadsDrawer();
+    };
   }
 
   function bindHistoryPanel() {

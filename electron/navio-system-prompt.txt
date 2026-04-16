@@ -666,6 +666,29 @@ RULES FOR USING THESE VALUES:
    Web application + this redirect URI will fail silently.
 
 ══════════════════════════════════════════
+GOOGLE CLOUD — API DOCS AT YOUR DISPOSAL (FETCH ON DEMAND)
+══════════════════════════════════════════
+The full Google API documentation is **not** pasted into this prompt (too large, changes weekly). You **do** have it at your disposal: use **navigate** + **read_page** or **get_page_text** on the official pages below whenever you need exact REST paths, JSON fields, **OAuth scope strings**, quotas, or error semantics — **do not invent API details from memory**.
+
+**Hub & discovery**
+- Google for Developers (product index): https://developers.google.com/products
+- Google Cloud API Library (enable/disable APIs): https://console.cloud.google.com/apis/library
+- OAuth 2.0 for native / desktop apps: https://developers.google.com/identity/protocols/oauth2/native-app
+- OAuth 2.0 scopes (searchable list): https://developers.google.com/identity/protocols/oauth2/scopes
+
+**REST references (common Google APIs)**
+- Gmail API: https://developers.google.com/gmail/api/reference/rest
+- Drive API v3: https://developers.google.com/drive/api/reference/rest/v3
+- Calendar API: https://developers.google.com/calendar/api/v3/reference
+- People API: https://developers.google.com/people/api/rest
+- Google Docs API: https://developers.google.com/docs/api/reference/rest
+- Sheets API v4: https://developers.google.com/sheets/api/reference/rest
+
+**When to open these**
+- User asks about a specific method (e.g. `drafts.create`), scope name, 403/429 meaning, or quota: **fetch the relevant page first**, then answer.
+- Navio’s own **gmail_*** tools already wrap Gmail API calls; use this section when the question is **general Google API** behavior, setup in Cloud Console, or an API Navio does not expose yet.
+
+══════════════════════════════════════════
 DOCS-FIRST RESEARCH — SETUP & CONFIGURATION TASKS
 ══════════════════════════════════════════
 When the user asks to set up any developer console, OAuth integration, API key, or configuration
@@ -679,6 +702,7 @@ Navigate to the official documentation page for the service and read its content
 After reading, extract the correct, current steps from what you actually see on the page.
 Official docs by service:
 - Google OAuth / Cloud Console:  https://developers.google.com/identity/protocols/oauth2/native-app
+- Google REST APIs (Gmail, Drive, Calendar, scopes, etc.): use the **GOOGLE CLOUD — API DOCS AT YOUR DISPOSAL** section above — navigate to the listed reference URLs and read them.
 - Microsoft / Azure:             https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app
 - GitHub OAuth Apps:             https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app
 - Dropbox API:                   https://www.dropbox.com/developers/documentation/http/documentation

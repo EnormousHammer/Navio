@@ -46,6 +46,10 @@ class TabManagerClass {
     // since some Electron builds ignore CSS-only sizing on <webview>.
     this._containerObserver = new ResizeObserver(() => this._syncWebviewSizes());
     this._containerObserver.observe(this.browserContainer);
+
+    /** Idle tab discard (memory): interval in `tabDiscardIdleMinutes` from config. */
+    this._tabDiscardInterval = null;
+    this._startTabDiscardSchedule();
   }
 
   // ── Passive Memory Capture ────────────────────────────────────────────
@@ -214,6 +218,9 @@ class TabManagerClass {
     this.tabs.push(tab);
     this.renderTabItem(tab);
     const doSwitch = opts.switchTo !== false;
+    if (!doSwitch) {
+      tab._inactiveSince = Date.now();
+    }
     if (doSwitch) {
       this.switchToTab(id);
     }
@@ -351,6 +358,10 @@ class TabManagerClass {
   /** Navigate a specific tab (used when the focused tab is the chat surface). */
   navigateTab(tab, resolvedUrl) {
     if (!tab || !tab.webview) return false;
+    if (tab._discarded) {
+      tab._discarded = false;
+      tab._discardUrl = null;
+    }
     tab.url = resolvedUrl;
     tab.favicon = null;
     tab.title = 'Loading…';
@@ -474,10 +485,11 @@ class TabManagerClass {
           tab.title = 'Navio AI';
           this.updateTabUI(tab);
         }
-      } else if ((raw === 'about:blank' || raw === '') && !wv._pendingUrl) {
+      } else if ((raw === 'about:blank' || raw === '') && !wv._pendingUrl && !tab._discarded) {
         // Back/forward to the initial blank document — clear the tab model so we
         // show the NTP again. (If we keep the old https URL, hideNewTabPage runs
         // while the webview is still about:blank and the NTP stacks above it.)
+        // Skip when tab is intentionally discarded (memory): tab.url stays the restore URL.
         tab.url = '';
       }
       if (tab.id === this.activeTabId) {
@@ -713,6 +725,10 @@ class TabManagerClass {
   navigateActive(resolvedUrl) {
     const tab = this.getActiveTab();
     if (!tab || !tab.webview) return false;
+    if (tab._discarded) {
+      tab._discarded = false;
+      tab._discardUrl = null;
+    }
     tab.url = resolvedUrl;
     tab.favicon = null;
     tab.title = 'Loading…';
@@ -811,7 +827,18 @@ class TabManagerClass {
 
   switchToTab(id) {
     const prevId = this.activeTabId;
+    if (prevId && prevId !== id) {
+      const prevTab = this.tabs.find((t) => t.id === prevId);
+      if (prevTab) prevTab._inactiveSince = Date.now();
+    }
+
+    const nextTab = this.tabs.find((t) => t.id === id);
+    if (nextTab && nextTab._discarded && nextTab._discardUrl && nextTab.webview) {
+      this._restoreDiscardedTab(nextTab);
+    }
+
     this.activeTabId = id;
+    if (nextTab) nextTab._inactiveSince = undefined;
 
     this.tabs.forEach((tab) => {
       const isActive = tab.id === id;
@@ -852,6 +879,69 @@ class TabManagerClass {
         this._lastBrowserSurfaceTabId = activeTab.id;
       }
     }
+  }
+
+  _restoreDiscardedTab(tab) {
+    if (!tab || !tab.webview || !tab._discardUrl) return;
+    const url = tab._discardUrl;
+    tab._discarded = false;
+    tab._discardUrl = null;
+    tab.loading = true;
+    this.updateTabUI(tab);
+    try {
+      tab.webview.loadURL(url);
+    } catch (e) {
+      console.warn('[Navio] restore discarded tab', e);
+    }
+  }
+
+  _discardBackgroundTab(tab) {
+    if (!tab || !tab.webview || tab._discarded) return;
+    const u = (tab.url || '').trim();
+    if (!u.startsWith('http')) return;
+    tab._discardUrl = u;
+    tab._discarded = true;
+    try {
+      tab.webview.loadURL('about:blank');
+    } catch (e) {
+      console.warn('[Navio] discard background tab', e);
+      tab._discarded = false;
+      tab._discardUrl = null;
+    }
+    this.updateTabUI(tab);
+  }
+
+  _maybeDiscardBackgroundTabs() {
+    let minutes = 0;
+    try {
+      minutes = Number(typeof App !== 'undefined' && App.config ? App.config.tabDiscardIdleMinutes : 0) || 0;
+    } catch {
+      minutes = 0;
+    }
+    if (minutes <= 0) return;
+
+    const ms = minutes * 60 * 1000;
+    const now = Date.now();
+
+    for (const tab of this.tabs) {
+      if (tab.id === this.activeTabId) continue;
+      if (tab.pinned) continue;
+      if (tab.incognito) continue;
+      if (tab._discarded) continue;
+      if (tab.loading) continue;
+      if (this._agentControlledTabId === tab.id) continue;
+      const u = (tab.url || '').trim();
+      if (!u.startsWith('http')) continue;
+      if (this.isNavioChatTabUrl(u)) continue;
+      const since = tab._inactiveSince;
+      if (since == null || now - since < ms) continue;
+      this._discardBackgroundTab(tab);
+    }
+  }
+
+  _startTabDiscardSchedule() {
+    if (this._tabDiscardInterval) clearInterval(this._tabDiscardInterval);
+    this._tabDiscardInterval = setInterval(() => this._maybeDiscardBackgroundTabs(), 60000);
   }
 
   closeTab(id) {
@@ -1134,6 +1224,14 @@ class TabManagerClass {
 
     el.classList.toggle('tab-pinned', !!tab.pinned);
     el.classList.toggle('tab-incognito', !!tab.incognito);
+    el.classList.toggle('tab-discarded', !!tab._discarded);
+    if (tab.webview) {
+      try {
+        tab.webview.classList.toggle('tab-webview-discarded', !!tab._discarded);
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   updateContextTitle(tab) {

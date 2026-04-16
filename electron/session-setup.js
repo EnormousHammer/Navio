@@ -385,6 +385,24 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
         return;
       }
 
+      // Google web apps (Gmail compose, Docs, Drive): allow clipboard / file-picker permissions without
+      // repeated prompts so paste and drag–drop behave like Chrome (attachments, images in body).
+      const o = String(origin || '');
+      const googleTrusted =
+        o.startsWith('https://mail.google.com') ||
+        o.startsWith('https://docs.google.com') ||
+        o.startsWith('https://drive.google.com') ||
+        o.startsWith('https://docs.googleusercontent.com');
+      if (
+        googleTrusted &&
+        (permission === 'clipboard-read' ||
+          permission === 'clipboard-sanitized-write' ||
+          permission === 'fileSystem')
+      ) {
+        callback(true);
+        return;
+      }
+
       const win = getMainWindow();
       const host = isNavioLocal ? 'Navio Browser' : originHostname(origin);
       const want = permissionHumanLabel(permission);
@@ -568,6 +586,7 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   regShortcut('CommandOrControl+Shift+O', 'tab-search');
   regShortcut('CommandOrControl+Shift+E', 'tab-search');
   regShortcut('CommandOrControl+Shift+B', 'bookmarks-panel');
+  regShortcut('CommandOrControl+J', 'downloads-panel');
   regShortcut('CommandOrControl+Shift+I', 'devtools-active-tab');
 
   regShortcut('CommandOrControl+R', 'reload');

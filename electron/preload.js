@@ -129,6 +129,7 @@ contextBridge.exposeInMainWorld('navio', {
   importBookmarks: (browserPath) => ipcRenderer.invoke('import-bookmarks', browserPath),
 
   getDownloadsPath: () => ipcRenderer.invoke('get-downloads-path'),
+  openDownloadsFolder: () => ipcRenderer.invoke('open-downloads-folder'),
 
   showWebviewContextMenu: (params) => ipcRenderer.invoke('show-webview-context-menu', params),
 

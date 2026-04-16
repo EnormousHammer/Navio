@@ -6205,6 +6205,16 @@ ipcMain.handle('import-bookmarks', async (event, browserPath) => {
 
 ipcMain.handle('get-downloads-path', () => app.getPath('downloads'));
 
+ipcMain.handle('open-downloads-folder', () => {
+  try {
+    const p = app.getPath('downloads');
+    shell.openPath(p);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 ipcMain.handle('show-in-folder', (_, filePath) => {
   try {
     shell.showItemInFolder(filePath);

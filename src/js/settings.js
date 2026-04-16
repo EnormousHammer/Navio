@@ -27,6 +27,7 @@ class SettingsManagerClass {
       launchIntro: document.getElementById('setting-launch-intro'),
       downloadAskWhere: document.getElementById('setting-download-ask-where'),
       downloadRevealInFolder: document.getElementById('setting-download-reveal'),
+      tabDiscardIdleMinutes: document.getElementById('setting-tab-discard'),
       translateTargetLang: document.getElementById('setting-translate-lang'),
       defaultZoom: document.getElementById('setting-default-zoom'),
       aiPageContext: document.getElementById('setting-ai-page-context'),
@@ -348,6 +349,11 @@ class SettingsManagerClass {
     }
     if (this.elements.downloadRevealInFolder) {
       this.elements.downloadRevealInFolder.checked = this.config.downloadRevealInFolder === true;
+    }
+    if (this.elements.tabDiscardIdleMinutes) {
+      const m = Number(this.config.tabDiscardIdleMinutes) || 0;
+      const allowed = ['0', '15', '30', '60', '120'];
+      this.elements.tabDiscardIdleMinutes.value = allowed.includes(String(m)) ? String(m) : '0';
     }
     if (this.elements.translateTargetLang) {
       this.elements.translateTargetLang.value = String(this.config.translateTargetLang || '').trim();
@@ -1134,6 +1140,9 @@ class SettingsManagerClass {
       showLaunchIntro: !!(this.elements.launchIntro && this.elements.launchIntro.checked),
       downloadAskWhere: !!(this.elements.downloadAskWhere && this.elements.downloadAskWhere.checked),
       downloadRevealInFolder: !!(this.elements.downloadRevealInFolder && this.elements.downloadRevealInFolder.checked),
+      tabDiscardIdleMinutes: this.elements.tabDiscardIdleMinutes
+        ? parseInt(this.elements.tabDiscardIdleMinutes.value, 10) || 0
+        : 0,
       translateTargetLang: this.elements.translateTargetLang
         ? this.elements.translateTargetLang.value.trim().slice(0, 16)
         : (this.config.translateTargetLang || ''),
@@ -1204,6 +1213,9 @@ class SettingsManagerClass {
 
     if (typeof TabManager !== 'undefined') {
       TabManager.applyZoomFromConfig();
+      if (typeof TabManager._maybeDiscardBackgroundTabs === 'function') {
+        TabManager._maybeDiscardBackgroundTabs();
+      }
     }
 
     if (typeof AssistantManager !== 'undefined') {

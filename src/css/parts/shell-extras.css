@@ -208,12 +208,11 @@
   z-index: 1;
 }
 
+/* Position (top/left) is set in JS so the panel sits under the toolbar Downloads button */
 .downloads-drawer {
   position: fixed;
-  right: 12px;
-  bottom: 12px;
   width: 320px;
-  max-height: 220px;
+  max-height: 280px;
   z-index: 5000;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -226,10 +225,33 @@
   display: none !important;
 }
 .downloads-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 8px 12px;
   font-weight: 600;
   font-size: 12px;
   border-bottom: 1px solid var(--border);
+}
+.downloads-drawer-title {
+  flex: 1;
+  min-width: 0;
+}
+.downloads-drawer-folder-btn {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-deep);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+}
+.downloads-drawer-folder-btn:hover {
+  color: var(--accent);
+  border-color: var(--border-accent);
 }
 .downloads-drawer-list {
   overflow-y: auto;

@@ -55,6 +55,8 @@ const DEFAULT_CONFIG = {
   downloadAskWhere: true,
   /** When true, open File Explorer to the file after a successful download. Off by default to avoid interrupting browsing. */
   downloadRevealInFolder: false,
+  /** 0 = off. After N minutes inactive, background http(s) tabs unload to about:blank to free memory (Chrome-style discard). */
+  tabDiscardIdleMinutes: 0,
   /** After first "ask where" save dialog, we offer "always use Downloads" once; then this is set true. */
   downloadAskFollowupSeen: false,
   /** Google Translate "translate to" language (e.g. en, es, zh-cn). Empty = use OS locale. */

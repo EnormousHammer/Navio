@@ -109,10 +109,10 @@
           <button type="button" class="nav-btn" id="btn-toggle-bookmark-bar" title="Show or hide bookmark bar (saved)" aria-pressed="true">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
           </button>
-          <div class="nav-downloads-wrap" title="Downloads — progress when active">
+          <div class="nav-downloads-wrap" title="Downloads — list opens below this button">
             <span class="download-activity-orb" id="download-activity-orb" aria-hidden="true"></span>
             <span class="download-activity-badge" id="download-activity-badge" hidden>0</span>
-            <button class="nav-btn" id="btn-downloads-drawer" title="Downloads">
+            <button class="nav-btn" id="btn-downloads-drawer" title="Downloads — panel opens here">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             </button>
           </div>
@@ -165,7 +165,10 @@
       </div>
 
       <div id="downloads-drawer" class="downloads-drawer" hidden>
-        <div class="downloads-drawer-head">Downloads</div>
+        <div class="downloads-drawer-head">
+          <span class="downloads-drawer-title">Downloads</span>
+          <button type="button" class="downloads-drawer-folder-btn" id="btn-downloads-open-folder" title="Open Downloads folder">Folder</button>
+        </div>
         <div id="downloads-drawer-list" class="downloads-drawer-list"></div>
       </div>
 
@@ -731,6 +734,17 @@
                 <input type="checkbox" id="setting-download-reveal">
                 <span>After a download finishes, show the file in File Explorer</span>
               </label>
+              <div class="setting-row" style="margin-top:12px">
+                <label for="setting-tab-discard">Snooze inactive background tabs</label>
+                <select id="setting-tab-discard">
+                  <option value="0">Off</option>
+                  <option value="15">After 15 min (frees memory)</option>
+                  <option value="30">After 30 min</option>
+                  <option value="60">After 1 hour</option>
+                  <option value="120">After 2 hours</option>
+                </select>
+              </div>
+              <p class="settings-inline-hint" style="margin-top:4px">Unloads tabs you are not viewing to the blank page; click the tab to reload. Pinned, private, and AI-driven tabs are skipped. <kbd>Ctrl+J</kbd> opens the download list.</p>
               <div class="setting-row" style="margin-top:12px">
                 <label for="setting-translate-lang">Translate page target language</label>
                 <input type="text" id="setting-translate-lang" placeholder="e.g. en, es, zh-cn (empty = OS locale)" spellcheck="false" autocomplete="off">

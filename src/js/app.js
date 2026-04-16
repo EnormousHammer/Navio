@@ -703,6 +703,9 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
         case 'bookmarks-panel':
           window.__navioOpenBookmarksOverlay?.();
           break;
+        case 'downloads-panel':
+          window.__navioToggleDownloadsDrawer?.();
+          break;
         case 'tab-search': {
           const overlay = document.getElementById('tab-search-overlay');
           const input = document.getElementById('tab-search-input');
