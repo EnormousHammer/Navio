@@ -340,8 +340,15 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
 
    const incognitoPermMemory = new Map();
 
+  /** Until app quit: remembers "Allow once" / "Deny" so the same site does not re-prompt every action. */
+  const sessionPermSessionMemory = new Map();
+
   function permMemoryKey(origin, permission) {
     return `${origin}\t${permission}`;
+  }
+
+  function sessionScopeKey(incognito, origin, permission) {
+    return `${incognito ? 'i' : 'n'}:${permMemoryKey(origin, permission)}`;
   }
 
   function attachPermissionHandlers(ses, { incognito }) {
@@ -350,13 +357,18 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
     /** @returns {boolean|null} */
     function storedDecision(origin, permission) {
       const k = permMemoryKey(origin, permission);
+      const sk = sessionScopeKey(incognito, origin, permission);
       if (incognito) {
         if (incognitoPermMemory.has(k)) return incognitoPermMemory.get(k);
         const disk = sitePerms.get(ud, origin, permission);
         if (disk === false) return false;
-        return null;
+      } else {
+        const p = sitePerms.get(ud, origin, permission);
+        if (p === true) return true;
+        if (p === false) return false;
       }
-      return sitePerms.get(ud, origin, permission);
+      if (sessionPermSessionMemory.has(sk)) return sessionPermSessionMemory.get(sk);
+      return null;
     }
 
     ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
@@ -408,6 +420,12 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
         return;
       }
 
+      // Fullscreen for embedded video (Stremio web, players): HTTPS only, no dialog — matches common browser behavior.
+      if (permission === 'fullscreen' && o.startsWith('https://')) {
+        callback(true);
+        return;
+      }
+
       const win = getMainWindow();
       const host = isNavioLocal ? 'Navio Browser' : originHostname(origin);
       const want = permissionHumanLabel(permission);
@@ -423,6 +441,7 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
         })
         .then(({ response }) => {
           const k = permMemoryKey(origin, permission);
+          const sk = sessionScopeKey(incognito, origin, permission);
           if (response === 2) {
             if (incognito) incognitoPermMemory.set(k, true);
             else sitePerms.set(ud, origin, permission, true);
@@ -432,7 +451,11 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
             else sitePerms.set(ud, origin, permission, false);
             callback(false);
           } else if (response === 0) {
+            sessionPermSessionMemory.set(sk, true);
             callback(true);
+          } else if (response === 1) {
+            sessionPermSessionMemory.set(sk, false);
+            callback(false);
           } else {
             callback(false);
           }

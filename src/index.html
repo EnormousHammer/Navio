@@ -226,19 +226,9 @@
           <!-- Full-page dark backdrop for NTP (always dark) -->
           <div class="ntp-bg-layer"></div>
 
-          <!-- Top bar: clock + services -->
+          <!-- Top bar: connected services (clock lives between shortcut columns) -->
           <div class="ntp-topbar">
-            <div class="ntp-topbar-left" aria-hidden="true"></div>
-            <div class="ntp-topbar-center">
-              <div class="ntp-clock-block">
-                <div class="ntp-clock" id="ntp-clock">--:--</div>
-                <div class="ntp-clock-sub">
-                  <span id="ntp-greeting">Good morning</span>
-                  <span class="ntp-clock-sep">·</span>
-                  <span class="ntp-date" id="ntp-date"></span>
-                </div>
-              </div>
-            </div>
+            <div class="ntp-topbar-spacer" aria-hidden="true"></div>
             <div class="ntp-topbar-right">
               <div class="ntp-services-bar" id="ntp-services-bar"></div>
             </div>
@@ -334,7 +324,16 @@
                   </button>
                 </div>
               </div>
-              <div class="ntp-shortcuts-sep" aria-hidden="true"></div>
+              <div class="ntp-shortcuts-center" aria-label="Time and date">
+                <div class="ntp-clock-block">
+                  <div class="ntp-clock" id="ntp-clock">--:--</div>
+                  <div class="ntp-clock-sub">
+                    <span id="ntp-greeting">Good morning</span>
+                    <span class="ntp-clock-sep">·</span>
+                    <span class="ntp-date" id="ntp-date"></span>
+                  </div>
+                </div>
+              </div>
               <div class="ntp-shortcuts-col ntp-shortcuts-col--secondary">
                 <div class="ntp-shortcuts-row-inner">
                   <button type="button" class="ntp-shortcut" data-url="https://www.youtube.com">

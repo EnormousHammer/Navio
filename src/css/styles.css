@@ -1414,11 +1414,11 @@ body.navio-incognito-active .url-bar-container {
   }
 }
 
-/* ── NTP Topbar ────────────────────────────────────────────────────────── */
+/* ── NTP Topbar (services only — clock sits between shortcut columns) ── */
 .ntp-topbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  display: flex;
   align-items: center;
+  justify-content: flex-end;
   padding: 10px clamp(10px, 3vw, 24px) 0;
   position: relative;
   z-index: 1;
@@ -1427,15 +1427,9 @@ body.navio-incognito-active .url-bar-container {
   width: 100%;
   box-sizing: border-box;
 }
-.ntp-topbar-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.ntp-topbar-center {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.ntp-topbar-spacer {
+  flex: 1;
+  min-width: 0;
 }
 .ntp-topbar-right {
   display: flex;
@@ -1443,6 +1437,7 @@ body.navio-incognito-active .url-bar-container {
   gap: 8px;
   justify-content: flex-end;
   min-width: 0;
+  flex-shrink: 0;
 }
 /* Legacy: mini weather pill removed from NTP top bar (was often clipped); widget below remains */
 
@@ -1496,12 +1491,48 @@ body.navio-incognito-active .url-bar-container {
   min-width: 0;
 }
 
-/* ── Clock (now in topbar center) ──────────────────────────────────────── */
+/* ── Clock (between shortcut columns on NTP) ───────────────────────────── */
+.ntp-shortcuts-center {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  min-width: min(160px, 24vw);
+  max-width: 220px;
+  padding: 4px min(14px, 2vw);
+  margin: 0 2px;
+  box-sizing: border-box;
+  border-left: 1px solid transparent;
+  border-right: 1px solid transparent;
+  border-image: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.12) 15%,
+    rgba(0, 216, 255, 0.22) 50%,
+    rgba(255, 255, 255, 0.12) 85%,
+    transparent 100%
+  ) 1;
+}
+[data-theme="light"] .ntp-shortcuts-center {
+  border-image: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(15, 23, 42, 0.06) 15%,
+    rgba(0, 120, 200, 0.2) 50%,
+    rgba(15, 23, 42, 0.06) 85%,
+    transparent 100%
+  ) 1;
+}
+.ntp-shortcuts-center .ntp-clock-block {
+  width: 100%;
+}
 .ntp-clock-block {
   text-align: center;
 }
 .ntp-clock {
-  font-size: clamp(28px, 3.5vw, 42px);
+  font-size: clamp(22px, 2.6vw, 34px);
   font-weight: 300;
   letter-spacing: -0.04em;
   color: #f4f6fb;
@@ -3179,7 +3210,7 @@ button.ntp-ticker-sport--stream:focus-visible {
   flex: 1 1 180px;
 }
 
-/* Vertical hairline between left / right groups */
+/* Legacy: optional sep (unused in default NTP; kept for pop-out HTML clones) */
 .ntp-shortcuts-sep {
   flex: 0 0 1px;
   width: 1px;
@@ -3212,6 +3243,24 @@ button.ntp-ticker-sport--stream:focus-visible {
   .ntp-shortcuts-panel {
     flex-direction: column;
     max-width: 720px;
+  }
+  .ntp-shortcuts-center {
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+    margin: 4px 0 8px;
+    padding: 12px 8px;
+    border-left: none;
+    border-right: none;
+    border-image: none;
+    background:
+      linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.14) 20%, rgba(0, 216, 255, 0.2) 50%, rgba(255, 255, 255, 0.14) 80%, transparent 100%) top / 100% 1px no-repeat,
+      linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.14) 20%, rgba(0, 216, 255, 0.2) 50%, rgba(255, 255, 255, 0.14) 80%, transparent 100%) bottom / 100% 1px no-repeat;
+  }
+  [data-theme="light"] .ntp-shortcuts-center {
+    background:
+      linear-gradient(90deg, transparent 0%, rgba(15, 23, 42, 0.08) 25%, rgba(0, 120, 200, 0.18) 50%, rgba(15, 23, 42, 0.08) 75%, transparent 100%) top / 100% 1px no-repeat,
+      linear-gradient(90deg, transparent 0%, rgba(15, 23, 42, 0.08) 25%, rgba(0, 120, 200, 0.18) 50%, rgba(15, 23, 42, 0.08) 75%, transparent 100%) bottom / 100% 1px no-repeat;
   }
   .ntp-shortcuts-sep {
     width: 100%;
