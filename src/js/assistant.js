@@ -176,19 +176,19 @@ class AssistantManagerClass {
   }
 
   bindEvents() {
-    document.getElementById('btn-toggle-assistant').addEventListener('click', () => this.toggle());
-    document.getElementById('btn-close-assistant').addEventListener('click', () => this.close());
-    document.getElementById('btn-clear-chat').addEventListener('click', () => this.clearChat());
-    document.getElementById('btn-send-message').addEventListener('click', () => this.sendMessage());
+    document.getElementById('btn-toggle-assistant')?.addEventListener('click', () => this.toggle());
+    document.getElementById('btn-close-assistant')?.addEventListener('click', () => this.close());
+    document.getElementById('btn-clear-chat')?.addEventListener('click', () => this.clearChat());
+    document.getElementById('btn-send-message')?.addEventListener('click', () => this.sendMessage());
 
-    this.inputEl.addEventListener('keydown', (e) => {
+    this.inputEl?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         this.sendMessage();
       }
     });
 
-    this.inputEl.addEventListener('input', () => {
+    this.inputEl?.addEventListener('input', () => {
       this.inputEl.style.height = 'auto';
       this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + 'px';
       this._handleAtMention();
@@ -779,10 +779,13 @@ class AssistantManagerClass {
   }
 
   toggle() {
-    this.isOpen ? this.close() : this.open();
+    const open = this.panel?.classList.contains('open');
+    if (open) this.close();
+    else void this.open();
   }
 
   async open() {
+    if (!this.panel) return;
     this.isOpen = true;
     this.panel.classList.add('open');
     await this.syncScopeFromConfig();
@@ -790,7 +793,7 @@ class AssistantManagerClass {
     if (this.messagesEl && this.messagesEl.children.length === 0) {
       await this._showGreeting();
     }
-    setTimeout(() => this.inputEl.focus(), 300);
+    setTimeout(() => this.inputEl?.focus(), 300);
   }
 
   async syncConnectorTogglesFromConfig() {
@@ -832,7 +835,7 @@ class AssistantManagerClass {
 
   close() {
     this.isOpen = false;
-    this.panel.classList.remove('open');
+    this.panel?.classList.remove('open');
   }
 
   async sendMessage() {

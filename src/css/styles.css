@@ -409,6 +409,11 @@ body.shell-prelude-active.shell-prelude-in .shell-prelude.shell-prelude-exiting 
   pointer-events: none !important;
 }
 
+/* Dismissed splash must never sit above the shell and eat clicks */
+#shell-prelude[aria-hidden='true'] {
+  pointer-events: none !important;
+}
+
 .shell-prelude.shell-prelude-exiting .shell-prelude-inner {
   animation: none !important;
 }

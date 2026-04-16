@@ -46,6 +46,7 @@ const LaunchIntro = {
     if (el) {
       el.classList.remove('shell-prelude-exiting');
       el.setAttribute('aria-hidden', 'true');
+      el.style.removeProperty('pointer-events');
     }
   },
 
@@ -82,6 +83,8 @@ const LaunchIntro = {
       /* Let shell paint at full opacity before prelude opacity animates (less contention on the compositor). */
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
+          /* Inline pass-through so clicks reach the shell even if CSS cascade regresses */
+          el.style.pointerEvents = 'none';
           el.classList.add('shell-prelude-exiting');
         });
       });

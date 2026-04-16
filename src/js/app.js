@@ -27,16 +27,27 @@ class NavioApp {
         });
       } catch (e) {
         console.warn('[Navio] Launch intro failed:', e);
-        document.body.classList.remove(
-          'shell-prelude-active',
-          'shell-prelude-in',
-          'shell-browser-reveal'
-        );
-        document.getElementById('shell-prelude')?.classList.remove('shell-prelude-exiting');
+        LaunchIntro._stripPrelude();
       } finally {
         if (this._sessionStarted) this._finishInitialShellReady();
       }
       this.config = await window.navio.getConfig();
+    } else {
+      /* launch-intro.js missing — body still has shell-prelude-active from HTML; that sets #app to pointer-events:none */
+      const sp = document.getElementById('shell-prelude');
+      document.body.classList.remove(
+        'shell-prelude-active',
+        'shell-prelude-in',
+        'shell-browser-reveal',
+        'shell-prelude-fading',
+        'launch-intro-active'
+      );
+      if (sp) {
+        sp.classList.remove('shell-prelude-exiting');
+        sp.setAttribute('aria-hidden', 'true');
+        sp.style.removeProperty('pointer-events');
+      }
+      if (this._sessionStarted) this._finishInitialShellReady();
     }
 
     this.bindThemeToggle();
@@ -441,7 +452,9 @@ class NavioApp {
           }
           break;
         case 'toggle-assistant':
-          AssistantManager.toggle();
+          if (typeof AssistantManager !== 'undefined' && typeof AssistantManager.toggle === 'function') {
+            AssistantManager.toggle();
+          }
           break;
         case 'toggle-connectors':
           if (typeof ConnectorsManager !== 'undefined') {
