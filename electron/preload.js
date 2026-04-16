@@ -215,6 +215,9 @@ contextBridge.exposeInMainWorld('navio', {
   // External protocol handler — opens mailto:, tel:, sms: in the OS default app
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
+  /** Cancel an in-progress download (matches save path from download-started). */
+  cancelDownload: (savePath) => ipcRenderer.invoke('cancel-download', savePath),
+
   // Reveal a downloaded file in the OS file manager (Explorer / Finder)
   showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),
   /** Open a file with the default application (shell.openPath). */

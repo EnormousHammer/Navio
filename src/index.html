@@ -299,53 +299,68 @@
             </div>
           </div>
 
-          <!-- Quick links -->
+          <!-- Quick links: one glass panel — two columns on wide viewports (saves vertical space above widgets) -->
           <div class="ntp-shortcuts" id="ntp-shortcuts">
-            <button type="button" class="ntp-shortcut" data-url="https://www.google.com">
-              <div class="shortcut-icon"><img src="https://www.google.com/s2/favicons?domain=google.com&sz=128" alt="Google" loading="lazy"></div>
-              <span>Google</span>
-            </button>
-            <button type="button" class="ntp-shortcut" data-url="https://mail.google.com">
-              <div class="shortcut-icon"><img src="https://www.gstatic.com/images/icons/material/product/2x/gmail_48dp.png" onerror="this.src='https://cdn.simpleicons.org/gmail/EA4335'" alt="Gmail" loading="lazy"></div>
-              <span>Gmail</span>
-            </button>
-            <button type="button" class="ntp-shortcut" data-url="https://drive.google.com">
-              <div class="shortcut-icon"><img src="https://www.gstatic.com/images/icons/material/product/2x/drive_48dp.png" onerror="this.src='https://cdn.simpleicons.org/googledrive/4285F4'" alt="Drive" loading="lazy"></div>
-              <span>Drive</span>
-            </button>
-            <button type="button" class="ntp-shortcut" data-url="https://www.youtube.com">
-              <div class="shortcut-icon"><img src="https://www.google.com/s2/favicons?domain=youtube.com&sz=128" alt="YouTube" loading="lazy"></div>
-              <span>YouTube</span>
-            </button>
-            <button type="button" class="ntp-shortcut" data-url="https://github.com">
-              <div class="shortcut-icon"><img src="https://www.google.com/s2/favicons?domain=github.com&sz=128" alt="GitHub" loading="lazy"></div>
-              <span>GitHub</span>
-            </button>
-            <button type="button" class="ntp-shortcut" data-url="https://twitter.com">
-              <div class="shortcut-icon"><img src="https://www.google.com/s2/favicons?domain=x.com&sz=128" alt="X" loading="lazy"></div>
-              <span>X</span>
-            </button>
-            <button type="button" class="ntp-shortcut" data-url="https://reddit.com">
-              <div class="shortcut-icon"><img src="https://www.google.com/s2/favicons?domain=reddit.com&sz=128" alt="Reddit" loading="lazy"></div>
-              <span>Reddit</span>
-            </button>
-            <button type="button" class="ntp-shortcut" data-url="https://chat.openai.com">
-              <div class="shortcut-icon"><img src="https://www.google.com/s2/favicons?domain=chat.openai.com&sz=128" alt="ChatGPT" loading="lazy"></div>
-              <span>ChatGPT</span>
-            </button>
-            <button type="button" class="ntp-shortcut ntp-shortcut-watch-live" data-url="https://predicta-bet.vercel.app/" title="Live sports — Predicta Bet">
-              <div class="shortcut-icon shortcut-icon-watch-live" aria-hidden="true">
-                <svg class="shortcut-tv-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                  <path d="M8 3.5L9.2 5h5.6L16 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
-                  <rect x="4" y="5.5" width="16" height="11.5" rx="2" stroke="currentColor" stroke-width="1.35" fill="currentColor" fill-opacity="0.12"/>
-                  <rect x="6" y="7.5" width="12" height="7.5" rx="1" fill="currentColor" fill-opacity="0.88"/>
-                  <path d="M10.8 10.2v2.6l2.4-1.3-2.4-1.3z" fill="#0a0c14"/>
-                  <rect x="10" y="18.5" width="4" height="2" rx="0.5" fill="currentColor" fill-opacity="0.45"/>
-                  <circle cx="18.5" cy="8" r="1.6" fill="currentColor" fill-opacity="0.55"/>
-                </svg>
+            <div class="ntp-shortcuts-panel" role="group" aria-label="Shortcuts">
+              <div class="ntp-shortcuts-col">
+                <div class="ntp-shortcuts-row-inner">
+                  <button type="button" class="ntp-shortcut" data-url="https://www.google.com">
+                    <div class="shortcut-icon"><img src="https://www.google.com/s2/favicons?domain=google.com&sz=128" alt="Google" loading="lazy"></div>
+                    <span>Google</span>
+                  </button>
+                  <button type="button" class="ntp-shortcut" data-url="https://mail.google.com">
+                    <div class="shortcut-icon"><img src="https://www.gstatic.com/images/icons/material/product/2x/gmail_48dp.png" onerror="this.src='https://cdn.simpleicons.org/gmail/EA4335'" alt="Gmail" loading="lazy"></div>
+                    <span>Gmail</span>
+                  </button>
+                  <button type="button" class="ntp-shortcut" data-url="https://drive.google.com">
+                    <div class="shortcut-icon"><img src="https://www.gstatic.com/images/icons/material/product/2x/drive_48dp.png" onerror="this.src='https://cdn.simpleicons.org/googledrive/4285F4'" alt="Drive" loading="lazy"></div>
+                    <span>Drive</span>
+                  </button>
+                  <button type="button" class="ntp-shortcut" data-url="https://github.com">
+                    <div class="shortcut-icon"><img src="https://www.google.com/s2/favicons?domain=github.com&sz=128" alt="GitHub" loading="lazy"></div>
+                    <span>GitHub</span>
+                  </button>
+                  <button type="button" class="ntp-shortcut" data-url="https://twitter.com">
+                    <div class="shortcut-icon"><img src="https://www.google.com/s2/favicons?domain=x.com&sz=128" alt="X" loading="lazy"></div>
+                    <span>X</span>
+                  </button>
+                  <button type="button" class="ntp-shortcut" data-url="https://reddit.com">
+                    <div class="shortcut-icon"><img src="https://www.google.com/s2/favicons?domain=reddit.com&sz=128" alt="Reddit" loading="lazy"></div>
+                    <span>Reddit</span>
+                  </button>
+                  <button type="button" class="ntp-shortcut" data-url="https://chat.openai.com">
+                    <div class="shortcut-icon"><img src="https://www.google.com/s2/favicons?domain=chat.openai.com&sz=128" alt="ChatGPT" loading="lazy"></div>
+                    <span>ChatGPT</span>
+                  </button>
+                </div>
               </div>
-              <span>Predicta Bet</span>
-            </button>
+              <div class="ntp-shortcuts-sep" aria-hidden="true"></div>
+              <div class="ntp-shortcuts-col ntp-shortcuts-col--secondary">
+                <div class="ntp-shortcuts-row-inner">
+                  <button type="button" class="ntp-shortcut" data-url="https://www.youtube.com">
+                    <div class="shortcut-icon"><img src="https://www.google.com/s2/favicons?domain=youtube.com&sz=128" alt="YouTube" loading="lazy"></div>
+                    <span>YouTube</span>
+                  </button>
+                  <button type="button" class="ntp-shortcut ntp-shortcut-watch-live" data-url="https://predicta-bet.vercel.app/" title="Live sports">
+                    <div class="shortcut-icon shortcut-icon-watch-live" aria-hidden="true">
+                      <svg class="shortcut-tv-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M8 3.5L9.2 5h5.6L16 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+                        <rect x="4" y="5.5" width="16" height="11.5" rx="2" stroke="currentColor" stroke-width="1.35" fill="currentColor" fill-opacity="0.12"/>
+                        <rect x="6" y="7.5" width="12" height="7.5" rx="1" fill="currentColor" fill-opacity="0.88"/>
+                        <path d="M10.8 10.2v2.6l2.4-1.3-2.4-1.3z" fill="#0a0c14"/>
+                        <rect x="10" y="18.5" width="4" height="2" rx="0.5" fill="currentColor" fill-opacity="0.45"/>
+                        <circle cx="18.5" cy="8" r="1.6" fill="currentColor" fill-opacity="0.55"/>
+                      </svg>
+                    </div>
+                    <span>Live Sports</span>
+                  </button>
+                  <button type="button" class="ntp-shortcut" data-url="https://web.stremio.com/" title="Stremio — movies &amp; shows">
+                    <div class="shortcut-icon"><img src="https://www.google.com/s2/favicons?domain=web.stremio.com&amp;sz=128" alt="Stremio" loading="lazy"></div>
+                    <span>Movies &amp; Shows</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Dashboard widgets: Inbox | World News (lists scroll inside fixed-height body) -->
@@ -641,7 +656,7 @@
                 <input type="checkbox" id="setting-download-ask-where">
                 <span>Ask where to save each file (Save As)</span>
               </label>
-              <p class="settings-inline-hint"><strong>On:</strong> each download opens the Windows <strong>Save As</strong> dialog so you pick folder and filename. <strong>Off:</strong> files go straight to your system <strong>Downloads</strong> folder; if the name already exists, Navio saves as <code>name (2)</code>, <code>(3)</code>, etc. Turn this <strong>on</strong> if downloads start without asking or you keep seeing numbers at the end of filenames.</p>
+              <p class="settings-inline-hint"><strong>Off (default):</strong> files save quietly to your system <strong>Downloads</strong> folder (same idea as Chrome). Duplicate names become <code>name (2)</code>, etc. <strong>On:</strong> Windows shows a centered <strong>Save As</strong> dialog for every download — turn on only when you need to pick the folder each time.</p>
               <label class="setting-toggle-row" style="margin-top:10px">
                 <input type="checkbox" id="setting-download-reveal">
                 <span>After a download finishes, show the file in File Explorer</span>
@@ -1489,6 +1504,10 @@
   <div id="live-notif-stack" class="live-notif-stack" aria-live="polite"></div>
   <!-- Chrome-style bottom bar: visible while files download or briefly after completion -->
   <div id="download-shelf" class="download-shelf" hidden role="region" aria-label="Downloads">
+    <div class="download-shelf-head">
+      <span class="download-shelf-head-title">Downloads</span>
+      <button type="button" class="download-shelf-dismiss-all" id="download-shelf-dismiss-all" title="Close" aria-label="Close download bar">×</button>
+    </div>
     <div id="download-shelf-list" class="download-shelf-list"></div>
   </div>
 </body>

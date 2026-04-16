@@ -989,6 +989,12 @@ class TabManagerClass {
         this._lastBrowserSurfaceTabId = activeTab.id;
       }
     }
+
+    if (typeof AssistantManager !== 'undefined' && typeof AssistantManager.onActiveTabChanged === 'function') {
+      if (prevId && prevId !== id) {
+        AssistantManager.onActiveTabChanged(prevId, id);
+      }
+    }
   }
 
   _restoreDiscardedTab(tab) {
@@ -1103,6 +1109,10 @@ class TabManagerClass {
       this._lastBrowserSurfaceTabId = null;
     }
     this.tabs.splice(index, 1);
+
+    if (typeof AssistantManager !== 'undefined' && typeof AssistantManager.onTabClosed === 'function') {
+      AssistantManager.onTabClosed(id);
+    }
 
     // If the closed tab was in a group, rebuild the strip to update counts/remove empty headers
     if (hadGroup) this._reRenderTabList();

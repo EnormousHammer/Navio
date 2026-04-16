@@ -494,6 +494,21 @@
     const wrap = document.querySelector('.nav-downloads-wrap');
     if (!panel || !list) return;
 
+    /** Chrome-like speed line (MB/s when fast). */
+    function formatDownloadSpeed(bps) {
+      if (bps == null || !Number.isFinite(bps) || bps <= 0) return '';
+      if (bps >= 1048576) return `${(bps / 1048576).toFixed(1)} MB/s`;
+      if (bps >= 1024) return `${(bps / 1024).toFixed(0)} KB/s`;
+      return `${Math.round(bps)} B/s`;
+    }
+
+    function downloadStateLabel(state) {
+      if (state === 'completed') return 'Completed';
+      if (state === 'cancelled') return 'Cancelled';
+      if (state === 'interrupted') return 'Interrupted';
+      return String(state || '');
+    }
+
     /** Anchor the drawer under the toolbar Downloads control (not bottom-right of the window). */
     function positionDownloadsDrawer() {
       if (!panel || panel.hidden) return;
@@ -640,8 +655,35 @@
           if (shelfList) shelfList.innerHTML = '';
           shelfRowsByPath.clear();
         }
-      }, 6000);
+      }, 4500);
     }
+
+    function dismissShelfRow(savePath) {
+      if (!savePath) return;
+      const srow = shelfRowsByPath.get(savePath);
+      if (srow) {
+        try {
+          srow.remove();
+        } catch {
+          /* ignore */
+        }
+        shelfRowsByPath.delete(savePath);
+      }
+      if (shelfList && shelfList.children.length === 0 && activeDownloadCount === 0 && shelf) {
+        shelf.hidden = true;
+        clearShelfHideTimer();
+      }
+    }
+
+    const dismissAllBtn = document.getElementById('download-shelf-dismiss-all');
+    dismissAllBtn &&
+      dismissAllBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        clearShelfHideTimer();
+        if (shelfList) shelfList.innerHTML = '';
+        shelfRowsByPath.clear();
+        if (shelf && activeDownloadCount === 0) shelf.hidden = true;
+      });
 
     function ensureShelfRow(savePath, filename) {
       if (!shelfList || !savePath) return null;
@@ -711,7 +753,24 @@
       row.querySelector('.dd-state').textContent = 'Starting…';
       const bar = row.querySelector('.dd-progress-bar');
       if (bar) bar.style.width = '0%';
-      row.querySelector('.dd-actions').innerHTML = '';
+      const ddAct = row.querySelector('.dd-actions');
+      if (ddAct) {
+        ddAct.innerHTML = '';
+        const cancelDrawer = document.createElement('button');
+        cancelDrawer.type = 'button';
+        cancelDrawer.className = 'dd-btn-cancel';
+        cancelDrawer.textContent = 'Cancel';
+        cancelDrawer.title = 'Cancel download';
+        cancelDrawer.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          try {
+            window.navio.cancelDownload?.(d.savePath);
+          } catch {
+            /* ignore */
+          }
+        });
+        ddAct.appendChild(cancelDrawer);
+      }
 
       if (shelf && shelfList) {
         shelf.hidden = false;
@@ -722,7 +781,33 @@
           const sb = srow.querySelector('.download-shelf-progress-bar');
           if (sb) sb.style.width = '0%';
           const act = srow.querySelector('.download-shelf-actions');
-          if (act) act.innerHTML = '';
+          if (act) {
+            act.innerHTML = '';
+            const cancelShelf = document.createElement('button');
+            cancelShelf.type = 'button';
+            cancelShelf.className = 'download-shelf-btn-cancel';
+            cancelShelf.textContent = 'Cancel';
+            cancelShelf.title = 'Cancel download';
+            cancelShelf.addEventListener('click', () => {
+              try {
+                window.navio.cancelDownload?.(d.savePath);
+              } catch {
+                /* ignore */
+              }
+            });
+            act.appendChild(cancelShelf);
+            const dismissShelf = document.createElement('button');
+            dismissShelf.type = 'button';
+            dismissShelf.className = 'download-shelf-btn-dismiss';
+            dismissShelf.textContent = '×';
+            dismissShelf.title = 'Hide in bar (download continues)';
+            dismissShelf.setAttribute('aria-label', 'Hide in download bar');
+            dismissShelf.addEventListener('click', (ev) => {
+              ev.stopPropagation();
+              dismissShelfRow(d.savePath);
+            });
+            act.appendChild(dismissShelf);
+          }
         }
       }
     });
@@ -742,9 +827,8 @@
         const parts = [];
         if (d.receivedStr && d.totalStr) parts.push(`${d.receivedStr} / ${d.totalStr}`);
         else if (d.receivedStr) parts.push(d.receivedStr);
-        if (d.bytesPerSec && d.bytesPerSec > 0) {
-          parts.push(`${(d.bytesPerSec / 1024).toFixed(0)} KB/s`);
-        }
+        const spd = formatDownloadSpeed(d.bytesPerSec);
+        if (spd) parts.push(spd);
         if (d.etaStr) parts.push(d.etaStr);
         meta.textContent = parts.join(' · ');
       }
@@ -753,7 +837,38 @@
         st.textContent = total ? `${pct}%` : 'Downloading…';
       }
 
-      const srow = shelfRowsByPath.get(d.savePath);
+      if (shelf && shelfList && !shelfRowsByPath.get(d.savePath)) {
+        shelf.hidden = false;
+        ensureShelfRow(d.savePath, d.filename);
+        const act = shelfRowsByPath.get(d.savePath)?.querySelector('.download-shelf-actions');
+        if (act) {
+          act.innerHTML = '';
+          const cancelShelf = document.createElement('button');
+          cancelShelf.type = 'button';
+          cancelShelf.className = 'download-shelf-btn-cancel';
+          cancelShelf.textContent = 'Cancel';
+          cancelShelf.addEventListener('click', () => {
+            try {
+              window.navio.cancelDownload?.(d.savePath);
+            } catch {
+              /* ignore */
+            }
+          });
+          act.appendChild(cancelShelf);
+          const dismissShelf = document.createElement('button');
+          dismissShelf.type = 'button';
+          dismissShelf.className = 'download-shelf-btn-dismiss';
+          dismissShelf.textContent = '×';
+          dismissShelf.title = 'Hide in bar (download continues)';
+          dismissShelf.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            dismissShelfRow(d.savePath);
+          });
+          act.appendChild(dismissShelf);
+        }
+      }
+
+      let srow = shelfRowsByPath.get(d.savePath);
       if (srow) {
         const sb = srow.querySelector('.download-shelf-progress-bar');
         if (sb) sb.style.width = `${pct}%`;
@@ -762,7 +877,8 @@
           const parts = [];
           if (d.receivedStr && d.totalStr) parts.push(`${d.receivedStr} of ${d.totalStr}`);
           else if (d.receivedStr) parts.push(d.receivedStr);
-          if (d.bytesPerSec && d.bytesPerSec > 0) parts.push(`${(d.bytesPerSec / 1024).toFixed(0)} KB/s`);
+          const spd = formatDownloadSpeed(d.bytesPerSec);
+          if (spd) parts.push(spd);
           if (d.etaStr) parts.push(d.etaStr);
           sm.textContent = parts.length ? parts.join(' · ') : total ? `${pct}%` : 'Downloading…';
         }
@@ -781,17 +897,34 @@
         if (wrapEl) wrapEl.classList.remove('dd-progress-indeterminate');
         row.classList.toggle('dd-row-done', d.state === 'completed');
         row.classList.toggle('dd-row-failed', d.state !== 'completed');
-        row.querySelector('.dd-state').textContent = d.state === 'completed' ? 'Completed' : String(d.state || '');
+        const stEl = row.querySelector('.dd-state');
+        if (stEl) stEl.textContent = downloadStateLabel(d.state);
         const meta = row.querySelector('.dd-meta');
         if (meta && d.state === 'completed' && d.totalStr) {
           meta.textContent = d.totalStr;
         } else if (meta && d.state === 'completed' && !d.totalStr) {
+          meta.textContent = '';
+        } else if (meta && d.state !== 'completed') {
           meta.textContent = '';
         }
         const actions = row.querySelector('.dd-actions');
         actions.innerHTML = '';
         if (d.state === 'completed' && d.savePath) {
           setRowOpenable(row, { savePath: d.savePath, filename: d.filename, openable: true });
+          const openB = document.createElement('button');
+          openB.type = 'button';
+          openB.className = 'dd-btn-folder dd-btn-open';
+          openB.textContent = 'Open';
+          openB.title = 'Open file';
+          openB.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            try {
+              window.navio.openFilePath?.(d.savePath);
+            } catch {
+              /* ignore */
+            }
+          });
+          actions.appendChild(openB);
           const b = document.createElement('button');
           b.type = 'button';
           b.className = 'dd-btn-folder';
@@ -814,19 +947,47 @@
         const sm = srow.querySelector('.download-shelf-meta');
         if (sm) {
           if (d.state === 'completed') {
-            sm.textContent = d.totalStr ? `Finished · ${d.totalStr}` : 'Finished';
+            sm.textContent = d.totalStr ? `Done · ${d.totalStr}` : 'Done';
           } else {
-            sm.textContent = String(d.state || 'Failed');
+            sm.textContent = downloadStateLabel(d.state);
           }
         }
         const act = srow.querySelector('.download-shelf-actions');
-        if (act && d.state === 'completed' && d.savePath) {
+        if (act && d.savePath) {
           act.innerHTML = '';
-          const b = document.createElement('button');
-          b.type = 'button';
-          b.textContent = 'Show in folder';
-          b.addEventListener('click', () => window.navio.showInFolder(d.savePath));
-          act.appendChild(b);
+          if (d.state === 'completed' && d.savePath) {
+            const openB = document.createElement('button');
+            openB.type = 'button';
+            openB.className = 'download-shelf-btn-open';
+            openB.textContent = 'Open';
+            openB.title = 'Open file';
+            openB.addEventListener('click', () => {
+              try {
+                window.navio.openFilePath?.(d.savePath);
+              } catch {
+                /* ignore */
+              }
+            });
+            act.appendChild(openB);
+            const foldB = document.createElement('button');
+            foldB.type = 'button';
+            foldB.className = 'download-shelf-btn-folder';
+            foldB.textContent = 'Folder';
+            foldB.title = 'Show in File Explorer';
+            foldB.addEventListener('click', () => window.navio.showInFolder(d.savePath));
+            act.appendChild(foldB);
+          }
+          const dismissB = document.createElement('button');
+          dismissB.type = 'button';
+          dismissB.className = 'download-shelf-btn-dismiss';
+          dismissB.textContent = '×';
+          dismissB.title = 'Dismiss';
+          dismissB.setAttribute('aria-label', 'Dismiss');
+          dismissB.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            dismissShelfRow(d.savePath);
+          });
+          act.appendChild(dismissB);
         }
       }
 

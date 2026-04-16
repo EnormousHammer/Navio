@@ -213,7 +213,8 @@ class AssistantManagerClass {
     this.receiptEl = document.getElementById('assistant-context-receipt');
     this.isOpen = false;
     this.isProcessing = false;
-    this.conversationHistory = [];
+    /** @type {Map<string, Array<{ role: string, content: unknown }>>} */
+    this._conversationsByTab = new Map();
     this._streamUnsubs = [];
     this._autoFollowCount = 0;
     this._emailRefs = new Map();
@@ -386,6 +387,83 @@ class AssistantManagerClass {
         const dt = e.dataTransfer?.files;
         if (dt?.length) this._addFilesFromList(dt);
       });
+    }
+  }
+
+  _conversationKey() {
+    if (typeof TabManager !== 'undefined' && TabManager.activeTabId) {
+      return String(TabManager.activeTabId);
+    }
+    return '_none';
+  }
+
+  /** API message history for the active browser tab (sidebar is scoped per tab). */
+  _currentHistory() {
+    const k = this._conversationKey();
+    if (!this._conversationsByTab.has(k)) {
+      this._conversationsByTab.set(k, []);
+    }
+    return this._conversationsByTab.get(k);
+  }
+
+  /**
+   * When the user switches tabs: stop generation, hide the dock, clear the message list
+   * so another tab’s thread is not shown (Comet-style).
+   */
+  onActiveTabChanged(prevTabId, nextTabId) {
+    if (!prevTabId || prevTabId === nextTabId) return;
+    try {
+      this.stopGeneration();
+      this._clearStreamListeners();
+      if (this._takeoverAbort) {
+        try {
+          this._takeoverAbort.abort();
+        } catch {
+          /* ignore */
+        }
+        this._takeoverAbort = null;
+      }
+    } catch {
+      /* ignore */
+    }
+    this.removeTypingIndicator();
+    this.isProcessing = false;
+    this._setAssistantBusy(false);
+    this._turnStartedAt = null;
+    this._awaitingTaskChain = false;
+    this._autoFollowCount = 0;
+    this.close();
+    if (this.messagesEl) this.messagesEl.innerHTML = '';
+    if (this.inputEl) {
+      this.inputEl.value = '';
+      this.inputEl.style.height = 'auto';
+    }
+    document.getElementById('navio-continue-pill')?.remove();
+    this.setReceipt('');
+    try {
+      this._clearAttachmentQueue();
+    } catch {
+      /* ignore */
+    }
+    navioAssistantDebug('onActiveTabChanged', { prevTabId, nextTabId });
+  }
+
+  onTabClosed(tabId) {
+    if (!tabId) return;
+    this._conversationsByTab.delete(String(tabId));
+  }
+
+  /** Rebuild visible bubbles from the active tab’s API history (after tab switch cleared DOM). */
+  _renderDomFromCurrentHistory() {
+    if (!this.messagesEl) return;
+    this.messagesEl.innerHTML = '';
+    const h = this._currentHistory();
+    for (const m of h) {
+      if (!m || (m.role !== 'user' && m.role !== 'assistant')) continue;
+      if (typeof m.content !== 'string') continue;
+      const text = m.content;
+      if (!String(text).trim() && m.role === 'user') continue;
+      this.addMessage(m.role, text);
     }
   }
 
@@ -1043,7 +1121,11 @@ class AssistantManagerClass {
       await this.syncScopeFromConfig();
       await this.syncConnectorTogglesFromConfig();
       if (this.messagesEl && this.messagesEl.children.length === 0) {
-        await this._showGreeting();
+        if (this._currentHistory().length > 0) {
+          this._renderDomFromCurrentHistory();
+        } else {
+          await this._showGreeting();
+        }
       }
     } catch (err) {
       console.warn('[Assistant] open(): config/sync failed', err);
@@ -1511,7 +1593,7 @@ class AssistantManagerClass {
       if (snapText) messages.push({ role: 'system', content: snapText });
     }
 
-    const recentHistory = this.conversationHistory.slice(-40);
+    const recentHistory = this._currentHistory().slice(-40);
     messages.push(...recentHistory);
     this._maybePushAttachmentSystemHint(messages);
     const userContent = this._buildAttachmentPayloadForApi(text);
@@ -1542,13 +1624,13 @@ class AssistantManagerClass {
           this._pendingConnectorCitations = null;
           this._checkAndShowActionFormatWarning(result.content, this.messagesEl.querySelector('.assistant-message:last-of-type'));
           if (userHistory) {
-            this.conversationHistory.push(
+            this._currentHistory().push(
               { role: 'user', content: userHistory },
               { role: 'assistant', content: result.content }
             );
           } else {
             // Auto-follow-up: only store the AI turn so context is preserved
-            this.conversationHistory.push({ role: 'assistant', content: result.content });
+            this._currentHistory().push({ role: 'assistant', content: result.content });
           }
           this._trimHistory();
           await window.navio.contextGraph({
@@ -1678,7 +1760,7 @@ class AssistantManagerClass {
       const connectorCtx = await this._buildConnectorContext(text, this._connectorOptsFromConfig(config));
       if (connectorCtx) messages.push({ role: 'system', content: connectorCtx });
     }
-    const recentHistory = this.conversationHistory.slice(-40);
+    const recentHistory = this._currentHistory().slice(-40);
     messages.push(...recentHistory);
     messages.push({ role: 'user', content: text });
     const userHistory = this._historyLabelForAttachments(text);
@@ -1694,7 +1776,7 @@ class AssistantManagerClass {
       if (buffer) {
         const out =
           payload && payload.cancelled ? `${buffer}\n\n*(Stopped)*` : buffer;
-        this.conversationHistory.push({ role: 'user', content: userHistory }, { role: 'assistant', content: out });
+        this._currentHistory().push({ role: 'user', content: userHistory }, { role: 'assistant', content: out });
         this._trimHistory();
         this._guestDeliver(guestWv, { type: 'streamFinalize', content: out });
         const graphTab = TabManager.getActiveTab?.() || null;
@@ -1714,7 +1796,7 @@ class AssistantManagerClass {
         if (fallback.error) {
           this._guestDeliver(guestWv, { type: 'assistant', error: true, content: fallback.error || msg });
         } else {
-          this.conversationHistory.push(
+          this._currentHistory().push(
             { role: 'user', content: userHistory },
             { role: 'assistant', content: fallback.content }
           );
@@ -1722,7 +1804,7 @@ class AssistantManagerClass {
           this._guestDeliver(guestWv, { type: 'assistant', content: fallback.content });
         }
       } else {
-        this.conversationHistory.push({ role: 'user', content: userHistory }, { role: 'assistant', content: buffer });
+        this._currentHistory().push({ role: 'user', content: userHistory }, { role: 'assistant', content: buffer });
         this._trimHistory();
         this._guestDeliver(guestWv, { type: 'streamFinalize', content: buffer });
       }
@@ -1832,7 +1914,7 @@ class AssistantManagerClass {
     }
 
     // Conversation history (skip stale page snapshots)
-    const recentHistory = this.conversationHistory
+    const recentHistory = this._currentHistory()
       .slice(-40)
       .filter(m => {
         if (m.role === 'system' && typeof m.content === 'string' && m.content.startsWith('[Page elements')) return false;
@@ -2165,7 +2247,7 @@ class AssistantManagerClass {
         this._pendingConnectorCitations = null;
       }
       const userHistory = historyUserLabel || this._historyLabelForAttachments(text);
-      this.conversationHistory.push(
+      this._currentHistory().push(
         { role: 'user', content: userHistory },
         { role: 'assistant', content: response.content }
       );
@@ -2306,7 +2388,7 @@ class AssistantManagerClass {
         }
         this._pendingConnectorCitations = null;
       }
-      this.conversationHistory.push(
+      this._currentHistory().push(
         { role: 'user', content: userHistory },
         { role: 'assistant', content: buffer }
       );
@@ -2379,7 +2461,7 @@ class AssistantManagerClass {
             fallback.content,
             this.messagesEl.querySelector('.assistant-message:last-of-type')
           );
-          this.conversationHistory.push(
+          this._currentHistory().push(
             { role: 'user', content: userHistory },
             { role: 'assistant', content: fallback.content }
           );
@@ -2405,16 +2487,19 @@ class AssistantManagerClass {
   }
 
   _trimHistory() {
-    if (this.conversationHistory.length > 80) {
-      this.conversationHistory = this.conversationHistory.slice(-60);
+    const k = this._conversationKey();
+    let h = this._conversationsByTab.get(k);
+    if (!h) return;
+    if (h.length > 80) {
+      h = h.slice(-60);
+      this._conversationsByTab.set(k, h);
     }
-    // Strip stale page snapshot context from older system messages
-    const len = this.conversationHistory.length;
+    const len = h.length;
     for (let i = 0; i < len - 4; i++) {
-      const m = this.conversationHistory[i];
+      const m = h[i];
       if (m.role === 'system' && typeof m.content === 'string') {
         if (m.content.startsWith('[Page elements') || m.content.startsWith('[Page text')) {
-          this.conversationHistory[i] = { role: 'system', content: '[page context removed — stale]' };
+          h[i] = { role: 'system', content: '[page context removed — stale]' };
         }
       }
     }
@@ -4479,7 +4564,7 @@ class AssistantManagerClass {
       : '';
 
     // If the conversation involves email/Gmail, re-enable connector context on follow-ups
-    const emailConversation = this.conversationHistory.some(m =>
+    const emailConversation = this._currentHistory().some(m =>
       /\b(email|gmail|mail|inbox|unreplied|unanswered)\b/i.test(m.content || '')
     );
     const isQuickActionFollowUp = !emailConversation;
@@ -4603,7 +4688,7 @@ ${pageInfo}${snapText}`;
   }
 
   clearChat() {
-    this.conversationHistory = [];
+    this._conversationsByTab.set(this._conversationKey(), []);
     this.setReceipt('');
     this.messagesEl.innerHTML = '';
     this._attachmentsSnapshot = null;

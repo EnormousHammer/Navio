@@ -86,6 +86,9 @@ function recordNavioPopupBlocked() {
  * Call after createStore + createMainWindow from main.js.
  */
 function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig }) {
+  /** Active Electron download items by final save path (for cancel from renderer). */
+  const activeDownloadItemsByPath = new Map();
+
   const userData = () => app.getPath('userData');
   const navioSession = session.fromPartition(NAVIO_PARTITION_MAIN);
   const incognitoSession = session.fromPartition(NAVIO_PARTITION_INCOGNITO);
@@ -194,6 +197,8 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
           return;
         }
 
+        activeDownloadItemsByPath.set(savePath, item);
+
         const displayName = path.basename(savePath);
         console.log(`[navio] Download started: ${displayName} → ${savePath}`);
 
@@ -241,6 +246,7 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
         });
 
         item.once('done', (_, state) => {
+          activeDownloadItemsByPath.delete(savePath);
           console.log(`[navio] Download ${state}: ${displayName}`);
           const doneTotal = item.getTotalBytes();
           getMainWindow()?.webContents.send('download-done', {
@@ -269,6 +275,19 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   handleDownloads(navioSession);
   handleDownloads(incognitoSession);
   handleDownloads(session.defaultSession);
+
+  ipcMain.handle('cancel-download', (_, savePath) => {
+    const p = typeof savePath === 'string' ? savePath.trim() : '';
+    if (!p) return { ok: false, error: 'no_path' };
+    const item = activeDownloadItemsByPath.get(p);
+    if (!item) return { ok: false, error: 'not_found' };
+    try {
+      item.cancel();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
 
   function handleCertErrors(ses) {
     ses.on('certificate-error', (event, webContents, url, error, certificate, callback) => {

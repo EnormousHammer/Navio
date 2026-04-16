@@ -3109,11 +3109,9 @@ button.ntp-ticker-sport--stream:focus-visible {
 
 .ntp-shortcuts {
   display: flex;
-  flex-wrap: wrap;
-  gap: clamp(4px, 1.5vw, 8px);
-  row-gap: 8px;
-  justify-content: center;
-  margin-bottom: 6px;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 8px;
   position: relative;
   z-index: 1;
   padding: 0 clamp(8px, 3vw, 20px);
@@ -3124,17 +3122,113 @@ button.ntp-ticker-sport--stream:focus-visible {
   box-sizing: border-box;
   min-width: 0;
 }
-.ntp-shortcuts::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 70%;
-  height: 120%;
-  background: radial-gradient(ellipse at center, rgba(0,216,255,0.06) 0%, rgba(124,58,237,0.03) 50%, transparent 80%);
-  pointer-events: none;
-  z-index: -1;
+
+/* Shortcuts: no boxed “strip” — icons sit on the wallpaper; only layout + hairline divider */
+.ntp-shortcuts-panel {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  justify-content: center;
+  width: 100%;
+  max-width: 920px;
+  padding: 6px 4px 8px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-sizing: border-box;
+  gap: 0;
+}
+
+.ntp-shortcuts-col {
+  flex: 1 1 260px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ntp-shortcuts-col--secondary {
+  flex: 1 1 180px;
+}
+
+/* Vertical hairline between left / right groups */
+.ntp-shortcuts-sep {
+  flex: 0 0 1px;
+  width: 1px;
+  align-self: stretch;
+  min-height: 72px;
+  margin: 6px 8px;
+  border: none;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.12) 15%,
+    rgba(0, 216, 255, 0.22) 50%,
+    rgba(255, 255, 255, 0.12) 85%,
+    transparent 100%
+  );
+  opacity: 0.95;
+}
+
+.ntp-shortcuts-row-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: clamp(4px, 1.5vw, 8px);
+  row-gap: 8px;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .ntp-shortcuts-panel {
+    flex-direction: column;
+    max-width: 720px;
+  }
+  .ntp-shortcuts-sep {
+    width: 100%;
+    height: 1px;
+    min-height: 0;
+    flex: 0 0 auto;
+    align-self: stretch;
+    margin: 8px 4px 10px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.14) 20%,
+      rgba(0, 216, 255, 0.2) 50%,
+      rgba(255, 255, 255, 0.14) 80%,
+      transparent 100%
+    );
+  }
+  [data-theme="light"] .ntp-shortcuts-sep {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(15, 23, 42, 0.08) 25%,
+      rgba(0, 120, 200, 0.18) 50%,
+      rgba(15, 23, 42, 0.08) 75%,
+      transparent 100%
+    );
+  }
+}
+
+[data-theme="light"] .ntp-shortcuts-panel {
+  background: transparent;
+  box-shadow: none;
+}
+[data-theme="light"] .ntp-shortcuts-sep {
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(15, 23, 42, 0.06) 15%,
+    rgba(0, 120, 200, 0.2) 50%,
+    rgba(15, 23, 42, 0.06) 85%,
+    transparent 100%
+  );
 }
 
 .ntp-shortcut {
@@ -12378,7 +12472,9 @@ button:focus-visible,
   .shortcut-watch-live-text { font-size: 5px; letter-spacing: 0.03em; }
   .shortcut-watch-live-strip .shortcut-watch-live-play { width: 6px; height: 6px; }
   .ntp-shortcut span { font-size: 10px; }
-  .ntp-shortcuts { gap: 5px; row-gap: 6px; margin-bottom: 4px; }
+  .ntp-shortcuts { margin-bottom: 4px; }
+  .ntp-shortcuts-panel { padding: 4px 2px 6px; }
+  .ntp-shortcuts-row-inner { gap: 5px; row-gap: 6px; }
   .ntp-widgets { gap: 8px; padding: 0 clamp(10px, 2.5vw, 16px) 6px; }
   .ntp-widget-header { padding: 7px 12px; }
 }
@@ -12387,10 +12483,14 @@ button:focus-visible,
     --ntp-widget-list-max-h: min(200px, 28vh);
   }
   .ntp-shortcuts {
-    display: flex;
+    margin-bottom: 4px;
+  }
+  .ntp-shortcuts-panel {
+    padding: 2px 2px 4px;
+  }
+  .ntp-shortcuts-row-inner {
     gap: 4px;
     row-gap: 4px;
-    margin-bottom: 4px;
   }
   .shortcut-icon { width: 30px; height: 30px; padding: 7px; }
   .ntp-shortcut span { font-size: 9px; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
