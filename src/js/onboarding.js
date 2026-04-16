@@ -19,7 +19,10 @@ class OnboardingManager {
     try {
       const config = await window.navio.getConfig();
       if (config.onboardingComplete) {
-        this.dismiss();
+        /* Do not call dismiss() — that fires onOnboardingComplete → startBrowser() before launch intro. */
+        this.ready = true;
+        document.body.classList.remove('onboarding-active');
+        if (this.el) this.el.classList.add('hidden');
         return false;
       }
     } catch (e) { /* proceed with onboarding */ }

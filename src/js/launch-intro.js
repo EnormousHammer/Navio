@@ -1,11 +1,18 @@
 /**
- * Startup sequence: branded shell prelude (always) → optional intro video → fade to browser.
- * Prelude runs before App.startBrowser so no empty webview flashes before the new tab page.
+ * Startup sequence: smooth prelude fade-in → preload first tab under the hood →
+ * wait for paint / first load → crossfade prelude out while the shell fades in →
+ * optional intro video.
  */
 
 const LaunchIntro = {
-  MIN_PRELUDE_MS: 780,
-  PRELUDE_MS_REDUCED: 320,
+  /** Parallel minimum with first-tab load — keeps intro feeling premium even on fast SSDs. */
+  MIN_HOLD_WITH_BROWSER_MS: 1880,
+  MIN_HOLD_REDUCED_MS: 420,
+  /** Prelude-only path (e.g. first-run onboarding next): shorter but still smooth. */
+  MIN_HOLD_NO_BROWSER_MS: 1020,
+  MIN_HOLD_NO_BROWSER_REDUCED_MS: 280,
+  /** Brief beat so the crossfade doesn’t cut off the first paint. */
+  POST_READY_SETTLE_MS: 220,
 
   _sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -19,13 +26,22 @@ const LaunchIntro = {
     }
   },
 
-  _preludeHoldMs() {
-    return this._motionOk() ? this.MIN_PRELUDE_MS : this.PRELUDE_MS_REDUCED;
+  _holdWithBrowserMs() {
+    return this._motionOk() ? this.MIN_HOLD_WITH_BROWSER_MS : this.MIN_HOLD_REDUCED_MS;
+  },
+
+  _holdNoBrowserMs() {
+    return this._motionOk() ? this.MIN_HOLD_NO_BROWSER_MS : this.MIN_HOLD_NO_BROWSER_REDUCED_MS;
   },
 
   _stripPrelude() {
     const el = document.getElementById('shell-prelude');
-    document.body.classList.remove('shell-prelude-active');
+    document.body.classList.remove(
+      'shell-prelude-active',
+      'shell-prelude-in',
+      'shell-browser-reveal',
+      'launch-intro-active'
+    );
     if (el) {
       el.classList.remove('shell-prelude-exiting');
       el.setAttribute('aria-hidden', 'true');
@@ -33,14 +49,16 @@ const LaunchIntro = {
   },
 
   /**
-   * Fade out the shell prelude overlay; removes `shell-prelude-active` from body when done.
+   * Crossfade: shell chrome fades in while prelude fades out (same duration feels premium).
    */
-  async _fadeOutPrelude() {
+  async _crossfadePreludeOut() {
     const el = document.getElementById('shell-prelude');
     if (!el || !document.body.classList.contains('shell-prelude-active')) {
       this._stripPrelude();
       return;
     }
+
+    document.body.classList.add('shell-browser-reveal');
 
     return new Promise((resolve) => {
       let done = false;
@@ -57,7 +75,7 @@ const LaunchIntro = {
         finish();
       };
       el.addEventListener('transitionend', onEnd);
-      const fallback = setTimeout(finish, 700);
+      const fallback = setTimeout(finish, 900);
       el.classList.add('shell-prelude-exiting');
     });
   },
@@ -141,15 +159,27 @@ const LaunchIntro = {
   },
 
   /**
-   * Full startup: prelude (always) → optional video → ready for first tab.
+   * @param {{ preloadBrowser?: (() => void | Promise<void>) | null }} [opts]
    */
-  async playIfAvailable() {
+  async playIfAvailable(opts = {}) {
     if (!window.navio) {
       this._stripPrelude();
       return;
     }
 
-    await this._sleep(this._preludeHoldMs());
+    await new Promise((r) => requestAnimationFrame(r));
+    await new Promise((r) => requestAnimationFrame(r));
+    document.body.classList.add('shell-prelude-in');
+
+    await this._sleep(this._motionOk() ? 520 : 120);
+
+    const preload = opts.preloadBrowser;
+    if (typeof preload === 'function') {
+      await Promise.all([preload(), this._sleep(this._holdWithBrowserMs())]);
+    } else {
+      await this._sleep(this._holdNoBrowserMs());
+    }
+    await this._sleep(this._motionOk() ? this.POST_READY_SETTLE_MS : 40);
 
     let url = null;
     try {
@@ -158,7 +188,7 @@ const LaunchIntro = {
       url = null;
     }
 
-    await this._fadeOutPrelude();
+    await this._crossfadePreludeOut();
 
     if (url) {
       await this._playVideo(url);

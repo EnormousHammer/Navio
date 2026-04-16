@@ -16,12 +16,21 @@ class NavioApp {
     this.applyTheme(this.config.theme || 'dark');
     this.applyLayoutFromConfig(this.config);
 
+    const isFirstRun = await Onboarding.checkFirstRun();
+
     if (typeof LaunchIntro !== 'undefined') {
       try {
-        await LaunchIntro.playIfAvailable();
+        await LaunchIntro.playIfAvailable({
+          preloadBrowser:
+            !isFirstRun && !Onboarding.ready ? () => this.startBrowser() : null
+        });
       } catch (e) {
         console.warn('[Navio] Launch intro failed:', e);
-        document.body.classList.remove('shell-prelude-active');
+        document.body.classList.remove(
+          'shell-prelude-active',
+          'shell-prelude-in',
+          'shell-browser-reveal'
+        );
         document.getElementById('shell-prelude')?.classList.remove('shell-prelude-exiting');
       }
       this.config = await window.navio.getConfig();
@@ -34,11 +43,10 @@ class NavioApp {
     this.bindTabStrip();
     this.bindNewTabPage();
 
-    const isFirstRun = await Onboarding.checkFirstRun();
-    // Only call startBrowser here if dismiss() hasn't already triggered it
-    // (dismiss() calls App.onOnboardingComplete() which calls startBrowser())
-    if (!isFirstRun && !Onboarding.ready) {
-      this.startBrowser();
+    // startBrowser runs inside LaunchIntro when preloadBrowser is set (returning user).
+    // First-run onboarding: dismiss() → onOnboardingComplete() → startBrowser().
+    if (!isFirstRun && !Onboarding.ready && !this._sessionStarted) {
+      void this.startBrowser();
     }
   }
 
@@ -52,21 +60,23 @@ class NavioApp {
     this.startBrowser();
   }
 
-  startBrowser() {
+  async startBrowser() {
     if (this._sessionStarted) return;
     this._sessionStarted = true;
-    setTimeout(() => {
-      if (typeof TabManager === 'undefined') return;
-      this._maybeProactiveTip();
-      const mode = this.config.startupMode || 'new-tab';
-      if (mode === 'homepage') {
-        const hp = (this.config.homepage || 'https://www.google.com').trim() || 'https://www.google.com';
-        const url = this.resolveNavigationInput(hp) || hp;
-        TabManager.createTab(url);
-      } else {
-        TabManager.createTab();
-      }
-    }, 100);
+    await new Promise((r) => setTimeout(r, 100));
+    if (typeof TabManager === 'undefined') return;
+    this._maybeProactiveTip();
+    const mode = this.config.startupMode || 'new-tab';
+    if (mode === 'homepage') {
+      const hp = (this.config.homepage || 'https://www.google.com').trim() || 'https://www.google.com';
+      const url = this.resolveNavigationInput(hp) || hp;
+      TabManager.createTab(url);
+    } else {
+      TabManager.createTab();
+    }
+    if (typeof TabManager.waitForInitialShellReady === 'function') {
+      await TabManager.waitForInitialShellReady();
+    }
   }
 
   applyTheme(theme) {

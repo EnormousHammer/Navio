@@ -289,6 +289,22 @@ body.launch-intro-active #launch-intro {
    Shell prelude — always-on quick intro before first tab (no empty webview)
    ============================================ */
 
+/* Chrome below title bar stays hidden until crossfade into the shell (no half-loaded NTP flash). */
+body.shell-prelude-active:not(.shell-browser-reveal) #tab-strip,
+body.shell-prelude-active:not(.shell-browser-reveal) #btn-tabstrip-show,
+body.shell-prelude-active:not(.shell-browser-reveal) #app {
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.shell-prelude-active.shell-browser-reveal #tab-strip,
+body.shell-prelude-active.shell-browser-reveal #btn-tabstrip-show,
+body.shell-prelude-active.shell-browser-reveal #app {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 0.72s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .shell-prelude {
   position: fixed;
   z-index: 10040;
@@ -307,23 +323,24 @@ body.launch-intro-active #launch-intro {
   visibility: hidden;
   pointer-events: none;
   transition:
-    opacity 0.5s cubic-bezier(0.33, 0, 0.2, 1),
-    visibility 0s linear 0.55s;
+    opacity 0.85s cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0s linear 0.95s;
 }
 
-body.shell-prelude-active .shell-prelude {
+/* Smooth fade-in of the prelude panel */
+body.shell-prelude-active.shell-prelude-in .shell-prelude {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
   transition:
-    opacity 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1),
     visibility 0s linear 0s;
 }
 
 .shell-prelude.shell-prelude-exiting {
   opacity: 0 !important;
   pointer-events: none;
-  transition: opacity 0.48s cubic-bezier(0.33, 0, 0.2, 1);
+  transition: opacity 0.72s cubic-bezier(0.33, 0, 0.2, 1) !important;
 }
 
 .shell-prelude-inner {
@@ -388,6 +405,11 @@ body.shell-prelude-active .shell-prelude {
   }
   .shell-prelude,
   .shell-prelude.shell-prelude-exiting {
+    transition-duration: 0.01ms !important;
+  }
+  body.shell-prelude-active.shell-browser-reveal #tab-strip,
+  body.shell-prelude-active.shell-browser-reveal #btn-tabstrip-show,
+  body.shell-prelude-active.shell-browser-reveal #app {
     transition-duration: 0.01ms !important;
   }
 }

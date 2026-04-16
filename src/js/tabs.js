@@ -204,6 +204,53 @@ class TabManagerClass {
     return tab;
   }
 
+  /**
+   * After the first startup tab exists: wait until the shell is presentable — NTP DOM painted
+   * or the first URL has stopped loading (no visible loading spinner).
+   */
+  async waitForInitialShellReady() {
+    const tab = this.getActiveTab();
+    if (!tab || !tab.webview) {
+      await this._nextPaint();
+      return;
+    }
+    if (this.newTabPage && this.newTabPage.classList.contains('active')) {
+      await this._nextPaint();
+      await new Promise((r) => setTimeout(r, 140));
+      return;
+    }
+    const wv = tab.webview;
+    await new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        wv.removeEventListener('did-stop-loading', onStop);
+        wv.removeEventListener('did-finish-load', onLoad);
+        clearTimeout(failSafe);
+        void this._nextPaint().then(() => {
+          setTimeout(resolve, 160);
+        });
+      };
+      const onStop = () => finish();
+      const onLoad = () => finish();
+      const failSafe = setTimeout(finish, 16000);
+      queueMicrotask(() => {
+        if (!tab.loading) {
+          finish();
+          return;
+        }
+        wv.addEventListener('did-stop-loading', onStop, { once: true });
+        wv.addEventListener('did-finish-load', onLoad, { once: true });
+      });
+    });
+  }
+
+  async _nextPaint() {
+    await new Promise((r) => requestAnimationFrame(r));
+    await new Promise((r) => requestAnimationFrame(r));
+  }
+
   /** Internal full-page AI chat (`navio-chat-tab.html`) — not a normal browsing surface. */
   isNavioChatTabUrl(url) {
     const u = (url || '').toLowerCase();
