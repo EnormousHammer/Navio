@@ -119,6 +119,11 @@ class CommandPaletteClass {
         run: () => TabManager.suggestCloseDuplicateTabsWithAi?.()
       },
       {
+        id: 'exit-split-view',
+        label: 'Exit split view (merge panes)',
+        run: () => TabManager.unsplitActiveSplit?.()
+      },
+      {
         id: 'tab-search-palette',
         label: 'Search open tabs (Ctrl+Shift+O or Ctrl+Shift+E)',
         run: () => {

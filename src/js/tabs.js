@@ -151,10 +151,38 @@ class TabManagerClass {
   _syncWebviewSizes() {
     const { width, height } = this.browserContainer.getBoundingClientRect();
     if (!width || !height) return;
-    this.tabs.forEach(tab => {
-      if (tab.webview) {
-        tab.webview.style.width  = width  + 'px';
-        tab.webview.style.height = height + 'px';
+
+    const focused = this.activeTabId ? this.tabs.find((t) => t.id === this.activeTabId) : null;
+    let partner = focused?.splitPartnerId
+      ? this.tabs.find((t) => t.id === focused.splitPartnerId)
+      : null;
+    if (focused?.splitPartnerId && !partner) {
+      focused.splitPartnerId = null;
+      partner = null;
+    }
+
+    this.tabs.forEach((tab) => {
+      const wv = tab.webview;
+      if (!wv) return;
+      wv.classList.remove('split-left', 'split-right');
+
+      if (partner && focused && (tab.id === focused.id || tab.id === partner.id)) {
+        const ia = this.tabs.findIndex((t) => t.id === focused.id);
+        const ib = this.tabs.findIndex((t) => t.id === partner.id);
+        const leftTab = ia <= ib ? focused : partner;
+        const isLeft = tab.id === leftTab.id;
+        const half = width / 2;
+        wv.style.left = isLeft ? '0px' : `${half}px`;
+        wv.style.right = 'auto';
+        wv.style.width = `${half}px`;
+        wv.style.height = `${height}px`;
+        wv.style.top = '0px';
+        wv.classList.add(isLeft ? 'split-left' : 'split-right');
+      } else {
+        wv.style.left = '0px';
+        wv.style.right = '0px';
+        wv.style.width = `${width}px`;
+        wv.style.height = `${height}px`;
       }
     });
   }
@@ -172,7 +200,9 @@ class TabManagerClass {
       loading: false,
       webview: null,
       pinned: false,
-      incognito
+      incognito,
+      /** Other tab id when this tab shares a split view (Chrome-style side-by-side). */
+      splitPartnerId: null
     };
 
     // Build a clean user-agent that doesn't expose Electron
@@ -892,34 +922,47 @@ class TabManagerClass {
     }
 
     const nextTab = this.tabs.find((t) => t.id === id);
-    if (nextTab && nextTab._discarded && nextTab._discardUrl && nextTab.webview) {
+    if (!nextTab) return;
+    if (nextTab._discarded && nextTab._discardUrl && nextTab.webview) {
       this._restoreDiscardedTab(nextTab);
     }
 
     this.activeTabId = id;
-    if (nextTab) nextTab._inactiveSince = undefined;
+    nextTab._inactiveSince = undefined;
+
+    const focused = nextTab;
+    let splitPartner = focused.splitPartnerId
+      ? this.tabs.find((t) => t.id === focused.splitPartnerId)
+      : null;
+    if (focused.splitPartnerId && !splitPartner) {
+      focused.splitPartnerId = null;
+      splitPartner = null;
+    }
 
     this.tabs.forEach((tab) => {
-      const isActive = tab.id === id;
-      tab.webview.classList.toggle('active', isActive);
+      if (!tab.webview) return;
+      const isFocused = tab.id === id;
+      const inSplitPair = !!(splitPartner && (tab.id === focused.id || tab.id === splitPartner.id));
+      tab.webview.classList.toggle('active', isFocused);
+      tab.webview.classList.toggle('split-visible', inSplitPair);
 
       const tabEl = document.getElementById(`tabitem-${tab.id}`);
-      if (tabEl) tabEl.classList.toggle('active', isActive);
+      if (tabEl) tabEl.classList.toggle('active', isFocused);
     });
 
-    // Re-sync sizes after toggling display on the active webview so it always
-    // fills the container flush to all four edges.
     this._syncWebviewSizes();
 
     const activeTab = this.getActiveTab();
     if (activeTab) {
       document.body.classList.toggle('navio-incognito-active', !!activeTab.incognito);
+      const inSplit = !!(activeTab.splitPartnerId && splitPartner);
       if (activeTab.url) {
         App.updateUrlBar(activeTab.url);
         this.hideNewTabPage();
       } else {
         App.updateUrlBar('');
-        this.showNewTabPage();
+        if (inSplit) this.hideNewTabPage();
+        else this.showNewTabPage();
       }
       App.updateNavigationButtons(activeTab.webview);
       this.updateContextTitle(activeTab);
@@ -982,8 +1025,10 @@ class TabManagerClass {
     const ms = minutes * 60 * 1000;
     const now = Date.now();
 
+    const active = this.getActiveTab();
     for (const tab of this.tabs) {
       if (tab.id === this.activeTabId) continue;
+      if (active?.splitPartnerId === tab.id) continue;
       if (tab.pinned) continue;
       if (tab.incognito) continue;
       if (tab._discarded) continue;
@@ -1018,6 +1063,15 @@ class TabManagerClass {
     // Cancel any pending passive-memory timer so it doesn't fire on a dead tab
     if (tab._memTimer) { clearTimeout(tab._memTimer); tab._memTimer = null; }
 
+    let closedWasInSplit = false;
+    if (tab.splitPartnerId) {
+      closedWasInSplit = true;
+      const pid = tab.splitPartnerId;
+      this._clearSplitPartner(id);
+      const p = this.tabs.find((t) => t.id === pid);
+      if (p) this.updateTabUI(p);
+    }
+
     const u = (tab.url || '').trim();
     if (u.startsWith('http')) {
       this._recentlyClosed.unshift({ url: u, incognito: !!tab.incognito });
@@ -1045,6 +1099,10 @@ class TabManagerClass {
     // If the closed tab was in a group, rebuild the strip to update counts/remove empty headers
     if (hadGroup) this._reRenderTabList();
     else this._applyAgentControlledTabClasses();
+
+    if (closedWasInSplit && this.activeTabId && this.activeTabId !== id) {
+      this.switchToTab(this.activeTabId);
+    }
 
     // If closing active tab, switch to another
     if (this.activeTabId === id) {
@@ -1077,6 +1135,69 @@ class TabManagerClass {
     if (!wv) return null;
     const t = this.tabs.find((x) => x.webview === wv);
     return t ? t.id : null;
+  }
+
+  _clearSplitPartner(tabId) {
+    const tab = this.tabs.find((t) => t.id === tabId);
+    if (!tab || !tab.splitPartnerId) return;
+    const p = this.tabs.find((t) => t.id === tab.splitPartnerId);
+    tab.splitPartnerId = null;
+    if (p) p.splitPartnerId = null;
+  }
+
+  /**
+   * Side-by-side split (Chrome-style): two http(s) tabs, same privacy mode.
+   * @returns {boolean}
+   */
+  splitTabWith(tabIdA, tabIdB) {
+    const a = this.tabs.find((t) => t.id === tabIdA);
+    const b = this.tabs.find((t) => t.id === tabIdB);
+    if (!a || !b || a.id === b.id) return false;
+    if (this.isNavioChatTabUrl(a.url || '') || this.isNavioChatTabUrl(b.url || '')) {
+      if (typeof _showAppToast === 'function') {
+        _showAppToast('Split view is not available for Navio chat tabs.', 'warning');
+      }
+      return false;
+    }
+    if (!!a.incognito !== !!b.incognito) {
+      if (typeof _showAppToast === 'function') {
+        _showAppToast('Split only works between tabs in the same privacy mode.', 'warning');
+      }
+      return false;
+    }
+    const urlOk = (t) => {
+      const u = (t.url || '').trim();
+      return u.startsWith('http');
+    };
+    if (!urlOk(a) || !urlOk(b)) {
+      if (typeof _showAppToast === 'function') {
+        _showAppToast('Open a webpage (http/https) in both tabs before using split view.', 'warning');
+      }
+      return false;
+    }
+    this._clearSplitPartner(a.id);
+    this._clearSplitPartner(b.id);
+    a.splitPartnerId = b.id;
+    b.splitPartnerId = a.id;
+    this.updateTabUI(a);
+    this.updateTabUI(b);
+    this.switchToTab(a.id);
+    return true;
+  }
+
+  unsplitTab(tabId) {
+    const t = this.tabs.find((x) => x.id === tabId);
+    if (!t || !t.splitPartnerId) return;
+    this._clearSplitPartner(tabId);
+    const cur = this.activeTabId;
+    if (cur) this.switchToTab(cur);
+    else if (this.tabs.length) this.switchToTab(this.tabs[0].id);
+    this.tabs.forEach((tab) => this.updateTabUI(tab));
+  }
+
+  unsplitActiveSplit() {
+    const t = this.getActiveTab();
+    if (t?.splitPartnerId) this.unsplitTab(t.id);
   }
 
   /**
@@ -1283,6 +1404,7 @@ class TabManagerClass {
 
     el.classList.toggle('tab-pinned', !!tab.pinned);
     el.classList.toggle('tab-incognito', !!tab.incognito);
+    el.classList.toggle('tab-in-split', !!tab.splitPartnerId);
     el.classList.toggle('tab-discarded', !!tab._discarded);
     if (tab.webview) {
       try {
@@ -1546,6 +1668,20 @@ class TabManagerClass {
 
     const pinLabel = tab.pinned ? 'Unpin tab' : 'Pin tab';
 
+    const splitExit = tab.splitPartnerId
+      ? `<button class="tcm-item" data-action="unsplit-tab">Exit split view</button>`
+      : '';
+
+    const splitPickMax = 16;
+    const splitWithList = !tab.splitPartnerId && otherTabs.length
+      ? `<div class="tcm-label">Split view (side by side)</div>
+      ${otherTabs.slice(0, splitPickMax).map((ot) => `
+        <button class="tcm-item" data-action="split-with" data-other-id="${ot.id}">
+          With: ${this.escapeHtml(this.getTabDisplayTitle(ot))}
+        </button>`).join('')}
+      ${otherTabs.length > splitPickMax ? `<div class="tcm-label">${otherTabs.length - splitPickMax} more tabs…</div>` : ''}`
+      : '';
+
     const menu = document.createElement('div');
     menu.id = 'tab-ctx-menu';
     menu.className = 'tab-ctx-menu';
@@ -1555,6 +1691,8 @@ class TabManagerClass {
       <div class="tcm-sep"></div>
       <button class="tcm-item" data-action="toggle-pin">${pinLabel}</button>
       <div class="tcm-sep"></div>
+      ${splitExit}
+      ${splitWithList ? `${splitWithList}<div class="tcm-sep"></div>` : ''}
       ${pairSection}
       ${removeItem}
       ${groupItems}
@@ -1611,6 +1749,8 @@ class TabManagerClass {
           }
         } else if (act === 'remove-from-group') this.removeTabFromGroup(tabId);
         else if (act === 'add-to-group') this.addTabToGroup(tabId, btn.dataset.gid);
+        else if (act === 'unsplit-tab') this.unsplitTab(tabId);
+        else if (act === 'split-with') this.splitTabWith(tabId, btn.dataset.otherId);
         else if (act === 'new-group-with-tab') {
           const oid = btn.dataset.otherId;
           const ot = this.tabs.find(x => x.id === oid);

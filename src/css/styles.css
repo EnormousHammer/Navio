@@ -899,6 +899,10 @@ body.tabstrip-hidden .tab-strip-show {
   border-left: 2px solid rgba(139, 92, 246, 0.75);
 }
 
+.tab-item.tab-in-split {
+  box-shadow: inset 0 -2px 0 rgba(0, 216, 255, 0.45);
+}
+
 /* Background tab unloaded to save memory (see tabDiscardIdleMinutes) */
 .tab-item.tab-discarded:not(.active) {
   opacity: 0.78;
@@ -1369,6 +1373,24 @@ body.navio-incognito-active .url-bar-container {
 #browser-container webview.active {
   visibility: visible;
   pointer-events: auto;
+}
+
+/* Split view (two tabs side by side) — partner pane stays visible with .split-visible */
+#browser-container webview.split-visible {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+#browser-container webview.split-left {
+  right: auto;
+  border-right: 1px solid var(--border);
+  box-sizing: border-box;
+}
+
+#browser-container webview.split-right {
+  right: 0;
+  left: auto;
+  box-sizing: border-box;
 }
 
 #browser-container webview.navio-agent-controlled-webview.active {
@@ -4570,9 +4592,9 @@ body.navio-vertical-tabs .assistant-panel {
 
 /* Settings: category nav + panels (premium layout) */
 .modal.modal-settings {
-  width: min(880px, 94vw);
-  max-width: min(94vw, 880px);
-  max-height: min(88vh, 780px);
+  width: min(920px, 96vw);
+  max-width: min(96vw, 920px);
+  max-height: min(88vh, 800px);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg), 0 0 0 1px rgba(0, 216, 255, 0.06);
 }
@@ -4626,8 +4648,8 @@ body.navio-vertical-tabs .assistant-panel {
 
 .settings-nav {
   flex-shrink: 0;
-  width: 210px;
-  padding: 16px 12px 20px;
+  width: 220px;
+  padding: 12px 12px 20px;
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -4635,6 +4657,129 @@ body.navio-vertical-tabs .assistant-panel {
   background: var(--bg-deep);
   overflow-y: auto;
   scrollbar-width: thin;
+}
+
+.settings-nav-search-wrap {
+  margin-bottom: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-nav-search {
+  width: 100%;
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 10px 0 32px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E") no-repeat 9px center;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-family: var(--font-sans);
+}
+
+.settings-nav-search::placeholder {
+  color: var(--text-tertiary);
+}
+
+.settings-nav-search:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.settings-section-profiles-intro .settings-inline-hint {
+  margin-bottom: 0;
+}
+
+.profile-create-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.profile-create-row input[type="text"] {
+  flex: 1;
+  min-width: 160px;
+  max-width: 280px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.settings-passphrase-input {
+  display: block;
+  max-width: 320px;
+  margin-top: 10px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.profile-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-deep);
+}
+
+.profile-settings-row:last-child {
+  margin-bottom: 0;
+}
+
+.profile-settings-row-active {
+  border-color: var(--border-accent);
+  box-shadow: 0 0 0 1px rgba(0, 216, 255, 0.12);
+}
+
+.profile-settings-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.profile-settings-name {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.profile-settings-id {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+  word-break: break-all;
+}
+
+.profile-settings-badge {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--accent-glow);
+  color: var(--accent);
+  border: 1px solid var(--border-accent);
 }
 
 .settings-nav-item {

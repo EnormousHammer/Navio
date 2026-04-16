@@ -97,7 +97,7 @@ class SettingsManagerClass {
       profileCreateBtn: document.getElementById('btn-profile-create')
     };
 
-    this.panelIds = ['general', 'ai', 'appearance', 'browser', 'privacy', 'integrations', 'passwords', 'about'];
+    this.panelIds = ['general', 'profiles', 'ai', 'appearance', 'browser', 'privacy', 'integrations', 'passwords', 'about'];
 
     this.bindEvents();
     this.loadConfig().catch(() => { /* pre-warm failure is non-critical; open() will retry */ });
@@ -208,6 +208,23 @@ class SettingsManagerClass {
       });
     });
 
+    const navSearch = document.getElementById('settings-nav-search');
+    if (navSearch) {
+      navSearch.addEventListener('input', () => this._filterSettingsNav());
+      navSearch.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          const visible = [...this.elements.nav.querySelectorAll('.settings-nav-item')].filter(
+            (el) => el.style.display !== 'none'
+          );
+          const first = visible[0];
+          if (first && first.dataset.panel) {
+            this.showPanel(first.dataset.panel);
+            if (first.dataset.panel === 'passwords') this._renderPasswordList();
+          }
+        }
+      });
+    }
+
     // Password manager — export
     document.getElementById('btn-pwd-export')?.addEventListener('click', async () => {
       try {
@@ -246,6 +263,28 @@ class SettingsManagerClass {
         this.close(true);
       }
     });
+  }
+
+  _filterSettingsNav() {
+    const inp = document.getElementById('settings-nav-search');
+    if (!inp || !this.elements.nav) return;
+    const q = inp.value.trim().toLowerCase();
+    const items = this.elements.nav.querySelectorAll('.settings-nav-item');
+    let firstVisible = null;
+    items.forEach((btn) => {
+      const panel = btn.dataset.panel || '';
+      const kw = (btn.dataset.search || '') + ' ' + panel + ' ' + (btn.querySelector('span')?.textContent || '');
+      const match = !q || kw.toLowerCase().includes(q);
+      btn.style.display = match ? '' : 'none';
+      if (match && !firstVisible) firstVisible = btn;
+    });
+    if (q && !firstVisible) {
+      items.forEach((btn) => { btn.style.display = ''; });
+    }
+    const active = this.elements.nav.querySelector('.settings-nav-item.active');
+    if (active && active.style.display === 'none' && firstVisible) {
+      this.showPanel(firstVisible.dataset.panel);
+    }
   }
 
   showPanel(panelId) {
@@ -585,6 +624,11 @@ class SettingsManagerClass {
     this._openedConfig = JSON.parse(JSON.stringify(this.config));
     if (this.elements.clearSiteDataStatus) this.elements.clearSiteDataStatus.textContent = '';
     if (this.elements.ledgerStatus) this.elements.ledgerStatus.textContent = '';
+    const navSearch = document.getElementById('settings-nav-search');
+    if (navSearch) {
+      navSearch.value = '';
+      this._filterSettingsNav();
+    }
     this.showPanel('general');
     this.modal.classList.add('visible');
     this._renderOAuthClientIdFields();
@@ -701,9 +745,16 @@ class SettingsManagerClass {
     try {
       const r = await window.navio.profilesList();
       const rows = (r.profiles || []).map((p) => {
-        const active = p.active ? ' <em>(active)</em>' : '';
-        return `<div class="ext-row ext-row-rich"><span>${_esc(p.name || p.id)}${active}</span>
-          <button type="button" class="btn btn-secondary profile-switch" data-id="${_escAttr(p.id)}">Switch to…</button></div>`;
+        const name = p.name || p.id;
+        const active = !!p.active;
+        return `<div class="profile-settings-row${active ? ' profile-settings-row-active' : ''}">
+          <div class="profile-settings-row-main">
+            <span class="profile-settings-name">${_esc(name)}</span>
+            <span class="profile-settings-id">${_esc(p.id)}</span>
+            ${active ? '<span class="profile-settings-badge">Active</span>' : ''}
+          </div>
+          <button type="button" class="btn ${active ? 'btn-secondary' : 'btn-primary'} btn-sm profile-switch" data-id="${_escAttr(p.id)}" ${active ? 'disabled' : ''}>${active ? 'Current profile' : 'Switch to this profile'}</button>
+        </div>`;
       });
       wrap.innerHTML = rows.length ? rows.join('') : '<p class="settings-inline-hint">No profiles.</p>';
       wrap.querySelectorAll('.profile-switch').forEach((btn) => {

@@ -656,7 +656,7 @@
       <div class="modal-header modal-header-settings">
         <div class="modal-header-text">
           <h2 id="settings-modal-title">Settings</h2>
-          <p class="modal-settings-subtitle">Browsing, assistant, appearance, and privacy — organized in one place.</p>
+          <p class="modal-settings-subtitle">Profiles, browsing, assistant, appearance, and privacy — organized in one place. Use search to jump to a category.</p>
         </div>
         <button type="button" class="icon-btn modal-header-close" id="btn-close-settings" aria-label="Close settings">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -664,35 +664,43 @@
       </div>
       <div class="modal-body settings-modal-body">
         <nav class="settings-nav" id="settings-nav" aria-label="Settings sections">
-          <button type="button" class="settings-nav-item active" data-panel="general" aria-current="page">
+          <div class="settings-nav-search-wrap">
+            <label class="sr-only" for="settings-nav-search">Search settings</label>
+            <input type="search" id="settings-nav-search" class="settings-nav-search" placeholder="Search settings…" autocomplete="off" spellcheck="false" />
+          </div>
+          <button type="button" class="settings-nav-item active" data-panel="general" data-search="general startup home zoom downloads display translate launch" aria-current="page">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
             <span>General</span>
           </button>
-          <button type="button" class="settings-nav-item" data-panel="ai">
+          <button type="button" class="settings-nav-item" data-panel="profiles" data-search="profiles user users account switch identity data folder separate">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span>Profiles</span>
+          </button>
+          <button type="button" class="settings-nav-item" data-panel="ai" data-search="ai model api key openai anthropic google assistant chat">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 1 7 7v1a7 7 0 0 1-14 0V9a7 7 0 0 1 7-7z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/></svg>
             <span>AI</span>
           </button>
-          <button type="button" class="settings-nav-item" data-panel="appearance">
+          <button type="button" class="settings-nav-item" data-panel="appearance" data-search="appearance theme light dark layout tabs bookmarks assistant width">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
             <span>Appearance</span>
           </button>
-          <button type="button" class="settings-nav-item" data-panel="browser">
+          <button type="button" class="settings-nav-item" data-panel="browser" data-search="browser search engine homepage extensions chrome web store import migration">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
             <span>Browser</span>
           </button>
-          <button type="button" class="settings-nav-item" data-panel="privacy">
+          <button type="button" class="settings-nav-item" data-panel="privacy" data-search="privacy security ads popups tracker memory cookies clear data">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             <span>Privacy</span>
           </button>
-          <button type="button" class="settings-nav-item" data-panel="integrations">
+          <button type="button" class="settings-nav-item" data-panel="integrations" data-search="integrations oauth google gmail sync mcp perplexity connected apps forms">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
             <span>Integrations</span>
           </button>
-          <button type="button" class="settings-nav-item" data-panel="passwords">
+          <button type="button" class="settings-nav-item" data-panel="passwords" data-search="password passwords credentials saved csv login">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             <span>Passwords</span>
           </button>
-          <button type="button" class="settings-nav-item" data-panel="about">
+          <button type="button" class="settings-nav-item" data-panel="about" data-search="about version shortcuts keyboard help navio">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
             <span>About</span>
           </button>
@@ -763,6 +771,31 @@
                 <span>Include current page title and content in chat requests</span>
               </label>
               <p class="settings-inline-hint">Turn off if you want the model to answer only from your message, without automatic page context (quick actions still use the page).</p>
+            </div>
+          </div>
+
+          <div class="settings-panel" id="settings-panel-profiles" role="tabpanel" aria-labelledby="settings-profiles-heading">
+            <div class="settings-section settings-section-profiles-intro">
+              <h3 id="settings-profiles-heading">Browser profiles</h3>
+              <p class="settings-inline-hint">Each profile is a separate user data folder — bookmarks, history, cookies, and extensions stay apart. Switching profiles restarts Navio. This is not the same as <strong>AI → AI Profile</strong> (personality presets).</p>
+            </div>
+            <div class="settings-section">
+              <h3>Your profiles</h3>
+              <p class="settings-inline-hint">Pick a profile to use next launch. The active profile is marked below.</p>
+              <div id="profiles-list-settings" class="profiles-list-settings"></div>
+              <div class="profile-create-row">
+                <input type="text" id="profile-new-id" placeholder="New profile id (e.g. work)" spellcheck="false" autocomplete="off" />
+                <button type="button" class="btn btn-secondary" id="btn-profile-create">Create profile</button>
+              </div>
+            </div>
+            <div class="settings-section">
+              <h3>Profile backup</h3>
+              <p class="settings-inline-hint">Export or import bookmarks + history for <em>this</em> profile. Optional passphrase encrypts the file — also used for <strong>Integrations → Sync</strong> when folder sync is on.</p>
+              <div class="setting-row setting-row-actions">
+                <button type="button" class="btn btn-secondary" id="btn-sync-export">Export backup…</button>
+                <button type="button" class="btn btn-secondary" id="btn-sync-import">Import backup…</button>
+              </div>
+              <input type="password" id="sync-passphrase" placeholder="Optional passphrase (min 4 chars)" autocomplete="off" class="settings-passphrase-input" />
             </div>
           </div>
 
@@ -1013,28 +1046,10 @@
               <div id="extensions-list-settings" class="extensions-list-settings"></div>
             </div>
             <div class="settings-section">
-              <h3>Profiles</h3>
-              <p class="settings-inline-hint">Each profile uses a separate data folder. Switching restarts Navio.</p>
-              <div id="profiles-list-settings" class="profiles-list-settings"></div>
-              <div class="setting-row" style="margin-top:10px;flex-wrap:wrap;gap:8px;align-items:center">
-                <input type="text" id="profile-new-id" placeholder="new-profile-id" spellcheck="false" autocomplete="off" style="max-width:180px;padding:6px 10px" />
-                <button type="button" class="btn btn-secondary" id="btn-profile-create">Create profile folder</button>
-              </div>
-            </div>
-            <div class="settings-section">
               <h3>Import (migration)</h3>
               <p class="settings-inline-hint">Detect Chromium-based profiles and import bookmarks JSON-side (same as onboarding). Full extension migration is not available yet — see docs/EXTENSIONS.md.</p>
               <button type="button" class="btn btn-secondary" id="btn-settings-import-scan">Scan browsers for import</button>
               <p class="settings-inline-hint" id="settings-import-scan-status" style="margin-top:8px;margin-bottom:0"></p>
-            </div>
-            <div class="settings-section">
-              <h3>Profile backup (sync)</h3>
-              <p class="settings-inline-hint">Export or import bookmarks + history. Optional passphrase encrypts the file — also used for <strong>Integrations → Sync</strong> when folder sync is on.</p>
-              <div class="setting-row setting-row-actions">
-                <button type="button" class="btn btn-secondary" id="btn-sync-export">Export backup…</button>
-                <button type="button" class="btn btn-secondary" id="btn-sync-import">Import backup…</button>
-              </div>
-              <input type="password" id="sync-passphrase" placeholder="Optional passphrase (min 4 chars)" autocomplete="off" style="max-width:280px;margin-top:8px" />
             </div>
           </div>
 
@@ -1196,6 +1211,7 @@
             <div class="settings-section">
               <h3>Keyboard shortcuts</h3>
               <ul class="settings-kbd-list">
+                <li>Right-click a tab: groups, split view (two pages side by side), pin, rename</li>
                 <li><kbd>Ctrl</kbd>+<kbd>T</kbd> New tab · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd> New private tab</li>
                 <li><kbd>Ctrl</kbd>+<kbd>W</kbd> Close tab · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> Reopen last closed tab</li>
                 <li><kbd>Ctrl</kbd>+<kbd>R</kbd> Reload · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> Hard reload (empty cache)</li>
