@@ -57,8 +57,6 @@ const DEFAULT_CONFIG = {
   downloadRevealInFolder: false,
   /** 0 = off. After N minutes inactive, background http(s) tabs unload to about:blank to free memory (Chrome-style discard). */
   tabDiscardIdleMinutes: 0,
-  /** After first "ask where" save dialog, we offer "always use Downloads" once; then this is set true. */
-  downloadAskFollowupSeen: false,
   /** Google Translate "translate to" language (e.g. en, es, zh-cn). Empty = use OS locale. */
   translateTargetLang: '',
   aiAutoExecute: false,
@@ -119,6 +117,15 @@ function loadConfig() {
   }
 
   const merged = { ...DEFAULT_CONFIG, ...file };
+
+  function coerceBool(v, fallback) {
+    if (v === true || v === 'true' || v === 1) return true;
+    if (v === false || v === 'false' || v === 0) return false;
+    return fallback;
+  }
+  merged.downloadAskWhere = coerceBool(merged.downloadAskWhere, DEFAULT_CONFIG.downloadAskWhere);
+  merged.downloadRevealInFolder = coerceBool(merged.downloadRevealInFolder, DEFAULT_CONFIG.downloadRevealInFolder);
+
   // Existing installs: don't force the intro again for users who already finished onboarding
   // before this flag existed (new installs still get DEFAULT_CONFIG.showLaunchIntro true).
   if (

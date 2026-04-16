@@ -6238,6 +6238,18 @@ ipcMain.handle('show-in-folder', (_, filePath) => {
   }
 });
 
+/** Open a file with the OS default application (e.g. completed download). */
+ipcMain.handle('open-file-path', async (_, filePath) => {
+  try {
+    if (!filePath || typeof filePath !== 'string') return { ok: false, error: 'invalid path' };
+    const err = await shell.openPath(filePath);
+    if (err) return { ok: false, error: err };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 // ── Reading List ───────────────────────────────────────────────────────────
 // Entries: [ { url, title, favicon, added, read } ] in <userData>/navio-reading-list.json
 

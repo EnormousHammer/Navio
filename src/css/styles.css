@@ -1451,7 +1451,7 @@ body.navio-incognito-active .url-bar-container {
   overflow: hidden;
   background-color: #0a0c12;
   background-image:
-    linear-gradient(180deg, rgba(8, 10, 18, 0.45) 0%, rgba(10, 12, 20, 0.72) 55%, rgba(10, 12, 22, 0.88) 100%),
+    linear-gradient(180deg, rgba(8, 10, 18, 0.28) 0%, rgba(10, 12, 20, 0.48) 55%, rgba(10, 12, 22, 0.62) 100%),
     radial-gradient(ellipse 100% 70% at 50% -5%, rgba(56, 189, 248, 0.07), transparent 58%),
     url("../../public/navio_background.jpg");
   background-size: 100% 100%, 100% 100%, cover;
@@ -1772,7 +1772,7 @@ body.navio-incognito-active .url-bar-container {
   align-items: center;
   gap: 10px;
   padding: 10px 18px;
-  background: rgba(22, 30, 52, 0.75);
+  background: rgba(22, 30, 52, 0.52);
   border: 1px solid rgba(0,216,255,0.28);
   border-radius: 50px;
   margin-bottom: 8px;
@@ -1780,8 +1780,8 @@ body.navio-incognito-active .url-bar-container {
   position: relative;
   width: 100%;
   max-width: 640px;
-  backdrop-filter: blur(20px) saturate(1.3);
-  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  backdrop-filter: blur(24px) saturate(1.25);
+  -webkit-backdrop-filter: blur(24px) saturate(1.25);
   box-shadow: 0 0 25px rgba(0,216,255,0.10), 0 4px 24px rgba(0,0,0,0.4), inset 0 0 20px rgba(0,216,255,0.03);
   animation: ntp-search-breathe 4s ease-in-out infinite;
 }
@@ -1808,7 +1808,7 @@ body.navio-incognito-active .url-bar-container {
 
 .ntp-search:focus-within {
   border-color: rgba(0,216,255,0.40);
-  background: rgba(22, 30, 52, 0.88);
+  background: rgba(22, 30, 52, 0.68);
   box-shadow: 0 0 0 1px rgba(0,216,255,0.15), 0 4px 30px rgba(0,216,255,0.12), 0 0 60px rgba(84,104,255,0.06);
   animation: none;
   outline: none;
@@ -1993,8 +1993,8 @@ body.navio-incognito-active .url-bar-container {
   }
 }
 .ntp-widget {
-  background: rgba(18, 22, 34, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(18, 22, 34, 0.48);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 14px;
   overflow: hidden;
   display: flex;
@@ -2003,8 +2003,8 @@ body.navio-incognito-active .url-bar-container {
   align-self: start;
   width: 100%;
   position: relative;
-  backdrop-filter: blur(28px) saturate(1.15);
-  -webkit-backdrop-filter: blur(28px) saturate(1.15);
+  backdrop-filter: blur(34px) saturate(1.12);
+  -webkit-backdrop-filter: blur(34px) saturate(1.12);
   transition: border-color 0.28s ease, box-shadow 0.28s ease, transform 0.28s ease;
   box-shadow:
     0 8px 28px rgba(0, 0, 0, 0.42),
@@ -2029,8 +2029,8 @@ body.navio-incognito-active .url-bar-container {
   background: linear-gradient(90deg, transparent 0%, rgba(125, 211, 252, 0.5) 35%, rgba(129, 140, 248, 0.45) 65%, transparent 100%);
 }
 .ntp-widget:hover {
-  background: rgba(22, 26, 40, 0.82);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(22, 26, 40, 0.62);
+  border-color: rgba(255, 255, 255, 0.14);
   box-shadow:
     0 16px 40px rgba(0, 0, 0, 0.45),
     0 0 0 1px rgba(125, 211, 252, 0.12),
@@ -2039,7 +2039,7 @@ body.navio-incognito-active .url-bar-container {
 /* AI Brief widget — distinct but restrained */
 .ntp-widget-ai {
   border-color: rgba(129, 140, 248, 0.22);
-  background: linear-gradient(145deg, rgba(99, 102, 241, 0.12), rgba(14, 18, 28, 0.88));
+  background: linear-gradient(145deg, rgba(99, 102, 241, 0.1), rgba(14, 18, 28, 0.58));
 }
 .ntp-widget-ai::before {
   background: linear-gradient(90deg, transparent 8%, rgba(129, 140, 248, 0.55) 50%, rgba(56, 189, 248, 0.45) 92%, transparent);
@@ -2070,7 +2070,7 @@ body.navio-incognito-active .url-bar-container {
   letter-spacing: 1px;
   border-bottom: 1px solid rgba(255,255,255,0.10);
   flex-shrink: 0;
-  background: rgba(255,255,255,0.04);
+  background: rgba(255,255,255,0.025);
   position: relative;
   z-index: 2;
 }
@@ -2150,14 +2150,16 @@ body.navio-incognito-active .url-bar-container {
   max-height: var(--ntp-widget-list-max-h);
   min-height: 0;
   border-radius: 11px;
+  backdrop-filter: blur(12px) saturate(1.08);
+  -webkit-backdrop-filter: blur(12px) saturate(1.08);
   background:
-    linear-gradient(90deg, rgba(200, 70, 70, 0.14) 0px, rgba(200, 70, 70, 0.05) 3px, transparent 4px),
-    linear-gradient(180deg, rgba(42, 36, 34, 0.45) 0%, transparent 40%),
-    linear-gradient(145deg, rgba(34, 36, 52, 0.97), rgba(22, 24, 38, 0.99));
+    linear-gradient(90deg, rgba(200, 70, 70, 0.12) 0px, rgba(200, 70, 70, 0.04) 3px, transparent 4px),
+    linear-gradient(180deg, rgba(42, 36, 34, 0.22) 0%, transparent 48%),
+    linear-gradient(145deg, rgba(34, 36, 52, 0.55), rgba(22, 24, 38, 0.62));
   border: 1px solid rgba(200, 160, 140, 0.14);
   box-shadow:
-    inset 0 1px 0 rgba(255, 245, 235, 0.06),
-    0 10px 28px rgba(0, 0, 0, 0.3);
+    inset 0 1px 0 rgba(255, 245, 235, 0.05),
+    0 8px 22px rgba(0, 0, 0, 0.22);
   transition: border-color 0.3s, box-shadow 0.3s;
 }
 .ntp-news-widget:hover .ntp-widget-body {
@@ -2269,10 +2271,12 @@ body.navio-incognito-active .url-bar-container {
   padding: 10px 8px 12px;
   min-height: 108px;
   border-radius: 12px;
+  backdrop-filter: blur(12px) saturate(1.08);
+  -webkit-backdrop-filter: blur(12px) saturate(1.08);
   background:
-    linear-gradient(165deg, rgba(30, 58, 90, 0.55), rgba(18, 28, 48, 0.96));
+    linear-gradient(165deg, rgba(30, 58, 90, 0.38), rgba(18, 28, 48, 0.68));
   border: 1px solid rgba(100, 180, 255, 0.18);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   position: relative;
 }
 .ntp-weather-loading {
@@ -2282,7 +2286,7 @@ body.navio-incognito-active .url-bar-container {
   align-items: center;
   justify-content: center;
   margin: 0;
-  background: rgba(12, 18, 32, 0.5);
+  background: rgba(12, 18, 32, 0.32);
   border-radius: 12px;
 }
 .ntp-weather-widget-body:not(.ntp-weather-body--busy) .ntp-weather-loading {
@@ -2392,11 +2396,13 @@ body.navio-incognito-active .url-bar-container {
   max-height: var(--ntp-widget-list-max-h);
   min-height: 0;
   border-radius: 12px;
-  background: linear-gradient(168deg, rgba(24, 42, 68, 0.96), rgba(16, 30, 52, 0.99));
+  backdrop-filter: blur(12px) saturate(1.08);
+  -webkit-backdrop-filter: blur(12px) saturate(1.08);
+  background: linear-gradient(168deg, rgba(24, 42, 68, 0.62), rgba(16, 30, 52, 0.72));
   border: 1px solid rgba(90, 150, 220, 0.2);
   box-shadow:
-    inset 0 1px 0 rgba(190, 220, 255, 0.08),
-    0 8px 26px rgba(0, 25, 70, 0.38);
+    inset 0 1px 0 rgba(190, 220, 255, 0.06),
+    0 8px 22px rgba(0, 25, 70, 0.26);
   transition: border-color 0.3s, box-shadow 0.3s;
 }
 .ntp-email-widget:hover .ntp-widget-body {
@@ -2412,7 +2418,7 @@ body.navio-incognito-active .url-bar-container {
   margin: 0 10px 8px;
   border-radius: 12px;
   border: 1px solid rgba(90, 150, 220, 0.3);
-  background: rgba(12, 24, 48, 0.75);
+  background: rgba(12, 24, 48, 0.52);
   overflow: auto;
   max-height: min(42vh, 320px);
   box-shadow: inset 0 1px 0 rgba(190, 220, 255, 0.06);
@@ -2429,11 +2435,13 @@ body.navio-incognito-active .url-bar-container {
   padding: 0;
   border-radius: 12px;
   overflow: hidden;
+  backdrop-filter: blur(12px) saturate(1.08);
+  -webkit-backdrop-filter: blur(12px) saturate(1.08);
   background:
-    radial-gradient(ellipse 85% 65% at 50% 0%, rgba(124, 58, 237, 0.22), transparent 55%),
-    radial-gradient(ellipse 70% 55% at 100% 100%, rgba(0, 212, 255, 0.14), transparent 45%),
-    radial-gradient(ellipse 50% 40% at 0% 90%, rgba(244, 114, 182, 0.12), transparent 50%),
-    rgba(20, 24, 44, 0.9);
+    radial-gradient(ellipse 85% 65% at 50% 0%, rgba(124, 58, 237, 0.18), transparent 55%),
+    radial-gradient(ellipse 70% 55% at 100% 100%, rgba(0, 212, 255, 0.12), transparent 45%),
+    radial-gradient(ellipse 50% 40% at 0% 90%, rgba(244, 114, 182, 0.1), transparent 50%),
+    rgba(20, 24, 44, 0.62);
   border: 1px solid rgba(200, 170, 255, 0.18);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
@@ -2985,7 +2993,7 @@ body.navio-incognito-active .url-bar-container {
   display: flex;
   align-items: center;
   height: 34px;
-  background: rgba(10, 12, 22, 0.92);
+  background: rgba(10, 12, 22, 0.72);
   border-top: 1px solid rgba(0, 212, 255, 0.18);
   overflow: hidden;
   position: fixed;
@@ -2993,8 +3001,8 @@ body.navio-incognito-active .url-bar-container {
   left: 0;
   right: 0;
   z-index: 9999;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(18px) saturate(1.1);
+  -webkit-backdrop-filter: blur(18px) saturate(1.1);
   /* Hidden by default — shown only when NTP is open */
   opacity: 0;
   pointer-events: none;
@@ -3057,11 +3065,11 @@ body.navio-incognito-active .url-bar-container {
 }
 .ntp-ticker-viewport::before {
   left: 0;
-  background: linear-gradient(to right, rgba(10,12,22,0.6), transparent);
+  background: linear-gradient(to right, rgba(10,12,22,0.42), transparent);
 }
 .ntp-ticker-viewport::after {
   right: 0;
-  background: linear-gradient(to left, rgba(10,12,22,0.6), transparent);
+  background: linear-gradient(to left, rgba(10,12,22,0.42), transparent);
 }
 .ntp-ticker-track {
   display: flex;
@@ -10447,7 +10455,7 @@ button:focus-visible,
 }
 /* Ticker is already dark in both themes — keep it */
 [data-theme="light"] .ntp-stock-ticker {
-  background: rgba(15, 23, 42, 0.93);
+  background: rgba(15, 23, 42, 0.74);
   border-top-color: rgba(30, 64, 175, 0.25);
 }
 

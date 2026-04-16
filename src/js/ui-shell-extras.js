@@ -502,14 +502,14 @@
       const rect = anchor.getBoundingClientRect();
       const margin = 8;
       const gap = 6;
-      const panelWidth = Math.min(320, window.innerWidth - margin * 2);
+      const panelWidth = Math.min(360, window.innerWidth - margin * 2);
       panel.style.width = `${panelWidth}px`;
       let left = rect.right - panelWidth;
       if (left < margin) left = margin;
       if (left + panelWidth > window.innerWidth - margin) {
         left = window.innerWidth - margin - panelWidth;
       }
-      const maxH = Math.min(280, window.innerHeight - margin * 2);
+      const maxH = Math.min(320, window.innerHeight - margin * 2);
       panel.style.maxHeight = `${maxH}px`;
       let top = rect.bottom + gap;
       if (top + maxH > window.innerHeight - margin) {
@@ -528,6 +528,56 @@
     const rowsByPath = new Map();
     const order = [];
 
+    const DD_ICON_SVG =
+      '<svg class="dd-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>';
+
+    function setRowOpenable(row, { savePath, filename, openable }) {
+      if (!row) return;
+      row.dataset.savePath = savePath || '';
+      row.dataset.openable = openable ? '1' : '0';
+      if (openable) {
+        row.classList.add('dd-openable');
+        row.setAttribute('tabindex', '0');
+        row.setAttribute('role', 'button');
+        row.setAttribute('aria-label', `Open ${filename || savePath || 'file'}`);
+      } else {
+        row.classList.remove('dd-openable');
+        row.removeAttribute('tabindex');
+        row.removeAttribute('role');
+        row.removeAttribute('aria-label');
+      }
+    }
+
+    list.addEventListener('click', (e) => {
+      const row = e.target.closest('.downloads-drawer-row');
+      if (!row || !list.contains(row)) return;
+      if (e.target.closest('button')) return;
+      if (row.dataset.openable !== '1') return;
+      const p = row.dataset.savePath;
+      if (!p) return;
+      e.preventDefault();
+      try {
+        window.navio.openFilePath?.(p);
+      } catch {
+        /* ignore */
+      }
+    });
+
+    list.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const row = e.target.closest('.downloads-drawer-row');
+      if (!row || !list.contains(row)) return;
+      if (row.dataset.openable !== '1') return;
+      e.preventDefault();
+      const p = row.dataset.savePath;
+      if (!p) return;
+      try {
+        window.navio.openFilePath?.(p);
+      } catch {
+        /* ignore */
+      }
+    });
+
     function trim() {
       while (order.length > 30) {
         const k = order.shift();
@@ -543,12 +593,26 @@
       if (!row) {
         row = document.createElement('div');
         row.className = 'downloads-drawer-row';
-        row.innerHTML = `<span class="dd-name"></span><div class="dd-progress-wrap"><div class="dd-progress-bar"></div></div><span class="dd-meta"></span><span class="dd-state"></span><span class="dd-actions"></span>`;
+        row.innerHTML = `<div class="dd-inner">
+          <div class="dd-icon">${DD_ICON_SVG}</div>
+          <div class="dd-main">
+            <div class="dd-top">
+              <span class="dd-name"></span>
+              <span class="dd-state"></span>
+            </div>
+            <div class="dd-progress-wrap"><div class="dd-progress-bar"></div></div>
+            <div class="dd-bottom">
+              <span class="dd-meta"></span>
+              <span class="dd-actions"></span>
+            </div>
+          </div>
+        </div>`;
         list.appendChild(row);
         rowsByPath.set(savePath, row);
         order.push(savePath);
         trim();
       }
+      row.dataset.savePath = savePath;
       const nameEl = row.querySelector('.dd-name');
       if (nameEl) nameEl.textContent = filename || savePath;
       return row;
@@ -638,6 +702,10 @@
       if (!row) return;
       activeDownloadCount++;
       setDownloadChrome(true);
+      row.classList.remove('dd-row-done', 'dd-row-failed');
+      setRowOpenable(row, { savePath: d.savePath, filename: d.filename, openable: false });
+      const wrapEl = row.querySelector('.dd-progress-wrap');
+      if (wrapEl) wrapEl.classList.remove('dd-progress-indeterminate');
       const meta = row.querySelector('.dd-meta');
       if (meta) meta.textContent = d.totalStr || (d.total > 0 ? '' : '');
       row.querySelector('.dd-state').textContent = 'Starting…';
@@ -667,6 +735,8 @@
       const pct = total > 0 ? Math.min(100, Math.round((rec / total) * 100)) : 0;
       const bar = row.querySelector('.dd-progress-bar');
       if (bar) bar.style.width = `${pct}%`;
+      const wrapEl = row.querySelector('.dd-progress-wrap');
+      if (wrapEl) wrapEl.classList.toggle('dd-progress-indeterminate', total === 0);
       const meta = row.querySelector('.dd-meta');
       if (meta) {
         const parts = [];
@@ -707,6 +777,10 @@
       if (row) {
         const bar = row.querySelector('.dd-progress-bar');
         if (bar) bar.style.width = '100%';
+        const wrapEl = row.querySelector('.dd-progress-wrap');
+        if (wrapEl) wrapEl.classList.remove('dd-progress-indeterminate');
+        row.classList.toggle('dd-row-done', d.state === 'completed');
+        row.classList.toggle('dd-row-failed', d.state !== 'completed');
         row.querySelector('.dd-state').textContent = d.state === 'completed' ? 'Completed' : String(d.state || '');
         const meta = row.querySelector('.dd-meta');
         if (meta && d.state === 'completed' && d.totalStr) {
@@ -717,12 +791,19 @@
         const actions = row.querySelector('.dd-actions');
         actions.innerHTML = '';
         if (d.state === 'completed' && d.savePath) {
+          setRowOpenable(row, { savePath: d.savePath, filename: d.filename, openable: true });
           const b = document.createElement('button');
           b.type = 'button';
+          b.className = 'dd-btn-folder';
           b.textContent = 'Show in folder';
           b.title = 'Reveal in File Explorer';
-          b.addEventListener('click', () => window.navio.showInFolder(d.savePath));
+          b.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            window.navio.showInFolder(d.savePath);
+          });
           actions.appendChild(b);
+        } else {
+          setRowOpenable(row, { savePath: d.savePath || '', filename: d.filename, openable: false });
         }
       }
 
@@ -773,7 +854,21 @@
       if (panel.contains(t)) return;
       panel.hidden = true;
     }
-    document.addEventListener('click', closeIfOutside, true);
+    /** Dismiss on shell UI pointerdown (Chrome-style; faster than waiting for click). */
+    document.addEventListener('pointerdown', closeIfOutside, true);
+
+    function closeDownloadsDrawer() {
+      panel.hidden = true;
+    }
+
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.key !== 'Escape' || panel.hidden) return;
+        closeDownloadsDrawer();
+      },
+      true
+    );
 
     toggle &&
       toggle.addEventListener('click', (e) => {
@@ -797,6 +892,7 @@
       panel.hidden = !panel.hidden;
       if (!panel.hidden) positionDownloadsDrawer();
     };
+    window.__navioCloseDownloadsDrawer = closeDownloadsDrawer;
   }
 
   function bindHistoryPanel() {

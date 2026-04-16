@@ -120,6 +120,17 @@ try {
     try { ipcRenderer.sendToHost('navio-selection-cleared', {}); } catch {}
   }, { passive: true });
 
+  // Guest clicks do not bubble to the shell — notify host so popovers (e.g. downloads) dismiss like Chrome.
+  document.addEventListener(
+    'pointerdown',
+    function () {
+      try {
+        ipcRenderer.sendToHost('navio-guest-pointer-down', {});
+      } catch {}
+    },
+    true
+  );
+
   // ── Handle autofill command sent from the renderer ─────────────────────────
   ipcRenderer.on('navio-autofill', (_, { username, password }) => {
     try {

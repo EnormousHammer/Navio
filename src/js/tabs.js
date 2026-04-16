@@ -667,6 +667,14 @@ class TabManagerClass {
           }
         } else if (e.channel === 'navio-selection-cleared') {
           if (typeof InlineAI !== 'undefined') InlineAI.hide();
+        } else if (e.channel === 'navio-guest-pointer-down') {
+          try {
+            if (typeof window.__navioCloseDownloadsDrawer === 'function') {
+              window.__navioCloseDownloadsDrawer();
+            }
+          } catch {
+            /* ignore */
+          }
         } else if (e.channel === 'navio-chat-host') {
           const payload = data;
           if (payload && typeof AssistantManager !== 'undefined' && AssistantManager.handleGuestChatHostMessage) {

@@ -194,25 +194,6 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
           return;
         }
 
-        if (cfg.downloadAskWhere === true && cfg.downloadAskFollowupSeen !== true) {
-          const win = getMainWindow();
-          const r = dialog.showMessageBoxSync(win && !win.isDestroyed() ? win : undefined, {
-            type: 'question',
-            title: 'Downloads',
-            message: 'Choose default download behavior',
-            detail:
-              'You can change this anytime in Settings → Browser.\n\n' +
-              'Save to the Downloads folder automatically from now on, or keep choosing the folder each time?',
-            buttons: ['Ask where to save each file', 'Always use my Downloads folder'],
-            defaultId: 0,
-            cancelId: 0,
-            noLink: true
-          });
-          const patch = { downloadAskFollowupSeen: true };
-          if (r === 1) patch.downloadAskWhere = false;
-          saveConfig(patch);
-        }
-
         const displayName = path.basename(savePath);
         console.log(`[navio] Download started: ${displayName} → ${savePath}`);
 
