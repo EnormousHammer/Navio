@@ -63,7 +63,7 @@
           </svg>
         </span>
         <span class="pc-text">${s.label}</span>
-        <button class="pc-dismiss" title="Dismiss">&times;</button>
+        <span class="pc-dismiss" role="button" tabindex="0" title="Dismiss">&times;</span>
       `;
 
       chip.addEventListener('click', (e) => {

@@ -175,6 +175,12 @@ class AssistantManagerClass {
     this.bindEvents();
   }
 
+  /** Re-resolve panel if DOM changed or constructor ran before the node existed. */
+  _ensurePanel() {
+    if (!this.panel) this.panel = document.getElementById('assistant-panel');
+    return this.panel;
+  }
+
   bindEvents() {
     document.getElementById('btn-toggle-assistant')?.addEventListener('click', () => this.toggle());
     document.getElementById('btn-close-assistant')?.addEventListener('click', () => this.close());
@@ -779,12 +785,14 @@ class AssistantManagerClass {
   }
 
   toggle() {
+    this._ensurePanel();
     const open = this.panel?.classList.contains('open');
     if (open) this.close();
     else void this.open();
   }
 
   async open() {
+    this._ensurePanel();
     if (!this.panel) return;
     this.isOpen = true;
     this.panel.classList.add('open');
@@ -834,6 +842,7 @@ class AssistantManagerClass {
   }
 
   close() {
+    this._ensurePanel();
     this.isOpen = false;
     this.panel?.classList.remove('open');
   }

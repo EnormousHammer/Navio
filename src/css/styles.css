@@ -1186,6 +1186,7 @@ body.navio-incognito-active .url-bar-container {
   border: 1px solid var(--accent);
   opacity: 0;
   animation: pulse-ring 3s var(--ease) infinite;
+  pointer-events: none;
 }
 
 .url-bar-container { flex: 1; }
@@ -3233,6 +3234,7 @@ button.ntp-ticker-sport--stream:focus-visible {
 
 .assistant-panel {
   width: 0;
+  flex-shrink: 0;
   overflow: hidden;
   background: var(--bg-primary);
   border-left: 1px solid var(--border);

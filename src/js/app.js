@@ -611,6 +611,15 @@ class NavioApp {
           input.focus();
         }
       }
+      // Same as globalShortcut Ctrl+Shift+A — works when OS registration fails or is taken by another app.
+      if (k === 'a' && e.shiftKey) {
+        e.preventDefault();
+        runDedupedShortcut('toggle-assistant', () => {
+          if (typeof AssistantManager !== 'undefined' && typeof AssistantManager.toggle === 'function') {
+            AssistantManager.toggle();
+          }
+        });
+      }
     });
   }
 
