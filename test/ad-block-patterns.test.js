@@ -83,15 +83,29 @@ test('shouldBlockWebPopup: site allow list', () => {
   );
 });
 
-test('shouldBlockWebPopup: chrome-stripped features blocked', () => {
+test('shouldBlockWebPopup: chrome-stripped blank window blocked (pop-under shell)', () => {
   assert.strictEqual(
     shouldBlockWebPopup({
-      url: 'https://example.com/ad',
+      url: 'about:blank',
       disposition: 'new-window',
       features: 'menubar=no,toolbar=no,width=800,height=600',
+      openerOrigin: 'https://some-news-site.example.com',
       cfg: baseCfg
     }),
     true
+  );
+});
+
+test('shouldBlockWebPopup: real URL with stripped chrome allowed if not ad-listed', () => {
+  assert.strictEqual(
+    shouldBlockWebPopup({
+      url: 'https://example.com/print-preview',
+      disposition: 'new-window',
+      features: 'menubar=no,toolbar=no,width=800,height=600',
+      openerOrigin: 'https://www.example.com',
+      cfg: baseCfg
+    }),
+    false
   );
 });
 

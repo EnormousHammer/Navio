@@ -948,13 +948,13 @@
               </div>
             </div>
             <div class="settings-section">
-              <h3>Extensions (unpacked)</h3>
-              <p class="settings-inline-hint">Load Manifest V3 unpacked folders. Electron is not Chrome: extensions that rely on Chrome-only APIs, native messaging, or fine-grained <code>chrome.*</code> behavior may load but do nothing — check the alert after install. Prefer <strong>Load unpacked</strong> for debugging. Content scripts are isolated from page JS. AI access from extensions stays off unless you enable it under Privacy. See <code>docs/EXTENSIONS.md</code> in the repo for details.</p>
+              <h3>Optional extensions (advanced)</h3>
+              <p class="settings-inline-hint">Not required for browsing. <strong>Ad and pop-up blocking</strong> are under <strong>Privacy</strong> above — do not install an extension for that. This section is only if you want extra Manifest V3 extensions (many fail in Electron). Electron is not Chrome: extensions that rely on Chrome-only APIs, native messaging, or fine-grained <code>chrome.*</code> behavior may load but do nothing — check the alert after install. Prefer <strong>Load unpacked</strong> for debugging. Content scripts are isolated from page JS. AI access from extensions stays off unless you enable it under Privacy. See <code>docs/EXTENSIONS.md</code> in the repo for details.</p>
               <button type="button" class="btn btn-secondary" id="btn-ext-load-unpacked">Load unpacked extension…</button>
               <div class="setting-row" style="margin-top:10px;flex-wrap:wrap;gap:8px;align-items:center">
-                <label for="ext-crx-id" class="settings-inline-hint" style="margin:0">Chrome Web Store ID</label>
-                <input type="text" id="ext-crx-id" placeholder="32-char extension id" spellcheck="false" autocomplete="off" style="max-width:220px;padding:6px 10px" />
-                <button type="button" class="btn btn-secondary" id="btn-ext-install-crx">Download &amp; install</button>
+                <label for="ext-crx-id" class="settings-inline-hint" style="margin:0">Web Store extension ID</label>
+                <input type="text" id="ext-crx-id" placeholder="32-character id from the store URL" spellcheck="false" autocomplete="off" style="max-width:220px;padding:6px 10px" />
+                <button type="button" class="btn btn-secondary" id="btn-ext-install-crx">Fetch and load extension</button>
               </div>
               <div id="extensions-list-settings" class="extensions-list-settings"></div>
             </div>
@@ -969,6 +969,7 @@
           <div class="settings-panel" id="settings-panel-privacy" role="tabpanel">
             <div class="settings-section">
               <h3>Pop-ups &amp; ads</h3>
+              <p class="settings-inline-hint" style="margin-top:0;margin-bottom:10px"><strong>Built into Navio.</strong> Turn these on here — you do <strong>not</strong> need a Chrome extension or anything from the Web Store for blocking.</p>
               <label class="setting-toggle-row">
                 <input type="checkbox" id="setting-popup-blocker" checked>
                 <span>Block pop-ups (recommended)</span>

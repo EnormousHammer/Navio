@@ -314,6 +314,9 @@ function shouldBlockWebPopup(payload) {
     if (noUrl && isMailGoogleOpenerOrigin(openerOrigin)) return false;
     if (noUrl && isShippingCarrierOpenerOrigin(openerOrigin)) return false;
     if (noUrl && isStreamingVideoOpenerOrigin(openerOrigin)) return false;
+    // Real navigation URL: ad hosts are already blocked above. Many legitimate sites use
+    // stripped chrome (print, preview, docs); blocking those caused "blocks everything but ads".
+    if (!noUrl) return false;
     return true;
   }
 
@@ -321,11 +324,6 @@ function shouldBlockWebPopup(payload) {
 
   if (noUrl && small) {
     if (isMailGoogleOpenerOrigin(openerOrigin)) return false;
-    if (isShippingCarrierOpenerOrigin(openerOrigin)) return false;
-    if (isStreamingVideoOpenerOrigin(openerOrigin)) return false;
-    return true;
-  }
-  if (!noUrl && small && !isOAuthOrLoginUrl(url)) {
     if (isShippingCarrierOpenerOrigin(openerOrigin)) return false;
     if (isStreamingVideoOpenerOrigin(openerOrigin)) return false;
     return true;
