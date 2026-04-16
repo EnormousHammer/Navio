@@ -2338,7 +2338,7 @@ class AssistantManagerClass {
     const id = String(messageId || '').trim();
     if (!id) return '';
     return `https://mail.google.com/mail/u/${u}/#inbox/${encodeURIComponent(id)}`;
-  },
+  }
 
   _resolveGmailMessageIdFromMailUrl(href) {
     if (!href || typeof href !== 'string') return null;
