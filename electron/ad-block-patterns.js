@@ -104,6 +104,7 @@ const AD_BLOCK_PATTERNS = [
   'destyy.com',
   'shortest.link',
   // Fake "install ad blocker / continue download" intermediaries (often unwanted extensions or worse)
+  'heroadblocker.pro',
   'continue2download.com',
   'click.dtiserv.com',
   'rotator.tradetracker.net',

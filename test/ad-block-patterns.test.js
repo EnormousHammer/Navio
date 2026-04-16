@@ -188,6 +188,13 @@ test('urlMatchesAdBlock: scam download-gate host', () => {
   );
 });
 
+test('urlMatchesAdBlock: fake extension promo host (Hero Ad Blocker funnel)', () => {
+  assert.strictEqual(
+    urlMatchesAdBlock('https://heroadblocker.pro/ext.php?ah=dgadNZaLAgu'),
+    true
+  );
+});
+
 test('urlMatchesAdBlock: IMA / video preroll SDK hosts', () => {
   assert.strictEqual(
     urlMatchesAdBlock('https://imasdk.googleapis.com/js/sdkloader/ima3.js'),
