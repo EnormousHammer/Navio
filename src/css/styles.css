@@ -3179,10 +3179,11 @@ button.ntp-ticker-sport--stream:focus-visible {
   min-width: 0;
 }
 
-/* Shortcuts: 3-column grid — clock centered; left column wider so ~9 icons fit at natural width */
+/* Shortcuts: 3-column grid — equal side tracks so the clock column sits on the true horizontal center;
+   left/right shortcut counts can differ; icons pack toward the clock via flex on .ntp-shortcuts-col */
 .ntp-shortcuts-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1.75fr) auto minmax(0, 0.85fr);
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   justify-items: stretch;
   width: 100%;
