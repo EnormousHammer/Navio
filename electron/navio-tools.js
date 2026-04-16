@@ -491,11 +491,16 @@ const NAVIO_TOOLS = [
 
   {
     name: 'gmail_send_draft',
-    description: 'Send an existing Gmail draft by its draft ID. The draft must have been created by gmail_create_reply_draft. This actually sends the email — only call this when the user explicitly confirms they want to send.',
+    description:
+      'Send an existing Gmail draft by its draft ID. Works for drafts created by **gmail_create_draft** or **gmail_create_reply_draft**. ' +
+      'This actually sends the email — only call this when the user explicitly confirms they want to send.',
     parameters: {
       type: 'object',
       properties: {
-        draft_id: { type: 'string', description: 'The Gmail draft ID to send (from gmail_create_reply_draft result).' },
+        draft_id: {
+          type: 'string',
+          description: 'The Gmail draft ID to send (from gmail_create_draft or gmail_create_reply_draft result).'
+        },
         ...GMAIL_ACCOUNT_CHOICE
       },
       required: ['draft_id']
@@ -518,8 +523,8 @@ const NAVIO_TOOLS = [
   {
     name: 'gmail_update_draft',
     description:
-      'Update the plain-text body of an existing Gmail draft (same draft ID from gmail_create_reply_draft). ' +
-      'Use when the user revised the draft text in chat before sending. Preserves reply threading headers.',
+      'Update the plain-text body of an existing Gmail draft (same draft ID from gmail_create_draft or gmail_create_reply_draft). ' +
+      'Use when the user revised the draft text in chat before sending. Preserves To/Cc/Bcc and reply threading headers.',
     parameters: {
       type: 'object',
       properties: {
@@ -554,6 +559,27 @@ const NAVIO_TOOLS = [
         ...GMAIL_ACCOUNT_CHOICE
       },
       required: ['message_id', 'body']
+    }
+  },
+
+  {
+    name: 'gmail_create_draft',
+    description:
+      'Create a **new** Gmail draft (not a reply) via the API: standalone compose with To, Subject, body, optional Cc/Bcc. ' +
+      'Saved to Drafts, not sent. Use for pickup requests, first-contact emails, or any message that is **not** a reply to an existing thread. ' +
+      'For replies to mail already in Gmail, use **gmail_create_reply_draft** with message_id instead. ' +
+      'Body is stored verbatim (no Navio-appended signature). Requires Google OAuth with gmail.compose.',
+    parameters: {
+      type: 'object',
+      properties: {
+        to: { type: 'string', description: 'Recipient email address (To).' },
+        subject: { type: 'string', description: 'Email subject line.' },
+        body: { type: 'string', description: 'Plain-text body of the draft.' },
+        cc: { type: 'string', description: 'Optional Cc addresses (comma-separated).' },
+        bcc: { type: 'string', description: 'Optional Bcc addresses (comma-separated).' },
+        ...GMAIL_ACCOUNT_CHOICE
+      },
+      required: ['to', 'subject', 'body']
     }
   }
 ];

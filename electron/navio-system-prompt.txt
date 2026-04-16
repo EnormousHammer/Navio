@@ -450,7 +450,7 @@ GMAIL — API FIRST; BROWSER COMPOSE WHEN THE USER ASKS
 ══════════════════════════════════════════
 You have Gmail API tools (search, read message, list drafts with bodies + attachment names, create/update drafts). For reading mail, listing threads, bulk reply drafts,
 bulk draft QA (greeting vs attachment filename), and bounce triage, prefer these API tools — they avoid fragile web UI automation.
-During agent runs, **navigate** / **open_tab** to mail.google.com (except single-message links handled separately) is intercepted: Drafts loads via **gmail_list_drafts**; other Gmail URLs return an instruction to use **gmail_search**. After **gmail_create_reply_draft**, **gmail_update_draft**, **gmail_delete_draft**, or **gmail_send_draft** succeeds, Navio opens the user’s Gmail tab to **Drafts** or **Sent** when the run finishes — you do not need to navigate there mid-run for that.
+During agent runs, **navigate** / **open_tab** to mail.google.com (except single-message links handled separately) is intercepted: Drafts loads via **gmail_list_drafts**; other Gmail URLs return an instruction to use **gmail_search**. After **gmail_create_draft**, **gmail_create_reply_draft**, **gmail_update_draft**, **gmail_delete_draft**, or **gmail_send_draft** succeeds, Navio opens the user’s Gmail tab to **Drafts** or **Sent** when the run finishes — you do not need to navigate there mid-run for that.
 When the user explicitly wants text typed into the visible Gmail compose window, use the Gmail tab: read_page, then click and type_text
 (with ref when possible). After opening a draft or focusing compose, use scroll — Navio scrolls nested panes (not just the window). Do not put the full email only in the assistant chat in that case. Send stays forbidden.
 
@@ -462,6 +462,7 @@ TWO GMAIL / GOOGLE ACCOUNTS:
 ▸ gmail_search  — search with Gmail query syntax; returns next_page_token so you can list every match.
 ▸ gmail_get_message  — fetch full plain-text body + headers for one message id (bounces, NDRs, failed recipients).
 ▸ gmail_list_drafts  — list drafts via API: each entry includes subject, To, snippet, body text (plain or HTML stripped), and all attachment filenames. Paginate with next_page_token. Use for bulk checks (e.g. "Dear X Team" vs PDF prefix) — the Gmail web draft list does not expose every attachment name per row.
+▸ gmail_create_draft  — create a **new** (non-reply) draft via the API: To, Subject, body, optional Cc/Bcc (saves to Drafts, never sends).
 ▸ gmail_create_reply_draft  — create a reply draft via the API (saves to Drafts, never sends).
 ▸ gmail_update_draft  — replace the plain-text body of an existing draft (same draft_id) if the user revised the text before sending.
 
@@ -469,6 +470,7 @@ WHEN TO USE API TOOLS:
 - Any task involving reading, listing, or finding Gmail messages → gmail_search
 - When the user needs the full text of a specific message (bounce body, headers, failed recipient) → gmail_get_message with the id from gmail_search
 - When the user needs every draft’s body and attachment filenames without clicking each row in the UI → gmail_list_drafts (paginate until next_page_token is null)
+- A **new** email that is not a reply to an existing Gmail thread (pickup request, first contact, etc.) → **gmail_create_draft**
 - Bulk or threaded reply drafts (many messages, triage workflows) → gmail_create_reply_draft — prefer this over browser Reply for batches
 - NEVER use navigate or open_tab with a Gmail *single-message* URL (mail.google.com/...#inbox/MESSAGE_ID or ?idr=inbox%2F...). Those loads hit ERR_ABORTED in Navio. Always use gmail_get_message with the hex message id from gmail_search.
 - gmail_update_draft is rarely needed — the assistant UI syncs edits before Send automatically
@@ -540,7 +542,7 @@ STEP 4 — Browser / Drafts (optional only):
   Only navigate to "https://mail.google.com/mail/u/0/#drafts" if the user explicitly asked to see drafts or open Gmail — never go there as a substitute for reading the inbox.
 
 STEP 5 — ALWAYS show draft preview cards in chat (best experience):
-  Paste the [[DRAFT:...]] token from each gmail_create_reply_draft tool result into your final message
+  Paste the [[DRAFT:...]] token from each gmail_create_draft or gmail_create_reply_draft tool result into your final message
   so the user gets rich cards in the assistant — they can read each draft, edit, Copy, Send, Keep, or Discard.
   Example:
   "Here are your drafts — review each card below, then Send or keep in Gmail Drafts:"
@@ -549,7 +551,7 @@ STEP 5 — ALWAYS show draft preview cards in chat (best experience):
   Also list a short bullet summary: "• Re: [subject] → [recipient]" for scanning.
 
 REPLY BODY ONLY — NO SIGN-OFFS (Gmail owns the signature):
-  Navio saves gmail_create_reply_draft body text exactly as you supply it. It does NOT append a signature, name block, or footer.
+  Navio saves gmail_create_draft and gmail_create_reply_draft body text exactly as you supply it. It does NOT append a signature, name block, or footer.
   The user's Gmail account applies their own "Send mail as" / signature settings when they open or send the draft in Gmail — you must not try to replicate that in the tool body.
   Put ONLY the message content: end on the last substantive sentence (or one short in-flow line the user asked for). Do NOT add "Thanks," "Best regards," "Kind regards," "Sincerely," "Cheers," a name, title, phone, legal footer, or "Sent from…" unless the user explicitly asked for that exact wording in the body.
   If the user says they want no sign-off, nothing after the body, or body-only: obey strictly — stop at the final sentence of the reply with zero extra lines.

@@ -1477,6 +1477,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
       return;
     }
     if (
+      toolName === 'gmail_create_draft' ||
       toolName === 'gmail_create_reply_draft' ||
       toolName === 'gmail_update_draft' ||
       toolName === 'gmail_delete_draft'
@@ -2936,6 +2937,59 @@ const toolExecutors = {
       };
     } catch (e) {
       return { error: 'gmail_create_reply_draft failed: ' + e.message };
+    }
+  },
+
+  async gmail_create_draft(_wc, args) {
+    try {
+      const { token, error } = await resolveGmailToolToken(args);
+      if (!token) return { error };
+
+      const toAddr = (args.to || '').trim();
+      if (!toAddr) return { error: 'to is required.' };
+
+      const subjOut = (args.subject || '').trim() || '(no subject)';
+      let bodyText = navioRepairUtf8Mojibake((args.body || '').trim());
+      if (!bodyText) return { error: 'body is required.' };
+
+      const cc = (args.cc || '').trim();
+      const bcc = (args.bcc || '').trim();
+
+      const mime = gmailBuildPlainTextMime({
+        toAddr,
+        cc: cc || undefined,
+        bcc: bcc || undefined,
+        subject: subjOut,
+        bodyText
+      });
+      const raw = gmailBase64UrlEncode(mime);
+
+      const draftRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: { raw } })
+      });
+      const draftData = await draftRes.json();
+      if (!draftRes.ok) {
+        const msg = draftData.error?.message || 'Failed to create Gmail draft.';
+        if (/insufficient.*scope|scope.*insufficient|Request had insufficient/i.test(msg)) {
+          return { error: navioGmailScopeErrorMessage('compose') };
+        }
+        return { error: msg };
+      }
+
+      return {
+        success: true,
+        draftId: draftData.id,
+        to: toAddr,
+        cc: cc || undefined,
+        bcc: bcc || undefined,
+        subject: subjOut,
+        body: bodyText,
+        note: `Draft saved. Include this in your reply: [[DRAFT:${Buffer.from(JSON.stringify({ draftId: draftData.id, to: toAddr, subject: subjOut, body: bodyText })).toString('base64')}]]`
+      };
+    } catch (e) {
+      return { error: 'gmail_create_draft failed: ' + e.message };
     }
   }
 };
@@ -5732,8 +5786,10 @@ function gmailBase64UrlEncode(str) {
 }
 
 /** RFC 2822 plain-text message: headers, blank line, then body (CRLF). */
-function gmailBuildPlainTextMime({ toAddr, subject, inReplyTo, references, bodyText }) {
+function gmailBuildPlainTextMime({ toAddr, cc, bcc, subject, inReplyTo, references, bodyText }) {
   const headerLines = [`To: ${toAddr}`, `Subject: ${subject || '(no subject)'}`];
+  if (cc && String(cc).trim()) headerLines.push(`Cc: ${String(cc).trim()}`);
+  if (bcc && String(bcc).trim()) headerLines.push(`Bcc: ${String(bcc).trim()}`);
   if (inReplyTo) headerLines.push(`In-Reply-To: ${inReplyTo}`);
   if (references) headerLines.push(`References: ${references}`);
   headerLines.push(
@@ -5856,6 +5912,8 @@ async function gmailUpdateDraftApi(draftId, bodyText, args = {}) {
     headers.find((h) => h.name && h.name.toLowerCase() === name.toLowerCase())?.value || '';
 
   const toAddr = get('To');
+  const cc = get('Cc');
+  const bcc = get('Bcc');
   const subject = get('Subject');
   const inReplyTo = get('In-Reply-To');
   const references = get('References');
@@ -5864,6 +5922,8 @@ async function gmailUpdateDraftApi(draftId, bodyText, args = {}) {
 
   const mime = gmailBuildPlainTextMime({
     toAddr,
+    cc,
+    bcc,
     subject,
     inReplyTo,
     references,
