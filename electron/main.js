@@ -1322,6 +1322,56 @@ function appendAssistantToolCalls(messages, result, provider) {
  * Append a tool result to the message history in the correct provider format.
  */
 function appendToolResult(messages, toolCall, result, provider) {
+  // Multi-tile full-page screenshots (scroll to top, then viewport strips top→bottom)
+  const multiImages =
+    result &&
+    Array.isArray(result.images) &&
+    result.images.length &&
+    !result.error &&
+    result.images.every((im) => im && im.image && im.mimeType);
+
+  if (multiImages) {
+    const textPart = JSON.stringify({
+      success: true,
+      fullPage: true,
+      scrollHeight: result.scrollHeight,
+      viewportHeight: result.viewportHeight,
+      tileCount: result.images.length,
+      note:
+        'Full-page screenshots from the TOP of the page downward (tile 1 = header/top). Plan from the first tiles before mid-page content. Use for layout, nav, and where to start.'
+    });
+    if (provider === 'openai' || provider === 'custom') {
+      const content = [{ type: 'text', text: textPart }];
+      for (const im of result.images) {
+        content.push({
+          type: 'image_url',
+          image_url: { url: `data:${im.mimeType};base64,${im.image}`, detail: 'high' }
+        });
+      }
+      return [...messages, { role: 'tool', tool_call_id: toolCall.id, content }];
+    }
+    if (provider === 'anthropic') {
+      const blocks = [{ type: 'text', text: textPart }];
+      for (const im of result.images) {
+        blocks.push({
+          type: 'image',
+          source: { type: 'base64', media_type: im.mimeType, data: im.image }
+        });
+      }
+      return [...messages, {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: toolCall.id, content: blocks }]
+      }];
+    }
+    if (provider === 'google') {
+      const parts = [{ functionResponse: { name: toolCall.name, response: { content: textPart } } }];
+      for (const im of result.images) {
+        parts.push({ inlineData: { mimeType: im.mimeType, data: im.image } });
+      }
+      return [...messages, { role: 'function', parts }];
+    }
+  }
+
   // Detect screenshot / image results and format as multimodal content
   const hasImage = result && result.image && result.mimeType;
 
@@ -1375,6 +1425,123 @@ function appendToolResult(messages, toolCall, result, provider) {
       parts: [{ functionResponse: { name: toolCall.name, response: { content: result } } }]
     }];
   }
+  return messages;
+}
+
+/**
+ * Screenshot bytes are only for the live model request — do not ship base64 in agent logs or UI IPC.
+ */
+function sanitizeToolResultForLog(toolName, result) {
+  if (!result || typeof result !== 'object' || result.error) return result;
+  if (toolName !== 'screenshot') return result;
+  if (Array.isArray(result.images) && result.images.length) {
+    return {
+      scrollHeight: result.scrollHeight,
+      viewportHeight: result.viewportHeight,
+      viewportWidth: result.viewportWidth,
+      tileCount: result.tileCount,
+      note: result.note,
+      images: result.images.map((im) =>
+        im && typeof im === 'object'
+          ? { mimeType: im.mimeType, label: im.label, imageBytesOmitted: true }
+          : { imageBytesOmitted: true }
+      )
+    };
+  }
+  if (typeof result.image === 'string') {
+    return {
+      mimeType: result.mimeType,
+      note: result.note,
+      fullPage: result.fullPage,
+      imageBytesOmitted: true
+    };
+  }
+  return result;
+}
+
+/**
+ * Inject post-navigate auto-screenshots into the message list (no matching tool_call).
+ */
+function appendAutoScreenshotMessages(messages, screenshotResult, provider) {
+  const multi =
+    screenshotResult &&
+    Array.isArray(screenshotResult.images) &&
+    screenshotResult.images.length &&
+    !screenshotResult.error &&
+    screenshotResult.images.every((im) => im && im.image && im.mimeType);
+
+  const introMulti =
+    '[Auto-screenshot after navigation — full-page tiles from top to bottom. Tile 1 is the top of the page; use it to plan where to start.]';
+
+  if (multi) {
+    const textPart = JSON.stringify({
+      auto: true,
+      fullPage: true,
+      scrollHeight: screenshotResult.scrollHeight,
+      viewportHeight: screenshotResult.viewportHeight,
+      tileCount: screenshotResult.images.length,
+      note: introMulti
+    });
+    if (provider === 'openai' || provider === 'custom') {
+      const content = [{ type: 'text', text: textPart }];
+      for (const im of screenshotResult.images) {
+        content.push({
+          type: 'image_url',
+          image_url: { url: `data:${im.mimeType};base64,${im.image}`, detail: 'high' }
+        });
+      }
+      return [...messages, { role: 'system', content }];
+    }
+    if (provider === 'anthropic') {
+      const blocks = [{ type: 'text', text: textPart }];
+      for (const im of screenshotResult.images) {
+        blocks.push({
+          type: 'image',
+          source: { type: 'base64', media_type: im.mimeType, data: im.image }
+        });
+      }
+      return [...messages, { role: 'user', content: blocks }];
+    }
+    if (provider === 'google') {
+      const parts = [{ text: textPart }];
+      for (const im of screenshotResult.images) {
+        parts.push({ inlineData: { mimeType: im.mimeType, data: im.image } });
+      }
+      return [...messages, { role: 'user', parts }];
+    }
+  }
+
+  if (screenshotResult && screenshotResult.image && screenshotResult.mimeType) {
+    const dataUri = `data:${screenshotResult.mimeType};base64,${screenshotResult.image}`;
+    if (provider === 'openai' || provider === 'custom') {
+      return [...messages, {
+        role: 'system',
+        content: [
+          { type: 'text', text: '[Auto-screenshot after navigation — use this to understand the page visually]' },
+          { type: 'image_url', image_url: { url: dataUri, detail: 'high' } }
+        ]
+      }];
+    }
+    if (provider === 'anthropic') {
+      return [...messages, {
+        role: 'user',
+        content: [
+          { type: 'text', text: '[Auto-screenshot after navigation — use this to understand the page visually]' },
+          { type: 'image', source: { type: 'base64', media_type: screenshotResult.mimeType, data: screenshotResult.image } }
+        ]
+      }];
+    }
+    if (provider === 'google') {
+      return [...messages, {
+        role: 'user',
+        parts: [
+          { text: '[Auto-screenshot after navigation — use this to understand the page visually]' },
+          { inlineData: { mimeType: screenshotResult.mimeType, data: screenshotResult.image } }
+        ]
+      }];
+    }
+  }
+
   return messages;
 }
 
@@ -1572,8 +1739,8 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
         if (isEmailWriteAction('click', { selector: `text=${clickText}` })) {
           const toolResult = { error: 'Blocked: Navio cannot click Send on email services. Only drafts are allowed.' };
           currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
-          toolLog.push({ tool: tc.name, args: tc.arguments, result: toolResult, blocked: true });
-          sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
+          toolLog.push({ tool: tc.name, args: tc.arguments, result: sanitizeToolResultForLog(tc.name, toolResult), blocked: true });
+          sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog(tc.name, toolResult) });
           continue;
         }
       }
@@ -1586,8 +1753,8 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
         if (gmIntercept) {
           const toolResult = gmIntercept.result;
           currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
-          toolLog.push({ tool: 'navigate', args: tc.arguments, result: toolResult, gmail_api_intercept: true });
-          sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
+          toolLog.push({ tool: 'navigate', args: tc.arguments, result: sanitizeToolResultForLog('navigate', toolResult), gmail_api_intercept: true });
+          sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog('navigate', toolResult) });
           continue;
         }
         const browseIntercept = await maybeInterceptGmailBrowseNavForAgent(navUrl, { allowGmailWebUi });
@@ -1597,18 +1764,18 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
           toolLog.push({
             tool: 'navigate',
             args: tc.arguments,
-            result: toolResult,
+            result: sanitizeToolResultForLog('navigate', toolResult),
             gmail_api_intercept: true,
             gmail_browse_intercept: true
           });
-          sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
+          sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog('navigate', toolResult) });
           continue;
         }
         sender.send('tool-navigate', { url: tc.arguments.url, stepIndex: step });
         const navResult = await waitForRendererAck(sender, 'tool-navigate-ack', 60000);
         currentMessages = appendToolResult(currentMessages, tc, navResult, provider);
-        toolLog.push({ tool: 'navigate', args: tc.arguments, result: navResult });
-        sender.send('tool-progress', { step, tool: tc.name, result: navResult });
+        toolLog.push({ tool: 'navigate', args: tc.arguments, result: sanitizeToolResultForLog('navigate', navResult) });
+        sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog('navigate', navResult) });
 
         if (!navResult.error && activeWc) {
           await waitForWebContentsSettled(activeWc);
@@ -1618,18 +1785,10 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
         if (cfg.aiAutoScreenshotAfterNavigate && !navResult.error && activeWc) {
           try {
             await new Promise(r => setTimeout(r, 500));
-            const autoScreenshot = await toolExecutors.screenshot(activeWc);
-            if (autoScreenshot.image) {
+            const autoScreenshot = await toolExecutors.screenshot(activeWc, {});
+            if (autoScreenshot.images?.length || autoScreenshot.image) {
               sender.send('tool-progress', { step, tool: 'screenshot', result: { success: true, auto: true } });
-              currentMessages = [...currentMessages, {
-                role: provider === 'google' ? 'user' : 'system',
-                content: provider === 'openai' || provider === 'custom'
-                  ? [
-                      { type: 'text', text: '[Auto-screenshot after navigation — use this to understand the page visually]' },
-                      { type: 'image_url', image_url: { url: `data:${autoScreenshot.mimeType};base64,${autoScreenshot.image}`, detail: 'high' } }
-                    ]
-                  : '[Auto-screenshot captured after navigation]'
-              }];
+              currentMessages = appendAutoScreenshotMessages(currentMessages, autoScreenshot, provider);
             }
           } catch { /* non-fatal */ }
         }
@@ -1641,8 +1800,8 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
         sender.send('tool-propose-plan', tc.arguments || {});
         const planResult = await waitForRendererAck(sender, 'tool-propose-plan-ack', 300000); // 5 min timeout
         currentMessages = appendToolResult(currentMessages, tc, planResult, provider);
-        toolLog.push({ tool: tc.name, args: tc.arguments, result: planResult });
-        sender.send('tool-progress', { step, tool: tc.name, result: planResult });
+        toolLog.push({ tool: tc.name, args: tc.arguments, result: sanitizeToolResultForLog(tc.name, planResult) });
+        sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog(tc.name, planResult) });
         if (planResult.cancelled) {
           return finishAgentRun({ content: 'Plan was cancelled by the user.', toolLog });
         }
@@ -1658,8 +1817,8 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
           if (gmIntercept) {
             const toolResult = gmIntercept.result;
             currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
-            toolLog.push({ tool: 'open_tab', args: tc.arguments, result: toolResult, gmail_api_intercept: true });
-            sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
+            toolLog.push({ tool: 'open_tab', args: tc.arguments, result: sanitizeToolResultForLog('open_tab', toolResult), gmail_api_intercept: true });
+            sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog('open_tab', toolResult) });
             continue;
           }
           const browseIntercept = await maybeInterceptGmailBrowseNavForAgent(openUrl, { allowGmailWebUi: allowGmailWebUiOt });
@@ -1669,11 +1828,11 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
             toolLog.push({
               tool: 'open_tab',
               args: tc.arguments,
-              result: toolResult,
+              result: sanitizeToolResultForLog('open_tab', toolResult),
               gmail_api_intercept: true,
               gmail_browse_intercept: true
             });
-            sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
+            sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog('open_tab', toolResult) });
             continue;
           }
         }
@@ -1691,8 +1850,8 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
           await waitForWebContentsSettled(activeWc);
         }
         currentMessages = appendToolResult(currentMessages, tc, tabResult, provider);
-        toolLog.push({ tool: tc.name, args: tc.arguments, result: tabResult });
-        sender.send('tool-progress', { step, tool: tc.name, result: tabResult });
+        toolLog.push({ tool: tc.name, args: tc.arguments, result: sanitizeToolResultForLog(tc.name, tabResult) });
+        sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog(tc.name, tabResult) });
         continue;
       }
 
@@ -1700,8 +1859,8 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
       if (isMcpTool(tc.name)) {
         const mcpResult = await callMcpTool(tc.name, tc.arguments);
         currentMessages = appendToolResult(currentMessages, tc, mcpResult, provider);
-        toolLog.push({ tool: tc.name, args: tc.arguments, result: mcpResult });
-        sender.send('tool-progress', { step, tool: tc.name, result: mcpResult });
+        toolLog.push({ tool: tc.name, args: tc.arguments, result: sanitizeToolResultForLog(tc.name, mcpResult) });
+        sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog(tc.name, mcpResult) });
         continue;
       }
 
@@ -1710,16 +1869,16 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
       if (!executor) {
         const toolResult = { error: `Unknown tool: ${tc.name}` };
         currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
-        toolLog.push({ tool: tc.name, args: tc.arguments, result: toolResult });
-        sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
+        toolLog.push({ tool: tc.name, args: tc.arguments, result: sanitizeToolResultForLog(tc.name, toolResult) });
+        sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog(tc.name, toolResult) });
         continue;
       }
 
       const toolResult = await executor(activeWc, tc.arguments);
       recordGmailMutationForDeferredNav(tc.name, toolResult);
       currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
-      toolLog.push({ tool: tc.name, args: tc.arguments, result: toolResult });
-      sender.send('tool-progress', { step, tool: tc.name, result: toolResult });
+      toolLog.push({ tool: tc.name, args: tc.arguments, result: sanitizeToolResultForLog(tc.name, toolResult) });
+      sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog(tc.name, toolResult) });
     }
   }
   return finishAgentRun({
@@ -2551,8 +2710,79 @@ async function maybeLoadGmailMessageUrlViaApi(toolName, url, opts = {}) {
 // are the parsed tool call arguments.  Executors delegate to existing
 // browser-action logic where possible.
 
+/**
+ * Scroll to the top, then capture viewport-height tiles top→bottom so the model
+ * sees the page from its real start. Restores scroll to top after.
+ */
+async function captureFullPageScreenshotTiles(wc) {
+  try {
+    await wc.executeJavaScript('window.scrollTo(0, 0); true');
+    await new Promise((r) => setTimeout(r, 90));
+    await waitForWebContentsSettled(wc, { settleMs: 140 });
+
+    const dims = await wc.executeJavaScript(`(() => {
+      const sh = Math.max(
+        document.documentElement.scrollHeight || 0,
+        document.body && document.body.scrollHeight || 0,
+        document.documentElement.clientHeight || 0,
+        window.innerHeight || 1
+      );
+      const vh = Math.max(1, Math.floor(window.innerHeight));
+      const vw = Math.max(1, Math.floor(window.innerWidth));
+      return { sh, vh, vw };
+    })()`);
+
+    if (!dims || typeof dims.sh !== 'number') {
+      return { error: 'Could not read page dimensions for full-page screenshot' };
+    }
+
+    const sh = Math.max(1, dims.sh);
+    const vh = Math.max(1, dims.vh);
+    const maxTiles = 16;
+    const tileCount = Math.min(maxTiles, Math.max(1, Math.ceil(sh / vh)));
+
+    const images = [];
+    for (let i = 0; i < tileCount; i++) {
+      const top = i * vh;
+      await wc.executeJavaScript(`window.scrollTo(0, ${top}); true`);
+      await new Promise((r) => setTimeout(r, 75));
+      const img = await wc.capturePage();
+      let b64 = img.toJPEG(68).toString('base64');
+      if (b64.length > 200000) {
+        const small = img.resize({ width: 1024 });
+        b64 = small.toJPEG(60).toString('base64');
+      }
+      images.push({
+        image: b64,
+        mimeType: 'image/jpeg',
+        label: `Tile ${i + 1}/${tileCount} (scrollY≈${top}px; first tile is page top)`
+      });
+      if (top + vh >= sh - 4) break;
+    }
+
+    await wc.executeJavaScript('window.scrollTo(0, 0); true');
+    await new Promise((r) => setTimeout(r, 40));
+
+    return {
+      images,
+      scrollHeight: sh,
+      viewportHeight: vh,
+      viewportWidth: dims.vw,
+      tileCount: images.length,
+      note: 'Full-page screenshots from top to bottom. Tile 1 is the top of the page.'
+    };
+  } catch (e) {
+    return { error: 'Screenshot failed: ' + e.message };
+  }
+}
+
 const toolExecutors = {
   async read_page(wc, args) {
+    try {
+      await wc.executeJavaScript('window.scrollTo(0, 0); true');
+    } catch {
+      /* ignore */
+    }
     await waitForWebContentsSettled(wc, { settleMs: 120 });
     const result = await getAccessibilityTree(wc, {
       filter: args.filter || 'interactive',
@@ -2627,7 +2857,8 @@ const toolExecutors = {
     if (!fieldLabel) return { error: 'type_text requires ref or text to identify the field' };
     return await executeBrowserActionInternal(wc, 'type', {
       selector: `text=${fieldLabel}`,
-      text: args.value || ''
+      text: args.value || '',
+      occurrence: args.occurrence
     });
   },
 
@@ -2687,21 +2918,42 @@ const toolExecutors = {
     return await executeBrowserActionInternal(wc, 'pressKey', { key: args.key || 'Tab' });
   },
 
-  async screenshot(wc) {
-    try {
+  async screenshot(wc, args = {}) {
+    const fullPage = !(args && args.full_page === false);
+    const encodeViewport = async () => {
       const img = await wc.capturePage();
       const buf = img.toJPEG(70);
-      const b64 = buf.toString('base64');
-      // Cap at ~200 KB
+      let b64 = buf.toString('base64');
       if (b64.length > 200000) {
         const small = img.resize({ width: 1024 });
-        const smallBuf = small.toJPEG(60);
-        return { image: smallBuf.toString('base64'), mimeType: 'image/jpeg' };
+        b64 = small.toJPEG(60).toString('base64');
       }
       return { image: b64, mimeType: 'image/jpeg' };
-    } catch (e) {
-      return { error: 'Screenshot failed: ' + e.message };
+    };
+
+    if (!fullPage) {
+      try {
+        await wc.executeJavaScript('window.scrollTo(0, 0); true');
+        await new Promise((r) => setTimeout(r, 55));
+        await waitForWebContentsSettled(wc, { settleMs: 120 });
+        return await encodeViewport();
+      } catch (e) {
+        return { error: 'Screenshot failed: ' + e.message };
+      }
     }
+
+    const tiled = await captureFullPageScreenshotTiles(wc);
+    if (tiled.error || !tiled.images?.length) {
+      try {
+        await wc.executeJavaScript('window.scrollTo(0, 0); true');
+        await new Promise((r) => setTimeout(r, 55));
+        await waitForWebContentsSettled(wc, { settleMs: 120 });
+        return await encodeViewport();
+      } catch (e) {
+        return tiled.error ? tiled : { error: 'Screenshot failed: ' + e.message };
+      }
+    }
+    return tiled;
   },
 
   async insert_text(wc, args) {
@@ -3547,36 +3799,137 @@ async function navioDeepClickBySelectorCore(wc, selector) {
 
 /**
  * Deep type into inputs / contenteditable (iframes) — shared by IPC and agent tools.
+ * Resolves labels from input.labels, label[for], and aria-labelledby (MUI/React freight forms).
+ * Skips invisible/hidden fields; supports occurrence for duplicate labels (e.g. two "Postal code").
  */
-async function navioDeepTypeBySelector(wc, selector, text) {
+async function navioDeepTypeBySelector(wc, selector, text, occurrence) {
   const tSel = JSON.stringify(selector || '');
   const tVal = JSON.stringify(text || '');
+  let occ = parseInt(occurrence, 10);
+  if (!Number.isFinite(occ) || occ < 1) occ = 1;
+  occ = Math.min(occ, 20);
+  const tOcc = occ;
   const tRes = await wc.executeJavaScript(`
     new Promise((resolve) => {
       const raw = ${tSel};
       const text = ${tVal};
-      function findElInDoc(doc, sel) {
-        if (!sel || !doc) return null;
+      const wantOcc = ${tOcc};
+
+      function isVisible(el) {
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        if (r.width < 2 || r.height < 2) return false;
+        const st = el.ownerDocument.defaultView.getComputedStyle(el);
+        if (st.visibility === 'hidden' || st.display === 'none' || parseFloat(st.opacity) === 0) return false;
+        return true;
+      }
+
+      function getFieldLabelText(el) {
+        if (!el) return '';
+        const parts = [];
+        const push = (s) => {
+          if (s == null) return;
+          const t = String(s).replace(/\\s+/g, ' ').trim();
+          if (t) parts.push(t);
+        };
+        push(el.getAttribute('aria-label'));
+        push(el.getAttribute('placeholder'));
+        push(el.getAttribute('name'));
+        push(el.getAttribute('title'));
+        if (el.id && typeof CSS !== 'undefined' && CSS.escape) {
+          try {
+            const esc = CSS.escape(el.id);
+            const lab = el.ownerDocument.querySelector('label[for=\"' + esc + '\"]');
+            if (lab) push(lab.textContent);
+          } catch (e) {}
+        }
+        try {
+          if (el.labels && el.labels.length) {
+            for (let i = 0; i < el.labels.length; i++) {
+              push(el.labels[i].textContent);
+            }
+          }
+        } catch (e) {}
+        const labelledBy = el.getAttribute('aria-labelledby');
+        if (labelledBy) {
+          const root = el.ownerDocument;
+          for (const id of labelledBy.split(/\\s+/)) {
+            if (!id) continue;
+            const node = root.getElementById(id);
+            if (node) push(node.textContent);
+          }
+        }
+        return parts.join(' ').replace(/\\s+/g, ' ').trim().toLowerCase();
+      }
+
+      function scoreMatch(full, q) {
+        if (!full || !q) return 0;
+        if (full === q) return 100;
+        if (full.startsWith(q + ' ') || full.startsWith(q + ':')) return 85;
+        if (full.startsWith(q)) return 80;
+        const words = full.split(/\\s+/);
+        for (let i = 0; i < words.length; i++) {
+          if (words[i] === q) return 75;
+        }
+        if (q.length < 5) {
+          return 0;
+        }
+        if (full.includes(q)) return 50;
+        return 0;
+      }
+
+      function collectMatchesInDoc(doc, sel) {
+        if (!sel || !doc) return [];
+        const out = [];
         if (sel.startsWith('text=') || sel.startsWith('aria=')) {
           const prefix = sel.startsWith('text=') ? 'text=' : 'aria=';
           const q = sel.slice(prefix.length).trim().toLowerCase();
-          for (const el of doc.querySelectorAll('input,textarea,select,[contenteditable]')) {
-            const lbl = (el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.getAttribute('name') || '').toLowerCase();
-            if (lbl.includes(q)) return el;
-          }
-          if (sel.startsWith('aria=')) {
-            for (const el of doc.querySelectorAll('[aria-label]')) {
-              if ((el.getAttribute('aria-label') || '').toLowerCase().includes(q)) return el;
+          if (!q) return [];
+          let idx = 0;
+          for (const el of doc.querySelectorAll('input,textarea,select,[contenteditable="true"]')) {
+            if (!isVisible(el)) continue;
+            const tag = el.tagName;
+            if (tag === 'INPUT') {
+              const t = (el.type || '').toLowerCase();
+              if (t === 'hidden' || t === 'submit' || t === 'button' || t === 'reset' || t === 'image' || t === 'file') continue;
+            }
+            let full = '';
+            if (sel.startsWith('aria=')) {
+              full = (el.getAttribute('aria-label') || '').trim().toLowerCase();
+            } else {
+              full = getFieldLabelText(el);
+            }
+            const sc = scoreMatch(full, q);
+            if (sc > 0) {
+              out.push({ el, sc, idx: idx++ });
             }
           }
-          return null;
+          out.sort((a, b) => {
+            if (b.sc !== a.sc) return b.sc - a.sc;
+            return a.idx - b.idx;
+          });
+          return out.map((x) => x.el);
         }
-        try { return doc.querySelector(sel); } catch (e) { return null; }
+        try {
+          const one = doc.querySelector(sel);
+          return one ? [one] : [];
+        } catch (e) {
+          return [];
+        }
       }
+
+      function findElInDoc(doc, sel) {
+        const arr = collectMatchesInDoc(doc, sel);
+        if (!arr.length) return null;
+        const i = wantOcc - 1;
+        if (i >= arr.length) return null;
+        return arr[i];
+      }
+
       function searchTypeDeep(win, depth) {
         if (!win || depth > 14) return null;
         const doc = win.document;
-        const el = findElInDoc(doc, raw);
+        let el = findElInDoc(doc, raw);
         if (el) return el;
         for (const iframe of doc.querySelectorAll('iframe')) {
           try {
@@ -3619,7 +3972,8 @@ async function navioDeepTypeBySelector(wc, selector, text) {
         } else if (++tries < 14) {
           setTimeout(attempt, 250);
         } else {
-          resolve({ ok: false, error: 'Element not found: ' + raw });
+          const hint = wantOcc > 1 ? ' (try type_text occurrence=' + wantOcc + ' or a ref from read_page)' : '';
+          resolve({ ok: false, error: 'Element not found: ' + raw + hint });
         }
       };
       attempt();
@@ -3958,7 +4312,7 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
       }
 
       case 'type': {
-        return navioDeepTypeBySelector(wc, params.selector || '', params.text || '');
+        return navioDeepTypeBySelector(wc, params.selector || '', params.text || '', params.occurrence);
       }
 
       case 'scroll': {

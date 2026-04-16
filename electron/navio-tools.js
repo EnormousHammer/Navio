@@ -86,6 +86,7 @@ const NAVIO_TOOLS = [
     name: 'type_text',
     description:
       'Type text into a form field. Identify the field by "ref" (preferred) or "text" (visible label/placeholder). ' +
+      'On freight/shipping forms, labels are often on separate elements — Navio resolves real label text (including aria-labelledby); use "occurrence" when two fields share the same label (e.g. 1 = pickup postal, 2 = delivery postal). ' +
       'Gmail and similar apps use nested iframes — prefer ref from read_page on the active mail tab; Navio searches iframes automatically.',
     parameters: {
       type: 'object',
@@ -101,6 +102,11 @@ const NAVIO_TOOLS = [
         value: {
           type: 'string',
           description: 'The text to type into the field.'
+        },
+        occurrence: {
+          type: 'integer',
+          description:
+            'Which matching field to use when several controls share the same label (1 = first in page order). Default 1. Use 2 for the second "Postal code", etc.'
         }
       },
       required: ['value']
@@ -208,9 +214,18 @@ const NAVIO_TOOLS = [
   {
     name: 'screenshot',
     description:
-      'Capture a screenshot of the current viewport. Returns a base64-encoded image. ' +
-      'Use when you need visual context or coordinate-based clicks.',
-    parameters: { type: 'object', properties: {} }
+      'Capture screenshots for visual context or coordinate-based clicks. **Default:** full-page coverage from the **top** — multiple viewport-height tiles (tile 1 = page top). ' +
+      'Set full_page to false for a single fast viewport-only image (still taken after scrolling to the top).',
+    parameters: {
+      type: 'object',
+      properties: {
+        full_page: {
+          type: 'boolean',
+          description:
+            'If true or omitted, capture tiled full-page shots from top to bottom. If false, one viewport screenshot only.'
+        }
+      }
+    }
   },
   {
     name: 'insert_text',

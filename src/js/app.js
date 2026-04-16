@@ -660,8 +660,11 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
     window.navio.onOpenUrlInNewTab((url, opts = {}) => {
       if (typeof TabManager === 'undefined') return;
       const u = url == null ? '' : String(url);
-      if (u) TabManager.createTab(u, { incognito: !!opts.incognito });
-      else TabManager.createTab(null, { incognito: !!opts.incognito });
+      // Popups from guest pages are routed here (main setWindowOpenHandler) — open a real tab and
+      // switch to it so the user sees label/print flows instead of a silent deny.
+      const tabOpts = { incognito: !!opts.incognito, switchTo: true };
+      if (u) TabManager.createTab(u, tabOpts);
+      else TabManager.createTab(null, tabOpts);
     });
 
     // ── Download toasts ───────────────────────────────────────────────────

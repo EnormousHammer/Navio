@@ -123,6 +123,20 @@ function urlMatchesAdBlock(url) {
 }
 
 /**
+ * Whether the webRequest handler should cancel this URL (ad blocking).
+ * We still match the same URL fragments as {@link urlMatchesAdBlock}, but **do not** cancel
+ * **image** or **font** requests: many legitimate URLs contain substrings that collide with
+ * the blocklist (CDN paths, query params, `facebook.com/tr…`, etc.), which breaks logos,
+ * icons, and product images. Scripts, XHRs, frames, and other subresources stay blocked.
+ */
+function shouldBlockAdNetworkRequest(url, resourceType) {
+  if (!urlMatchesAdBlock(url)) return false;
+  const rt = String(resourceType || '').toLowerCase();
+  if (rt === 'image' || rt === 'font') return false;
+  return true;
+}
+
+/**
  * Gmail attachments, inline images, and Drive/Docs viewer targets opened via window.open.
  * These often use small chrome-stripped windows and must not be classified as ad popups.
  */
@@ -149,6 +163,42 @@ function isMailGoogleOpenerOrigin(openerOrigin) {
     const u = new URL(openerOrigin);
     const h = u.hostname.toLowerCase();
     return h === 'mail.google.com' || h.endsWith('.mail.google.com') || h === 'inbox.google.com';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Courier / freight / broker sites often use window.open(about:blank, ..., stripped chrome) for
+ * label preview, print, or quote PDF — same pattern as Gmail downloads. Allow when the opener
+ * is a known carrier/shipping domain so Navio can route to a new tab instead of denying silently.
+ */
+function isShippingCarrierOpenerOrigin(openerOrigin) {
+  if (!openerOrigin || typeof openerOrigin !== 'string') return false;
+  try {
+    const h = new URL(openerOrigin).hostname.toLowerCase();
+    const roots = [
+      'purolator.com',
+      'fedex.com',
+      'ups.com',
+      'dhl.com',
+      'usps.com',
+      'canadapost-postescanada.ca',
+      'canadapost.ca',
+      'postescanada.ca',
+      'tql.com',
+      'chrobinson.com',
+      'shipstation.com',
+      'ontrac.com',
+      'lasership.com',
+      'spee-dee.com',
+      'gls-canada.com',
+      'gls-group.com',
+      'stamps.com',
+      'easypost.com',
+      'freightcom.com'
+    ];
+    return roots.some((s) => h === s || h.endsWith('.' + s));
   } catch {
     return false;
   }
@@ -232,6 +282,7 @@ function shouldBlockWebPopup(payload) {
 
   if (featuresSuggestScriptPopup(features)) {
     if (noUrl && isMailGoogleOpenerOrigin(openerOrigin)) return false;
+    if (noUrl && isShippingCarrierOpenerOrigin(openerOrigin)) return false;
     return true;
   }
 
@@ -239,18 +290,24 @@ function shouldBlockWebPopup(payload) {
 
   if (noUrl && small) {
     if (isMailGoogleOpenerOrigin(openerOrigin)) return false;
+    if (isShippingCarrierOpenerOrigin(openerOrigin)) return false;
     return true;
   }
-  if (!noUrl && small && !isOAuthOrLoginUrl(url)) return true;
+  if (!noUrl && small && !isOAuthOrLoginUrl(url)) {
+    if (isShippingCarrierOpenerOrigin(openerOrigin)) return false;
+    return true;
+  }
   return false;
 }
 
 module.exports = {
   AD_BLOCK_PATTERNS,
   urlMatchesAdBlock,
+  shouldBlockAdNetworkRequest,
   isOAuthOrLoginUrl,
   isGoogleMailDownloadOrContentUrl,
   isMailGoogleOpenerOrigin,
+  isShippingCarrierOpenerOrigin,
   isLikelyAdSizedPopup,
   featuresSuggestScriptPopup,
   shouldBlockWebPopup

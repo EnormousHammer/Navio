@@ -3,7 +3,11 @@
 const { ipcMain, session, shell, globalShortcut, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { AD_BLOCK_PATTERNS, shouldBlockWebPopup } = require('./ad-block-patterns');
+const {
+  AD_BLOCK_PATTERNS,
+  shouldBlockWebPopup,
+  shouldBlockAdNetworkRequest
+} = require('./ad-block-patterns');
 const sitePerms = require('./site-permissions');
 const { NAVIO_PARTITION_MAIN, NAVIO_PARTITION_INCOGNITO } = require('./navio-partitions');
 
@@ -498,7 +502,7 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
     ses.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
       if (adBlockEnabled) {
         const url = details.url;
-        if (AD_BLOCK_PATTERNS.some((p) => url.includes(p))) {
+        if (shouldBlockAdNetworkRequest(url, details.resourceType)) {
           adBlockCount++;
           adBlockBytes += AD_AVG_BYTES;
           callback({ cancel: true });

@@ -5,7 +5,8 @@ const assert = require('node:assert');
 const {
   shouldBlockWebPopup,
   featuresSuggestScriptPopup,
-  urlMatchesAdBlock
+  urlMatchesAdBlock,
+  shouldBlockAdNetworkRequest
 } = require('../electron/ad-block-patterns');
 
 const baseCfg = {
@@ -123,6 +124,36 @@ test('shouldBlockWebPopup: Gmail blank download shell with script-like features 
   );
 });
 
+test('shouldBlockWebPopup: carrier label/print popup from Purolator opener allowed', () => {
+  assert.strictEqual(
+    shouldBlockWebPopup({
+      url: 'about:blank',
+      disposition: 'new-window',
+      optionsWidth: 400,
+      optionsHeight: 300,
+      features: 'menubar=no,toolbar=no,width=400,height=300',
+      openerOrigin: 'https://www.purolator.com',
+      cfg: baseCfg
+    }),
+    false
+  );
+});
+
+test('shouldBlockWebPopup: small real URL popup from FedEx opener allowed', () => {
+  assert.strictEqual(
+    shouldBlockWebPopup({
+      url: 'https://www.fedex.com/print/preview',
+      disposition: 'new-window',
+      optionsWidth: 480,
+      optionsHeight: 400,
+      features: 'width=480,height=400',
+      openerOrigin: 'https://www.fedex.com',
+      cfg: baseCfg
+    }),
+    false
+  );
+});
+
 test('urlMatchesAdBlock is used only with adBlockEnabled', () => {
   assert.strictEqual(
     shouldBlockWebPopup({
@@ -133,4 +164,27 @@ test('urlMatchesAdBlock is used only with adBlockEnabled', () => {
     false
   );
   assert.strictEqual(urlMatchesAdBlock('https://doubleclick.net/foo'), true);
+});
+
+test('shouldBlockAdNetworkRequest: blocks scripts on ad hosts', () => {
+  assert.strictEqual(
+    shouldBlockAdNetworkRequest('https://doubleclick.net/foo.js', 'script'),
+    true
+  );
+  assert.strictEqual(
+    shouldBlockAdNetworkRequest('https://doubleclick.net/foo.js', 'xmlhttprequest'),
+    true
+  );
+});
+
+test('shouldBlockAdNetworkRequest: does not cancel image/font (avoids broken logos)', () => {
+  assert.strictEqual(
+    shouldBlockAdNetworkRequest('https://doubleclick.net/pixel.png', 'image'),
+    false
+  );
+  assert.strictEqual(
+    shouldBlockAdNetworkRequest('https://doubleclick.net/font.woff2', 'font'),
+    false
+  );
+  assert.strictEqual(urlMatchesAdBlock('https://doubleclick.net/pixel.png'), true);
 });

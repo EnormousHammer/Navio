@@ -463,8 +463,9 @@ class AssistantManagerClass {
   }
 
   /**
-   * When the user switches tabs: stop generation, hide the dock, clear the message list.
-   * Conversation memory is profile-wide; reopening the assistant restores the same thread from memory/disk.
+   * When the user switches tabs: stop generation and hide the dock (Comet-style).
+   * Profile-wide thread: do **not** wipe the message list or composer — that made the panel feel
+   * tied to the “old” tab and destroyed unsent drafts. Reopening shows the same transcript + draft.
    */
   onActiveTabChanged(prevTabId, nextTabId) {
     if (!prevTabId || prevTabId === nextTabId) return;
@@ -489,11 +490,6 @@ class AssistantManagerClass {
     this._awaitingTaskChain = false;
     this._autoFollowCount = 0;
     this.close();
-    if (this.messagesEl) this.messagesEl.innerHTML = '';
-    if (this.inputEl) {
-      this.inputEl.value = '';
-      this.inputEl.style.height = 'auto';
-    }
     document.getElementById('navio-continue-pill')?.remove();
     this.setReceipt('');
     try {
@@ -509,7 +505,7 @@ class AssistantManagerClass {
     this._conversationsByTab.delete(String(tabId));
   }
 
-  /** Rebuild visible bubbles from the active tab’s API history (after tab switch cleared DOM). */
+  /** Rebuild visible bubbles from profile API history (e.g. empty DOM after clear chat). */
   _renderDomFromCurrentHistory() {
     if (!this.messagesEl) return;
     this.messagesEl.innerHTML = '';
