@@ -124,6 +124,19 @@ test('shouldBlockWebPopup: Gmail blank download shell with script-like features 
   );
 });
 
+test('shouldBlockWebPopup: streaming site script-style popup not blocked (stay on player tab)', () => {
+  assert.strictEqual(
+    shouldBlockWebPopup({
+      url: 'about:blank',
+      disposition: 'new-window',
+      features: 'menubar=no,toolbar=no,width=800,height=600',
+      openerOrigin: 'https://www.twitch.tv',
+      cfg: baseCfg
+    }),
+    false
+  );
+});
+
 test('shouldBlockWebPopup: carrier label/print popup from Purolator opener allowed', () => {
   assert.strictEqual(
     shouldBlockWebPopup({

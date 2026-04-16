@@ -24,7 +24,7 @@ const { startMonitoring, getConsoleMessages, getNetworkRequests, stopMonitoring 
 const { loadWorkflow, saveWorkflow, listWorkflows, deleteWorkflow } = require('./navio-workflows');
 const { getMcpTools, callMcpTool, isMcpTool, initFromConfig: initMcpFromConfig, registerMcpIpc } = require('./navio-mcp');
 const { initScheduler, registerSchedulerIpc, stopAll: stopAllSchedulers } = require('./navio-scheduler');
-const { shouldBlockWebPopup } = require('./ad-block-patterns');
+const { shouldBlockWebPopup, isStreamingVideoOpenerOrigin } = require('./ad-block-patterns');
 const { wcCanGoBack, wcCanGoForward } = require('./wc-nav-history');
 const { ensureGuestWebviewKeyboardFocus } = require('./agent-input-focus');
 
@@ -911,7 +911,10 @@ function bindNavioGuestWindowOpenOnce(guestContents) {
       return { action: 'deny' };
     }
     try {
-      mw.webContents.send('open-url-in-new-tab', { url: openUrl, incognito });
+      // Popups from streaming sites are often ads or helpers; opening in the foreground steals focus
+      // from the player — user must click again. Open in background so the stream tab stays active.
+      const background = isStreamingVideoOpenerOrigin(openerOrigin);
+      mw.webContents.send('open-url-in-new-tab', { url: openUrl, incognito, background });
     } catch {
       /* ignore */
     }

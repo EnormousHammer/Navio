@@ -660,9 +660,12 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
     window.navio.onOpenUrlInNewTab((url, opts = {}) => {
       if (typeof TabManager === 'undefined') return;
       const u = url == null ? '' : String(url);
-      // Popups from guest pages are routed here (main setWindowOpenHandler) — open a real tab and
-      // switch to it so the user sees label/print flows instead of a silent deny.
-      const tabOpts = { incognito: !!opts.incognito, switchTo: true };
+      // Popups from guest pages are routed here (main setWindowOpenHandler) — open a real tab.
+      // Streaming sites: open in background so junk/ad tabs do not steal focus from the player.
+      const tabOpts = {
+        incognito: !!opts.incognito,
+        switchTo: opts.background !== true
+      };
       if (u) TabManager.createTab(u, tabOpts);
       else TabManager.createTab(null, tabOpts);
     });

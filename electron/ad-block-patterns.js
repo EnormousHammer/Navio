@@ -204,6 +204,36 @@ function isShippingCarrierOpenerOrigin(openerOrigin) {
   }
 }
 
+/**
+ * Live / VoD streaming sites often open window.open with stripped chrome (ads, preroll, or player
+ * helpers). Treat like mail/shipping: do not block those popups; main opens them as tabs instead.
+ */
+function isStreamingVideoOpenerOrigin(openerOrigin) {
+  if (!openerOrigin || typeof openerOrigin !== 'string') return false;
+  try {
+    const h = new URL(openerOrigin).hostname.toLowerCase();
+    const roots = [
+      'youtube.com',
+      'youtu.be',
+      'twitch.tv',
+      'twitch.com',
+      'kick.com',
+      'vimeo.com',
+      'dailymotion.com',
+      'rumble.com',
+      'bilibili.com',
+      'nicovideo.jp',
+      'nimo.tv',
+      'streamable.com',
+      'facebook.com',
+      'instagram.com'
+    ];
+    return roots.some((s) => h === s || h.endsWith('.' + s));
+  } catch {
+    return false;
+  }
+}
+
 /** Avoid blocking OAuth / SSO flows that use small or blank pop-up windows. */
 function isOAuthOrLoginUrl(url) {
   if (!url || url === 'about:blank') return false;
@@ -283,6 +313,7 @@ function shouldBlockWebPopup(payload) {
   if (featuresSuggestScriptPopup(features)) {
     if (noUrl && isMailGoogleOpenerOrigin(openerOrigin)) return false;
     if (noUrl && isShippingCarrierOpenerOrigin(openerOrigin)) return false;
+    if (noUrl && isStreamingVideoOpenerOrigin(openerOrigin)) return false;
     return true;
   }
 
@@ -291,10 +322,12 @@ function shouldBlockWebPopup(payload) {
   if (noUrl && small) {
     if (isMailGoogleOpenerOrigin(openerOrigin)) return false;
     if (isShippingCarrierOpenerOrigin(openerOrigin)) return false;
+    if (isStreamingVideoOpenerOrigin(openerOrigin)) return false;
     return true;
   }
   if (!noUrl && small && !isOAuthOrLoginUrl(url)) {
     if (isShippingCarrierOpenerOrigin(openerOrigin)) return false;
+    if (isStreamingVideoOpenerOrigin(openerOrigin)) return false;
     return true;
   }
   return false;
@@ -308,6 +341,7 @@ module.exports = {
   isGoogleMailDownloadOrContentUrl,
   isMailGoogleOpenerOrigin,
   isShippingCarrierOpenerOrigin,
+  isStreamingVideoOpenerOrigin,
   isLikelyAdSizedPopup,
   featuresSuggestScriptPopup,
   shouldBlockWebPopup

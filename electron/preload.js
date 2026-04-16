@@ -140,7 +140,12 @@ contextBridge.exposeInMainWorld('navio', {
   onOpenUrlInNewTab: (callback) => {
     const handler = (_, payload) => {
       if (typeof payload === 'string') callback(payload, { incognito: false });
-      else callback(payload && payload.url, { incognito: !!(payload && payload.incognito) });
+      else {
+        callback(payload && payload.url, {
+          incognito: !!(payload && payload.incognito),
+          background: !!(payload && payload.background)
+        });
+      }
     };
     ipcRenderer.on('open-url-in-new-tab', handler);
     return () => ipcRenderer.removeListener('open-url-in-new-tab', handler);
