@@ -6,7 +6,6 @@
 class NavioApp {
   constructor() {
     this.config = {};
-    this.tabStripHidden = false;
     this._initialShellReadyScheduled = false;
     this._urlSuggest = { index: -1, items: [], debounce: null, listEl: null };
     this.init();
@@ -55,7 +54,6 @@ class NavioApp {
     this.bindWindowControls();
     this.bindNavigation();
     this.bindShortcuts();
-    this.bindTabStrip();
     this.bindNewTabPage();
 
     // If prelude was dismissed (aria-hidden) but body classes were left behind, unblock the shell.
@@ -944,20 +942,6 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
         });
       }
     });
-  }
-
-  bindTabStrip() {
-    document.getElementById('btn-tabstrip-toggle').addEventListener('click', () => {
-      this.toggleTabStrip();
-    });
-    document.getElementById('btn-tabstrip-show').addEventListener('click', () => {
-      this.toggleTabStrip();
-    });
-  }
-
-  toggleTabStrip() {
-    this.tabStripHidden = !this.tabStripHidden;
-    document.body.classList.toggle('tabstrip-hidden', this.tabStripHidden);
   }
 
   // Used by NTP.js submit — public so ntp.js can call it

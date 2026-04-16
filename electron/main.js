@@ -1235,7 +1235,20 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
     return { error: `Unknown provider: ${provider}` };
   }
 
-  const response = await fetch(url, { method: 'POST', headers, body });
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body,
+      signal: fetchOpts.signal
+    });
+  } catch (e) {
+    if (e && (e.name === 'AbortError' || fetchOpts.signal?.aborted)) {
+      return { error: 'Stopped', aborted: true };
+    }
+    throw e;
+  }
 
   if (useStream) {
     if (!response.ok) {
@@ -1417,6 +1430,24 @@ async function navioSleep(ms) {
   await new Promise((r) => setTimeout(r, ms));
 }
 
+/** One in-flight AI operation per window (stream + tool loop); new work aborts the previous. */
+const aiFetchAbortByWebContentsId = new Map();
+
+function registerAiAbortController(sender) {
+  const id = sender && sender.id;
+  if (typeof id !== 'number') return new AbortController();
+  const prev = aiFetchAbortByWebContentsId.get(id);
+  if (prev) prev.abort();
+  const ac = new AbortController();
+  aiFetchAbortByWebContentsId.set(id, ac);
+  return ac;
+}
+
+function releaseAiAbortController(sender) {
+  const id = sender && sender.id;
+  if (typeof id === 'number') aiFetchAbortByWebContentsId.delete(id);
+}
+
 function navioGmailApiTransientError(msg) {
   const s = String(msg || '');
   return /429|503|502|resource has been exhausted|rateLimitExceeded|userRateLimitExceeded|backendError|internal error|unavailable/i.test(
@@ -1426,10 +1457,17 @@ function navioGmailApiTransientError(msg) {
 
 /** Retry performAiFetch on transient provider/network errors so one hiccup does not kill the whole agent run. */
 async function performAiFetchResilient(cfg, apiKey, messages, fetchOpts, attempts = 4) {
+  if (fetchOpts?.signal?.aborted) {
+    return { error: 'Stopped', aborted: true };
+  }
   let last;
   for (let i = 0; i < attempts; i++) {
+    if (fetchOpts?.signal?.aborted) {
+      return { error: 'Stopped', aborted: true };
+    }
     last = await performAiFetch(cfg, apiKey, messages, false, fetchOpts);
     if (!last.error) return last;
+    if (last.aborted) return last;
     if (!navioTransientAiError(last.error)) return last;
     await navioSleep(500 * Math.pow(2, i));
   }
@@ -1444,7 +1482,8 @@ async function performAiFetchResilient(cfg, apiKey, messages, fetchOpts, attempt
  * Navigate actions are handled specially: a 'tool-navigate' event is sent to the
  * renderer (which calls TabManager.navigateActive), and we wait for an ack.
  */
-async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
+async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts = {}) {
+  const signal = opts && opts.signal;
   const configured = Number(cfg.aiAgentMaxToolSteps);
   maxSteps = Math.min(500, Math.max(50, Number.isFinite(configured) && configured > 0 ? Math.round(configured) : 300));
   // Merge native tools with any connected MCP tools
@@ -1496,9 +1535,15 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
   const TAB_TOOLS = new Set(['open_tab', 'close_tab', 'switch_tab', 'list_tabs']);
 
   for (let step = 0; step < maxSteps; step++) {
-    const result = await performAiFetchResilient(cfg, apiKey, currentMessages, { tools });
+    if (signal?.aborted) {
+      return finishAgentRun({ content: '**Stopped.**', cancelled: true, toolLog });
+    }
+    const result = await performAiFetchResilient(cfg, apiKey, currentMessages, { tools, signal });
 
     if (result.error) {
+      if (result.aborted || result.error === 'Stopped') {
+        return finishAgentRun({ content: '**Stopped.**', cancelled: true, toolLog });
+      }
       let errMsg = result.error;
       if (navioTransientAiError(errMsg)) {
         errMsg = `${errMsg}\n\nIf this was a short-lived network or rate-limit issue, wait a few seconds and say **continue** to retry.`;
@@ -1776,15 +1821,27 @@ ipcMain.handle('ai-request', async (event, payload) => {
   }
 });
 
+ipcMain.handle('ai-abort', async (event) => {
+  const id = event.sender && event.sender.id;
+  if (typeof id === 'number') {
+    const ac = aiFetchAbortByWebContentsId.get(id);
+    if (ac) ac.abort();
+  }
+  return { ok: true };
+});
+
 ipcMain.handle('ai-request-stream', async (event, { messages }) => {
   const cfg = loadConfig();
   const sender = event.sender;
+  const ac = registerAiAbortController(sender);
   if (cfg.aiKillSwitch) {
+    releaseAiAbortController(sender);
     sender.send('ai-stream-error', 'AI is turned off (kill switch).');
     return { ok: false };
   }
   const apiKey = secureConfig.getApiKey(app.getPath('userData'));
   if (!apiKey) {
+    releaseAiAbortController(sender);
     sender.send('ai-stream-error', 'No API key configured.');
     return { ok: false };
   }
@@ -1819,6 +1876,7 @@ ipcMain.handle('ai-request-stream', async (event, { messages }) => {
 
   // Helper: collect an SSE stream from performAiFetch into a plain string
   const collectStream = async (fetchResult) => {
+    if (fetchResult.aborted) return { content: '', aborted: true };
     if (fetchResult.error) return { error: fetchResult.error };
     if (!fetchResult.stream) return { error: 'Streaming unavailable for this provider.' };
     const streamProvider = fetchResult.provider || 'openai';
@@ -1827,6 +1885,14 @@ ipcMain.handle('ai-request-stream', async (event, { messages }) => {
     let sseBuffer = '';
     let fullText = '';
     while (true) {
+      if (ac.signal.aborted) {
+        try {
+          await reader.cancel();
+        } catch {
+          /* ignore */
+        }
+        return { content: fullText, aborted: true };
+      }
       const { done, value } = await reader.read();
       if (done) break;
       sseBuffer += decoder.decode(value, { stream: true });
@@ -1863,6 +1929,18 @@ ipcMain.handle('ai-request-stream', async (event, { messages }) => {
     return { content: fullText };
   };
 
+  const sendChunksAndDone = (text, cancelled) => {
+    const CHUNK = 40;
+    for (let i = 0; i < text.length; i += CHUNK) {
+      if (ac.signal.aborted) {
+        sender.send('ai-stream-done', { cancelled: true });
+        return;
+      }
+      sender.send('ai-stream-chunk', text.slice(i, i + CHUNK));
+    }
+    sender.send('ai-stream-done', cancelled ? { cancelled: true } : {});
+  };
+
   try {
     // Collect the full response before sending to renderer so we can check the format
     let currentMessages = processed;
@@ -1870,9 +1948,23 @@ ipcMain.handle('ai-request-stream', async (event, { messages }) => {
     const MAX_FORMAT_RETRIES = 2;
 
     for (let attempt = 0; attempt <= MAX_FORMAT_RETRIES; attempt++) {
+      if (ac.signal.aborted) {
+        sender.send('ai-stream-done', { cancelled: true });
+        return { ok: false, stopped: true };
+      }
       console.log(`[navio] ai-request-stream attempt ${attempt + 1}, model=${cfg.aiModel}, messages=${currentMessages.length}`);
-      const fetchResult = await performAiFetch(cfg, apiKey, currentMessages, true);
+      const fetchResult = await performAiFetch(cfg, apiKey, currentMessages, true, { signal: ac.signal });
+      if (fetchResult.aborted) {
+        sender.send('ai-stream-done', { cancelled: true });
+        return { ok: false, stopped: true };
+      }
       const collected = await collectStream(fetchResult);
+
+      if (collected.aborted) {
+        finalText = convertNavioActionsBlock(collected.content || '');
+        sendChunksAndDone(finalText, true);
+        return { ok: false, stopped: true };
+      }
 
       if (collected.error) {
         sender.send('ai-stream-error', collected.error);
@@ -1889,16 +1981,17 @@ ipcMain.handle('ai-request-stream', async (event, { messages }) => {
       currentMessages = buildActionFixMessages(currentMessages, finalText);
     }
 
-    // Stream the final (possibly corrected) text to the renderer in chunks
-    const CHUNK = 40;
-    for (let i = 0; i < finalText.length; i += CHUNK) {
-      sender.send('ai-stream-chunk', finalText.slice(i, i + CHUNK));
-    }
-    sender.send('ai-stream-done', {});
+    sendChunksAndDone(finalText, false);
     return { ok: true };
   } catch (err) {
+    if (err && (err.name === 'AbortError' || ac.signal.aborted)) {
+      sender.send('ai-stream-done', { cancelled: true });
+      return { ok: false, stopped: true };
+    }
     sender.send('ai-stream-error', err.message);
     return { ok: false };
+  } finally {
+    releaseAiAbortController(sender);
   }
 });
 
@@ -1993,10 +2086,16 @@ ipcMain.handle('ai-request-with-tools', async (event, { messages, webContentsId 
     return { error: 'No active tab — open a page first.' };
   }
 
+  const ac = registerAiAbortController(event.sender);
   try {
-    return await executeToolLoop(cfg, apiKey, processed, wc, event.sender);
+    return await executeToolLoop(cfg, apiKey, processed, wc, event.sender, undefined, { signal: ac.signal });
   } catch (err) {
+    if (err && (err.name === 'AbortError' || ac.signal.aborted)) {
+      return { content: '**Stopped.**', cancelled: true, toolLog: [] };
+    }
     return { error: err.message };
+  } finally {
+    releaseAiAbortController(event.sender);
   }
 });
 

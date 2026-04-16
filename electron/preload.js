@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('navio', {
 
   aiRequest: (params) => ipcRenderer.invoke('ai-request', params),
   aiRequestStream: (params) => ipcRenderer.invoke('ai-request-stream', params),
+  /** Abort in-flight streaming or tool-loop AI for this window (matches BrowserWindow webContents). */
+  aiAbort: () => ipcRenderer.invoke('ai-abort'),
   aiRequestWithTools: (params) => ipcRenderer.invoke('ai-request-with-tools', params),
   onToolProgress: (callback) => {
     const handler = (_, data) => callback(data);
@@ -81,7 +83,7 @@ contextBridge.exposeInMainWorld('navio', {
     return () => ipcRenderer.removeListener('ai-stream-chunk', handler);
   },
   onAiStreamDone: (callback) => {
-    const handler = () => callback();
+    const handler = (_, payload) => callback(payload);
     ipcRenderer.on('ai-stream-done', handler);
     return () => ipcRenderer.removeListener('ai-stream-done', handler);
   },

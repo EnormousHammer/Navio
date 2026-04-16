@@ -2,7 +2,7 @@
  * Navio Browser — New Tab Page controller
  *
  * Dashboard features:
- *  • Greeting + live clock + weather (Open-Meteo, no API key; 7-day 2×7 + hourly 24h)
+ *  • Greeting + live clock
  *  • Connected services status bar (IMAP email counts)
  *  • World News (Reddit r/worldnews — free, CORS-enabled JSON API)
  *  • Stock market ticker (Yahoo Finance via main-process IPC — bypasses CORS)
@@ -14,7 +14,6 @@
 const NTP = (() => {
   let _mode = 'search'; // 'search' | 'ai' | 'task'
   let _ntpVisible = false;
-  let _weatherData    = null; // cached for AI brief
   let _newsHeadlines  = [];   // cached for AI brief
   let _stockData      = [];   // cached for AI brief
   let _inboxMessages  = [];   // cached from _loadInbox() for AI brief
@@ -24,125 +23,6 @@ const NTP = (() => {
   let _streamedTickerCacheRows = null;
   let _streamedTickerCacheAt = 0;
   const STREAMED_TICKER_CACHE_MS = 60000;
-  const LS_WEATHER_COORDS = 'navio_ntp_last_latlon';
-  const LS_WEATHER_VIEW = 'navio_ntp_weather_view'; // 'daily' | 'hourly'
-
-  function _wmoCodeToInfo(code) {
-    const c = code === undefined || code === null ? 0 : Number(code);
-    if (c === 0) return { icon: '☀', desc: 'Clear' };
-    if (c <= 3) return { icon: '⛅', desc: 'Partly cloudy' };
-    if (c <= 48) return { icon: '🌫', desc: 'Foggy' };
-    if (c <= 67) return { icon: '🌧', desc: 'Rain' };
-    if (c <= 77) return { icon: '❄', desc: 'Snow' };
-    if (c <= 99) return { icon: '⛈', desc: 'Thunderstorm' };
-    return { icon: '🌤', desc: 'Cloudy' };
-  }
-
-  /**
-   * Electron’s Chromium does not ship Chrome’s built-in Google network-location key, so
-   * `navigator.geolocation` often times out even after the user clicks Allow. Fall back
-   * to IP-based coordinates (coarse but real) from public HTTPS endpoints.
-   */
-  async function _coordsFromIpLookup() {
-    const tryOne = async (url, parse) => {
-      const ctrl = new AbortController();
-      const id = setTimeout(() => ctrl.abort(), 10000);
-      try {
-        const r = await fetch(url, { signal: ctrl.signal });
-        if (!r.ok) return null;
-        const j = await r.json();
-        return parse(j);
-      } catch {
-        return null;
-      } finally {
-        clearTimeout(id);
-      }
-    };
-
-    const parsers = [
-      [
-        'https://ipapi.co/json/',
-        (j) => {
-          if (!j || j.error) return null;
-          const lat = j.latitude;
-          const lon = j.longitude;
-          if (typeof lat !== 'number' || typeof lon !== 'number') return null;
-          return { lat, lon };
-        }
-      ],
-      [
-        'https://ipwho.is/json/',
-        (j) => {
-          if (!j || j.success !== true) return null;
-          const lat = j.latitude;
-          const lon = j.longitude;
-          if (typeof lat !== 'number' || typeof lon !== 'number') return null;
-          return { lat, lon };
-        }
-      ]
-    ];
-
-    for (const [url, parse] of parsers) {
-      const pair = await tryOne(url, parse);
-      if (!pair) continue;
-      try {
-        localStorage.setItem(
-          LS_WEATHER_COORDS,
-          JSON.stringify({ lat: pair.lat, lon: pair.lon, at: Date.now() })
-        );
-      } catch {
-        /* ignore */
-      }
-      return { lat: pair.lat, lon: pair.lon, source: 'ip' };
-    }
-    return null;
-  }
-
-  async function _getWeatherCoords() {
-    try {
-      const pos = await new Promise((res, rej) => {
-        navigator.geolocation.getCurrentPosition(res, rej, {
-          timeout: 15000,
-          maximumAge: 600000,
-          enableHighAccuracy: false
-        });
-      });
-      const lat = pos.coords.latitude;
-      const lon = pos.coords.longitude;
-      try {
-        localStorage.setItem(LS_WEATHER_COORDS, JSON.stringify({ lat, lon, at: Date.now() }));
-      } catch {
-        /* ignore */
-      }
-      return { lat, lon, source: 'gps' };
-    } catch {
-      /* GPS often fails in Electron without GOOGLE_API_KEY — try cache then IP */
-    }
-    try {
-      const raw = localStorage.getItem(LS_WEATHER_COORDS);
-      if (raw) {
-        const j = JSON.parse(raw);
-        if (typeof j.lat === 'number' && typeof j.lon === 'number') {
-          return { lat: j.lat, lon: j.lon, source: 'saved' };
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-    return await _coordsFromIpLookup();
-  }
-
-  async function _reverseGeocodeLabel(lat, lon) {
-    try {
-      const u = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&localityLanguage=en`;
-      const r = await fetch(u);
-      if (!r.ok) return null;
-      const j = await r.json();
-      return j.city || j.locality || j.principalSubdivision || null;
-    } catch {
-      return null;
-    }
-  }
   const DEFAULT_NTP_LIVE_SPORTS_CATALOG = [
     { id: 'football', name: 'Football' },
     { id: 'basketball', name: 'NBA' },
@@ -182,7 +62,6 @@ const NTP = (() => {
     _bindTickerTabs();
     _bindSportsTickerClicks();
     _bindWidgetPopouts();
-    _bindWeatherWidget();
     _bindResultsPanel();
     _bindNtpSlashFocus();
 
@@ -230,7 +109,6 @@ const NTP = (() => {
     _updateGreeting();
     (async () => {
       await Promise.all([
-        _loadWeather().catch(() => {}),
         _loadWorldNews().catch(() => {}),
         _loadServicesBar().catch(() => {}),
         _loadInbox().catch(() => {}),
@@ -280,7 +158,6 @@ const NTP = (() => {
         parts.push(`S&P ${a} ${Math.abs(sp.pct).toFixed(1)}%`);
       }
     }
-    if (_weatherData) parts.push(`${_weatherData.icon} ${_weatherData.temp}°`);
     el.textContent =
       parts.length > 0
         ? parts.join(' · ')
@@ -325,207 +202,6 @@ const NTP = (() => {
     const greet = hour < 5 ? 'Good night' : hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
     const el = document.getElementById('ntp-greeting');
     if (el) el.textContent = greet;
-  }
-
-  // ── Weather (Open-Meteo — free, no API key) ───────────────────────────────
-
-  function _applyWeatherViewMode(mode) {
-    const daily = document.getElementById('ntp-weather-grid-daily');
-    const hourly = document.getElementById('ntp-weather-grid-hourly');
-    const btns = document.querySelectorAll('.ntp-weather-view-btn');
-    const m = mode === 'hourly' ? 'hourly' : 'daily';
-    btns.forEach((b) => b.classList.toggle('active', b.dataset.weatherView === m));
-    if (daily) {
-      daily.style.display = m === 'daily' ? 'grid' : 'none';
-      daily.setAttribute('aria-hidden', m === 'daily' ? 'false' : 'true');
-    }
-    if (hourly) {
-      hourly.style.display = m === 'hourly' ? 'grid' : 'none';
-      hourly.setAttribute('aria-hidden', m === 'hourly' ? 'false' : 'true');
-    }
-    try {
-      localStorage.setItem(LS_WEATHER_VIEW, m);
-    } catch {
-      /* ignore */
-    }
-  }
-
-  function _bindWeatherWidget() {
-    const wrap = document.getElementById('ntp-widget-weather');
-    if (!wrap) return;
-    wrap.addEventListener('click', (e) => {
-      const btn = e.target.closest('.ntp-weather-view-btn');
-      if (!btn || !btn.dataset.weatherView) return;
-      _applyWeatherViewMode(btn.dataset.weatherView);
-    });
-    let initial = 'daily';
-    try {
-      const s = localStorage.getItem(LS_WEATHER_VIEW);
-      if (s === 'hourly' || s === 'daily') initial = s;
-    } catch {
-      /* ignore */
-    }
-    _applyWeatherViewMode(initial);
-
-    const retry = document.getElementById('ntp-weather-retry-btn');
-    if (retry) {
-      retry.addEventListener('click', () => {
-        _loadWeather().catch(() => {});
-      });
-    }
-  }
-
-  function _renderWeatherDaily(daily, timezone) {
-    const grid = document.getElementById('ntp-weather-grid-daily');
-    if (!grid || !daily?.time?.length) return;
-    const n = Math.min(7, daily.time.length);
-    const tz = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const row1 = [];
-    const row2 = [];
-    for (let i = 0; i < n; i++) {
-      const dayStr = daily.time[i];
-      const d = new Date(`${dayStr}T12:00:00`);
-      const wk = d.toLocaleDateString(undefined, { weekday: 'short', timeZone: tz });
-      const code = daily.weathercode[i];
-      const hi = daily.temperature_2m_max[i];
-      const lo = daily.temperature_2m_min[i];
-      const { icon } = _wmoCodeToInfo(code);
-      row1.push(`
-        <div class="ntp-wx-cell ntp-wx-cell--r1">
-          <span class="ntp-wx-day">${_esc(wk)}</span>
-          <span class="ntp-wx-ico" aria-hidden="true">${icon}</span>
-          <span class="ntp-wx-hi">${Math.round(hi)}°</span>
-        </div>`);
-      row2.push(`<div class="ntp-wx-cell ntp-wx-cell--r2">Low ${_esc(String(Math.round(lo)))}°</div>`);
-    }
-    grid.innerHTML = row1.join('') + row2.join('');
-  }
-
-  function _renderWeatherHourly(hourly, timezone) {
-    const grid = document.getElementById('ntp-weather-grid-hourly');
-    if (!grid || !hourly?.time?.length) return;
-    const tz = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const times = hourly.time;
-    const temps = hourly.temperature_2m || [];
-    const codes = hourly.weathercode || [];
-    const now = Date.now();
-    let startIdx = 0;
-    for (let i = 0; i < times.length; i++) {
-      if (new Date(times[i]).getTime() >= now - 30 * 60 * 1000) {
-        startIdx = i;
-        break;
-      }
-    }
-    const parts = [];
-    for (let i = startIdx; i < startIdx + 24 && i < times.length; i++) {
-      const t = new Date(times[i]);
-      const hourLabel = t.toLocaleTimeString(undefined, { hour: 'numeric', hour12: true, timeZone: tz });
-      const { icon } = _wmoCodeToInfo(codes[i]);
-      const temp = temps[i];
-      parts.push(`
-        <div class="ntp-wx-cell">
-          <div class="ntp-wx-hr-label">${_esc(hourLabel)}</div>
-          <div class="ntp-wx-ico" aria-hidden="true">${icon}</div>
-          <div class="ntp-wx-temp">${Math.round(temp)}°</div>
-        </div>
-      `);
-    }
-    grid.innerHTML = parts.join('');
-  }
-
-  async function _loadWeather() {
-    const body = document.getElementById('ntp-weather-widget-body');
-    const errEl = document.getElementById('ntp-weather-error');
-    const dailyEl = document.getElementById('ntp-weather-grid-daily');
-    const hourlyEl = document.getElementById('ntp-weather-grid-hourly');
-    const locLabel = document.getElementById('ntp-weather-location-label');
-    const retryBtn = document.getElementById('ntp-weather-retry-btn');
-
-    if (body) {
-      body.classList.add('ntp-weather-body--busy');
-      if (errEl) errEl.style.display = 'none';
-      if (dailyEl) dailyEl.style.display = 'none';
-      if (hourlyEl) hourlyEl.style.display = 'none';
-    }
-
-    try {
-      const coords = await _getWeatherCoords();
-      if (!coords) {
-        if (locLabel) locLabel.textContent = '';
-        if (errEl) {
-          errEl.style.display = 'block';
-          errEl.innerHTML =
-            'Could not resolve location (GPS and network lookup failed). Check your connection, then use the <strong>Location<\/strong> retry control. Note: Electron often cannot use device GPS without setting <code>GOOGLE_API_KEY</code> (Geolocation API); Navio uses IP-based coordinates when possible.';
-        }
-        if (retryBtn) retryBtn.style.display = '';
-        if (body) body.classList.remove('ntp-weather-body--busy');
-        return;
-      }
-
-      if (retryBtn) retryBtn.style.display = 'none';
-
-      const { lat, lon, source } = coords;
-      const [geoLabel, data] = await Promise.all([
-        _reverseGeocodeLabel(lat, lon),
-        fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-            `&timezone=auto&forecast_days=7` +
-            `&daily=weathercode,temperature_2m_max,temperature_2m_min` +
-            `&hourly=temperature_2m,weathercode` +
-            `&current_weather=true&temperature_unit=celsius`
-        ).then((r) => r.json())
-      ]);
-
-      const tz = data.timezone || undefined;
-      const sourceHint =
-        source === 'gps'
-          ? 'device location'
-          : source === 'saved'
-            ? 'saved location'
-            : source === 'ip'
-              ? 'approx. (network IP)'
-              : 'location';
-      const locText =
-        (geoLabel ? `${geoLabel} · ` : '') + `${sourceHint} · ${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
-      if (locLabel) {
-        locLabel.textContent = locText;
-        locLabel.title =
-          source === 'ip'
-            ? 'Coarse location from your IP address. For precise GPS in Electron, set GOOGLE_API_KEY (Geolocation API) or use system location when supported.'
-            : 'From your device or last saved coordinates.';
-      }
-
-      const cw = data.current_weather;
-      if (cw) {
-        const info = _wmoCodeToInfo(cw.weathercode);
-        _weatherData = { temp: Math.round(cw.temperature), ...info };
-      } else {
-        _weatherData = null;
-      }
-
-      if (data.daily) _renderWeatherDaily(data.daily, tz);
-      if (data.hourly) _renderWeatherHourly(data.hourly, tz);
-
-      let mode = 'daily';
-      try {
-        const s = localStorage.getItem(LS_WEATHER_VIEW);
-        if (s === 'hourly' || s === 'daily') mode = s;
-      } catch {
-        /* ignore */
-      }
-      _applyWeatherViewMode(mode);
-
-      if (errEl) errEl.style.display = 'none';
-    } catch {
-      if (locLabel) locLabel.textContent = '';
-      if (errEl) {
-        errEl.style.display = 'block';
-        errEl.textContent = 'Could not load weather. Check your connection and try again.';
-      }
-      if (retryBtn) retryBtn.style.display = '';
-    } finally {
-      if (body) body.classList.remove('ntp-weather-body--busy');
-    }
   }
 
   // ── World News (Reddit r/worldnews — free, CORS-open JSON API) ─────────────
@@ -647,9 +323,7 @@ const NTP = (() => {
   function _popoutWidget(widgetKey) {
     const configs = {
       news:    { bodyId: 'ntp-news-list',   title: 'World News' },
-      inbox:   { bodyId: 'ntp-email-list',  title: 'Inbox' },
-      weather: { bodyId: 'ntp-weather-widget-body', title: 'Weather' }
-
+      inbox:   { bodyId: 'ntp-email-list',  title: 'Inbox' }
     };
     const cfg = configs[widgetKey];
     if (!cfg) return;

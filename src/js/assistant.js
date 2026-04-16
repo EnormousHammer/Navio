@@ -277,6 +277,7 @@ class AssistantManagerClass {
     document.getElementById('btn-close-assistant')?.addEventListener('click', () => this.close());
     document.getElementById('btn-clear-chat')?.addEventListener('click', () => this.clearChat());
     document.getElementById('btn-send-message')?.addEventListener('click', () => this.sendMessage());
+    document.getElementById('btn-assistant-stop')?.addEventListener('click', () => this.stopGeneration());
 
     this.inputEl?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
@@ -1309,6 +1310,27 @@ class AssistantManagerClass {
     if (this.receiptEl) this.receiptEl.textContent = text || '';
   }
 
+  /** Abort streaming or tool-loop generation in the main process (same window). */
+  stopGeneration() {
+    try {
+      if (window.navio && typeof window.navio.aiAbort === 'function') {
+        void window.navio.aiAbort();
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  _setAssistantBusy(busy) {
+    const stop = document.getElementById('btn-assistant-stop');
+    const send = document.getElementById('btn-send-message');
+    if (stop) {
+      stop.hidden = !busy;
+      stop.disabled = !busy;
+    }
+    if (send) send.hidden = !!busy;
+  }
+
   async pinActiveTab() {
     const tab = TabManager.getActiveTab();
     if (!tab) return;
@@ -1347,6 +1369,7 @@ class AssistantManagerClass {
     this.isProcessing = true;
     if (!isQuickAction) this._actionFormatRetries = 0;
     this.showTypingIndicator();
+    this._setAssistantBusy(true);
 
     // ── Tool-calling mode (new agentic path) ────────────────────────────────
     if (config.aiUseToolCalling && !isQuickAction) {
@@ -1358,6 +1381,7 @@ class AssistantManagerClass {
       this.addMessage('assistant', err.message || 'Tool-calling error', 'error');
     }
       this.isProcessing = false;
+      this._setAssistantBusy(false);
       return;
     }
     // ── Legacy <navio-actions> path ──────────────────────────────────────────
@@ -1543,6 +1567,7 @@ class AssistantManagerClass {
     }
 
     this.isProcessing = false;
+    this._setAssistantBusy(false);
   }
 
   _guestDeliver(guestWv, msg) {
@@ -1605,6 +1630,7 @@ class AssistantManagerClass {
       return;
     }
     this.isProcessing = true;
+    this._setAssistantBusy(true);
     try {
       if (config.aiUseToolCalling !== false) {
         await this._processWithTools(text, config, this._historyLabelForAttachments(text), guestWv);
@@ -1615,6 +1641,7 @@ class AssistantManagerClass {
       this._guestDeliver(guestWv, { type: 'assistant', error: true, content: err.message || String(err) });
     }
     this.isProcessing = false;
+    this._setAssistantBusy(false);
   }
 
   async _processGuestLegacyAi(guestWv, text, config) {
@@ -1662,17 +1689,19 @@ class AssistantManagerClass {
       buffer += typeof chunk === 'string' ? chunk : '';
       this._guestDeliver(guestWv, { type: 'streamDelta', text: typeof chunk === 'string' ? chunk : '' });
     });
-    const unDone = window.navio.onAiStreamDone(async () => {
+    const unDone = window.navio.onAiStreamDone(async (payload) => {
       this._clearStreamListeners();
       if (buffer) {
-        this.conversationHistory.push({ role: 'user', content: userHistory }, { role: 'assistant', content: buffer });
+        const out =
+          payload && payload.cancelled ? `${buffer}\n\n*(Stopped)*` : buffer;
+        this.conversationHistory.push({ role: 'user', content: userHistory }, { role: 'assistant', content: out });
         this._trimHistory();
-        this._guestDeliver(guestWv, { type: 'streamFinalize', content: buffer });
+        this._guestDeliver(guestWv, { type: 'streamFinalize', content: out });
         const graphTab = TabManager.getActiveTab?.() || null;
         await window.navio.contextGraph({
           op: 'addTurn',
           role: 'assistant',
-          summary: buffer.slice(0, 200),
+          summary: out.slice(0, 200),
           tabId: graphTab?.id,
           url: graphTab?.url || ''
         });
@@ -2020,15 +2049,14 @@ class AssistantManagerClass {
       this._appendActivityStep(tool, label);
     });
 
-    // Set up abort (sidebar only — guest tab can add stop later via host message)
-    let aborted = false;
+    // Stop button aborts in-flight AI in main (streaming + tool loop).
     if (activityEl) {
       stopBtn = document.createElement('button');
       stopBtn.className = 'navio-agent-stop-btn';
       stopBtn.type = 'button';
       stopBtn.textContent = 'Stop';
       stopBtn.addEventListener('click', () => {
-        aborted = true;
+        this.stopGeneration();
       });
       activityEl.querySelector('.naa-header').appendChild(stopBtn);
     }
@@ -2222,6 +2250,7 @@ class AssistantManagerClass {
     let streamingMsg = null;
     let finalized = false;
     let stallTimer = null;
+    let streamCancelled = false;
 
     // Shared finalize: renders buffer with action cards, saves history.
     // Safe to call from done event, stall timeout, or error handler.
@@ -2237,13 +2266,26 @@ class AssistantManagerClass {
       this._turnStartedAt = null;
 
       if (!buffer) {
-        this.addMessage(
-          'assistant',
-          'No response received. Please try again.',
-          'error',
-          elapsed != null ? { durationMs: elapsed } : null
-        );
+        if (streamCancelled) {
+          this.addMessage(
+            'assistant',
+            'Stopped.',
+            '',
+            elapsed != null ? { durationMs: elapsed } : null
+          );
+        } else {
+          this.addMessage(
+            'assistant',
+            'No response received. Please try again.',
+            'error',
+            elapsed != null ? { durationMs: elapsed } : null
+          );
+        }
         return;
+      }
+
+      if (streamCancelled) {
+        buffer += '\n\n*(Stopped)*';
       }
 
       if (streamingMsg) {
@@ -2302,7 +2344,8 @@ class AssistantManagerClass {
       this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
     });
 
-    const unDone = window.navio.onAiStreamDone(async () => {
+    const unDone = window.navio.onAiStreamDone(async (payload) => {
+      if (payload && payload.cancelled) streamCancelled = true;
       await finalize();
     });
 
@@ -2310,6 +2353,11 @@ class AssistantManagerClass {
       clearTimeout(stallTimer);
       this._clearStreamListeners();
       if (finalized) return;
+      if (msg === 'Stopped' || /abort/i.test(String(msg || ''))) {
+        streamCancelled = true;
+        await finalize();
+        return;
+      }
       if (!buffer) {
         // Nothing received — try a non-streaming fallback
         this.removeTypingIndicator();

@@ -41,9 +41,6 @@
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
       </button>
       <div class="tab-strip-spacer"></div>
-      <button class="tab-strip-toggle" id="btn-tabstrip-toggle" title="Hide tab bar">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-      </button>
       <div id="tab-strip-resize" class="tab-strip-resize" title="Drag to resize tab sidebar" aria-hidden="true"></div>
     </div>
     <div class="titlebar-controls">
@@ -62,11 +59,6 @@
       </button>
     </div>
   </div>
-
-  <!-- Show tab bar handle (visible when tab strip hidden) -->
-  <button class="tab-strip-show" id="btn-tabstrip-show" title="Show tab bar">
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-  </button>
 
   <!-- Main Layout -->
   <div id="app">
@@ -234,7 +226,7 @@
           <!-- Full-page dark backdrop for NTP (always dark) -->
           <div class="ntp-bg-layer"></div>
 
-          <!-- Top bar: clock + services (weather lives in the widget grid below; avoids clipped mini pill) -->
+          <!-- Top bar: clock + services -->
           <div class="ntp-topbar">
             <div class="ntp-topbar-left" aria-hidden="true"></div>
             <div class="ntp-topbar-center">
@@ -300,71 +292,11 @@
             <div class="ntp-search">
               <div class="ntp-search-glow"></div>
               <svg class="ntp-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" id="ntp-search-input" placeholder="Search or ask anything…" spellcheck="false" autocomplete="off" aria-describedby="ntp-smart-row ntp-primary-hint">
+              <input type="text" id="ntp-search-input" placeholder="Search or ask anything…" spellcheck="false" autocomplete="off">
               <button class="ntp-search-send" id="ntp-search-send" title="Ask Navio AI">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
               </button>
             </div>
-            <p class="ntp-primary-hint" id="ntp-primary-hint">Type and press <kbd>Enter</kbd> — Navio searches the web or answers with AI from one box.</p>
-            <div id="ntp-smart-row" class="ntp-smart-row" role="status" aria-live="polite"></div>
-            <p class="ntp-search-hint" id="ntp-kbd-hint"><kbd>/</kbd> focus · <kbd>Enter</kbd> go</p>
-
-            <details class="ntp-quick-starts">
-            <summary class="ntp-quick-starts-summary">Quick starts <span class="ntp-quick-starts-optional">(optional)</span></summary>
-            <div class="ntp-ai-suggestions" id="ntp-ai-suggestions">
-              <div class="ai-starter-host">
-                <div class="ai-starter-face ai-starter-face--categories">
-                  <div class="ai-starter-pill-row" role="group" aria-label="AI quick tasks">
-                    <button type="button" class="ntp-ai-suggestion ai-starter-cat" data-starter-group="email">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                      Email tasks
-                    </button>
-                    <button type="button" class="ntp-ai-suggestion ai-starter-cat" data-starter-group="news">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-                      News briefing
-                    </button>
-                    <button type="button" class="ntp-ai-suggestion ai-starter-cat" data-starter-group="page">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-                      This page
-                    </button>
-                    <button type="button" class="ntp-ai-suggestion ai-starter-cat" data-starter-group="trip">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                      Weekend trip
-                    </button>
-                  </div>
-                </div>
-                <div class="ai-starter-face ai-starter-face--options" hidden>
-                  <div class="ai-starter-options-head">
-                    <button type="button" class="ai-starter-back">← Back</button>
-                  </div>
-                  <div class="ai-starter-panel ai-starter-group" data-starter-group="email" hidden>
-                    <button type="button" class="ai-starter-option" data-prompt="In my connected email (Gmail or Outlook), find every unread message from the past 7 days through today that I have not finished handling. For each one that reasonably needs a reply, draft a reply and save it as a draft only — never send. Give me a short checklist of what you processed.">Draft replies: unread this week</button>
-                    <button type="button" class="ai-starter-option" data-prompt="In my email from the past 7 days through today, find messages about purchase orders (PO) where the supplier or vendor has not clearly acknowledged or confirmed the order. List each thread with sender, subject, and date, and draft a polite follow-up for each, saved as drafts only — never send.">POs not acknowledged</button>
-                    <button type="button" class="ai-starter-option" data-prompt="In my email from the past 7 days through today, find RFQs, quotes, or pricing requests I sent where there has been no response and I have not sent a follow-up. List each with context and draft brief follow-up messages as drafts only — never send.">RFQs / quotes: no reply yet</button>
-                    <button type="button" class="ai-starter-option" data-prompt="In my connected email in the browser (Gmail or Outlook), scan threads from the past 7 days through today and find every message that matches either: (A) a customer PO situation where a sales order has not been sent to the customer yet, or (B) a purchase order to a vendor or supplier that has not been acknowledged. For each matching thread, open that exact conversation in a new browser tab (use the mail client’s open-in-new-tab, middle-click on the row, or equivalent) so I can review them side by side. Process matches one by one until each is opened in its own tab. When finished, reply with a numbered list of what you opened: subject, sender, date, and whether it matched (A) or (B).">Open PO / SO threads in new tabs</button>
-                  </div>
-                  <div class="ai-starter-panel ai-starter-group" data-starter-group="news" hidden>
-                    <button type="button" class="ai-starter-option" data-prompt="Summarize today's top news from trusted sources. Lead with the biggest stories, then 3–5 bullet follow-ups I might care about.">Trusted sources overview</button>
-                    <button type="button" class="ai-starter-option" data-prompt="Give me a business and markets focused news briefing for today: major indices, earnings, deals, and macro moves. Keep it factual and cite sources where possible.">Business &amp; markets</button>
-                    <button type="button" class="ai-starter-option" data-prompt="Give me a technology news briefing for today: product launches, AI, security, and major tech policy. Short paragraphs with clear takeaways.">Technology</button>
-                    <button type="button" class="ai-starter-option" data-prompt="Ultra-short news digest: one crisp line per story, maximum 8 stories, no fluff, prioritize global impact.">Speed digest</button>
-                  </div>
-                  <div class="ai-starter-panel ai-starter-group" data-starter-group="page" hidden>
-                    <button type="button" class="ai-starter-option" data-prompt="Look at the page open in my active tab. Give a short summary and list three concrete next actions I could take (book, buy, reply, save, follow up, etc.).">Summary + next actions</button>
-                    <button type="button" class="ai-starter-option" data-prompt="From the page in my active tab, give a 3-bullet TL;DR only.">3-bullet TL;DR</button>
-                    <button type="button" class="ai-starter-option" data-prompt="From the page in my active tab, extract key facts, numbers, dates, and names as a structured list.">Key facts &amp; figures</button>
-                    <button type="button" class="ai-starter-option" data-prompt="From the page in my active tab, list risks, caveats, or fine print I should not miss.">Risks &amp; fine print</button>
-                  </div>
-                  <div class="ai-starter-panel ai-starter-group" data-starter-group="trip" hidden>
-                    <button type="button" class="ai-starter-option" data-prompt="Help me plan a weekend trip. Ask me for departure city, budget, and interests if you need them, then suggest 2–3 destination options with a loose day-by-day outline.">Balanced plan</button>
-                    <button type="button" class="ai-starter-option" data-prompt="Help me plan a budget-conscious weekend trip. Ask only what you must, then suggest 2 options with estimated cost ranges and money-saving tips.">Budget focus</button>
-                    <button type="button" class="ai-starter-option" data-prompt="Help me plan a family-friendly weekend trip with kid-appropriate pacing. Ask region or city if unknown, then suggest 2 options with relaxed schedules.">Family friendly</button>
-                    <button type="button" class="ai-starter-option" data-prompt="Help me plan an outdoor-focused weekend: hiking, parks, or nature within about 3 hours travel. Ask departure city if you need it, then suggest 2 itineraries.">Outdoors &amp; nature</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            </details>
           </div>
 
           <!-- Quick links -->
@@ -454,39 +386,6 @@
                 <div class="ntp-widget-loading">
                   <span></span><span></span><span></span>
                 </div>
-              </div>
-            </div>
-
-            <!-- Weather — full width: 7-day (2×7 grid) or hourly (2×12) -->
-            <div class="ntp-widget ntp-weather-widget" id="ntp-widget-weather">
-              <div class="ntp-widget-header ntp-weather-widget-header">
-                <div class="ntp-weather-widget-header-top">
-                  <div class="ntp-weather-widget-title">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/><circle cx="12" cy="12" r="4"/></svg>
-                    <span>Weather</span>
-                  </div>
-                  <div class="ntp-weather-widget-header-actions">
-                    <div class="ntp-weather-view-toggle" role="group" aria-label="Forecast view">
-                      <button type="button" class="ntp-weather-view-btn active" data-weather-view="daily" title="Seven-day outlook">7 days</button>
-                      <button type="button" class="ntp-weather-view-btn" data-weather-view="hourly" title="Next 24 hours">Hourly</button>
-                    </div>
-                    <button type="button" class="ntp-widget-action" id="ntp-weather-retry-btn" style="display:none" title="Request location again">⟳ Location</button>
-                    <button type="button" class="ntp-widget-popout" data-widget="weather" title="Open in new tab">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                    </button>
-                  </div>
-                </div>
-                <div class="ntp-weather-widget-header-sub">
-                  <span class="ntp-widget-source ntp-weather-location" id="ntp-weather-location-label" title="From your device location or last saved position"></span>
-                </div>
-              </div>
-              <div class="ntp-widget-body ntp-weather-widget-body" id="ntp-weather-widget-body">
-                <div class="ntp-widget-loading ntp-weather-loading" id="ntp-weather-loading">
-                  <span></span><span></span><span></span>
-                </div>
-                <div id="ntp-weather-error" class="ntp-weather-error" style="display:none"></div>
-                <div id="ntp-weather-grid-daily" class="ntp-wx-grid ntp-wx-grid--daily" style="display:none" aria-hidden="true"></div>
-                <div id="ntp-weather-grid-hourly" class="ntp-wx-grid ntp-wx-grid--hourly" style="display:none" aria-hidden="true"></div>
               </div>
             </div>
           </div>
@@ -1557,6 +1456,7 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
           </button>
           <textarea id="assistant-input" placeholder="Ask Navio anything..." rows="1"></textarea>
+          <button type="button" class="voice-btn assistant-stop-btn" id="btn-assistant-stop" title="Stop generating" hidden>Stop</button>
           <button class="send-btn" id="btn-send-message" title="Send">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
