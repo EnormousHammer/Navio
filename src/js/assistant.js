@@ -52,11 +52,29 @@ const NAVIO_ASSISTANT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 const NAVIO_ASSISTANT_PDF_MAX_BYTES = 12 * 1024 * 1024;
 const NAVIO_ASSISTANT_TEXT_MAX_CHARS = 180000;
 const NAVIO_ASSISTANT_MAX_ATTACHMENTS = 8;
+/** Unknown extensions: try UTF-8 decode when under this size (code, configs, odd MIME). */
+const NAVIO_ASSISTANT_HEURISTIC_TEXT_MAX_BYTES = 768 * 1024;
+
+function navioLooksLikePrintableText(s) {
+  if (!s || typeof s !== 'string') return false;
+  const sample = s.slice(0, Math.min(12000, s.length));
+  if (!sample.length) return false;
+  let ctrl = 0;
+  for (let i = 0; i < sample.length; i++) {
+    const c = sample.charCodeAt(i);
+    if (c === 0) return false;
+    if (c < 9 || (c > 13 && c < 32)) ctrl++;
+  }
+  return ctrl / sample.length < 0.03;
+}
 
 function navioIsTextLikeFile(file) {
   const n = (file.name || '').toLowerCase();
   if (file.type && file.type.startsWith('text/')) return true;
-  return /\.(txt|md|json|csv|xml|html?|css|js|mjs|cjs|ts|tsx|jsx|c|h|cpp|hpp|py|java|kt|rs|go|yaml|yml|toml|ini|log|sh|bat|ps1|env|svg|sql|vue|svelte)$/i.test(
+  if (/^(application\/(json|xml|javascript|x-javascript|x-httpd-php|sql|graphql)|message\/rfc822)/i.test(file.type || '')) {
+    return true;
+  }
+  return /\.(txt|md|mdx|json|json5|jsonc|csv|tsv|xml|html?|htm|xhtml|css|scss|sass|less|js|mjs|cjs|ts|tsx|jsx|c|h|cpp|hpp|cc|cxx|py|pyi|pyw|java|kt|kts|rs|go|yaml|yml|toml|ini|cfg|conf|config|log|sh|bash|zsh|fish|bat|cmd|ps1|psm1|env|svg|sql|vue|svelte|rb|erb|php|swift|dart|scala|sbt|gradle|clj|cljs|edn|ex|exs|erl|hrl|hs|lhs|ml|mli|fs|fsi|fsx|dockerfile|gitignore|gitattributes|editorconfig|properties|lock|pro|cmake|makefile|mk|dockerignore|graphql|gql|wasm\.wat|ipynb)$/i.test(
     n
   );
 }
@@ -146,6 +164,8 @@ class AssistantManagerClass {
     this._guestChatWebview = null;
     /** URLs from last Perplexity connector call this turn (for citation chips in the assistant bubble). */
     this._pendingConnectorCitations = null;
+    /** @type {number | null} performance.now() when the current model turn started */
+    this._turnStartedAt = null;
 
     // Minimal placeholder — the authoritative prompt is loaded from
     // navio-system-prompt.txt (or -legacy.txt) and injected by
@@ -341,6 +361,28 @@ class AssistantManagerClass {
           ? `${text.slice(0, NAVIO_ASSISTANT_TEXT_MAX_CHARS)}\n\n… [truncated]`
           : text;
         entry.thumb = '';
+      } else if (file.size <= NAVIO_ASSISTANT_HEURISTIC_TEXT_MAX_BYTES) {
+        const buf = await file.arrayBuffer();
+        let decoded = '';
+        try {
+          decoded = new TextDecoder('utf-8', { fatal: false }).decode(buf);
+        } catch {
+          decoded = '';
+        }
+        if (navioLooksLikePrintableText(decoded)) {
+          entry.status = 'ready';
+          entry.kind = 'text';
+          entry.text =
+            decoded.length > NAVIO_ASSISTANT_TEXT_MAX_CHARS
+              ? `${decoded.slice(0, NAVIO_ASSISTANT_TEXT_MAX_CHARS)}\n\n… [truncated]`
+              : decoded;
+          entry.thumb = '';
+        } else {
+          entry.status = 'ready';
+          entry.kind = 'binary';
+          entry.text = '';
+          entry.thumb = '';
+        }
       } else {
         entry.status = 'ready';
         entry.kind = 'binary';
@@ -1020,12 +1062,13 @@ class AssistantManagerClass {
 
     // ── Tool-calling mode (new agentic path) ────────────────────────────────
     if (config.aiUseToolCalling && !isQuickAction) {
-      try {
-        await this._processWithTools(text, config, historyUserLabel || this._historyLabelForAttachments(text));
-      } catch (err) {
-        this.removeTypingIndicator();
-        this.addMessage('assistant', err.message || 'Tool-calling error', 'error');
-      }
+    try {
+      await this._processWithTools(text, config, historyUserLabel || this._historyLabelForAttachments(text));
+    } catch (err) {
+      this.removeTypingIndicator();
+      this._turnStartedAt = null;
+      this.addMessage('assistant', err.message || 'Tool-calling error', 'error');
+    }
       this.isProcessing = false;
       return;
     }
@@ -1153,16 +1196,21 @@ class AssistantManagerClass {
       if (useStream) {
         await this._processStream(messages, userHistory);
       } else {
+        this._turnStartedAt = performance.now();
         const result = await window.navio.aiRequest({ messages });
         this.removeTypingIndicator();
+        const durationMs =
+          this._turnStartedAt != null ? Math.round(performance.now() - this._turnStartedAt) : null;
+        this._turnStartedAt = null;
         if (result.error) {
-          this.addMessage('assistant', result.error, 'error');
+          this.addMessage('assistant', result.error, 'error', durationMs != null ? { durationMs } : null);
         } else {
           const cite =
             this._pendingConnectorCitations && this._pendingConnectorCitations.length
               ? { citations: this._pendingConnectorCitations }
               : null;
-          this.addMessage('assistant', result.content, '', cite);
+          const meta = cite ? { ...cite, durationMs } : { durationMs };
+          this.addMessage('assistant', result.content, '', meta);
           this._pendingConnectorCitations = null;
           this._checkAndShowActionFormatWarning(result.content, this.messagesEl.querySelector('.assistant-message:last-of-type'));
           if (userHistory) {
@@ -1186,6 +1234,7 @@ class AssistantManagerClass {
       }
     } catch (err) {
       this.removeTypingIndicator();
+      this._turnStartedAt = null;
       this.addMessage('assistant', err.message, 'error');
     }
 
@@ -1459,7 +1508,8 @@ class AssistantManagerClass {
     if (!guestWv) {
       activityEl = document.createElement('div');
       activityEl.className = 'navio-agent-activity';
-      activityEl.innerHTML = '<div class="naa-header"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg> Navio is working...</div><div class="naa-steps"></div>';
+      activityEl.innerHTML =
+        '<div class="naa-header"><span class="naa-header-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg></span><span class="naa-header-text"><span class="naa-title">Working</span><span class="naa-sub">Tools &amp; reasoning</span></span></div><div class="naa-steps"></div>';
       this.messagesEl.appendChild(activityEl);
       this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
       this._currentActivityEl = activityEl;
@@ -1664,10 +1714,14 @@ class AssistantManagerClass {
     if (typeof TabManager !== 'undefined') {
       TabManager.setAgentControlledTab?.(TabManager.findTabIdForWebview?.(toolWv));
     }
+    this._turnStartedAt = performance.now();
     const response = await window.navio.aiRequestWithTools({
       messages,
       webContentsId: toolWv?.getWebContentsId?.()
     });
+    const toolTurnMs =
+      this._turnStartedAt != null ? Math.round(performance.now() - this._turnStartedAt) : null;
+    this._turnStartedAt = null;
 
     // Cleanup
     unNav();
@@ -1705,7 +1759,7 @@ class AssistantManagerClass {
       if (header) {
         if (stopBtn) stopBtn.remove();
         const stepsCount = (response.toolLog || []).length;
-        header.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Done${stepsCount ? ` (${stepsCount} steps)` : ''}`;
+        header.innerHTML = `<span class="naa-header-icon naa-header-icon--done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span><span class="naa-header-text"><span class="naa-title">Done${stepsCount ? ` · ${stepsCount} step${stepsCount === 1 ? '' : 's'}` : ''}</span><span class="naa-sub">Reply below</span></span>`;
       }
     } else if (guestWv) {
       this._guestDeliver(guestWv, {
@@ -1741,7 +1795,7 @@ class AssistantManagerClass {
     // Display final response
     if (response.error) {
       if (guestWv) this._guestDeliver(guestWv, { type: 'assistant', error: true, content: response.error });
-      else this.addMessage('assistant', response.error, 'error');
+      else this.addMessage('assistant', response.error, 'error', toolTurnMs != null ? { durationMs: toolTurnMs } : null);
     } else if (response.content) {
       if (guestWv) this._guestDeliver(guestWv, { type: 'assistant', content: response.content });
       else {
@@ -1749,7 +1803,9 @@ class AssistantManagerClass {
           this._pendingConnectorCitations && this._pendingConnectorCitations.length
             ? { citations: this._pendingConnectorCitations }
             : null;
-        this.addMessage('assistant', response.content, '', cite);
+        const meta = cite ? { ...cite } : {};
+        if (toolTurnMs != null) meta.durationMs = toolTurnMs;
+        this.addMessage('assistant', response.content, '', meta);
         this._pendingConnectorCitations = null;
       }
       const userHistory = historyUserLabel || this._historyLabelForAttachments(text);
@@ -1769,6 +1825,7 @@ class AssistantManagerClass {
     }
     } finally {
       this._guestChatWebview = null;
+      if (this._turnStartedAt != null) this._turnStartedAt = null;
       if (typeof TabManager !== 'undefined') {
         if (this._takeoverMode) TabManager.setAgentControlledTab?.(TabManager.getTakeoverHighlightTabId?.() ?? null);
         else TabManager.setAgentControlledTab?.(null);
@@ -1785,8 +1842,10 @@ class AssistantManagerClass {
     const stepsEl = this._currentActivityEl.querySelector('.naa-steps');
     if (!stepsEl) return;
     const step = document.createElement('div');
-    step.className = 'naa-step';
-    step.innerHTML = `<span class="naa-tool">${tool}</span> <span class="naa-label">${label}</span>`;
+    const isThink = tool === 'thinking';
+    step.className = isThink ? 'naa-step naa-step--thinking' : 'naa-step';
+    const toolShown = isThink ? 'Thinking' : this._escapeHtml(String(tool));
+    step.innerHTML = `<span class="naa-tool">${toolShown}</span> <span class="naa-label">${this._escapeHtml(String(label))}</span>`;
     stepsEl.appendChild(step);
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
   }
@@ -1829,6 +1888,7 @@ class AssistantManagerClass {
 
   async _processStream(messages, userHistory) {
     this._clearStreamListeners();
+    this._turnStartedAt = performance.now();
     let buffer = '';
     let streamingMsg = null;
     let finalized = false;
@@ -1843,18 +1903,30 @@ class AssistantManagerClass {
       this._clearStreamListeners();
       this.removeTypingIndicator();
 
+      const elapsed =
+        this._turnStartedAt != null ? Math.round(performance.now() - this._turnStartedAt) : null;
+      this._turnStartedAt = null;
+
       if (!buffer) {
-        this.addMessage('assistant', 'No response received. Please try again.', 'error');
+        this.addMessage(
+          'assistant',
+          'No response received. Please try again.',
+          'error',
+          elapsed != null ? { durationMs: elapsed } : null
+        );
         return;
       }
 
       if (streamingMsg) {
         const contentEl = streamingMsg.querySelector('.message-content');
         if (contentEl) {
+          contentEl.classList.remove('streaming-content');
           contentEl.innerHTML = this.formatMessage(buffer, true);
           await this._wireActions(contentEl);
           this._checkAndShowActionFormatWarning(buffer, streamingMsg);
         }
+        this._attachCopyButtonToMessage(streamingMsg, contentEl);
+        if (elapsed != null) this._appendMessageDurationRow(streamingMsg, elapsed);
         if (this._pendingConnectorCitations && this._pendingConnectorCitations.length) {
           this._appendCitationChips(streamingMsg, this._pendingConnectorCitations);
         }
@@ -1887,6 +1959,7 @@ class AssistantManagerClass {
         this.removeTypingIndicator();
         streamingMsg = document.createElement('div');
         streamingMsg.className = 'message assistant-message';
+        streamingMsg.appendChild(this._messageRoleStrip('assistant'));
         const contentEl = document.createElement('div');
         contentEl.className = 'message-content streaming-content';
         streamingMsg.appendChild(contentEl);
@@ -1909,14 +1982,18 @@ class AssistantManagerClass {
         // Nothing received — try a non-streaming fallback
         this.removeTypingIndicator();
         const fallback = await window.navio.aiRequest({ messages });
+        const fbMs =
+          this._turnStartedAt != null ? Math.round(performance.now() - this._turnStartedAt) : null;
+        this._turnStartedAt = null;
         if (fallback.error) {
-          this.addMessage('assistant', fallback.error || msg, 'error');
+          this.addMessage('assistant', fallback.error || msg, 'error', fbMs != null ? { durationMs: fbMs } : null);
         } else {
           const cite =
             this._pendingConnectorCitations && this._pendingConnectorCitations.length
               ? { citations: this._pendingConnectorCitations }
               : null;
-          this.addMessage('assistant', fallback.content, '', cite);
+          const meta = cite ? { ...cite, durationMs: fbMs } : { durationMs: fbMs };
+          this.addMessage('assistant', fallback.content, '', meta);
           this._pendingConnectorCitations = null;
           this._checkAndShowActionFormatWarning(
             fallback.content,
@@ -1943,6 +2020,7 @@ class AssistantManagerClass {
     if (streamResult && streamResult.ok === false && !buffer) {
       clearTimeout(stallTimer);
       this.removeTypingIndicator();
+      this._turnStartedAt = null;
     }
   }
 
@@ -2016,6 +2094,63 @@ class AssistantManagerClass {
     return `[Tab digest — ${lines.length} open tab(s); excerpts are truncated for token limits]\n\n${lines.join('\n\n')}`;
   }
 
+  _formatTurnDuration(ms) {
+    const n = Math.max(0, Math.round(Number(ms) || 0));
+    if (n < 700) return `${n} ms`;
+    const s = n / 1000;
+    return s < 10 ? `${s.toFixed(1)} s` : `${Math.round(s)} s`;
+  }
+
+  _messageRoleStrip(role, type = '') {
+    const strip = document.createElement('div');
+    if (role === 'user') {
+      strip.className = 'msg-role-strip msg-role-strip--user';
+      strip.innerHTML = '<span class="msg-role-label">You</span>';
+      return strip;
+    }
+    if (type === 'error') {
+      strip.className = 'msg-role-strip msg-role-strip--error';
+      strip.innerHTML = '<span class="msg-role-label">Couldn’t complete</span>';
+      return strip;
+    }
+    strip.className = 'msg-role-strip msg-role-strip--assistant';
+    strip.innerHTML =
+      '<span class="msg-role-label">Navio</span><span class="msg-role-badge" aria-hidden="true">AI</span>';
+    return strip;
+  }
+
+  _appendMessageDurationRow(msgEl, durationMs) {
+    if (!msgEl || durationMs == null || msgEl.querySelector('.msg-meta')) return;
+    const row = document.createElement('div');
+    row.className = 'msg-meta';
+    const span = document.createElement('span');
+    span.className = 'msg-meta-time';
+    span.title = 'Time from your send to this reply';
+    span.textContent = this._formatTurnDuration(durationMs);
+    row.appendChild(span);
+    msgEl.appendChild(row);
+  }
+
+  _attachCopyButtonToMessage(msgEl, contentEl) {
+    if (!msgEl || !contentEl || msgEl.querySelector('.msg-copy-btn')) return;
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'msg-copy-btn';
+    copyBtn.title = 'Copy message';
+    copyBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+    copyBtn.addEventListener('click', () => {
+      const raw = contentEl.innerText || contentEl.textContent || '';
+      navigator.clipboard.writeText(raw.trim()).then(() => {
+        copyBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+        copyBtn.classList.add('msg-copy-ok');
+        setTimeout(() => {
+          copyBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+          copyBtn.classList.remove('msg-copy-ok');
+        }, 1800);
+      }).catch(() => {});
+    });
+    msgEl.insertBefore(copyBtn, contentEl);
+  }
+
   addMessage(role, content, type = '', meta = null) {
     const msgEl = document.createElement('div');
     msgEl.className = `message ${role}-message${type ? ' message-' + type : ''}`;
@@ -2024,6 +2159,7 @@ class AssistantManagerClass {
     contentEl.className = 'message-content';
 
     if (role === 'user' && content && typeof content === 'object' && !Array.isArray(content) && content.files) {
+      msgEl.appendChild(this._messageRoleStrip('user'));
       const parts = [];
       if (content.text && String(content.text).trim()) {
         parts.push(`<div class="user-msg-text">${this.formatMessage(String(content.text), false)}</div>`);
@@ -2044,6 +2180,8 @@ class AssistantManagerClass {
       this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
       return;
     }
+
+    msgEl.appendChild(this._messageRoleStrip(role, type));
 
     if (type === 'error') {
       const clean = content.replace(/^\*\*Error:\*\*\s*/i, '').replace(/^\*\*Connection error:\*\*\s*/i, '');
@@ -2082,6 +2220,9 @@ class AssistantManagerClass {
     }
 
     msgEl.appendChild(contentEl);
+    if (meta && meta.durationMs != null && (role === 'assistant' || type === 'error')) {
+      this._appendMessageDurationRow(msgEl, meta.durationMs);
+    }
     if (role === 'assistant' && meta && Array.isArray(meta.citations) && meta.citations.length) {
       this._appendCitationChips(msgEl, meta.citations);
     }
@@ -3962,11 +4103,15 @@ ${pageInfo}${snapText}`;
 
   showTypingIndicator() {
     const indicator = document.createElement('div');
-    indicator.className = 'message assistant-message';
+    indicator.className = 'message assistant-message typing-indicator-wrap';
     indicator.id = 'typing-indicator';
     indicator.innerHTML = `
+      <div class="msg-role-strip msg-role-strip--assistant msg-role-strip--typing">
+        <span class="msg-role-label">Navio</span><span class="msg-role-badge" aria-hidden="true">AI</span>
+      </div>
       <div class="message-content typing-indicator">
-        <span></span><span></span><span></span>
+        <span class="typing-indicator-label">Composing</span>
+        <span class="typing-dots"><span></span><span></span><span></span></span>
       </div>
     `;
     this.messagesEl.appendChild(indicator);
