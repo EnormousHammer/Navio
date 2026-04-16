@@ -55,6 +55,8 @@ const DEFAULT_CONFIG = {
   downloadAskWhere: true,
   /** When true, open File Explorer to the file after a successful download. Off by default to avoid interrupting browsing. */
   downloadRevealInFolder: false,
+  /** After first "ask where" save dialog, we offer "always use Downloads" once; then this is set true. */
+  downloadAskFollowupSeen: false,
   /** Google Translate "translate to" language (e.g. en, es, zh-cn). Empty = use OS locale. */
   translateTargetLang: '',
   aiAutoExecute: false,

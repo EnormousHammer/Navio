@@ -483,7 +483,7 @@
       if (!row) {
         row = document.createElement('div');
         row.className = 'downloads-drawer-row';
-        row.innerHTML = `<span class="dd-name"></span><div class="dd-progress-wrap"><div class="dd-progress-bar"></div></div><span class="dd-state"></span><span class="dd-actions"></span>`;
+        row.innerHTML = `<span class="dd-name"></span><div class="dd-progress-wrap"><div class="dd-progress-bar"></div></div><span class="dd-meta"></span><span class="dd-state"></span><span class="dd-actions"></span>`;
         list.appendChild(row);
         rowsByPath.set(savePath, row);
         order.push(savePath);
@@ -494,9 +494,31 @@
       return row;
     }
 
+    const orb = document.getElementById('download-activity-orb');
+    const dlBadge = document.getElementById('download-activity-badge');
+    let activeDownloadCount = 0;
+
+    function setDownloadChrome(active) {
+      const wrap = document.querySelector('.nav-downloads-wrap');
+      if (wrap) wrap.classList.toggle('download-active', !!active);
+      if (orb) orb.classList.toggle('download-pulse', !!active);
+      if (dlBadge) {
+        if (activeDownloadCount > 0) {
+          dlBadge.hidden = false;
+          dlBadge.textContent = String(activeDownloadCount);
+        } else {
+          dlBadge.hidden = true;
+        }
+      }
+    }
+
     window.navio.onDownloadStarted((d) => {
       const row = ensureRow(d.savePath, d.filename);
       if (!row) return;
+      activeDownloadCount++;
+      setDownloadChrome(true);
+      const meta = row.querySelector('.dd-meta');
+      if (meta) meta.textContent = d.totalStr || (d.total > 0 ? '' : '');
       row.querySelector('.dd-state').textContent = 'Starting…';
       const bar = row.querySelector('.dd-progress-bar');
       if (bar) bar.style.width = '0%';
@@ -511,9 +533,24 @@
       const pct = total > 0 ? Math.min(100, Math.round((rec / total) * 100)) : 0;
       const bar = row.querySelector('.dd-progress-bar');
       if (bar) bar.style.width = `${pct}%`;
-      row.querySelector('.dd-state').textContent = total ? `${pct}%` : 'Downloading…';
+      const meta = row.querySelector('.dd-meta');
+      if (meta) {
+        const parts = [];
+        if (d.receivedStr && d.totalStr) parts.push(`${d.receivedStr} / ${d.totalStr}`);
+        else if (d.receivedStr) parts.push(d.receivedStr);
+        if (d.bytesPerSec && d.bytesPerSec > 0) {
+          parts.push(`${(d.bytesPerSec / 1024).toFixed(0)} KB/s`);
+        }
+        if (d.etaStr) parts.push(d.etaStr);
+        meta.textContent = parts.join(' · ');
+      }
+      const st = row.querySelector('.dd-state');
+      if (st) {
+        st.textContent = total ? `${pct}%` : 'Downloading…';
+      }
     });
     window.navio.onDownloadDone((d) => {
+      if (activeDownloadCount > 0) activeDownloadCount--;
       let row = d.savePath ? rowsByPath.get(d.savePath) : null;
       if (!row && d.savePath) {
         row = ensureRow(d.savePath, d.filename);
@@ -522,6 +559,12 @@
         const bar = row.querySelector('.dd-progress-bar');
         if (bar) bar.style.width = '100%';
         row.querySelector('.dd-state').textContent = d.state === 'completed' ? 'Completed' : String(d.state || '');
+        const meta = row.querySelector('.dd-meta');
+        if (meta && d.state === 'completed' && d.totalStr) {
+          meta.textContent = d.totalStr;
+        } else if (meta && d.state === 'completed' && !d.totalStr) {
+          meta.textContent = '';
+        }
         const actions = row.querySelector('.dd-actions');
         actions.innerHTML = '';
         if (d.state === 'completed' && d.savePath) {
@@ -531,6 +574,21 @@
           b.addEventListener('click', () => window.navio.showInFolder(d.savePath));
           actions.appendChild(b);
         }
+      }
+      if (activeDownloadCount === 0) {
+        setDownloadChrome(false);
+        if (orb && d.state === 'completed') {
+          orb.classList.add('download-done-pulse');
+          setTimeout(() => {
+            try {
+              orb.classList.remove('download-done-pulse');
+            } catch {
+              /* ignore */
+            }
+          }, 1400);
+        }
+      } else {
+        setDownloadChrome(true);
       }
     });
     toggle &&

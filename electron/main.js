@@ -25,6 +25,7 @@ const { loadWorkflow, saveWorkflow, listWorkflows, deleteWorkflow } = require('.
 const { getMcpTools, callMcpTool, isMcpTool, initFromConfig: initMcpFromConfig, registerMcpIpc } = require('./navio-mcp');
 const { initScheduler, registerSchedulerIpc, stopAll: stopAllSchedulers } = require('./navio-scheduler');
 const { shouldBlockWebPopup } = require('./ad-block-patterns');
+const { wcCanGoBack, wcCanGoForward } = require('./wc-nav-history');
 
 function getProfileIdFromLaunch() {
   const a = process.argv.find((x) => typeof x === 'string' && x.startsWith('--navio-profile='));
@@ -846,6 +847,42 @@ function bindNavioGuestWindowOpenOnce(guestContents) {
   });
 }
 
+/**
+ * Chromium "automatic dark theme" for web page content (CDP), aligned with app theme.
+ * Keeps body/text contrast readable vs. only toggling prefers-color-scheme on light sites.
+ */
+function navioApplyAutoDarkModeToWebContents(contents, enabled) {
+  if (!contents || (typeof contents.isDestroyed === 'function' && contents.isDestroyed())) return;
+  try {
+    const dbg = contents.debugger;
+    if (!dbg.isAttached()) {
+      dbg.attach('1.3');
+    }
+    dbg
+      .sendCommand('Emulation.setAutoDarkModeOverride', { enabled: !!enabled })
+      .catch(() => {});
+  } catch {
+    /* DevTools may already be attached; ignore */
+  }
+}
+
+function navioSyncAllGuestWebAutoDarkMode() {
+  const cfg = loadConfig();
+  const enabled = cfg.theme !== 'light';
+  try {
+    for (const wc of electronWebContents.getAllWebContents()) {
+      try {
+        if (typeof wc.getType !== 'function' || wc.getType() !== 'webview') continue;
+        navioApplyAutoDarkModeToWebContents(wc, enabled);
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 function installNavioWebviewGuestPopupRouting() {
   if (navioWebviewGuestPopupRoutingInstalled) return;
   navioWebviewGuestPopupRoutingInstalled = true;
@@ -853,6 +890,12 @@ function installNavioWebviewGuestPopupRouting() {
     try {
       if (typeof contents.getType === 'function' && contents.getType() === 'webview') {
         bindNavioGuestWindowOpenOnce(contents);
+        const applyForCurrentTheme = () => {
+          const cfg = loadConfig();
+          navioApplyAutoDarkModeToWebContents(contents, cfg.theme !== 'light');
+        };
+        queueMicrotask(applyForCurrentTheme);
+        contents.once('did-finish-load', applyForCurrentTheme);
       }
     } catch {
       /* ignore */
@@ -946,6 +989,9 @@ ipcMain.handle('navio-internal-chat-page-url', () => {
 });
 ipcMain.handle('save-config', (event, partial) => {
   saveConfig(partial);
+  if (partial && Object.prototype.hasOwnProperty.call(partial, 'theme')) {
+    navioSyncAllGuestWebAutoDarkMode();
+  }
   return true;
 });
 
@@ -6258,8 +6304,8 @@ ipcMain.handle('show-webview-context-menu', (event, { webContentsId, x, y, param
       /* ignore */
     }
 
-    menu.append(new MenuItem({ label: 'Back', click: () => { if (wc.canGoBack()) wc.goBack(); }, enabled: wc.canGoBack() }));
-    menu.append(new MenuItem({ label: 'Forward', click: () => { if (wc.canGoForward()) wc.goForward(); }, enabled: wc.canGoForward() }));
+    menu.append(new MenuItem({ label: 'Back', click: () => { if (wcCanGoBack(wc)) wc.goBack(); }, enabled: wcCanGoBack(wc) }));
+    menu.append(new MenuItem({ label: 'Forward', click: () => { if (wcCanGoForward(wc)) wc.goForward(); }, enabled: wcCanGoForward(wc) }));
     menu.append(new MenuItem({ label: 'Reload', click: () => wc.reload() }));
     menu.append(new MenuItem({
       label: 'Print…',

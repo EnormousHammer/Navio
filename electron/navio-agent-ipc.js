@@ -1,6 +1,7 @@
 'use strict';
 
 const { ipcMain, webContents: electronWebContents } = require('electron');
+const { wcCanGoBack, wcCanGoForward } = require('./wc-nav-history');
 
 /**
  * Sequential low-risk agent steps (scroll, back, forward).
@@ -53,10 +54,10 @@ async function executeStep(wc, action, params, store) {
 
   switch (action) {
     case 'goBack':
-      if (wc.canGoBack()) wc.goBack();
+      if (wcCanGoBack(wc)) wc.goBack();
       return { success: true };
     case 'goForward':
-      if (wc.canGoForward()) wc.goForward();
+      if (wcCanGoForward(wc)) wc.goForward();
       return { success: true };
     case 'scroll': {
       const dir = (params && params.direction) || 'down';

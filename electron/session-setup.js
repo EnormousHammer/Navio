@@ -59,6 +59,21 @@ function originHostname(origin) {
   }
 }
 
+function _navioFormatBytes(n) {
+  if (n == null || !Number.isFinite(n) || n < 0) return '';
+  if (n < 1024) return `${Math.round(n)} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function _navioFormatEta(sec) {
+  if (sec == null || !Number.isFinite(sec) || sec < 0) return '';
+  if (sec < 60) return `${Math.max(1, Math.ceil(sec))}s left`;
+  const m = Math.floor(sec / 60);
+  const s = Math.ceil(sec % 60);
+  return `${m}m ${s}s left`;
+}
+
 /** Count of pop-ups denied by shouldBlockWebPopup (main + sync IPC). */
 let adPopupBlockedCount = 0;
 
@@ -179,28 +194,80 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
           return;
         }
 
+        if (cfg.downloadAskWhere === true && cfg.downloadAskFollowupSeen !== true) {
+          const win = getMainWindow();
+          const r = dialog.showMessageBoxSync(win && !win.isDestroyed() ? win : undefined, {
+            type: 'question',
+            title: 'Downloads',
+            message: 'Choose default download behavior',
+            detail:
+              'You can change this anytime in Settings → Browser.\n\n' +
+              'Save to the Downloads folder automatically from now on, or keep choosing the folder each time?',
+            buttons: ['Ask where to save each file', 'Always use my Downloads folder'],
+            defaultId: 0,
+            cancelId: 0,
+            noLink: true
+          });
+          const patch = { downloadAskFollowupSeen: true };
+          if (r === 1) patch.downloadAskWhere = false;
+          saveConfig(patch);
+        }
+
         const displayName = path.basename(savePath);
         console.log(`[navio] Download started: ${displayName} → ${savePath}`);
 
+        let lastProgT = Date.now();
+        let lastProgB = 0;
+
+        const startTotal = item.getTotalBytes();
         getMainWindow()?.webContents.send('download-started', {
           filename: displayName,
           savePath,
-          total: item.getTotalBytes()
+          total: startTotal,
+          totalStr: startTotal > 0 ? _navioFormatBytes(startTotal) : ''
         });
 
         item.on('updated', (_, state) => {
+          const received = item.getReceivedBytes();
+          const total = item.getTotalBytes();
+          const now = Date.now();
+          let bytesPerSec = null;
+          let etaSec = null;
+          const dt = (now - lastProgT) / 1000;
+          if (dt >= 0.2) {
+            const d = received - lastProgB;
+            if (d >= 0) {
+              bytesPerSec = d / dt;
+              lastProgT = now;
+              lastProgB = received;
+            }
+          }
+          if (total > 0 && bytesPerSec != null && bytesPerSec > 500) {
+            etaSec = (total - received) / bytesPerSec;
+          }
           getMainWindow()?.webContents.send('download-progress', {
             filename: displayName,
             savePath,
             state,
-            received: item.getReceivedBytes(),
-            total: item.getTotalBytes()
+            received,
+            total,
+            bytesPerSec: bytesPerSec != null ? Math.round(bytesPerSec) : null,
+            etaSec: etaSec != null && Number.isFinite(etaSec) ? etaSec : null,
+            receivedStr: _navioFormatBytes(received),
+            totalStr: total > 0 ? _navioFormatBytes(total) : '',
+            etaStr: _navioFormatEta(etaSec)
           });
         });
 
         item.once('done', (_, state) => {
           console.log(`[navio] Download ${state}: ${displayName}`);
-          getMainWindow()?.webContents.send('download-done', { filename: displayName, savePath, state });
+          const doneTotal = item.getTotalBytes();
+          getMainWindow()?.webContents.send('download-done', {
+            filename: displayName,
+            savePath,
+            state,
+            totalStr: doneTotal > 0 ? _navioFormatBytes(doneTotal) : ''
+          });
           if (state === 'completed' && cfg.downloadRevealInFolder === true) {
             try {
               if (fs.existsSync(savePath)) {

@@ -303,12 +303,12 @@ class NavioApp {
 
     btnBack.addEventListener('click', () => {
       const wv = TabManager.getActiveWebview();
-      if (wv && wv.canGoBack()) wv.goBack();
+      if (wv && TabManager.webviewCanGoBack(wv)) wv.goBack();
     });
 
     btnForward.addEventListener('click', () => {
       const wv = TabManager.getActiveWebview();
-      if (wv && wv.canGoForward()) wv.goForward();
+      if (wv && TabManager.webviewCanGoForward(wv)) wv.goForward();
     });
 
     btnReload.addEventListener('click', () => {
@@ -497,12 +497,12 @@ class NavioApp {
           break;
         case 'go-back': {
           const wvb = TabManager.getActiveWebview();
-          if (wvb && wvb.canGoBack()) wvb.goBack();
+          if (wvb && TabManager.webviewCanGoBack(wvb)) wvb.goBack();
           break;
         }
         case 'go-forward': {
           const wvf = TabManager.getActiveWebview();
-          if (wvf && wvf.canGoForward()) wvf.goForward();
+          if (wvf && TabManager.webviewCanGoForward(wvf)) wvf.goForward();
           break;
         }
         case 'next-tab':
@@ -545,13 +545,13 @@ class NavioApp {
         if (ak === 'ArrowLeft' || ak === 'Left') {
           e.preventDefault();
           const wv = TabManager.getActiveWebview();
-          if (wv && wv.canGoBack()) wv.goBack();
+          if (wv && TabManager.webviewCanGoBack(wv)) wv.goBack();
           return;
         }
         if (ak === 'ArrowRight' || ak === 'Right') {
           e.preventDefault();
           const wv = TabManager.getActiveWebview();
-          if (wv && wv.canGoForward()) wv.goForward();
+          if (wv && TabManager.webviewCanGoForward(wv)) wv.goForward();
           return;
         }
       }
@@ -725,8 +725,8 @@ class NavioApp {
     const btnForward = document.getElementById('btn-forward');
 
     if (webview) {
-      btnBack.disabled = !webview.canGoBack();
-      btnForward.disabled = !webview.canGoForward();
+      btnBack.disabled = !TabManager.webviewCanGoBack(webview);
+      btnForward.disabled = !TabManager.webviewCanGoForward(webview);
     } else {
       btnBack.disabled = true;
       btnForward.disabled = true;
@@ -925,7 +925,6 @@ const PasswordManager = (() => {
   const saveBar       = document.getElementById('pwd-save-bar');
   const autofillBar   = document.getElementById('pwd-autofill-bar');
   const saveUser      = document.getElementById('pwd-save-user');
-  const saveSite      = document.getElementById('pwd-save-site');
   const autofillUser  = document.getElementById('pwd-autofill-user');
 
   function _originLabel(url) {
@@ -935,6 +934,8 @@ const PasswordManager = (() => {
   function _hideSave() {
     if (saveBar) saveBar.hidden = true;
     _pendingSave = null;
+    const saveBtn = document.getElementById('pwd-save-btn');
+    if (saveBtn) saveBtn.textContent = 'Save';
   }
 
   function _hideAutofill() {
@@ -943,14 +944,36 @@ const PasswordManager = (() => {
     _autofillPwd = null;
   }
 
-  // ── Show "Save password?" prompt ──────────────────────────────────────────
-  function showSavePrompt({ username, password, url }, wv) {
+  // ── Show "Save password?" / "Replace password?" after submit ─────────────
+  async function showSavePrompt({ username, password, url }, wv) {
     if (!saveBar) return;
+    let mode = 'save';
+    try {
+      const r = await window.navio.passwordsGet(url);
+      if (r.ok && r.entries && r.entries.length) {
+        const sameUser = r.entries.find((e) => e.username === username);
+        if (sameUser) {
+          if (sameUser.password === password) return;
+          mode = 'update';
+        }
+      }
+    } catch {
+      /* offer new save */
+    }
     _pendingSave = { username, password, url };
-    if (saveSite) saveSite.textContent = _originLabel(url);
     if (saveUser) saveUser.textContent = username;
+    const msgEl = saveBar.querySelector('.pwd-save-msg');
+    if (msgEl) {
+      const host = _originLabel(url);
+      if (mode === 'update') {
+        msgEl.innerHTML = `Password changed for <strong id="pwd-save-site">${host}</strong> — replace saved password?`;
+      } else {
+        msgEl.innerHTML = `Save password for <strong id="pwd-save-site">${host}</strong>?`;
+      }
+    }
+    const saveBtn = document.getElementById('pwd-save-btn');
+    if (saveBtn) saveBtn.textContent = mode === 'update' ? 'Replace' : 'Save';
     saveBar.hidden = false;
-    // Auto-dismiss after 30 s
     clearTimeout(saveBar._timer);
     saveBar._timer = setTimeout(_hideSave, 30000);
   }

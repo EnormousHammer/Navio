@@ -108,9 +108,13 @@
           <button type="button" class="nav-btn" id="btn-toggle-bookmark-bar" title="Show or hide bookmark bar (saved)" aria-pressed="true">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
           </button>
-          <button class="nav-btn" id="btn-downloads-drawer" title="Downloads">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          </button>
+          <div class="nav-downloads-wrap" title="Downloads — progress when active">
+            <span class="download-activity-orb" id="download-activity-orb" aria-hidden="true"></span>
+            <span class="download-activity-badge" id="download-activity-badge" hidden>0</span>
+            <button class="nav-btn" id="btn-downloads-drawer" title="Downloads">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
+          </div>
           <button class="nav-btn" id="btn-workspace" title="Workspace (projects &amp; tasks)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
           </button>
@@ -909,6 +913,7 @@
                   </button>
                 </div>
               </div>
+              <p class="settings-inline-hint">Dark applies to the UI and to websites (automatic dark rendering for readability). Changing theme updates open tabs.</p>
             </div>
             <div class="settings-section">
               <h3>Layout</h3>

@@ -13,6 +13,8 @@ class TabManagerClass {
     /** Tab receiving AI browser automation (takeover / tools); drives `tab-agent-controlled` UI. */
     this._agentControlledTabId = null;
     this.tabCounter = 0;
+    /** Last tab the user focused that was a normal web page (not Navio AI chat). Used when AI chat is focused so tools still target the page they were browsing. */
+    this._lastBrowserSurfaceTabId = null;
 
     // ── Tab Groups ────────────────────────────────────────────────────────
     this.groups = {};        // { [groupId]: { id, name, color } }
@@ -51,6 +53,31 @@ class TabManagerClass {
   // one-liner memory entry so the AI can later answer "what was that page about?"
   // A session-level Set prevents duplicate entries for the same URL per session.
   _passiveMemorySeen = new Set();
+
+  /** Prefer `webContents.navigationHistory` over deprecated `<webview>.canGoBack` (Electron). */
+  webviewCanGoBack(wv) {
+    if (!wv) return false;
+    try {
+      const wc = typeof wv.getWebContents === 'function' ? wv.getWebContents() : null;
+      const nh = wc && wc.navigationHistory;
+      if (nh && typeof nh.canGoBack === 'function') return nh.canGoBack();
+    } catch {
+      /* ignore */
+    }
+    return typeof wv.canGoBack === 'function' && wv.canGoBack();
+  }
+
+  webviewCanGoForward(wv) {
+    if (!wv) return false;
+    try {
+      const wc = typeof wv.getWebContents === 'function' ? wv.getWebContents() : null;
+      const nh = wc && wc.navigationHistory;
+      if (nh && typeof nh.canGoForward === 'function') return nh.canGoForward();
+    } catch {
+      /* ignore */
+    }
+    return typeof wv.canGoForward === 'function' && wv.canGoForward();
+  }
 
   _schedulePassiveMemory(tab, wv) {
     if (tab.incognito) return;
@@ -258,10 +285,34 @@ class TabManagerClass {
   }
 
   /**
-   * First non–chat-tab webview (for tools + page reads while the user stays on Navio AI tab).
-   * Prefers a tab with a real URL; otherwise a blank tab.
+   * Tab used for AI tools, page extraction, and snapshots.
+   * Priority: (1) focused tab if it is a normal web page (http/https); (2) last focused
+   * non-chat page when the user is on Navio AI chat or NTP; (3) first other non-chat tab.
+   * Previously this always returned the first non-chat tab in strip order, which was wrong
+   * when another tab was active.
    */
   getBrowserContextTab() {
+    const isWebSurface = (u) =>
+      typeof u === 'string' && u.startsWith('http') && !this.isNavioChatTabUrl(u);
+
+    const active = this.getActiveTab();
+    if (active && active.webview) {
+      const u = active.url || '';
+      if (isWebSurface(u)) {
+        return active;
+      }
+    }
+
+    if (this._lastBrowserSurfaceTabId) {
+      const remembered = this.tabs.find((t) => t.id === this._lastBrowserSurfaceTabId);
+      if (remembered && remembered.webview) {
+        const u = remembered.url || '';
+        if (isWebSurface(u)) {
+          return remembered;
+        }
+      }
+    }
+
     for (const t of this.tabs) {
       if (!t.webview) continue;
       const u = t.url || '';
@@ -411,6 +462,14 @@ class TabManagerClass {
           this.showNewTabPage();
         }
       }
+      if (
+        tab.id === this.activeTabId &&
+        tab.url &&
+        tab.url.startsWith('http') &&
+        !this.isNavioChatTabUrl(tab.url)
+      ) {
+        this._lastBrowserSurfaceTabId = tab.id;
+      }
     });
 
     wv.addEventListener('did-navigate-in-page', (e) => {
@@ -425,6 +484,14 @@ class TabManagerClass {
           if (e.url && e.url !== 'about:blank') {
             this.hideNewTabPage();
           }
+        }
+        if (
+          tab.id === this.activeTabId &&
+          tab.url &&
+          tab.url.startsWith('http') &&
+          !this.isNavioChatTabUrl(tab.url)
+        ) {
+          this._lastBrowserSurfaceTabId = tab.id;
         }
       }
     });
@@ -458,9 +525,7 @@ class TabManagerClass {
       // hidden after some back/forward paths that omit a clean did-navigate.
       try {
         const live = typeof wv.getURL === 'function' ? (wv.getURL() || '') : '';
-        const hasHistory =
-          (typeof wv.canGoBack === 'function' && wv.canGoBack()) ||
-          (typeof wv.canGoForward === 'function' && wv.canGoForward());
+        const hasHistory = this.webviewCanGoBack(wv) || this.webviewCanGoForward(wv);
         if (
           tab.id === this.activeTabId &&
           tab.url &&
@@ -514,7 +579,7 @@ class TabManagerClass {
         if (e.channel === 'navio-form-submit' && data) {
           // Credential capture — offer to save
           if (!tab.incognito && typeof PasswordManager !== 'undefined') {
-            PasswordManager.showSavePrompt(data, wv);
+            Promise.resolve(PasswordManager.showSavePrompt(data, wv)).catch(() => {});
           }
         } else if (e.channel === 'navio-login-form' && data) {
           // Login form detected — check if we have saved credentials to autofill
@@ -753,6 +818,11 @@ class TabManagerClass {
           activeTab.webview.focus();
         } catch (_) {}
       }
+
+      const u = activeTab.url || '';
+      if (u.startsWith('http') && !this.isNavioChatTabUrl(u)) {
+        this._lastBrowserSurfaceTabId = activeTab.id;
+      }
     }
   }
 
@@ -789,6 +859,9 @@ class TabManagerClass {
     const hadGroup = tab.groupId;
     if (this._agentControlledTabId === id) {
       this._agentControlledTabId = null;
+    }
+    if (this._lastBrowserSurfaceTabId === id) {
+      this._lastBrowserSurfaceTabId = null;
     }
     this.tabs.splice(index, 1);
 

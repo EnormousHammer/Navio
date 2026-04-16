@@ -1181,7 +1181,7 @@ class AssistantManagerClass {
         messages.push({
           role: 'system',
           content:
-            '[Interface]\nThe user is in the **Navio AI** full-page tab. Page snapshots and browsing context refer to the **browsing context tab** below unless they switch tabs.'
+            '[Interface]\nThe user is in the **Navio AI** full-page tab. The **browsing context tab** is the page they last used (or their focused web tab) — not the first tab in the strip. Snapshots and tools use that tab unless they switch tabs or you switch_tab.'
         });
       }
       if (browserTab && browserTab.url && !browserTab.url.startsWith('about:')) {
@@ -1419,7 +1419,7 @@ class AssistantManagerClass {
         messages.push({
           role: 'system',
           content:
-            '[Interface]\nThe user is in the **Navio AI** full-page tab. Use browsing context from the tab below when relevant.'
+            '[Interface]\nThe user is in the **Navio AI** full-page tab. Browsing context is the page they last used (see [Browsing context tab]), not the leftmost tab.'
         });
       }
       if (browserTab && browserTab.url && !browserTab.url.startsWith('about:')) {
@@ -1514,7 +1514,7 @@ class AssistantManagerClass {
         messages.push({
           role: 'system',
           content:
-            '[Interface]\nThe user is in the **Navio AI** full-page tab. Browser tools (read_page, click, navigate, etc.) operate on the **browsing context tab** below — not this chat UI.'
+            '[Interface]\nThe user is in the **Navio AI** full-page tab. Browser tools operate on the **browsing context tab** — the page they last used before chat (or their focused http tab), not an arbitrary tab. Use list_tabs if unsure.'
         });
       }
       if (browserTab && browserTab.url && !browserTab.url.startsWith('about:')) {
