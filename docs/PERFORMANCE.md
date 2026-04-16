@@ -1,5 +1,30 @@
 # Navio performance notes
 
+## Baseline (fill when changing hot paths)
+
+Record on a **fixed machine** so before/after comparisons mean something. Use Windows **Task Manager → Details → Navio** (or **Performance** memory) for rough **Private working set**; optionally DevTools **Memory** on the shell (F12).
+
+**Windows — sum Navio’s Electron children (repeatable):** PowerShell:
+
+```powershell
+$pids = (Get-CimInstance Win32_Process -Filter "Name='electron.exe'" |
+  Where-Object { $_.CommandLine -match 'NavioBrowser' }).ProcessId
+($pids | ForEach-Object { (Get-Process -Id $_ -ErrorAction SilentlyContinue).WorkingSet64 } |
+  Measure-Object -Sum).Sum / 1MB
+```
+
+Close other Electron apps first, or the filter may include stray paths.
+
+
+| Scenario                                   | Private WS (MB) | Notes                                                                                                                          |
+| ------------------------------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Idle, default NTP / few tabs               | 3957            | Example: 2026-04-16 dev run — sum of all `electron.exe` with `NavioBrowser` in command line (~14 processes incl. GPU/helpers). |
+| ~15 tabs, assistant open                   |                 | Record manually on your machine.                                                                                               |
+| Cold start → URL bar usable (subjective s) |                 | e.g. stopwatch until URL bar accepts input.                                                                                    |
+
+
+Re-run after large changes to tabs, webview lifecycle, or assistant context.
+
 ## Profiling
 
 - Use **Chrome DevTools** on the shell window (F12) and **Memory** snapshots to inspect renderer growth.
@@ -22,3 +47,4 @@
 ## Icons
 
 - `src/assets/icon.png` and `icon.ico` are used on Windows. For **macOS `.icns`**, generate an iconset from PNG and run Apple `iconutil` (or add a CI step on a Mac runner).
+

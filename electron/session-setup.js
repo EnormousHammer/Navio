@@ -392,7 +392,12 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
         o.startsWith('https://mail.google.com') ||
         o.startsWith('https://docs.google.com') ||
         o.startsWith('https://drive.google.com') ||
-        o.startsWith('https://docs.googleusercontent.com');
+        o.startsWith('https://docs.googleusercontent.com') ||
+        o.startsWith('https://meet.google.com') ||
+        o.startsWith('https://chat.google.com') ||
+        o.startsWith('https://calendar.google.com') ||
+        o.startsWith('https://sheets.google.com') ||
+        o.startsWith('https://slides.google.com');
       if (
         googleTrusted &&
         (permission === 'clipboard-read' ||

@@ -2207,6 +2207,9 @@ class AssistantManagerClass {
         if (elapsed != null) this._appendMessageDurationRow(streamingMsg, elapsed);
         if (this._pendingConnectorCitations && this._pendingConnectorCitations.length) {
           this._appendCitationChips(streamingMsg, this._pendingConnectorCitations);
+        } else {
+          const fromText = this._extractUrlsForCitationChipsFromAssistantText(buffer);
+          if (fromText && fromText.length) this._appendCitationChips(streamingMsg, fromText);
         }
         this._pendingConnectorCitations = null;
       }
@@ -2347,6 +2350,40 @@ class AssistantManagerClass {
     wrap.appendChild(label);
     wrap.appendChild(row);
     msgEl.appendChild(wrap);
+  }
+
+  /**
+   * When the model lists sources in markdown but no connector citation array was passed,
+   * extract URLs for clickable chips (bounded).
+   */
+  _extractUrlsForCitationChipsFromAssistantText(content) {
+    if (!content || typeof content !== 'string') return [];
+    const urls = [];
+    const seen = new Set();
+    const push = (raw) => {
+      let u = String(raw).trim().replace(/[),.;]+$/, '');
+      const q = u.indexOf('?');
+      if (q > 0 && u.length - q > 200) u = u.slice(0, q);
+      if (!/^https?:\/\//i.test(u) || seen.has(u)) return false;
+      seen.add(u);
+      urls.push(u);
+      return urls.length >= 12;
+    };
+    const sourcesIdx = content.search(/(^|\n)\s*#{1,3}\s*Sources\s*$/im);
+    const slice = sourcesIdx >= 0 ? content.slice(sourcesIdx) : content.slice(Math.max(0, content.length - 8000));
+    const mdRe = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g;
+    let m;
+    while ((m = mdRe.exec(slice)) !== null) {
+      if (push(m[2])) break;
+    }
+    if (urls.length < 12) {
+      const lineRe = /https?:\/\/[^\s)]+/g;
+      let m2;
+      while ((m2 = lineRe.exec(slice)) !== null) {
+        if (push(m2[0])) break;
+      }
+    }
+    return urls.slice(0, 12);
   }
 
   async _buildTabDigestBlock() {
@@ -2501,8 +2538,14 @@ class AssistantManagerClass {
     if (meta && meta.durationMs != null && (role === 'assistant' || type === 'error')) {
       this._appendMessageDurationRow(msgEl, meta.durationMs);
     }
-    if (role === 'assistant' && meta && Array.isArray(meta.citations) && meta.citations.length) {
-      this._appendCitationChips(msgEl, meta.citations);
+    let citeUrls =
+      meta && Array.isArray(meta.citations) && meta.citations.length ? meta.citations.slice() : null;
+    if (role === 'assistant' && type !== 'error' && (!citeUrls || !citeUrls.length)) {
+      const extra = this._extractUrlsForCitationChipsFromAssistantText(typeof content === 'string' ? content : '');
+      if (extra && extra.length) citeUrls = extra;
+    }
+    if (role === 'assistant' && citeUrls && citeUrls.length) {
+      this._appendCitationChips(msgEl, citeUrls);
     }
     this.messagesEl.appendChild(msgEl);
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;

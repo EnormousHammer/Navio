@@ -551,10 +551,13 @@ class TabManagerClass {
       this.updateTabUI(tab);
       App.showLoading(false);
       if (tab.id === this.activeTabId) {
+        const friendly = this._navFriendlyLoadError(e.errorCode, e.errorDescription || '');
         this._scheduleWebviewInlineError(
           wv,
-          e.errorDescription || 'Failed to load',
-          tab.url || validated
+          friendly,
+          tab.url || validated,
+          e.errorCode,
+          e.errorDescription || ''
         );
       }
     });
@@ -660,8 +663,51 @@ class TabManagerClass {
     }
   }
 
-  _scheduleWebviewInlineError(wv, description, pageUrl) {
-    const errHtml = this._buildErrorPage(description, pageUrl);
+  /**
+   * Map Chromium net error codes to short, user-readable text (see net/base/net_error_list.h).
+   */
+  _navFriendlyLoadError(errorCode, errorDescription) {
+    const code = Number(errorCode);
+    const raw = String(errorDescription || '').trim();
+    const byCode = {
+      [-2]: 'The page could not be loaded (network or server error).',
+      [-6]: 'The file or page was not found.',
+      [-7]: 'The request timed out.',
+      [-13]: 'The server returned an error.',
+      [-21]: 'The network changed; try again.',
+      [-102]: 'The server refused the connection.',
+      [-104]: 'The connection was reset.',
+      [-105]: 'Could not find that site — check the address and your DNS/network.',
+      [-106]: 'No internet connection.',
+      [-107]: 'Could not establish a secure connection (TLS/SSL).',
+      [-109]: 'Could not reach the server.',
+      [-118]: 'The connection timed out.',
+      [-200]: 'The site’s security certificate is not trusted.',
+      [-201]: 'The certificate date is invalid.',
+      [-202]: 'The certificate does not match this site.',
+      [-203]: 'The certificate is not yet valid.'
+    };
+    if (Number.isFinite(code) && Object.prototype.hasOwnProperty.call(byCode, code)) {
+      return byCode[code];
+    }
+    if (Number.isFinite(code) && code <= -200 && code >= -260) {
+      return 'There is a problem with the site’s security certificate.';
+    }
+    if (raw) {
+      if (raw.startsWith('ERR_')) {
+        const words = raw
+          .replace(/^ERR_/, '')
+          .replace(/_/g, ' ')
+          .toLowerCase();
+        return words.charAt(0).toUpperCase() + words.slice(1) + '.';
+      }
+      return raw.endsWith('.') ? raw : raw + '.';
+    }
+    return 'The page could not be loaded.';
+  }
+
+  _scheduleWebviewInlineError(wv, description, pageUrl, errorCode, rawDescription) {
+    const errHtml = this._buildErrorPage(description, pageUrl, errorCode, rawDescription);
     const b64 = this._utf8ToBase64(errHtml);
     const dataUrl = b64
       ? `data:text/html;charset=UTF-8;base64,${b64}`
@@ -681,9 +727,21 @@ class TabManagerClass {
     requestAnimationFrame(() => requestAnimationFrame(inject));
   }
 
-  _buildErrorPage(description, url) {
+  _buildErrorPage(description, url, errorCode, rawDescription) {
     const safeUrl = url ? url.replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
     const safeDesc = (description || 'Unknown error').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const code = Number(errorCode);
+    const raw = String(rawDescription || '').trim();
+    let tech = '';
+    if (Number.isFinite(code) && code !== 0) {
+      tech = `Error code: ${code}`;
+      if (raw && raw !== description) tech += ` · ${raw.replace(/</g, '&lt;').replace(/>/g, '&gt;')}`;
+    } else if (raw && raw !== description) {
+      tech = raw.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    const techBlock = tech
+      ? `<p style="font-size:12px;opacity:.55;margin:0 0 16px">${tech}</p>`
+      : '';
     return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
   body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;
@@ -702,6 +760,7 @@ class TabManagerClass {
   <div class="icon">⚠️</div>
   <h1>Page couldn't load</h1>
   <p>${safeDesc}</p>
+  ${techBlock}
   ${safeUrl ? `<div class="url">${safeUrl}</div>` : ''}
   <button onclick="history.back()">Go back</button>
 </div></body></html>`;

@@ -112,7 +112,7 @@
           <div class="nav-downloads-wrap" title="Downloads — list opens below this button">
             <span class="download-activity-orb" id="download-activity-orb" aria-hidden="true"></span>
             <span class="download-activity-badge" id="download-activity-badge" hidden>0</span>
-            <button class="nav-btn" id="btn-downloads-drawer" title="Downloads — panel opens here">
+            <button class="nav-btn" id="btn-downloads-drawer" title="Downloads (Ctrl+J) — open list">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             </button>
           </div>
@@ -167,7 +167,7 @@
       <div id="downloads-drawer" class="downloads-drawer" hidden>
         <div class="downloads-drawer-head">
           <span class="downloads-drawer-title">Downloads</span>
-          <button type="button" class="downloads-drawer-folder-btn" id="btn-downloads-open-folder" title="Open Downloads folder">Folder</button>
+          <button type="button" class="downloads-drawer-folder-btn" id="btn-downloads-open-folder" title="Open Downloads folder">Open Downloads folder</button>
         </div>
         <div id="downloads-drawer-list" class="downloads-drawer-list"></div>
       </div>
@@ -302,14 +302,17 @@
             <div class="ntp-search">
               <div class="ntp-search-glow"></div>
               <svg class="ntp-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" id="ntp-search-input" placeholder="Search the web or ask Navio AI…" spellcheck="false" autocomplete="off" aria-describedby="ntp-smart-row">
-              <button class="ntp-search-send" id="ntp-search-send" title="Send to AI">
+              <input type="text" id="ntp-search-input" placeholder="Search or ask anything…" spellcheck="false" autocomplete="off" aria-describedby="ntp-smart-row ntp-primary-hint">
+              <button class="ntp-search-send" id="ntp-search-send" title="Ask Navio AI">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
               </button>
             </div>
+            <p class="ntp-primary-hint" id="ntp-primary-hint">Type and press <kbd>Enter</kbd> — Navio searches the web or answers with AI from one box.</p>
             <div id="ntp-smart-row" class="ntp-smart-row" role="status" aria-live="polite"></div>
-            <p class="ntp-search-hint" id="ntp-kbd-hint"><kbd>/</kbd> focus search · <kbd>Enter</kbd> go</p>
+            <p class="ntp-search-hint" id="ntp-kbd-hint"><kbd>/</kbd> focus · <kbd>Enter</kbd> go</p>
 
+            <details class="ntp-quick-starts">
+            <summary class="ntp-quick-starts-summary">Quick starts <span class="ntp-quick-starts-optional">(optional)</span></summary>
             <div class="ntp-ai-suggestions" id="ntp-ai-suggestions">
               <div class="ai-starter-host">
                 <div class="ai-starter-face ai-starter-face--categories">
@@ -363,6 +366,7 @@
                 </div>
               </div>
             </div>
+            </details>
           </div>
 
           <!-- Quick links -->
@@ -729,7 +733,7 @@
                 <input type="checkbox" id="setting-download-ask-where">
                 <span>Ask where to save each file (Save As)</span>
               </label>
-              <p class="settings-inline-hint">On by default: Windows shows a Save dialog so you choose folder and filename. Turn off to save straight to your Downloads folder (renaming if the name already exists).</p>
+              <p class="settings-inline-hint"><strong>On:</strong> each download opens the system save dialog. <strong>Off:</strong> files save automatically to your system <strong>Downloads</strong> folder (Navio adds a number if the filename already exists).</p>
               <label class="setting-toggle-row" style="margin-top:10px">
                 <input type="checkbox" id="setting-download-reveal">
                 <span>After a download finishes, show the file in File Explorer</span>
@@ -787,6 +791,30 @@
                   <span class="ai-profile-desc">Writing, design, ideation</span>
                 </button>
               </div>
+            </div>
+            <div class="settings-section">
+              <h3>Live web answers &amp; mail</h3>
+              <p class="settings-inline-hint">Connect <strong>Perplexity</strong> under Integrations for cited, up-to-date web answers. These options control when Navio prefetches web or mail context (not only from how you phrase a question).</p>
+              <div class="setting-row">
+                <label for="setting-assistant-connector-web">Live web answers</label>
+                <select id="setting-assistant-connector-web">
+                  <option value="auto">Auto — when the question looks like it needs the web</option>
+                  <option value="always">Always — every message (if Perplexity is connected)</option>
+                  <option value="never">Off</option>
+                </select>
+              </div>
+              <div class="setting-row">
+                <label for="setting-assistant-connector-mail">Gmail / mail context</label>
+                <select id="setting-assistant-connector-mail">
+                  <option value="auto">Auto — when the message is mail-related</option>
+                  <option value="always">Always — include inbox-style context when connected</option>
+                  <option value="never">Off</option>
+                </select>
+              </div>
+              <label class="setting-toggle-row">
+                <input type="checkbox" id="setting-assistant-tab-digest">
+                <span>Tab digest — short excerpts from open tabs (slower; token-capped)</span>
+              </label>
             </div>
             <div class="settings-section">
               <h3>Model &amp; provider</h3>
@@ -974,7 +1002,7 @@
             </div>
             <div class="settings-section">
               <h3>Extensions (unpacked)</h3>
-              <p class="settings-inline-hint">Load Manifest V3 unpacked folders. Not all Chrome Web Store extensions work in Electron.</p>
+              <p class="settings-inline-hint">Load Manifest V3 unpacked folders. Electron is not Chrome: extensions that rely on Chrome-only APIs, native messaging, or fine-grained <code>chrome.*</code> behavior may load but do nothing — check the alert after install. Prefer <strong>Load unpacked</strong> for debugging. Content scripts are isolated from page JS. AI access from extensions stays off unless you enable it under Privacy. See <code>docs/EXTENSIONS.md</code> in the repo for details.</p>
               <button type="button" class="btn btn-secondary" id="btn-ext-load-unpacked">Load unpacked extension…</button>
               <div class="setting-row" style="margin-top:10px;flex-wrap:wrap;gap:8px;align-items:center">
                 <label for="ext-crx-id" class="settings-inline-hint" style="margin:0">Chrome Web Store ID</label>
@@ -1403,15 +1431,15 @@
         </label>
       </div>
 
-      <div class="assistant-connector-row" title="Control live web (Perplexity) and mail context without relying on phrasing">
-        <label class="sr-only" for="assistant-connector-web">Web search</label>
-        <select id="assistant-connector-web" class="assistant-connector-select">
+      <div class="assistant-connector-row" title="Same as Settings → AI → Live web answers &amp; mail. Perplexity key in Connectors enables web answers.">
+        <label class="sr-only" for="assistant-connector-web">Live web answers</label>
+        <select id="assistant-connector-web" class="assistant-connector-select" aria-label="Live web answers mode">
           <option value="auto">Web: auto</option>
           <option value="always">Web: always</option>
           <option value="never">Web: off</option>
         </select>
         <label class="sr-only" for="assistant-connector-mail">Mail context</label>
-        <select id="assistant-connector-mail" class="assistant-connector-select">
+        <select id="assistant-connector-mail" class="assistant-connector-select" aria-label="Mail context mode">
           <option value="auto">Mail: auto</option>
           <option value="always">Mail: always</option>
           <option value="never">Mail: off</option>

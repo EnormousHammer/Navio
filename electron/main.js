@@ -1498,7 +1498,13 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
   for (let step = 0; step < maxSteps; step++) {
     const result = await performAiFetchResilient(cfg, apiKey, currentMessages, { tools });
 
-    if (result.error) return finishAgentRun({ error: result.error, toolLog });
+    if (result.error) {
+      let errMsg = result.error;
+      if (navioTransientAiError(errMsg)) {
+        errMsg = `${errMsg}\n\nIf this was a short-lived network or rate-limit issue, wait a few seconds and say **continue** to retry.`;
+      }
+      return finishAgentRun({ error: errMsg, toolLog });
+    }
 
     // Emit any intermediate reasoning text the model produced alongside tool calls
     if (result.content && result.toolCalls && result.toolCalls.length) {
@@ -1671,7 +1677,9 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps) {
   }
   return finishAgentRun({
     content:
-      `[Agent step limit (${maxSteps}) reached — work may be incomplete. Say **continue** or **keep going** and Navio will resume (or raise aiAgentMaxToolSteps in navio-config.json, max 500).]`,
+      `**Step limit reached** (${maxSteps} tool steps in this run).\n\n` +
+        `Work may be incomplete. In chat, say **continue** or **keep going** to resume this task, or increase **Max agent steps** under **Settings → AI** (up to 500).\n\n` +
+        `If something kept failing, try a smaller goal or check the **Agent log** for the last error.`,
     toolLog,
     stepLimitReached: true
   });

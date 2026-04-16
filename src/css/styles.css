@@ -1845,6 +1845,59 @@ body.navio-incognito-active .url-bar-container {
   border-radius: 4px;
 }
 
+.ntp-primary-hint {
+  margin: 6px auto 0;
+  max-width: 520px;
+  padding: 0 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(226, 232, 248, 0.55);
+  text-align: center;
+}
+.ntp-primary-hint kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  margin: 0 2px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: rgba(0, 216, 255, 0.8);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(0, 216, 255, 0.12);
+  border-radius: 4px;
+}
+
+.ntp-quick-starts {
+  margin: 10px auto 0;
+  max-width: 720px;
+  width: 100%;
+  border: none;
+  padding: 0;
+}
+.ntp-quick-starts-summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: rgba(226, 232, 248, 0.45);
+  text-align: center;
+  padding: 4px 8px;
+  user-select: none;
+}
+.ntp-quick-starts-summary::-webkit-details-marker {
+  display: none;
+}
+.ntp-quick-starts-summary::after {
+  content: ' ▾';
+  font-size: 10px;
+  opacity: 0.7;
+}
+.ntp-quick-starts[open] .ntp-quick-starts-summary::after {
+  content: ' ▴';
+}
+.ntp-quick-starts-optional {
+  font-size: 11px;
+  opacity: 0.75;
+}
+
 /* ── NTP Widgets ──────────────────────────────────────────────────────── */
 .ntp-widgets {
   display: grid;

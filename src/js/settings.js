@@ -66,6 +66,9 @@ class SettingsManagerClass {
       aiAutoExecute: document.getElementById('setting-ai-auto-execute'),
       aiAutoScreenshot: document.getElementById('setting-ai-auto-screenshot'),
       aiAgentStepMode: document.getElementById('setting-ai-agent-step-mode'),
+      assistantConnectorWeb: document.getElementById('setting-assistant-connector-web'),
+      assistantConnectorMail: document.getElementById('setting-assistant-connector-mail'),
+      assistantTabDigest: document.getElementById('setting-assistant-tab-digest'),
       aiProactivity: document.getElementById('setting-ai-proactivity'),
       mcpEnabled: document.getElementById('setting-mcp-enabled'),
       mcpToolsHint: document.getElementById('setting-mcp-tools-hint'),
@@ -373,6 +376,17 @@ class SettingsManagerClass {
     }
     if (this.elements.aiAgentStepMode) {
       this.elements.aiAgentStepMode.checked = !!this.config.aiAgentStepMode;
+    }
+    if (this.elements.assistantConnectorWeb) {
+      const w = this.config.assistantConnectorWeb || 'auto';
+      this.elements.assistantConnectorWeb.value = ['auto', 'always', 'never'].includes(w) ? w : 'auto';
+    }
+    if (this.elements.assistantConnectorMail) {
+      const mail = this.config.assistantConnectorMail || 'auto';
+      this.elements.assistantConnectorMail.value = ['auto', 'always', 'never'].includes(mail) ? mail : 'auto';
+    }
+    if (this.elements.assistantTabDigest) {
+      this.elements.assistantTabDigest.checked = !!this.config.assistantTabDigest;
     }
     if (this.elements.aiProactivity) {
       this.elements.aiProactivity.value = this.config.aiProactivity || 'off';
@@ -1156,6 +1170,13 @@ class SettingsManagerClass {
       aiAutoExecute: !!(this.elements.aiAutoExecute && this.elements.aiAutoExecute.checked),
       aiAutoScreenshotAfterNavigate: !!(this.elements.aiAutoScreenshot && this.elements.aiAutoScreenshot.checked),
       aiAgentStepMode: !!(this.elements.aiAgentStepMode && this.elements.aiAgentStepMode.checked),
+      assistantConnectorWeb: this.elements.assistantConnectorWeb
+        ? this.elements.assistantConnectorWeb.value || 'auto'
+        : (this.config.assistantConnectorWeb || 'auto'),
+      assistantConnectorMail: this.elements.assistantConnectorMail
+        ? this.elements.assistantConnectorMail.value || 'auto'
+        : (this.config.assistantConnectorMail || 'auto'),
+      assistantTabDigest: !!(this.elements.assistantTabDigest && this.elements.assistantTabDigest.checked),
       aiProactivity: this.elements.aiProactivity ? this.elements.aiProactivity.value : 'off',
       mcpEnabled: !!(this.elements.mcpEnabled && this.elements.mcpEnabled.checked),
       syncEnabled: !!(this.elements.syncEnabled && this.elements.syncEnabled.checked),

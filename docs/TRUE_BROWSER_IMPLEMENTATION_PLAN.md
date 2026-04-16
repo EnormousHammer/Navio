@@ -32,17 +32,24 @@ If a feature **spikes RAM or janks the UI**, ship it behind a setting or defer i
 
 **Exit criteria:**
 
-- `docs/` or README has a one-paragraph **“Navio vs Chrome”** honest comparison (sync, extensions, Safe Browsing—what we don’t ship).
-- A **“smoke checklist”** (manual) in this doc or `docs/SMOKE.md`: cold start, new tab, navigate, back/forward, download, open PDF, Gmail compose attach/paste, extension load, assistant tool loop—each pass/fail.
-- **Perf baseline recorded:** same machine, rough **RAM at idle** (few tabs) and **RAM with N tabs** (e.g. 15) + **time-to-interactive** (cold start until URL bar usable). Re-run after major phases.
+- [x] `docs/` or README has a one-paragraph **“Navio vs Chrome”** honest comparison (sync, extensions, Safe Browsing—what we don’t ship). → [README.md](../README.md#navio-vs-chrome-honest-comparison)
+- [x] A **“smoke checklist”** (manual) in this doc or `docs/SMOKE.md`: cold start, new tab, navigate, back/forward, download, open PDF, Gmail compose attach/paste, extension load, assistant tool loop—each pass/fail. → [SMOKE.md](./SMOKE.md)
+- [x] **Perf baseline recorded:** same machine, rough **RAM at idle** (few tabs) and **RAM with N tabs** (e.g. 15) + **time-to-interactive** (cold start until URL bar usable). Re-run after major phases. → [PERFORMANCE.md](./PERFORMANCE.md) (example row + PowerShell method); fill **15 tabs** / **TTI** locally.
 
-**Agent instructions:** Do not start coding until Phase 0 checklist exists.
+**Agent instructions:** Phase 0 checklist + templates are in repo; fill perf numbers locally when validating releases.
 
 ---
 
 ## Phase 1 — Chrome parity: invisible shell
 
 **Goal:** Remove “half browser” moments in the paths users hit every day.
+
+**Slice (this repo pass):**
+
+- [x] **1.1** Downloads drawer under toolbar; **Open Downloads folder** label; per-row **Show in folder**; **Ctrl+J** wired in `session-setup.js` → `downloads-panel`.
+- [x] **1.2** Google Workspace clipboard/file-picker auto-grant extended (Meet, Chat, Calendar, Sheets, Slides) alongside Gmail/Docs/Drive.
+- [x] **1.3** Tab discard logic unchanged (pinned / incognito / agent / chat / background); default remains **Off** (`tabDiscardIdleMinutes: 0`) to avoid surprise reloads — user picks 15–120 min in Settings.
+- [x] **1.4** Load failures show **human-readable** copy plus optional technical line (code + raw `ERR_*`), not only raw `ERR_ABORTED` text.
 
 ### 1.1 Downloads & files
 
@@ -76,6 +83,13 @@ If a feature **spikes RAM or janks the UI**, ship it behind a setting or defer i
 **Goal:** Default experience feels like “the browser helps me on the web,” not “I opened a chat.”
 
 **RAM/speed:** Connector prefetch and **tab digest** must stay **bounded** (token caps, off by default where appropriate). No unbounded “send entire DOM of all tabs” without explicit user action.
+
+**Slice (this repo pass):**
+
+- [x] **2.1** **Settings → AI:** “Live web answers” and “Gmail / mail context” with **Auto / Always / Off**; **Tab digest** toggle; synced with assistant sidebar (`settings.js` + `assistantConnectorWeb` / `assistantConnectorMail`).
+- [x] **2.1** **NTP:** Single hero line + hint; **Quick starts** collapsed under `<details>` so the search box is the obvious primary action.
+- [x] **2.2** Citation **chips** from Perplexity unchanged; **fallback** parses markdown / `Sources` URLs in assistant replies when no connector array is present (bounded).
+- [x] **2.3** **Agent loop:** clearer **step-limit** message; **transient** provider errors append a short retry / **continue** hint.
 
 ### 2.1 Default intelligence path
 

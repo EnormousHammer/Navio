@@ -603,7 +603,8 @@
         if (d.state === 'completed' && d.savePath) {
           const b = document.createElement('button');
           b.type = 'button';
-          b.textContent = 'Folder';
+          b.textContent = 'Show in folder';
+          b.title = 'Reveal in File Explorer';
           b.addEventListener('click', () => window.navio.showInFolder(d.savePath));
           actions.appendChild(b);
         }
