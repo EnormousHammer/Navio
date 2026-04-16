@@ -172,7 +172,11 @@ contextBridge.exposeInMainWorld('navio', {
   imapSearch: (serviceId, query, limit) => ipcRenderer.invoke('imap-search', { serviceId, query, limit }),
   imapCreateDraft: (serviceId, opts) => ipcRenderer.invoke('imap-create-draft', { serviceId, ...opts }),
   imapGetEmailBody:     (serviceId, uid) => ipcRenderer.invoke('imap-get-email-body', { serviceId, uid }),
-  gmailGetMessageBody:  (id)             => ipcRenderer.invoke('gmail-get-message-body', { id }),
+  gmailGetMessageBody: (idOrOpts) =>
+    ipcRenderer.invoke(
+      'gmail-get-message-body',
+      typeof idOrOpts === 'string' ? { id: idOrOpts } : idOrOpts && typeof idOrOpts === 'object' ? idOrOpts : { id: idOrOpts }
+    ),
   gmailCreateReplyDraft: (payload)      => ipcRenderer.invoke('gmail-create-reply-draft', payload),
   ntpFetchStocks: () => ipcRenderer.invoke('ntp-stocks'),
   ntpFetchSports: () => ipcRenderer.invoke('ntp-sports'),

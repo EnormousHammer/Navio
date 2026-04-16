@@ -5,14 +5,14 @@
  */
 
 const LaunchIntro = {
-  /** Parallel minimum with first-tab load — keeps intro feeling premium even on fast SSDs. */
-  MIN_HOLD_WITH_BROWSER_MS: 1880,
-  MIN_HOLD_REDUCED_MS: 420,
+  /** Minimum time after preload completes — avoids overlapping heavy layout with the opacity crossfade (reduces jank). */
+  MIN_HOLD_WITH_BROWSER_MS: 980,
+  MIN_HOLD_REDUCED_MS: 320,
   /** Prelude-only path (e.g. first-run onboarding next): shorter but still smooth. */
-  MIN_HOLD_NO_BROWSER_MS: 1020,
-  MIN_HOLD_NO_BROWSER_REDUCED_MS: 280,
+  MIN_HOLD_NO_BROWSER_MS: 720,
+  MIN_HOLD_NO_BROWSER_REDUCED_MS: 220,
   /** Brief beat so the crossfade doesn’t cut off the first paint. */
-  POST_READY_SETTLE_MS: 220,
+  POST_READY_SETTLE_MS: 160,
 
   _sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -40,6 +40,7 @@ const LaunchIntro = {
       'shell-prelude-active',
       'shell-prelude-in',
       'shell-browser-reveal',
+      'shell-prelude-fading',
       'launch-intro-active'
     );
     if (el) {
@@ -58,6 +59,7 @@ const LaunchIntro = {
       return;
     }
 
+    document.body.classList.add('shell-prelude-fading');
     document.body.classList.add('shell-browser-reveal');
 
     return new Promise((resolve) => {
@@ -67,6 +69,7 @@ const LaunchIntro = {
         done = true;
         el.removeEventListener('transitionend', onEnd);
         clearTimeout(fallback);
+        document.body.classList.remove('shell-prelude-fading');
         this._stripPrelude();
         resolve();
       };
@@ -75,7 +78,7 @@ const LaunchIntro = {
         finish();
       };
       el.addEventListener('transitionend', onEnd);
-      const fallback = setTimeout(finish, 900);
+      const fallback = setTimeout(finish, 700);
       el.classList.add('shell-prelude-exiting');
     });
   },
@@ -171,15 +174,22 @@ const LaunchIntro = {
     await new Promise((r) => requestAnimationFrame(r));
     document.body.classList.add('shell-prelude-in');
 
-    await this._sleep(this._motionOk() ? 520 : 120);
+    await this._sleep(this._motionOk() ? 420 : 100);
 
     const preload = opts.preloadBrowser;
+    const holdMs = typeof preload === 'function' ? this._holdWithBrowserMs() : this._holdNoBrowserMs();
+    const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
     if (typeof preload === 'function') {
-      await Promise.all([preload(), this._sleep(this._holdWithBrowserMs())]);
-    } else {
-      await this._sleep(this._holdNoBrowserMs());
+      await Promise.resolve(preload());
     }
+    const elapsed =
+      (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
+    const remaining = Math.max(0, holdMs - elapsed);
+    if (remaining > 0) await this._sleep(remaining);
     await this._sleep(this._motionOk() ? this.POST_READY_SETTLE_MS : 40);
+
+    await new Promise((r) => requestAnimationFrame(r));
+    await new Promise((r) => requestAnimationFrame(r));
 
     let url = null;
     try {

@@ -2553,10 +2553,13 @@ const toolExecutors = {
       }
       const n = (data.results || []).length;
       const nextTok = data.nextPageToken || null;
+      const oauthPid = gmailToolOAuthProviderId(args);
       return {
         results: data.results || [],
         total: data.total || 0,
         next_page_token: nextTok,
+        /** So the shell can open mail.google.com in the same account slot as the API (u/0 vs u/1). */
+        gmail_service_id: oauthPid === 'google_2' ? 'gmail_2' : 'gmail',
         note: `Found ${n} email(s) matching "${query}".${nextTok ? ' More available — call gmail_search again with the same query and page_token set to next_page_token.' : ''}`
       };
     } catch (e) {
@@ -5447,10 +5450,20 @@ ipcMain.handle('ntp-gmail-inbox', async () => {
 });
 
 // ── Gmail message full body (for AI draft reply) ─────────────────────────────
-ipcMain.handle('gmail-get-message-body', async (_, { id }) => {
+ipcMain.handle('gmail-get-message-body', async (_, payload) => {
   try {
-    const token = await getValidOAuthToken('google');
-    if (!token) return { error: navioGmailNotConnectedMessage('google') };
+    let id = '';
+    if (typeof payload === 'string') id = payload;
+    else if (payload && payload.id != null) id = String(payload.id);
+    id = id.trim();
+    if (!id) return { error: 'Message id is required.' };
+    const serviceId = payload && typeof payload === 'object' ? payload.serviceId : undefined;
+    const oauthPid =
+      serviceId === 'gmail_2' || serviceId === 'google_2'
+        ? 'google_2'
+        : 'google';
+    const token = await getValidOAuthToken(oauthPid);
+    if (!token) return { error: navioGmailNotConnectedMessage(oauthPid) };
 
     const r = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=full`,

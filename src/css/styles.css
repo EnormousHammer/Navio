@@ -351,7 +351,19 @@ body.shell-prelude-active.shell-browser-reveal #btn-tabstrip-show,
 body.shell-prelude-active.shell-browser-reveal #app {
   opacity: 1;
   pointer-events: auto;
-  transition: opacity 0.72s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+body.shell-prelude-fading #tab-strip,
+body.shell-prelude-fading #btn-tabstrip-show,
+body.shell-prelude-fading #app {
+  will-change: opacity;
+}
+
+body.shell-prelude-active.shell-prelude-fading .shell-prelude.shell-prelude-exiting {
+  will-change: opacity;
 }
 
 .shell-prelude {
@@ -371,9 +383,10 @@ body.shell-prelude-active.shell-browser-reveal #app {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
+  transform: translateZ(0);
   transition:
-    opacity 0.85s cubic-bezier(0.16, 1, 0.3, 1),
-    visibility 0s linear 0.95s;
+    opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0.55s;
 }
 
 /* Smooth fade-in of the prelude panel */
@@ -382,14 +395,17 @@ body.shell-prelude-active.shell-prelude-in .shell-prelude {
   visibility: visible;
   pointer-events: auto;
   transition:
-    opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1),
     visibility 0s linear 0s;
 }
 
 .shell-prelude.shell-prelude-exiting {
   opacity: 0 !important;
   pointer-events: none;
-  transition: opacity 0.72s cubic-bezier(0.33, 0, 0.2, 1) !important;
+  visibility: hidden;
+  transition:
+    opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1) !important,
+    visibility 0s linear 0.52s !important;
 }
 
 .shell-prelude-inner {
