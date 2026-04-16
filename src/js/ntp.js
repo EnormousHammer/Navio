@@ -434,7 +434,6 @@ const NTP = (() => {
   }
 
   async function _loadWeather() {
-    const block = document.getElementById('ntp-weather-block');
     const body = document.getElementById('ntp-weather-widget-body');
     const errEl = document.getElementById('ntp-weather-error');
     const dailyEl = document.getElementById('ntp-weather-grid-daily');
@@ -459,7 +458,6 @@ const NTP = (() => {
             'Could not resolve location (GPS and network lookup failed). Check your connection, then use the <strong>Location<\/strong> retry control. Note: Electron often cannot use device GPS without setting <code>GOOGLE_API_KEY</code> (Geolocation API); Navio uses IP-based coordinates when possible.';
         }
         if (retryBtn) retryBtn.style.display = '';
-        if (block) block.style.visibility = 'hidden';
         if (body) body.classList.remove('ntp-weather-body--busy');
         return;
       }
@@ -501,16 +499,8 @@ const NTP = (() => {
       if (cw) {
         const info = _wmoCodeToInfo(cw.weathercode);
         _weatherData = { temp: Math.round(cw.temperature), ...info };
-        const iconEl = document.getElementById('ntp-weather-icon');
-        const tempEl = document.getElementById('ntp-weather-temp');
-        const descEl = document.getElementById('ntp-weather-desc');
-        if (iconEl) iconEl.textContent = info.icon;
-        if (tempEl) tempEl.textContent = `${Math.round(cw.temperature)}°`;
-        if (descEl) descEl.textContent = info.desc;
-        if (block) block.style.visibility = 'visible';
       } else {
         _weatherData = null;
-        if (block) block.style.visibility = 'hidden';
       }
 
       if (data.daily) _renderWeatherDaily(data.daily, tz);
@@ -533,7 +523,6 @@ const NTP = (() => {
         errEl.textContent = 'Could not load weather. Check your connection and try again.';
       }
       if (retryBtn) retryBtn.style.display = '';
-      if (block) block.style.visibility = 'hidden';
     } finally {
       if (body) body.classList.remove('ntp-weather-body--busy');
     }

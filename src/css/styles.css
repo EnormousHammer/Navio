@@ -25,8 +25,9 @@
   --tabstrip-height: 40px;
   --navbar-height: 52px;
   --assistant-width: 420px;
-  --font-sans: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+  --font-sans: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;
+  --font-display: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
 
   --accent: #00d8ff;
   --accent-mid: #5468ff;
@@ -81,46 +82,46 @@
   }
 }
 
-/* ── DARK THEME (default) — Deep Space AI: deep navy strata, blue-tinted surfaces ── */
+/* ── DARK THEME (default) — editorial navy: neutral surfaces, accent used sparingly ── */
 [data-theme="dark"], :root {
-  --bg-void: #070b17;
-  --bg-deep: #0c1220;
-  --bg-primary: #111827;
-  --bg-surface: #172033;
-  --bg-elevated: #1d2840;
-  --bg-hover: #243150;
-  --bg-active: #2c3b5c;
+  --bg-void: #090b12;
+  --bg-deep: #0c0f18;
+  --bg-primary: #121620;
+  --bg-surface: #161b28;
+  --bg-elevated: #1a2130;
+  --bg-hover: #222a3a;
+  --bg-active: #2a3348;
 
-  --glass-bg: rgba(15, 22, 38, 0.88);
-  --glass-border: rgba(80, 160, 255, 0.14);
-  --glass-hover: rgba(80, 160, 255, 0.09);
+  --glass-bg: rgba(14, 18, 28, 0.92);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-hover: rgba(255, 255, 255, 0.05);
 
-  --accent-glow: rgba(0, 216, 255, 0.18);
-  --accent-glow-strong: rgba(0, 216, 255, 0.34);
-  --gradient-subtle: linear-gradient(135deg, rgba(0,216,255,0.14) 0%, rgba(84,104,255,0.09) 100%);
-  --gradient-surface: linear-gradient(180deg, rgba(17,24,39,0.98) 0%, rgba(7,11,23,1.0) 100%);
+  --accent-glow: rgba(0, 216, 255, 0.12);
+  --accent-glow-strong: rgba(0, 216, 255, 0.22);
+  --gradient-subtle: linear-gradient(135deg, rgba(0,216,255,0.08) 0%, rgba(84,104,255,0.05) 100%);
+  --gradient-surface: linear-gradient(180deg, rgba(18,22,32,0.98) 0%, rgba(9,11,18,1) 100%);
 
-  --text-primary: #dde6f8;
-  --text-secondary: #8090b8;
-  --text-tertiary: #4e5e82;
-  --text-muted: #3a4a6a;
-  --text-accent: #52d5f2;
+  --text-primary: #e8ecf4;
+  --text-secondary: #8b95ab;
+  --text-tertiary: #5c667e;
+  --text-muted: #4a5568;
+  --text-accent: #7dd3fc;
   --text-bright: #ffffff;
 
-  --border: rgba(80, 160, 255, 0.11);
-  --border-hover: rgba(80, 160, 255, 0.24);
-  --border-accent: rgba(0, 216, 255, 0.38);
+  --border: rgba(255, 255, 255, 0.075);
+  --border-hover: rgba(255, 255, 255, 0.14);
+  --border-accent: rgba(125, 211, 252, 0.38);
 
-  --shadow-sm: 0 1px 4px rgba(0,5,24,0.55);
-  --shadow-md: 0 4px 22px rgba(0,5,24,0.60);
-  --shadow-lg: 0 10px 52px rgba(0,5,24,0.68);
-  --shadow-glow: 0 0 22px rgba(0, 216, 255, 0.14);
-  --shadow-glow-strong: 0 0 44px rgba(0, 216, 255, 0.26);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.28);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow-glow: 0 0 20px rgba(0, 216, 255, 0.1);
+  --shadow-glow-strong: 0 0 36px rgba(0, 216, 255, 0.18);
 
-  --scrollbar-thumb: rgba(80,160,255,0.18);
-  --scrollbar-thumb-hover: rgba(80,160,255,0.30);
-  --overlay-bg: rgba(3, 6, 18, 0.86);
-  --ntp-radial: radial-gradient(ellipse at center, rgba(0,216,255,0.10) 0%, rgba(84,104,255,0.06) 40%, transparent 70%);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.12);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.22);
+  --overlay-bg: rgba(4, 6, 12, 0.88);
+  --ntp-radial: radial-gradient(ellipse at center, rgba(0,216,255,0.06) 0%, rgba(84,104,255,0.04) 45%, transparent 72%);
   --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238090b8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
 }
 
@@ -215,6 +216,26 @@ html, body, #titlebar, #navbar, #main-content,
   outline-offset: 2px;
 }
 
+[data-theme="dark"] :where(
+  button,
+  [role='button'],
+  .nav-btn,
+  .titlebar-btn,
+  .theme-toggle-btn,
+  .tab-item,
+  .tab-strip-new,
+  .tab-strip-toggle,
+  .tab-strip-show,
+  .bookmark-bar-item,
+  .ntp-weather-view-btn,
+  .ntp-widget-popout,
+  .extension-toolbar-btn,
+  .find-btn
+):focus-visible {
+  outline-color: rgba(125, 211, 252, 0.95);
+  outline-offset: 3px;
+}
+
 html, body {
   height: 100%;
   overflow: hidden;
@@ -224,6 +245,10 @@ html, body {
   background: var(--bg-void);
   user-select: none;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'kern' 1, 'liga' 1;
+  letter-spacing: -0.01em;
+  text-rendering: optimizeLegibility;
 }
 
 ::selection {
@@ -1174,7 +1199,6 @@ body.navio-incognito-active .url-bar-container {
 .nav-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
 .nav-btn:disabled { opacity: 0.3; cursor: default; }
@@ -1358,11 +1382,11 @@ body.navio-incognito-active .url-bar-container {
   bottom: var(--ntp-ticker-reserve, 0px);
   display: none;
   flex-direction: column;
-  background: #080d1a;
+  background: #0a0c12;
   overflow-y: auto;
   overflow-x: hidden;
   z-index: 2;
-  color: #e2e8f8;
+  color: #e8ecf4;
   /* Bottom inset matches fixed ticker via :root --ntp-ticker-reserve (ntp.js). */
   scroll-padding-bottom: 12px;
   /* Inbox / news list: ~3–4 rows visible, rest scrolls inside the tile */
@@ -1371,9 +1395,9 @@ body.navio-incognito-active .url-bar-container {
   --ntp-purple: #7c3aed;
   --ntp-text: #e2e8f8;
   --ntp-subtext: rgba(226,232,248,0.55);
-  --ntp-border: rgba(255,255,255,0.07);
-  --ntp-glass: rgba(255,255,255,0.04);
-  --ntp-glass-hover: rgba(255,255,255,0.07);
+  --ntp-border: rgba(255,255,255,0.09);
+  --ntp-glass: rgba(255,255,255,0.045);
+  --ntp-glass-hover: rgba(255,255,255,0.08);
 }
 .new-tab-page.active { display: flex; }
 
@@ -1393,10 +1417,10 @@ body.navio-incognito-active .url-bar-container {
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
-  background-color: #080d1a;
+  background-color: #0a0c12;
   background-image:
-    linear-gradient(180deg, rgba(6, 10, 22, 0.30) 0%, rgba(8, 13, 26, 0.62) 55%, rgba(8, 13, 26, 0.82) 100%),
-    radial-gradient(ellipse 100% 70% at 50% -5%, rgba(0, 212, 255, 0.12), transparent 58%),
+    linear-gradient(180deg, rgba(8, 10, 18, 0.45) 0%, rgba(10, 12, 20, 0.72) 55%, rgba(10, 12, 22, 0.88) 100%),
+    radial-gradient(ellipse 100% 70% at 50% -5%, rgba(56, 189, 248, 0.07), transparent 58%),
     url("../../public/navio_background.jpg");
   background-size: 100% 100%, 100% 100%, cover;
   background-position: center, center top, center center;
@@ -1408,12 +1432,12 @@ body.navio-incognito-active .url-bar-container {
   content: '';
   position: absolute;
   inset: -30%;
-  opacity: 0.38;
+  opacity: 0.22;
   background-image:
-    linear-gradient(rgba(0, 212, 255, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 212, 255, 0.07) 1px, transparent 1px),
-    linear-gradient(rgba(124, 58, 237, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(124, 58, 237, 0.045) 1px, transparent 1px);
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(rgba(125, 211, 252, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(125, 211, 252, 0.03) 1px, transparent 1px);
   background-size: 56px 56px, 56px 56px, 14px 14px, 14px 14px;
   background-position: 0 0, 0 0, 7px 7px, 7px 7px;
   animation: ntp-grid-drift 72s linear infinite;
@@ -1434,8 +1458,8 @@ body.navio-incognito-active .url-bar-container {
       rgba(0, 0, 0, 0.03) 3px
     ),
     url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E"),
-    linear-gradient(105deg, transparent 0%, rgba(0, 212, 255, 0.06) 42%, transparent 64%),
-    linear-gradient(transparent 60%, rgba(8, 13, 26, 0.5));
+    linear-gradient(105deg, transparent 0%, rgba(56, 189, 248, 0.04) 42%, transparent 64%),
+    linear-gradient(transparent 60%, rgba(8, 10, 16, 0.55));
   background-size:
     100% 100%,
     180px 180px,
@@ -1443,7 +1467,7 @@ body.navio-incognito-active .url-bar-container {
     100% 100%;
   background-position: 0 0, 0 0, 0% 0%, 0 100%;
   animation: ntp-shimmer 14s ease-in-out infinite alternate;
-  opacity: 0.48;
+  opacity: 0.28;
   mix-blend-mode: normal;
 }
 @keyframes ntp-grid-drift {
@@ -1556,12 +1580,12 @@ body.navio-incognito-active .url-bar-container {
 .ntp-clock {
   font-size: clamp(28px, 3.5vw, 42px);
   font-weight: 300;
-  letter-spacing: -1.5px;
-  color: #fff;
+  letter-spacing: -0.04em;
+  color: #f4f6fb;
   font-variant-numeric: tabular-nums;
   line-height: 1;
-  text-shadow: 0 0 20px rgba(0,212,255,0.35), 0 0 50px rgba(0,212,255,0.15), 0 0 80px rgba(124,58,237,0.12);
-  font-family: 'SF Pro Display', 'Helvetica Neue', system-ui, sans-serif;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 0 24px rgba(56, 189, 248, 0.12);
+  font-family: var(--font-display);
 }
 .ntp-clock-ampm {
   font-size: 0.3em;
@@ -1884,9 +1908,9 @@ body.navio-incognito-active .url-bar-container {
   }
 }
 .ntp-widget {
-  background: rgba(22, 30, 52, 0.85);
-  border: 1px solid rgba(100, 180, 255, 0.15);
-  border-radius: 16px;
+  background: rgba(18, 22, 34, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -1894,22 +1918,21 @@ body.navio-incognito-active .url-bar-container {
   align-self: start;
   width: 100%;
   position: relative;
-  backdrop-filter: blur(30px) saturate(1.3);
-  -webkit-backdrop-filter: blur(30px) saturate(1.3);
-  transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
+  backdrop-filter: blur(28px) saturate(1.15);
+  -webkit-backdrop-filter: blur(28px) saturate(1.15);
+  transition: border-color 0.28s ease, box-shadow 0.28s ease, transform 0.28s ease;
   box-shadow:
-    0 8px 32px rgba(0,0,0,0.55),
-    0 0 1px rgba(0,216,255,0.25),
-    inset 0 1px 0 rgba(255,255,255,0.10),
-    inset 0 0 40px rgba(0,216,255,0.03);
+    0 8px 28px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
-/* Gradient accent line at the top of every widget */
+/* Gradient accent line — subtle, not nightclub neon */
 .ntp-widget::before {
   content: '';
   position: absolute;
   top: 0; left: 0; right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent 2%, rgba(0,216,255,0.6) 25%, rgba(124,58,237,0.55) 75%, transparent 98%);
+  height: 1px;
+  background: linear-gradient(90deg, transparent 5%, rgba(125, 211, 252, 0.35) 45%, rgba(129, 140, 248, 0.28) 55%, transparent 95%);
   pointer-events: none;
   z-index: 3;
   opacity: 1;
@@ -1917,36 +1940,33 @@ body.navio-incognito-active .url-bar-container {
 }
 .ntp-widget:hover::before {
   opacity: 1;
-  height: 2px;
-  background: linear-gradient(90deg, transparent 0%, rgba(0,216,255,0.9) 20%, rgba(124,58,237,0.8) 80%, transparent 100%);
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(125, 211, 252, 0.5) 35%, rgba(129, 140, 248, 0.45) 65%, transparent 100%);
 }
 .ntp-widget:hover {
-  background: rgba(28, 38, 62, 0.90);
-  border-color: rgba(0,212,255,0.30);
+  background: rgba(22, 26, 40, 0.82);
+  border-color: rgba(255, 255, 255, 0.12);
   box-shadow:
-    0 12px 48px rgba(0,212,255,0.14),
-    0 8px 32px rgba(0,0,0,0.5),
-    0 0 0 1px rgba(0,216,255,0.12),
-    inset 0 1px 0 rgba(255,255,255,0.14),
-    inset 0 0 50px rgba(0,216,255,0.04);
+    0 16px 40px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(125, 211, 252, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
-/* AI Brief widget — gradient neon border */
+/* AI Brief widget — distinct but restrained */
 .ntp-widget-ai {
-  border-color: transparent;
-  background: linear-gradient(145deg, rgba(124,58,237,0.18), rgba(0,212,255,0.10), rgba(22,30,52,0.88));
+  border-color: rgba(129, 140, 248, 0.22);
+  background: linear-gradient(145deg, rgba(99, 102, 241, 0.12), rgba(14, 18, 28, 0.88));
 }
-/* Override the generic accent with a brighter AI top glow */
 .ntp-widget-ai::before {
-  background: linear-gradient(90deg, transparent, rgba(0,216,255,0.8), rgba(124,58,237,0.7), rgba(244,114,182,0.5), transparent);
-  height: 2px;
+  background: linear-gradient(90deg, transparent 8%, rgba(129, 140, 248, 0.55) 50%, rgba(56, 189, 248, 0.45) 92%, transparent);
+  height: 1px;
 }
 .ntp-widget-ai::after {
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: 16px;
+  border-radius: 14px;
   padding: 1px;
-  background: linear-gradient(135deg, rgba(0,212,255,0.5), rgba(124,58,237,0.5), rgba(244,114,182,0.4));
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.28), rgba(129, 140, 248, 0.28), rgba(167, 139, 250, 0.22));
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
@@ -9687,18 +9707,18 @@ button:focus-visible,
    NTP — dark mode lock (keeps deep-space aesthetic in dark theme)
    ───────────────────────────────────────────────────────────────────────── */
 [data-theme="dark"] .new-tab-page {
-  --text-primary: #e2e8f8;
-  --text-secondary: rgba(226,232,248,0.65);
-  --text-tertiary: rgba(226,232,248,0.35);
-  --text-accent: #00d8ff;
+  --text-primary: #e8ecf4;
+  --text-secondary: rgba(226,232,248,0.68);
+  --text-tertiary: rgba(226,232,248,0.38);
+  --text-accent: #7dd3fc;
   --bg-surface: rgba(255,255,255,0.05);
   --bg-elevated: rgba(255,255,255,0.08);
   --bg-hover: rgba(255,255,255,0.06);
-  --border: rgba(255,255,255,0.08);
-  --border-hover: rgba(255,255,255,0.14);
-  --glass-border: rgba(255,255,255,0.07);
-  background: #05080f;
-  color: #e2e8f8;
+  --border: rgba(255,255,255,0.09);
+  --border-hover: rgba(255,255,255,0.15);
+  --glass-border: rgba(255,255,255,0.08);
+  background: #0a0c12;
+  color: #e8ecf4;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
