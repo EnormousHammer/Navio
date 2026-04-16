@@ -43,6 +43,14 @@ const NAVIO_PROFILES_BASE = (() => {
   return base;
 })();
 
+/** One process per userData dir so Windows global hotkeys + disk caches are not contended. */
+const navioGotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!navioGotSingleInstanceLock) {
+  console.warn('[navio] Another instance is already running for this profile (same user data). Exiting.');
+  app.quit();
+  process.exit(0);
+}
+
 // Disable browser-level COOP/COEP enforcement so sites like Gmail and Google
 // services load correctly in Electron webviews. Without this, Chromium 130+
 // (Electron 33+) rejects the navigation with ERR_BLOCKED_BY_RESPONSE BEFORE
@@ -56,6 +64,13 @@ const INTRO_VIDEO_PATH = path.join(__dirname, '..', 'public', 'intro_video', 'in
 
 let mainWindow = null;
 let store = null;
+
+app.on('second-instance', () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+});
 
 function redactPII(text) {
   if (!text || typeof text !== 'string') return text;
@@ -700,6 +715,48 @@ function navioPopupDimsFromFeatures(feat) {
 /** One setWindowOpenHandler per guest webContents (did-attach + web-contents-created may both run). */
 const navioGuestWindowOpenBound = new WeakSet();
 let navioWebviewGuestPopupRoutingInstalled = false;
+let navioGuestAssistantShortcutForwardInstalled = false;
+
+/**
+ * When a page tab (<webview>) has focus, Ctrl/Cmd+Shift+A does not reach the shell
+ * renderer, so globalShortcut alone is unreliable. Forward the same accelerator from
+ * guest webContents to the main window (deduped in AssistantManager.toggle).
+ */
+function installNavioGuestAssistantShortcutForward() {
+  if (navioGuestAssistantShortcutForwardInstalled) return;
+  navioGuestAssistantShortcutForwardInstalled = true;
+
+  const sendToggleAssistantShortcut = () => {
+    try {
+      const mw = mainWindow;
+      if (mw && !mw.isDestroyed()) {
+        mw.webContents.send('shortcut', 'toggle-assistant');
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const isAssistantAccelerator = (input) => {
+    if (!input || input.type !== 'keyDown') return false;
+    const key = (input.key || '').toLowerCase();
+    if (key !== 'a' || !input.shift) return false;
+    return !!(input.control || input.meta);
+  };
+
+  app.on('web-contents-created', (_event, wc) => {
+    try {
+      if (typeof wc.getType !== 'function' || wc.getType() !== 'webview') return;
+    } catch {
+      return;
+    }
+    wc.on('before-input-event', (event, input) => {
+      if (!isAssistantAccelerator(input)) return;
+      event.preventDefault();
+      sendToggleAssistantShortcut();
+    });
+  });
+}
 
 /**
  * Route guest <webview> window.open / target=_blank into Navio tabs instead of a
@@ -873,6 +930,10 @@ ipcMain.on('window-maximize', () => {
   }
 });
 ipcMain.on('window-close', () => mainWindow?.close());
+
+ipcMain.on('navio-shell-log', (_, message) => {
+  console.log(typeof message === 'string' ? message : String(message));
+});
 
 ipcMain.handle('get-config', () => loadConfig());
 ipcMain.handle('navio-internal-chat-page-url', () => {
@@ -6234,6 +6295,7 @@ app.whenReady().then(async () => {
   });
 
   installNavioWebviewGuestPopupRouting();
+  installNavioGuestAssistantShortcutForward();
 
   createMainWindow();
 

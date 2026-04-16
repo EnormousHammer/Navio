@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld('navio', {
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
+  /** Echo a line to the terminal (main process stdout). For debugging shell UI (e.g. assistant toggle). */
+  shellLog: (message) => ipcRenderer.send('navio-shell-log', String(message)),
   onWindowStateChanged: (callback) => {
     ipcRenderer.on('window-state-changed', (_, state) => callback(state));
   },

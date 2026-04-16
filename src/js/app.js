@@ -57,6 +57,9 @@ class NavioApp {
     this.bindTabStrip();
     this.bindNewTabPage();
 
+    // If prelude was dismissed (aria-hidden) but body classes were left behind, unblock the shell.
+    this._syncShellPreludeBodyClass();
+
     // If LaunchIntro did not run startBrowser (e.g. intro error, or no LaunchIntro), still open a tab for returning users.
     // First-run: onboarding → onOnboardingComplete() → startBrowser().
     if (!isFirstRun && !this._sessionStarted) {
@@ -93,6 +96,21 @@ class NavioApp {
       TabManager.createTab();
     }
     /* waitForInitialShellReady deferred until after prelude fade — avoids layout work competing with the transition */
+  }
+
+  /** Drop stale shell-prelude-active / shell-prelude-in when #shell-prelude is already dismissed. */
+  _syncShellPreludeBodyClass() {
+    requestAnimationFrame(() => {
+      const sp = document.getElementById('shell-prelude');
+      if (sp && sp.getAttribute('aria-hidden') === 'true') {
+        document.body.classList.remove(
+          'shell-prelude-active',
+          'shell-prelude-in',
+          'shell-browser-reveal',
+          'shell-prelude-fading'
+        );
+      }
+    });
   }
 
   /** Run after launch prelude finishes so NTP “ready” checks don’t block or overlap the crossfade. */
@@ -452,6 +470,11 @@ class NavioApp {
           }
           break;
         case 'toggle-assistant':
+          try {
+            window.navio?.shellLog?.('[navio-assistant] main shortcut IPC → toggle-assistant');
+          } catch {
+            /* ignore */
+          }
           if (typeof AssistantManager !== 'undefined' && typeof AssistantManager.toggle === 'function') {
             AssistantManager.toggle();
           }

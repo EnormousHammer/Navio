@@ -48,6 +48,27 @@ function navioDetectPageFocusIntent(text) {
   );
 }
 
+/** Logs to the shell DevTools console and to the terminal (`npm start`) via `navio.shellLog`. */
+function navioAssistantDebug(label, detail) {
+  let extra = '';
+  if (detail !== undefined) {
+    try {
+      extra = typeof detail === 'string' ? detail : JSON.stringify(detail);
+    } catch {
+      extra = String(detail);
+    }
+  }
+  const line = extra ? `${label} ${extra}` : label;
+  console.log('[navio-assistant]', line);
+  try {
+    if (typeof window !== 'undefined' && window.navio && typeof window.navio.shellLog === 'function') {
+      window.navio.shellLog(`[navio-assistant] ${line}`);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 const NAVIO_ASSISTANT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 const NAVIO_ASSISTANT_PDF_MAX_BYTES = 12 * 1024 * 1024;
 const NAVIO_ASSISTANT_TEXT_MAX_CHARS = 180000;
@@ -166,6 +187,8 @@ class AssistantManagerClass {
     this._pendingConnectorCitations = null;
     /** @type {number | null} performance.now() when the current model turn started */
     this._turnStartedAt = null;
+    /** Dedupe toggle when globalShortcut and guest webview forward both fire. */
+    this._lastToggleAt = 0;
 
     // Minimal placeholder — the authoritative prompt is loaded from
     // navio-system-prompt.txt (or -legacy.txt) and injected by
@@ -182,7 +205,23 @@ class AssistantManagerClass {
   }
 
   bindEvents() {
-    document.getElementById('btn-toggle-assistant')?.addEventListener('click', () => this.toggle());
+    const toggleBtn = document.getElementById('btn-toggle-assistant');
+    if (!toggleBtn) {
+      navioAssistantDebug('bindEvents: MISSING #btn-toggle-assistant (toolbar AI will not receive clicks here)');
+    } else {
+      toggleBtn.addEventListener(
+        'click',
+        (e) => {
+          navioAssistantDebug('toolbar AI button: click received', {
+            target: e.target && e.target.id,
+            defaultPrevented: e.defaultPrevented
+          });
+          e.preventDefault();
+          this.toggle();
+        },
+        true
+      );
+    }
     document.getElementById('btn-close-assistant')?.addEventListener('click', () => this.close());
     document.getElementById('btn-clear-chat')?.addEventListener('click', () => this.clearChat());
     document.getElementById('btn-send-message')?.addEventListener('click', () => this.sendMessage());
@@ -569,7 +608,13 @@ class AssistantManagerClass {
   }
 
   async syncScopeFromConfig() {
-    const cfg = await window.navio.getConfig();
+    let cfg;
+    try {
+      cfg = await window.navio.getConfig();
+    } catch {
+      cfg = null;
+    }
+    if (!cfg || typeof cfg !== 'object') cfg = {};
     if (this.scopeSelect) {
       const v = cfg.aiDataScope || (cfg.aiIncludePageContext === false ? 'none' : 'excerpt');
       this.scopeSelect.value = ['none', 'selection', 'excerpt', 'full'].includes(v) ? v : 'excerpt';
@@ -785,28 +830,65 @@ class AssistantManagerClass {
   }
 
   toggle() {
+    const now = Date.now();
+    if (now - this._lastToggleAt < 100) {
+      navioAssistantDebug('toggle: ignored (debounce <100ms)');
+      return;
+    }
+    this._lastToggleAt = now;
     this._ensurePanel();
     const open = this.panel?.classList.contains('open');
+    navioAssistantDebug('toggle: branch', { hasPanel: !!this.panel, wasOpen: !!open });
     if (open) this.close();
     else void this.open();
   }
 
   async open() {
     this._ensurePanel();
-    if (!this.panel) return;
+    if (!this.panel) {
+      navioAssistantDebug('open: ABORT — #assistant-panel not found after _ensurePanel()');
+      return;
+    }
     this.isOpen = true;
     this.panel.classList.add('open');
-    await this.syncScopeFromConfig();
-    await this.syncConnectorTogglesFromConfig();
-    if (this.messagesEl && this.messagesEl.children.length === 0) {
-      await this._showGreeting();
+    document.body.classList.add('navio-assistant-open');
+    navioAssistantDebug('open: classes applied', {
+      bodyAssistantOpen: document.body.classList.contains('navio-assistant-open'),
+      panelClass: this.panel.className
+    });
+    try {
+      await this.syncScopeFromConfig();
+      await this.syncConnectorTogglesFromConfig();
+      if (this.messagesEl && this.messagesEl.children.length === 0) {
+        await this._showGreeting();
+      }
+    } catch (err) {
+      console.warn('[Assistant] open(): config/sync failed', err);
+      navioAssistantDebug('open: config/sync threw', err && err.message ? err.message : String(err));
     }
+    requestAnimationFrame(() => {
+      if (!this.panel) return;
+      const cs = getComputedStyle(this.panel);
+      navioAssistantDebug('open: after paint (computed)', {
+        width: cs.width,
+        visibility: cs.visibility,
+        opacity: cs.opacity,
+        display: cs.display,
+        pointerEvents: cs.pointerEvents
+      });
+    });
     setTimeout(() => this.inputEl?.focus(), 300);
   }
 
   async syncConnectorTogglesFromConfig() {
     try {
-      const cfg = await window.navio.getConfig();
+      let cfg;
+      try {
+        cfg = await window.navio.getConfig();
+      } catch {
+        cfg = null;
+      }
+      if (!cfg || typeof cfg !== 'object') cfg = {};
       const webSel = document.getElementById('assistant-connector-web');
       const mailSel = document.getElementById('assistant-connector-mail');
       const digestCb = document.getElementById('assistant-tab-digest-toggle');
@@ -845,6 +927,8 @@ class AssistantManagerClass {
     this._ensurePanel();
     this.isOpen = false;
     this.panel?.classList.remove('open');
+    document.body.classList.remove('navio-assistant-open');
+    navioAssistantDebug('close: assistant dock hidden');
   }
 
   async sendMessage() {
@@ -4744,3 +4828,11 @@ ${pageInfo}${snapText}`;
 }
 
 const AssistantManager = new AssistantManagerClass();
+
+/** DevTools / emergency: `__navioToggleAssistant()` if the toolbar shortcut fails. */
+if (typeof window !== 'undefined') {
+  window.__navioToggleAssistant = () => {
+    navioAssistantDebug('__navioToggleAssistant() invoked (from DevTools/console)');
+    AssistantManager.toggle();
+  };
+}

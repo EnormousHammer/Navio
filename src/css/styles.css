@@ -338,10 +338,12 @@ body.launch-intro-active #launch-intro {
    Shell prelude — always-on quick intro before first tab (no empty webview)
    ============================================ */
 
-/* Chrome below title bar hidden while prelude is up — prelude removed in JS with no CSS fade (avoids transition glitches). */
-body.shell-prelude-active #tab-strip,
-body.shell-prelude-active #btn-tabstrip-show,
-body.shell-prelude-active #app {
+/* Hide chrome only while the splash is actually visible (see #shell-prelude aria-hidden in launch-intro.js).
+   Git regression: body kept class shell-prelude-active without a visible prelude, which left #app at
+   pointer-events: none forever — toolbar (AI button) and shortcuts bound after init felt “dead”. */
+body.shell-prelude-active:has(#shell-prelude:not([aria-hidden="true"])) #tab-strip,
+body.shell-prelude-active:has(#shell-prelude:not([aria-hidden="true"])) #btn-tabstrip-show,
+body.shell-prelude-active:has(#shell-prelude:not([aria-hidden="true"])) #app {
   opacity: 0;
   pointer-events: none;
 }
@@ -547,6 +549,14 @@ body.shell-prelude-active.shell-prelude-in .shell-prelude {
 #app {
   display: flex;
   height: calc(100% - var(--titlebar-height) - var(--tabstrip-height));
+  /* Smooth inset when the assistant dock opens (see body.navio-assistant-open). */
+  transition: padding-right 350ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Reserve horizontal space for the fixed assistant dock so the page doesn’t sit underneath it. */
+body.navio-assistant-open #app {
+  padding-right: var(--assistant-width);
+  box-sizing: border-box;
 }
 
 body.tabstrip-hidden #app {
@@ -3232,19 +3242,35 @@ button.ntp-ticker-sport--stream:focus-visible {
    AI Assistant Panel
    ============================================ */
 
+/* Fixed dock: the panel used to live in the #app flex row with main + other nodes; in Chromium
+   that often collapsed or pushed the panel off-screen. Dock to the viewport instead. */
 .assistant-panel {
+  position: fixed;
+  top: calc(var(--titlebar-height) + var(--tabstrip-height));
+  right: 0;
+  bottom: 0;
   width: 0;
-  flex-shrink: 0;
+  min-width: 0;
+  max-width: min(var(--assistant-width), 100vw);
   overflow: hidden;
   background: var(--bg-primary);
   border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   transition: width 350ms cubic-bezier(0.32, 0.72, 0, 1);
-  z-index: 50;
+  /* Above guest <webview> / reading list (1200) / modal shells (2000); below NTP ticker (9999) & workspace/palette/prelude (10030+). Panel is a direct <body> child so it isn’t trapped under #app. */
+  z-index: 5000;
   backdrop-filter: blur(20px) saturate(1.08);
-  position: relative;
   padding-bottom: var(--ntp-ticker-reserve, 0px);
+  box-sizing: border-box;
+}
+
+body.tabstrip-hidden .assistant-panel {
+  top: var(--titlebar-height);
+}
+
+body.navio-vertical-tabs .assistant-panel {
+  top: var(--titlebar-height);
 }
 
 .assistant-panel::before {
@@ -3273,7 +3299,7 @@ button.ntp-ticker-sport--stream:focus-visible {
 
 .assistant-panel.open {
   width: var(--assistant-width);
-  min-width: var(--assistant-width);
+  min-width: min(var(--assistant-width), 100vw);
 }
 
 .assistant-header {
