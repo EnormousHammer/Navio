@@ -4,22 +4,26 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Navio AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg: #060910;
-      --panel: #0c111c;
-      --elev: #111827;
-      --border: rgba(0, 216, 255, 0.14);
-      --text: #e8edf5;
-      --muted: #8b9bb4;
-      --accent: #00d8ff;
-      --accent2: #5468ff;
-      --violet: #9f6fff;
+      --bg: #03050a;
+      --panel: rgba(12, 16, 28, 0.72);
+      --elev: rgba(14, 18, 32, 0.88);
+      --border: rgba(0, 216, 255, 0.18);
+      --text: #eef2fb;
+      --muted: #8b97b5;
+      --accent: #22d8ff;
+      --accent2: #6b7cff;
+      --violet: #b388ff;
       --user-bg: rgba(84, 104, 255, 0.2);
-      --radius: 14px;
-      --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-      --header-h: 52px;
+      --radius: 16px;
+      --font: "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      --header-h: 56px;
       --drawer-w: min(320px, 100vw);
+      --glass: rgba(10, 14, 26, 0.55);
     }
     * { box-sizing: border-box; }
     html, body {
@@ -33,15 +37,37 @@
     }
     body {
       background:
-        radial-gradient(1200px 600px at 20% -10%, rgba(0, 216, 255, 0.12), transparent 55%),
-        radial-gradient(900px 500px at 95% 0%, rgba(159, 111, 255, 0.1), transparent 50%),
-        var(--bg);
+        radial-gradient(ellipse 120% 70% at 50% 0%, rgba(0, 200, 255, 0.08), transparent 52%),
+        linear-gradient(180deg, #070a12 0%, #03050a 38%, #020308 100%);
+    }
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+      opacity: 0.45;
+      pointer-events: none;
+      z-index: 0;
     }
     .app {
+      position: relative;
+      z-index: 1;
       display: flex;
       flex-direction: column;
       height: 100%;
       margin: 0 auto;
+    }
+    .app > header::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, transparent 0%, rgba(0, 220, 255, 0.65) 28%, rgba(110, 130, 255, 0.75) 52%, rgba(180, 130, 255, 0.55) 78%, transparent 100%);
+      opacity: 0.95;
+      pointer-events: none;
+      box-shadow: 0 0 24px rgba(0, 220, 255, 0.25);
     }
     .shell {
       flex: 1;
@@ -73,15 +99,27 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 20px;
+      padding: 0 22px;
       min-height: var(--header-h);
-      border-bottom: 1px solid var(--border);
-      background: rgba(12, 17, 28, 0.85);
-      backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      background: linear-gradient(180deg, rgba(8, 12, 24, 0.92) 0%, rgba(4, 6, 14, 0.88) 100%);
+      backdrop-filter: blur(24px) saturate(1.3);
+      -webkit-backdrop-filter: blur(24px) saturate(1.3);
+      position: relative;
     }
     body.state-empty header {
       border-bottom-color: transparent;
-      background: transparent;
+      background: rgba(4, 6, 14, 0.35);
+    }
+    body.state-chat header {
+      background: linear-gradient(180deg, rgba(6, 10, 22, 0.94) 0%, rgba(3, 5, 12, 0.9) 100%);
+      border-bottom-color: rgba(0, 220, 255, 0.1);
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55), inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+    }
+    body.state-chat .brand-text h1 {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
     }
     .brand {
       display: flex;
@@ -89,11 +127,23 @@
       gap: 14px;
     }
     .logo {
-      width: 34px;
-      height: 34px;
-      border-radius: 10px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2) 60%, var(--violet));
-      box-shadow: 0 0 24px rgba(0, 216, 255, 0.25);
+      width: 36px;
+      height: 36px;
+      border-radius: 11px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2) 55%, var(--violet));
+      box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.12),
+        0 4px 20px rgba(0, 216, 255, 0.22),
+        0 12px 40px rgba(84, 104, 255, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .logo svg {
+      width: 20px;
+      height: 20px;
+      opacity: 0.95;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
     }
     .brand-text h1 {
       margin: 0;
@@ -109,11 +159,13 @@
     body.state-empty .brand-text p { display: none; }
     .hdr-actions { display: flex; align-items: center; gap: 10px; }
     .pill {
-      font-size: 11px;
-      padding: 4px 10px;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 5px 11px;
       border-radius: 999px;
-      border: 1px solid var(--border);
-      color: var(--muted);
+      border: 1px solid rgba(0, 216, 255, 0.22);
+      color: var(--text);
+      background: rgba(0, 216, 255, 0.08);
       max-width: 220px;
       white-space: nowrap;
       overflow: hidden;
@@ -149,17 +201,32 @@
     #messages {
       flex: 1;
       overflow-y: auto;
+      overflow-x: hidden;
       padding: 16px 0 12px;
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 16px;
+      scroll-behavior: smooth;
+    }
+    body.state-chat #messages {
+      max-width: 680px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 20px 12px 120px;
+      box-sizing: border-box;
     }
     .msg {
-      max-width: 94%;
-      padding: 12px 16px;
+      max-width: min(94%, 560px);
+      padding: 14px 18px;
       border-radius: var(--radius);
       white-space: pre-wrap;
       word-break: break-word;
+      font-size: 15px;
+      line-height: 1.58;
+    }
+    .msg .body {
+      font-size: 15px;
+      line-height: 1.58;
     }
     .msg .role {
       font-size: 10px;
@@ -170,13 +237,20 @@
     }
     .msg.user {
       align-self: flex-end;
-      background: var(--user-bg);
-      border: 1px solid rgba(84, 104, 255, 0.28);
+      border-radius: 20px 20px 6px 20px;
+      background: linear-gradient(155deg, rgba(84, 104, 255, 0.28), rgba(40, 52, 100, 0.45));
+      border: 1px solid rgba(130, 150, 255, 0.38);
+      box-shadow:
+        0 2px 0 rgba(255, 255, 255, 0.06) inset,
+        0 12px 40px rgba(40, 60, 140, 0.25);
     }
     .msg.assistant {
       align-self: flex-start;
-      background: var(--elev);
-      border: 1px solid var(--border);
+      border-radius: 20px 20px 20px 6px;
+      background: linear-gradient(180deg, rgba(22, 28, 42, 0.98) 0%, rgba(14, 18, 30, 0.95) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-left: 3px solid rgba(0, 216, 255, 0.55);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
     }
     .msg.assistant.error { border-color: rgba(255, 100, 100, 0.35); color: #ffc9c9; }
     .msg.assistant.streaming { border-color: rgba(0, 216, 255, 0.25); }
@@ -257,11 +331,12 @@
     .step-row .l { color: var(--text); margin-top: 4px; line-height: 1.4; }
     .plan-card {
       align-self: flex-start;
-      max-width: 96%;
-      padding: 14px 16px;
-      border-radius: var(--radius);
-      background: var(--panel);
-      border: 1px solid rgba(159, 111, 255, 0.25);
+      max-width: min(96%, 560px);
+      padding: 16px 18px;
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(28, 22, 48, 0.55) 0%, rgba(14, 18, 30, 0.95) 100%);
+      border: 1px solid rgba(159, 111, 255, 0.35);
+      box-shadow: 0 12px 40px rgba(80, 60, 140, 0.15);
     }
     .plan-card h3 { margin: 0 0 10px; font-size: 14px; }
     .plan-card ol { margin: 0; padding-left: 18px; color: var(--text); font-size: 13px; }
@@ -271,6 +346,19 @@
       flex-shrink: 0;
       padding: 0 0 22px;
     }
+    body.state-chat .composer-wrap {
+      position: sticky;
+      bottom: 0;
+      z-index: 5;
+      max-width: 680px;
+      width: 100%;
+      margin-left: auto;
+      margin-right: auto;
+      padding: 32px 12px 28px;
+      margin-top: -40px;
+      box-sizing: border-box;
+      background: linear-gradient(180deg, rgba(6, 9, 16, 0) 0%, rgba(6, 9, 16, 0.55) 18%, rgba(6, 9, 16, 0.96) 45%, #060910 100%);
+    }
     body.state-empty .composer-wrap {
       padding-bottom: 8px;
     }
@@ -278,11 +366,21 @@
       display: flex;
       gap: 10px;
       align-items: flex-end;
-      background: var(--panel);
-      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(20, 26, 40, 0.95) 0%, rgba(12, 16, 28, 0.98) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 16px;
       padding: 10px 12px;
-      box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+      box-shadow:
+        0 0 0 1px rgba(0, 216, 255, 0.06),
+        0 16px 48px rgba(0, 0, 0, 0.5);
+    }
+    body.state-chat .composer {
+      border-radius: 22px;
+      padding: 12px 14px;
+      box-shadow:
+        0 0 0 1px rgba(0, 216, 255, 0.12),
+        0 0 40px rgba(0, 216, 255, 0.06),
+        0 20px 56px rgba(0, 0, 0, 0.55);
     }
     body.state-empty .composer {
       border-radius: 22px;
@@ -367,10 +465,10 @@
     .hero-title {
       text-align: center;
       margin: 0 0 6px;
-      font-size: 22px;
-      font-weight: 600;
-      letter-spacing: -0.02em;
-      background: linear-gradient(120deg, var(--text), var(--muted));
+      font-size: 26px;
+      font-weight: 650;
+      letter-spacing: -0.03em;
+      background: linear-gradient(120deg, #f0f4fc 0%, var(--muted) 100%);
       -webkit-background-clip: text;
       background-clip: text;
       color: transparent;
@@ -414,7 +512,12 @@
   <div class="app">
     <header>
       <div class="brand">
-        <div class="logo" aria-hidden="true"></div>
+        <div class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M12 2L4 6.5V12c0 5.25 3.5 9.75 8 10 4.5-.25 8-4.75 8-10V6.5L12 2z" stroke="rgba(255,255,255,0.92)" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="M9.5 11.5L11 13l3.5-3.5" stroke="rgba(255,255,255,0.92)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
         <div class="brand-text">
           <h1>Navio AI</h1>
           <p id="subhead">Browser assistant</p>

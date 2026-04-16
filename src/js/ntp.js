@@ -1360,6 +1360,73 @@ const NTP = (() => {
     sendBtn?.addEventListener('click', () => void submit());
   }
 
+  function _oauthGoogleSlotActive(entry) {
+    return !!(entry && entry.connected && !entry.expired);
+  }
+
+  /**
+   * When primary Google and "2nd account" are both connected, open one tab per
+   * signed-in profile (u/0 vs u/1 for Gmail/Drive; authuser=0/1 elsewhere).
+   * Matches Navio's mapping from OAuth slots to Gmail web paths (see assistant.js).
+   */
+  async function _ntpShortcutMultiGoogleTargets(url) {
+    const raw = (url || '').trim();
+    if (!raw) return null;
+    if (typeof TabManager !== 'undefined' && TabManager.getActiveTab?.()?.incognito) {
+      return null;
+    }
+    let host = '';
+    try {
+      host = new URL(raw).hostname.toLowerCase();
+    } catch {
+      return null;
+    }
+    const hostNoWww = host.replace(/^www\./, '');
+    let oauthSt = {};
+    try {
+      oauthSt = (await window.navio.oauthStatus()) || {};
+    } catch {
+      return null;
+    }
+    if (!_oauthGoogleSlotActive(oauthSt.google) || !_oauthGoogleSlotActive(oauthSt.google_2)) {
+      return null;
+    }
+
+    if (host === 'mail.google.com' || host.endsWith('.mail.google.com')) {
+      return ['https://mail.google.com/mail/u/0/', 'https://mail.google.com/mail/u/1/'];
+    }
+    if (host === 'drive.google.com' || host.endsWith('.drive.google.com')) {
+      return ['https://drive.google.com/drive/u/0/', 'https://drive.google.com/drive/u/1/'];
+    }
+    if (hostNoWww === 'youtube.com') {
+      let o;
+      try {
+        o = new URL(raw);
+      } catch {
+        return null;
+      }
+      const u0 = new URL(o.href);
+      u0.searchParams.set('authuser', '0');
+      const u1 = new URL(o.href);
+      u1.searchParams.set('authuser', '1');
+      return [u0.href, u1.href];
+    }
+    if (hostNoWww === 'google.com') {
+      let o;
+      try {
+        o = new URL(raw);
+      } catch {
+        return null;
+      }
+      const u0 = new URL(o.href);
+      u0.searchParams.set('authuser', '0');
+      const u1 = new URL(o.href);
+      u1.searchParams.set('authuser', '1');
+      return [u0.href, u1.href];
+    }
+    return null;
+  }
+
   // ── Quick links shortcuts ─────────────────────────────────────────────────
 
   function _bindShortcuts() {
@@ -1367,9 +1434,24 @@ const NTP = (() => {
       btn.addEventListener('click', () => {
         const url = btn.dataset.url;
         if (!url) return;
-        // Shortcuts are only visible when NTP is active, meaning the current
-        // tab has no URL — always navigate in-place rather than opening new tab.
-        if (typeof App !== 'undefined') App.handleSearch(url);
+        void (async () => {
+          const multi = await _ntpShortcutMultiGoogleTargets(url);
+          if (
+            multi &&
+            multi.length > 1 &&
+            typeof App !== 'undefined' &&
+            typeof TabManager !== 'undefined'
+          ) {
+            App.handleSearch(multi[0]);
+            for (let i = 1; i < multi.length; i++) {
+              TabManager.createTab(multi[i], { switchTo: false });
+            }
+            return;
+          }
+          // Shortcuts are only visible when NTP is active, meaning the current
+          // tab has no URL — navigate in-place rather than replacing with a new tab.
+          if (typeof App !== 'undefined') App.handleSearch(url);
+        })();
       });
     });
   }
