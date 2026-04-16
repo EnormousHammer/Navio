@@ -1493,12 +1493,12 @@ body.navio-incognito-active .url-bar-container {
 
 /* ── Clock (between shortcut columns on NTP) ───────────────────────────── */
 .ntp-shortcuts-center {
-  flex: 0 0 auto;
+  grid-column: 2;
+  justify-self: center;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  align-self: center;
   min-width: min(160px, 24vw);
   max-width: 220px;
   padding: 4px min(14px, 2vw);
@@ -3179,12 +3179,12 @@ button.ntp-ticker-sport--stream:focus-visible {
   min-width: 0;
 }
 
-/* Shortcuts: no boxed “strip” — icons sit on the wallpaper; only layout + hairline divider */
+/* Shortcuts: 3-column grid so the clock stays on the true center line; side columns hug the clock */
 .ntp-shortcuts-panel {
-  display: flex;
-  flex-direction: row;
-  align-items: stretch;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  justify-items: stretch;
   width: 100%;
   max-width: 920px;
   padding: 6px 4px 8px;
@@ -3196,18 +3196,30 @@ button.ntp-ticker-sport--stream:focus-visible {
   -webkit-backdrop-filter: none;
   box-sizing: border-box;
   gap: 0;
+  column-gap: 0;
 }
 
 .ntp-shortcuts-col {
-  flex: 1 1 260px;
   min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
+}
+/* Left group: pack icons toward the clock (center of the page) */
+.ntp-shortcuts-col:not(.ntp-shortcuts-col--secondary) {
+  justify-content: flex-end;
+  padding-right: min(10px, 1.5vw);
+}
+/* Right group: pack icons toward the clock */
+.ntp-shortcuts-col--secondary {
+  justify-content: flex-start;
+  padding-left: min(10px, 1.5vw);
 }
 
-.ntp-shortcuts-col--secondary {
-  flex: 1 1 180px;
+.ntp-shortcuts-col:not(.ntp-shortcuts-col--secondary) .ntp-shortcuts-row-inner {
+  justify-content: flex-end;
+}
+.ntp-shortcuts-col--secondary .ntp-shortcuts-row-inner {
+  justify-content: flex-start;
 }
 
 /* Legacy: optional sep (unused in default NTP; kept for pop-out HTML clones) */
@@ -3241,8 +3253,19 @@ button.ntp-ticker-sport--stream:focus-visible {
 
 @media (max-width: 640px) {
   .ntp-shortcuts-panel {
+    display: flex;
     flex-direction: column;
     max-width: 720px;
+  }
+  .ntp-shortcuts-col:not(.ntp-shortcuts-col--secondary),
+  .ntp-shortcuts-col--secondary {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .ntp-shortcuts-col:not(.ntp-shortcuts-col--secondary) .ntp-shortcuts-row-inner,
+  .ntp-shortcuts-col--secondary .ntp-shortcuts-row-inner {
+    justify-content: center;
   }
   .ntp-shortcuts-center {
     min-width: 0;
