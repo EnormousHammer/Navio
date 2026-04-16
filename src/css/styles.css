@@ -3215,11 +3215,12 @@ button.ntp-ticker-sport--stream:focus-visible {
   padding-left: min(10px, 1.5vw);
 }
 
+/* Row uses a 9-column grid so we only wrap after 9 icons (flex-wrap was breaking at ~6). */
 .ntp-shortcuts-col:not(.ntp-shortcuts-col--secondary) .ntp-shortcuts-row-inner {
-  justify-content: flex-end;
+  justify-items: end;
 }
 .ntp-shortcuts-col--secondary .ntp-shortcuts-row-inner {
-  justify-content: flex-start;
+  justify-items: start;
 }
 
 /* Legacy: optional sep (unused in default NTP; kept for pop-out HTML clones) */
@@ -3242,13 +3243,13 @@ button.ntp-ticker-sport--stream:focus-visible {
 }
 
 .ntp-shortcuts-row-inner {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
   gap: clamp(4px, 1.5vw, 8px);
   row-gap: 8px;
-  justify-content: center;
   width: 100%;
   min-width: 0;
+  align-items: start;
 }
 
 @media (max-width: 640px) {
@@ -3263,9 +3264,12 @@ button.ntp-ticker-sport--stream:focus-visible {
     padding-left: 0;
     padding-right: 0;
   }
+  .ntp-shortcuts-row-inner {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
   .ntp-shortcuts-col:not(.ntp-shortcuts-col--secondary) .ntp-shortcuts-row-inner,
   .ntp-shortcuts-col--secondary .ntp-shortcuts-row-inner {
-    justify-content: center;
+    justify-items: center;
   }
   .ntp-shortcuts-center {
     min-width: 0;
