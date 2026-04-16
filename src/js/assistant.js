@@ -2283,7 +2283,7 @@ class AssistantManagerClass {
       const { step, tool, result } = payload || {};
       if (tool === 'navigate') return; // already shown
       if (tool === 'gmail_search' && result && !result.error) {
-        this._ingestGmailSearchToolResults(result);
+        void this._ingestGmailSearchToolResults(result);
       }
       const label = this._toolProgressLabel(tool, result);
       this._appendActivityStep(tool, label);
@@ -2916,14 +2916,21 @@ class AssistantManagerClass {
    * Extract Gmail message id from a mail.google.com href (fragment may be inbox/id, search/…, etc.).
    */
   /**
-   * Gmail multi-account web URLs use /mail/u/N/ … Navio maps connector + API slots to u/0 (primary) and u/1 (2nd OAuth).
-   * If the user reordered accounts in the browser, u/1 may differ — this matches the common 2-account setup.
+   * Gmail multi-account: `/mail/u/0` vs `/u/1` is **browser session order**, not Navio’s OAuth primary/secondary.
+   * When we know the Google account email (OAuth), add `?authuser=<email>` so Gmail opens the same inbox as the API.
    */
-  _gmailWebInboxUrl(messageId, gmailUSlot) {
-    const u = gmailUSlot === 1 || gmailUSlot === '1' ? 1 : 0;
+  _gmailWebInboxUrl(messageId, gmailUSlot, authEmail) {
     const id = String(messageId || '').trim();
     if (!id) return '';
-    return `https://mail.google.com/mail/u/${u}/#inbox/${encodeURIComponent(id)}`;
+    const slot = gmailUSlot === 1 || gmailUSlot === '1' ? 1 : 0;
+    const email =
+      typeof authEmail === 'string' && authEmail.includes('@') ? authEmail.trim() : '';
+    if (email) {
+      const base = new URL('https://mail.google.com/mail/u/0/');
+      base.searchParams.set('authuser', email);
+      return `${base.origin}${base.pathname}?${base.searchParams.toString()}#inbox/${encodeURIComponent(id)}`;
+    }
+    return `https://mail.google.com/mail/u/${slot}/#inbox/${encodeURIComponent(id)}`;
   }
 
   _resolveGmailMessageIdFromMailUrl(href) {
@@ -2957,7 +2964,8 @@ class AssistantManagerClass {
       else slot = 0;
     }
     const slotN = slot === 1 || slot === '1' ? 1 : 0;
-    const safeUrl = (this._gmailWebInboxUrl(msgId, slotN) || url || '').replace(/"/g, '&quot;');
+    const authEmail = ref.authEmail;
+    const safeUrl = (this._gmailWebInboxUrl(msgId, slotN, authEmail) || url || '').replace(/"/g, '&quot;');
     const display = (subjectLabel || ref.subject || '(no subject)').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const safeFrom = (ref.from || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const safeSnippet = (ref.snippet || '').replace(/"/g, '&quot;').slice(0, 500);
@@ -3042,7 +3050,7 @@ class AssistantManagerClass {
         } else {
           const ref = map.get(frag.id) || {};
           const slot = ref.gmailUSlot != null ? ref.gmailUSlot : 0;
-          const chipUrl = ref.url || this._gmailWebInboxUrl(frag.id, slot);
+          const chipUrl = ref.url || this._gmailWebInboxUrl(frag.id, slot, ref.authEmail);
           const wrap = document.createElement('div');
           wrap.innerHTML = this._buildEmailRefChipHtml(chipUrl, frag.id, ref.subject || frag.subject, slot);
           const chip = wrap.firstElementChild;
@@ -3056,21 +3064,31 @@ class AssistantManagerClass {
   }
 
   /** Register Gmail rows from agent gmail_search tool results (same shape as connector). */
-  _ingestGmailSearchToolResults(result) {
+  async _ingestGmailSearchToolResults(result) {
     const rows = result?.results;
     if (!Array.isArray(rows)) return;
+    let oauthSt = {};
+    try {
+      oauthSt = (await window.navio.oauthStatus()) || {};
+    } catch {
+      /* ignore */
+    }
+    const emailPri = oauthSt.google?.email;
+    const emailSec = oauthSt.google_2?.email;
     const svc = result?.gmail_service_id === 'gmail_2' ? 'gmail_2' : 'gmail';
     const slot = svc === 'gmail_2' ? 1 : 0;
+    const authEmail = slot === 1 ? emailSec : emailPri;
     for (const r of rows) {
       if (!r?.id) continue;
-      const gmailUrl = this._gmailWebInboxUrl(r.id, slot);
+      const gmailUrl = this._gmailWebInboxUrl(r.id, slot, authEmail);
       this._emailRefs.set(r.id, {
         subject: r.subject || '(no subject)',
         from: r.from || '',
         snippet: r.snippet || '',
         url: gmailUrl,
         serviceId: svc,
-        gmailUSlot: slot
+        gmailUSlot: slot,
+        authEmail: authEmail || undefined
       });
     }
   }
@@ -4148,7 +4166,7 @@ class AssistantManagerClass {
     };
 
     contentEl.querySelectorAll('.email-ref-chip').forEach(chip => {
-      chip.addEventListener('click', () => {
+      chip.addEventListener('click', async () => {
         const msgId = (chip.dataset.msgId || '').trim();
         let uSlot = chip.dataset.gmailU;
         if (uSlot === undefined || uSlot === '') {
@@ -4170,8 +4188,17 @@ class AssistantManagerClass {
           }
           return;
         }
+        let authEmail = msgId && this._emailRefs?.get ? this._emailRefs.get(msgId)?.authEmail : '';
+        if (msgId && (!authEmail || !String(authEmail).includes('@'))) {
+          try {
+            const oauthSt = (await window.navio.oauthStatus()) || {};
+            authEmail = isSecond ? oauthSt.google_2?.email : oauthSt.google?.email;
+          } catch {
+            /* ignore */
+          }
+        }
         const openUrl = msgId
-          ? this._gmailWebInboxUrl(msgId, isSecond ? 1 : 0)
+          ? this._gmailWebInboxUrl(msgId, isSecond ? 1 : 0, authEmail)
           : (chip.dataset.url || '').trim();
         if (!openUrl) return;
         if (typeof TabManager !== 'undefined' && typeof TabManager.createTab === 'function') {
@@ -5083,6 +5110,8 @@ ${pageInfo}${snapText}`;
         }
 
         const dualPrefetch = prefetchSvcs.length > 1;
+        const emailPriPrefetch = oauthSt.google?.email;
+        const emailSecPrefetch = oauthSt.google_2?.email;
         for (const activeGmailSvc of prefetchSvcs) {
           if (!has(activeGmailSvc)) continue;
           const gmailLabel = activeGmailSvc === 'gmail_2' ? 'Gmail (2nd account)' : 'Gmail';
@@ -5095,8 +5124,9 @@ ${pageInfo}${snapText}`;
               results.push(`[${gmailLabel} connector error: ${res.error}]`);
             } else if (res?.results?.length) {
               const gSlot = activeGmailSvc === 'gmail_2' ? 1 : 0;
+              const authEmailPrefetch = gSlot === 1 ? emailSecPrefetch : emailPriPrefetch;
               const lines = res.results.map((r, idx) => {
-                const gmailUrl = r.id ? this._gmailWebInboxUrl(r.id, gSlot) : '';
+                const gmailUrl = r.id ? this._gmailWebInboxUrl(r.id, gSlot, authEmailPrefetch) : '';
                 if (r.id) {
                   this._emailRefs.set(r.id, {
                     subject: r.subject || '(no subject)',
@@ -5104,7 +5134,8 @@ ${pageInfo}${snapText}`;
                     snippet: r.snippet || '',
                     url: gmailUrl,
                     serviceId: activeGmailSvc,
-                    gmailUSlot: gSlot
+                    gmailUSlot: gSlot,
+                    authEmail: authEmailPrefetch || undefined
                   });
                 }
                 const snippet = r.snippet ? `\n  "${r.snippet.slice(0, 150)}"` : '';
@@ -5149,8 +5180,9 @@ ${pageInfo}${snapText}`;
           if (res?.results?.length) {
             const moreLabel = moreSvc === 'gmail_2' ? 'Gmail (2nd account)' : 'Gmail';
             const moreSlot = moreSvc === 'gmail_2' ? 1 : 0;
+            const authEmailMore = moreSlot === 1 ? oauthSt.google_2?.email : oauthSt.google?.email;
             const lines = res.results.map((r, idx) => {
-              const gmailUrl = r.id ? this._gmailWebInboxUrl(r.id, moreSlot) : '';
+              const gmailUrl = r.id ? this._gmailWebInboxUrl(r.id, moreSlot, authEmailMore) : '';
               if (r.id) {
                 this._emailRefs.set(r.id, {
                   subject: r.subject || '(no subject)',
@@ -5158,7 +5190,8 @@ ${pageInfo}${snapText}`;
                   snippet: r.snippet || '',
                   url: gmailUrl,
                   serviceId: moreSvc,
-                  gmailUSlot: moreSlot
+                  gmailUSlot: moreSlot,
+                  authEmail: authEmailMore || undefined
                 });
               }
               const snippet = r.snippet ? `\n  "${r.snippet.slice(0, 150)}"` : '';
