@@ -1434,17 +1434,33 @@ const InlineAI = (() => {
       // Register listeners BEFORE starting the stream to avoid a race
       // where fast responses deliver chunks before handlers are attached.
       let result = '';
-      _unsubs.push(window.navio.onAiStreamChunk(chunk => {
-        result += chunk;
+      const omniTab = '__omnibar__';
+      _unsubs.push(window.navio.onAiStreamChunk((payload) => {
+        let tid = '__default__';
+        let chunkText = '';
+        if (typeof payload === 'string') {
+          chunkText = payload;
+        } else if (payload && typeof payload === 'object') {
+          tid = payload.tabId != null ? String(payload.tabId) : '__default__';
+          chunkText = payload.text != null ? String(payload.text) : '';
+        }
+        if (tid !== omniTab || !chunkText) return;
+        result += chunkText;
         if (body) body.textContent = result;
         _lastAiResult = result;
       }));
-      _unsubs.push(window.navio.onAiStreamDone(() => {
+      _unsubs.push(window.navio.onAiStreamDone((payload) => {
+        const tid = payload && payload.tabId != null ? String(payload.tabId) : '__default__';
+        if (tid !== omniTab) return;
         _cancelStream();
         if (repBtn && action === 'rewrite') repBtn.disabled = !_lastAiResult.trim();
       }));
-      _unsubs.push(window.navio.onAiStreamError(err => {
-        if (body) body.textContent = 'Error: ' + err;
+      _unsubs.push(window.navio.onAiStreamError((payload) => {
+        const errObj = typeof payload === 'string' ? { tabId: '__default__', message: payload } : payload || {};
+        const tid = errObj.tabId != null ? String(errObj.tabId) : '__default__';
+        if (tid !== omniTab) return;
+        const errText = errObj.message != null ? String(errObj.message) : String(payload || '');
+        if (body) body.textContent = 'Error: ' + errText;
         _cancelStream();
         if (repBtn && action === 'rewrite') repBtn.disabled = true;
       }));
@@ -1454,6 +1470,7 @@ const InlineAI = (() => {
           { role: 'system', content: 'You are a helpful writing assistant. Be concise. Reply in plain text only — no markdown, no bullet points.' },
           { role: 'user',   content: prompt },
         ],
+        tabId: omniTab,
       });
     } catch (err) {
       if (body) body.textContent = 'Error: ' + err.message;

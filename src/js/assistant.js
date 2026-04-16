@@ -83,7 +83,7 @@ const NAVIO_ASSISTANT_INLINE_MAX_BYTES = 4 * 1024 * 1024;
 /** Unknown extensions: try UTF-8 decode when under this size (code, configs, odd MIME). */
 const NAVIO_ASSISTANT_HEURISTIC_TEXT_MAX_BYTES = 768 * 1024;
 
-/** One conversation thread per browser profile (persisted). Tab-scoped keys cannot survive restarts (ephemeral tab ids). */
+/** Legacy persisted chat bucket (single thread). Migrated once into the first active tab per session. */
 const NAVIO_PROFILE_CHAT_KEY = '__profile__';
 
 function navioLooksLikePrintableText(s) {
@@ -215,14 +215,16 @@ class AssistantManagerClass {
     this.scopeSelect = document.getElementById('assistant-data-scope');
     this.receiptEl = document.getElementById('assistant-context-receipt');
     this.isOpen = false;
-    this.isProcessing = false;
+    /** Tab ids currently running an assistant turn (each tab can have its own task in parallel). */
+    this._busyTabs = new Set();
     /** @type {Map<string, Array<{ role: string, content: unknown }>>} */
     this._conversationsByTab = new Map();
     /** @type {Promise<void> | null} */
     this._assistantHistoryLoadPromise = null;
     /** @type {ReturnType<typeof setTimeout> | null} */
     this._assistantPersistTimer = null;
-    this._streamUnsubs = [];
+    /** @type {Map<string, Array<() => void>>} */
+    this._streamUnsubsByTab = new Map();
     this._autoFollowCount = 0;
     this._emailRefs = new Map();
     /** @type {Map<string, string>} messageId → plain body (Gmail API) */
@@ -247,6 +249,10 @@ class AssistantManagerClass {
     this._pendingConnectorCitations = null;
     /** @type {number | null} performance.now() when the current model turn started */
     this._turnStartedAt = null;
+    /** While a turn is in flight, history reads/writes go to this tab id (so tab switches don't mis-file replies). */
+    this._turnConversationKey = null;
+    /** First tab id that receives a copy of the legacy persisted profile thread (once per session). */
+    this._profileChatSeededToTabId = null;
     /** Dedupe toggle when globalShortcut and guest webview forward both fire. */
     this._lastToggleAt = 0;
 
@@ -399,7 +405,31 @@ class AssistantManagerClass {
   }
 
   _conversationKey() {
+    if (typeof TabManager !== 'undefined' && TabManager.activeTabId) {
+      return String(TabManager.activeTabId);
+    }
     return NAVIO_PROFILE_CHAT_KEY;
+  }
+
+  /** Tab object for the tab that started the current assistant turn (or active tab). */
+  _tabForTurnContext() {
+    const tid = this._turnConversationKey;
+    if (tid && typeof TabManager !== 'undefined') {
+      const t = TabManager.tabs.find((x) => String(x.id) === String(tid));
+      if (t) return t;
+    }
+    return typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
+  }
+
+  _ensureConversationEntry(k) {
+    if (this._conversationsByTab.has(k)) return;
+    const legacy = this._conversationsByTab.get(NAVIO_PROFILE_CHAT_KEY);
+    if (legacy && legacy.length && this._profileChatSeededToTabId == null) {
+      this._conversationsByTab.set(k, [...legacy]);
+      this._profileChatSeededToTabId = k;
+    } else {
+      this._conversationsByTab.set(k, []);
+    }
   }
 
   async _ensureAssistantHistoryLoaded() {
@@ -439,7 +469,7 @@ class AssistantManagerClass {
   async _persistAssistantHistoryNow() {
     try {
       if (!window.navio || typeof window.navio.assistantChatSave !== 'function') return;
-      const h = this._conversationsByTab.get(NAVIO_PROFILE_CHAT_KEY);
+      const h = this._conversationsByTab.get(this._conversationKey());
       if (!h || !h.length) {
         await window.navio.assistantChatSave({ messages: [] });
         return;
@@ -453,69 +483,70 @@ class AssistantManagerClass {
     }
   }
 
-  /** API message history (profile-wide, persisted). */
+  /** API message history (per tab; legacy profile thread migrates once into the first tab). */
   _currentHistory() {
-    const k = this._conversationKey();
-    if (!this._conversationsByTab.has(k)) {
-      this._conversationsByTab.set(k, []);
-    }
+    const k = this._turnConversationKey ?? this._conversationKey();
+    this._ensureConversationEntry(k);
     return this._conversationsByTab.get(k);
   }
 
   /**
-   * When the user switches tabs: stop generation and hide the dock (Comet-style).
-   * Profile-wide thread: do **not** wipe the message list or composer — that made the panel feel
-   * tied to the “old” tab and destroyed unsent drafts. Reopening shows the same transcript + draft.
+   * When the user switches tabs: show that tab’s conversation. Do **not** cancel in-flight work —
+   * automation stays on the agent-controlled tab via TabManager; streams/history stay on the tab
+   * that started the turn (`_turnConversationKey`).
    */
   onActiveTabChanged(prevTabId, nextTabId) {
     if (!prevTabId || prevTabId === nextTabId) return;
-    try {
-      this.stopGeneration();
-      this._clearStreamListeners();
-      if (this._takeoverAbort) {
-        try {
-          this._takeoverAbort.abort();
-        } catch {
-          /* ignore */
-        }
-        this._takeoverAbort = null;
-      }
-    } catch {
-      /* ignore */
-    }
-    this.removeTypingIndicator();
-    this.isProcessing = false;
-    this._setAssistantBusy(false);
-    this._turnStartedAt = null;
-    this._awaitingTaskChain = false;
-    this._autoFollowCount = 0;
-    this.close();
-    document.getElementById('navio-continue-pill')?.remove();
-    this.setReceipt('');
-    try {
-      this._clearAttachmentQueue();
-    } catch {
-      /* ignore */
-    }
+    void this._syncPanelToTab(String(nextTabId));
     navioAssistantDebug('onActiveTabChanged', { prevTabId, nextTabId });
   }
 
   onTabClosed(tabId) {
     if (!tabId) return;
-    this._conversationsByTab.delete(String(tabId));
+    const k = String(tabId);
+    this._conversationsByTab.delete(k);
+    this._busyTabs.delete(k);
   }
 
-  /** Rebuild visible bubbles from profile API history (e.g. empty DOM after clear chat). */
-  _renderDomFromCurrentHistory() {
+  _renderDomFromHistoryKey(k) {
     if (!this.messagesEl) return;
     this.messagesEl.innerHTML = '';
-    const h = this._currentHistory();
+    const h = this._conversationsByTab.get(k) || [];
     for (const m of h) {
       if (!m || (m.role !== 'user' && m.role !== 'assistant')) continue;
       if (typeof m.content !== 'string') continue;
       const text = m.content;
       if (!String(text).trim() && m.role === 'user') continue;
       this.addMessage(m.role, text);
+    }
+  }
+
+  /** Rebuild visible bubbles from profile API history (e.g. empty DOM after clear chat). */
+  _renderDomFromCurrentHistory() {
+    const k = this._turnConversationKey ?? this._conversationKey();
+    this._renderDomFromHistoryKey(k);
+  }
+
+  /**
+   * Swap the sidebar transcript to match `tabId` (conversation + attachments cleared for that view).
+   */
+  async _syncPanelToTab(tabId) {
+    const k = String(tabId || '');
+    if (!k) return;
+    this._ensureConversationEntry(k);
+    try {
+      this._clearAttachmentQueue();
+    } catch {
+      /* ignore */
+    }
+    this.setReceipt('');
+    document.getElementById('navio-continue-pill')?.remove();
+    const h = this._conversationsByTab.get(k) || [];
+    if (h.length) {
+      this._renderDomFromHistoryKey(k);
+    } else if (this.messagesEl) {
+      this.messagesEl.innerHTML = '';
+      await this._showGreeting();
     }
   }
 
@@ -1173,13 +1204,8 @@ class AssistantManagerClass {
     try {
       await this.syncScopeFromConfig();
       await this.syncConnectorTogglesFromConfig();
-      if (this.messagesEl && this.messagesEl.children.length === 0) {
-        if (this._currentHistory().length > 0) {
-          this._renderDomFromCurrentHistory();
-        } else {
-          await this._showGreeting();
-        }
-      }
+      const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
+      if (aid) await this._syncPanelToTab(aid);
     } catch (err) {
       console.warn('[Assistant] open(): config/sync failed', err);
       navioAssistantDebug('open: config/sync threw', err && err.message ? err.message : String(err));
@@ -1257,7 +1283,8 @@ class AssistantManagerClass {
       this.addMessage('assistant', 'Wait until attachments finish loading.', 'error');
       return;
     }
-    if ((!text && !hasReadyAttachments) || this.isProcessing) return;
+    const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
+    if ((!text && !hasReadyAttachments) || (aid && this._tabIsBusy(aid))) return;
 
     if (text.startsWith('>>')) {
       if (hasReadyAttachments) {
@@ -1325,7 +1352,8 @@ class AssistantManagerClass {
   }
 
   async handleQuickAction(action) {
-    if (this.isProcessing) return;
+    const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
+    if (aid && this._tabIsBusy(aid)) return;
     if (!this.isOpen) this.open();
 
     if (action === 'all-tabs') {
@@ -1446,18 +1474,33 @@ class AssistantManagerClass {
     if (this.receiptEl) this.receiptEl.textContent = text || '';
   }
 
-  /** Abort streaming or tool-loop generation in the main process (same window). */
+  /** Abort streaming or tool-loop for the active tab only (other tabs keep running). */
   stopGeneration() {
     try {
       if (window.navio && typeof window.navio.aiAbort === 'function') {
-        void window.navio.aiAbort();
+        const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
+        void window.navio.aiAbort(aid ? { tabId: aid } : {});
       }
     } catch {
       /* ignore */
     }
   }
 
-  _setAssistantBusy(busy) {
+  _tabIsBusy(tabId) {
+    if (tabId == null) return false;
+    return this._busyTabs.has(String(tabId));
+  }
+
+  _setTabBusy(tabId, busy) {
+    const k = String(tabId);
+    if (busy) this._busyTabs.add(k);
+    else this._busyTabs.delete(k);
+    this._updateAssistantBusyChrome();
+  }
+
+  _updateAssistantBusyChrome() {
+    const active = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
+    const busy = !!(active && this._busyTabs.has(String(active.id)));
     const stop = document.getElementById('btn-assistant-stop');
     const send = document.getElementById('btn-send-message');
     if (stop) {
@@ -1478,15 +1521,24 @@ class AssistantManagerClass {
     }
   }
 
-  _clearStreamListeners() {
-    this._streamUnsubs.forEach((u) => {
+  _clearStreamListenersForTab(tabId) {
+    const k = String(tabId);
+    const subs = this._streamUnsubsByTab.get(k);
+    if (!subs) return;
+    for (const u of subs) {
       try {
         u();
       } catch {
         /* ignore */
       }
-    });
-    this._streamUnsubs = [];
+    }
+    this._streamUnsubsByTab.delete(k);
+  }
+
+  _clearAllStreamListeners() {
+    for (const k of [...this._streamUnsubsByTab.keys()]) {
+      this._clearStreamListenersForTab(k);
+    }
   }
 
   async processMessage(text, isQuickAction = false, historyUserLabel = null) {
@@ -1503,10 +1555,13 @@ class AssistantManagerClass {
       return;
     }
 
-    this.isProcessing = true;
+    const turnKey = this._conversationKey();
+    this._turnConversationKey = turnKey;
+    try {
+    this._setTabBusy(turnKey, true);
     if (!isQuickAction) this._actionFormatRetries = 0;
     this.showTypingIndicator();
-    this._setAssistantBusy(true);
+    this._updateAssistantBusyChrome();
 
     // ── Tool-calling mode (new agentic path) ────────────────────────────────
     if (config.aiUseToolCalling && !isQuickAction) {
@@ -1517,8 +1572,6 @@ class AssistantManagerClass {
       this._turnStartedAt = null;
       this.addMessage('assistant', err.message || 'Tool-calling error', 'error');
     }
-      this.isProcessing = false;
-      this._setAssistantBusy(false);
       return;
     }
     // ── Legacy <navio-actions> path ──────────────────────────────────────────
@@ -1692,8 +1745,8 @@ class AssistantManagerClass {
             op: 'addTurn',
             role: 'assistant',
             summary: result.content.slice(0, 200),
-            tabId: TabManager.getActiveTab()?.id,
-            url: TabManager.getActiveTab()?.url || ''
+            tabId: this._tabForTurnContext()?.id,
+            url: this._tabForTurnContext()?.url || ''
           });
         }
       }
@@ -1703,8 +1756,14 @@ class AssistantManagerClass {
       this.addMessage('assistant', err.message, 'error');
     }
 
-    this.isProcessing = false;
-    this._setAssistantBusy(false);
+    } finally {
+      this._turnConversationKey = null;
+      this._setTabBusy(turnKey, false);
+      this._updateAssistantBusyChrome();
+      if (typeof TabManager !== 'undefined' && TabManager.activeTabId) {
+        void this._syncPanelToTab(String(TabManager.activeTabId));
+      }
+    }
   }
 
   _guestDeliver(guestWv, msg) {
@@ -1754,7 +1813,7 @@ class AssistantManagerClass {
   async processGuestChatMessage(guestWv, text) {
     await this._ensureAssistantHistoryLoaded();
     if (!text || !guestWv) return;
-    if (this.isProcessing) {
+    if (this._tabIsBusy('__guest__')) {
       this._guestDeliver(guestWv, { type: 'toast', text: 'Still working on the last message…' });
       return;
     }
@@ -1767,8 +1826,10 @@ class AssistantManagerClass {
       this._guestDeliver(guestWv, { type: 'assistant', error: true, content: 'Add an API key in **Settings → AI** first.' });
       return;
     }
-    this.isProcessing = true;
-    this._setAssistantBusy(true);
+    const prevTurn = this._turnConversationKey;
+    this._turnConversationKey = '__guest__';
+    this._setTabBusy('__guest__', true);
+    this._updateAssistantBusyChrome();
     try {
       if (config.aiUseToolCalling !== false) {
         await this._processWithTools(text, config, this._historyLabelForAttachments(text), guestWv);
@@ -1777,9 +1838,11 @@ class AssistantManagerClass {
       }
     } catch (err) {
       this._guestDeliver(guestWv, { type: 'assistant', error: true, content: err.message || String(err) });
+    } finally {
+      this._turnConversationKey = prevTurn;
+      this._setTabBusy('__guest__', false);
+      this._updateAssistantBusyChrome();
     }
-    this.isProcessing = false;
-    this._setAssistantBusy(false);
   }
 
   async _processGuestLegacyAi(guestWv, text, config) {
@@ -1821,14 +1884,26 @@ class AssistantManagerClass {
     messages.push({ role: 'user', content: text });
     const userHistory = this._historyLabelForAttachments(text);
 
-    this._clearStreamListeners();
+    const gsk = '__guest__';
+    this._clearStreamListenersForTab(gsk);
     let buffer = '';
-    const unChunk = window.navio.onAiStreamChunk((chunk) => {
-      buffer += typeof chunk === 'string' ? chunk : '';
-      this._guestDeliver(guestWv, { type: 'streamDelta', text: typeof chunk === 'string' ? chunk : '' });
+    const unChunk = window.navio.onAiStreamChunk((payload) => {
+      let tid = '__default__';
+      let chunkText = '';
+      if (typeof payload === 'string') {
+        chunkText = payload;
+      } else if (payload && typeof payload === 'object') {
+        tid = payload.tabId != null ? String(payload.tabId) : '__default__';
+        chunkText = payload.text != null ? String(payload.text) : '';
+      }
+      if (tid !== gsk || !chunkText) return;
+      buffer += chunkText;
+      this._guestDeliver(guestWv, { type: 'streamDelta', text: chunkText });
     });
     const unDone = window.navio.onAiStreamDone(async (payload) => {
-      this._clearStreamListeners();
+      const tid = payload && payload.tabId != null ? String(payload.tabId) : '__default__';
+      if (tid !== gsk) return;
+      this._clearStreamListenersForTab(gsk);
       if (buffer) {
         const out =
           payload && payload.cancelled ? `${buffer}\n\n*(Stopped)*` : buffer;
@@ -1846,11 +1921,15 @@ class AssistantManagerClass {
       }
     });
     const unErr = window.navio.onAiStreamError(async (msg) => {
-      this._clearStreamListeners();
+      const errObj = typeof msg === 'string' ? { tabId: '__default__', message: msg } : msg || {};
+      const tid = errObj.tabId != null ? String(errObj.tabId) : '__default__';
+      if (tid !== gsk) return;
+      this._clearStreamListenersForTab(gsk);
+      const errText = errObj.message != null ? String(errObj.message) : String(msg || '');
       if (!buffer) {
         const fallback = await window.navio.aiRequest({ messages });
         if (fallback.error) {
-          this._guestDeliver(guestWv, { type: 'assistant', error: true, content: fallback.error || msg });
+          this._guestDeliver(guestWv, { type: 'assistant', error: true, content: fallback.error || errText });
         } else {
           this._currentHistory().push(
             { role: 'user', content: userHistory },
@@ -1865,8 +1944,8 @@ class AssistantManagerClass {
         this._guestDeliver(guestWv, { type: 'streamFinalize', content: buffer });
       }
     });
-    this._streamUnsubs.push(unChunk, unDone, unErr);
-    await window.navio.aiRequestStream({ messages });
+    this._streamUnsubsByTab.set(gsk, [unChunk, unDone, unErr]);
+    await window.navio.aiRequestStream({ messages, tabId: gsk });
   }
 
   /**
@@ -1876,6 +1955,7 @@ class AssistantManagerClass {
   async _processWithTools(text, config, historyUserLabel, guestWv = null) {
     this._guestChatWebview = guestWv || null;
     try {
+    const tk = String(this._turnConversationKey || '__default__');
     if (this.inputEl && typeof this.inputEl.blur === 'function') this.inputEl.blur();
 
     // Build context messages (same as legacy path but without page snapshot —
@@ -1996,8 +2076,11 @@ class AssistantManagerClass {
       this._guestDeliver(guestWv, { type: 'activityStart' });
     }
 
-    // Set up navigate handler
-    const unNav = window.navio.onToolNavigate(async ({ url }) => {
+    // Set up navigate handler (tabId + operationId so parallel agent loops don't cross-ack)
+    const unNav = window.navio.onToolNavigate(async (payload) => {
+      if (payload && payload.tabId != null && String(payload.tabId) !== tk) return;
+      const url = payload?.url;
+      const operationId = payload?.operationId;
       this._appendActivityStep('navigate', `Navigating to ${new URL(url).hostname}...`);
       try {
         const loadResult = await TabManager.navigateForAgentAndWaitForLoad(url);
@@ -2015,7 +2098,8 @@ class AssistantManagerClass {
           window.navio.toolNavigateAck({
             success: false,
             error: loadResult.error || 'load failed',
-            url: drivenUrl
+            url: drivenUrl,
+            operationId
           });
           return;
         }
@@ -2023,15 +2107,18 @@ class AssistantManagerClass {
         window.navio.toolNavigateAck({
           success: true,
           url: drivenUrl,
-          timedOut: !!loadResult.timedOut
+          timedOut: !!loadResult.timedOut,
+          operationId
         });
       } catch (e) {
-        window.navio.toolNavigateAck({ error: e.message });
+        window.navio.toolNavigateAck({ error: e.message, operationId });
       }
     });
 
     // Set up tab management handlers
-    const unOpenTab = window.navio.onToolOpenTab(async ({ url }) => {
+    const unOpenTab = window.navio.onToolOpenTab(async (payload) => {
+      if (payload && payload.tabId != null && String(payload.tabId) !== tk) return;
+      const { url, operationId } = payload || {};
       let openUrl = url && String(url).trim() ? String(url).trim() : null;
       if (openUrl && typeof App !== 'undefined' && typeof App.resolveNavigationInput === 'function') {
         const resolved = App.resolveNavigationInput(openUrl);
@@ -2049,7 +2136,7 @@ class AssistantManagerClass {
       try {
         const loadResult = await TabManager.createTabAndWaitForLoad(openUrl);
         if (!loadResult.ok) {
-          window.navio.toolOpenTabAck({ success: false, error: loadResult.error || 'load failed' });
+          window.navio.toolOpenTabAck({ success: false, error: loadResult.error || 'load failed', operationId });
           return;
         }
         const tab = loadResult.tab || TabManager.getActiveTab();
@@ -2061,14 +2148,17 @@ class AssistantManagerClass {
           webContentsId: wv?.getWebContentsId?.() || null,
           url: tab?.url || '',
           title: tab ? TabManager.getTabDisplayTitle(tab) : '',
-          timedOut: !!loadResult.timedOut
+          timedOut: !!loadResult.timedOut,
+          operationId
         });
       } catch (e) {
-        window.navio.toolOpenTabAck({ error: e.message });
+        window.navio.toolOpenTabAck({ error: e.message, operationId });
       }
     });
 
-    const unCloseTab = window.navio.onToolCloseTab(async ({ tab_id }) => {
+    const unCloseTab = window.navio.onToolCloseTab(async (payload) => {
+      if (payload && payload.tabId != null && String(payload.tabId) !== tk) return;
+      const { tab_id, operationId } = payload || {};
       this._appendActivityStep('close_tab', `Closing tab ${tab_id}`);
       try {
         const agentIdBefore = TabManager.getAgentControlledTab?.()?.id ?? null;
@@ -2084,14 +2174,17 @@ class AssistantManagerClass {
         window.navio.toolCloseTabAck({
           success: true,
           active_tab_id: reportTab?.id || '',
-          webContentsId: reportTab?.webview?.getWebContentsId?.() || null
+          webContentsId: reportTab?.webview?.getWebContentsId?.() || null,
+          operationId
         });
       } catch (e) {
-        window.navio.toolCloseTabAck({ error: e.message });
+        window.navio.toolCloseTabAck({ error: e.message, operationId });
       }
     });
 
-    const unSwitchTab = window.navio.onToolSwitchTab(async ({ tab_id }) => {
+    const unSwitchTab = window.navio.onToolSwitchTab(async (payload) => {
+      if (payload && payload.tabId != null && String(payload.tabId) !== tk) return;
+      const { tab_id, operationId } = payload || {};
       this._appendActivityStep('switch_tab', `Switching to tab ${tab_id}`);
       try {
         TabManager.switchToTab(tab_id);
@@ -2104,14 +2197,17 @@ class AssistantManagerClass {
           tab_id: tab?.id || '',
           webContentsId: wv?.getWebContentsId?.() || null,
           url: tab?.url || '',
-          title: tab ? TabManager.getTabDisplayTitle(tab) : ''
+          title: tab ? TabManager.getTabDisplayTitle(tab) : '',
+          operationId
         });
       } catch (e) {
-        window.navio.toolSwitchTabAck({ error: e.message });
+        window.navio.toolSwitchTabAck({ error: e.message, operationId });
       }
     });
 
-    const unListTabs = window.navio.onToolListTabs(async () => {
+    const unListTabs = window.navio.onToolListTabs(async (payload) => {
+      if (payload && payload.tabId != null && String(payload.tabId) !== tk) return;
+      const { operationId } = payload || {};
       this._appendActivityStep('list_tabs', 'Listing open tabs...');
       try {
         const tabs = TabManager.tabs
@@ -2125,19 +2221,23 @@ class AssistantManagerClass {
             group_id: t.groupId || null,
             group_name: TabManager.getTabGroupLabel?.(t) || null
           }));
-        window.navio.toolListTabsAck({ success: true, tabs });
+        window.navio.toolListTabsAck({ success: true, tabs, operationId });
       } catch (e) {
-        window.navio.toolListTabsAck({ error: e.message });
+        window.navio.toolListTabsAck({ error: e.message, operationId });
       }
     });
 
     // Set up reasoning handler (intermediate AI thinking during tool loop)
-    const unReasoning = window.navio.onToolReasoning?.(({ step, text }) => {
+    const unReasoning = window.navio.onToolReasoning?.((payload) => {
+      if (payload && payload.tabId != null && String(payload.tabId) !== tk) return;
+      const { step, text } = payload || {};
       this._appendActivityStep('thinking', text.slice(0, 200) + (text.length > 200 ? '...' : ''));
     });
 
     // Set up plan approval handler
-    const unProposePlan = window.navio.onToolProposePlan?.(({ title, steps, estimated_time, risks }) => {
+    const unProposePlan = window.navio.onToolProposePlan?.((payload) => {
+      if (payload && payload.tabId != null && String(payload.tabId) !== tk) return;
+      const { title, steps, estimated_time, risks, operationId } = payload || {};
       this._appendActivityStep('propose_plan', `Plan: ${title}`);
       if (guestWv) {
         this._guestDeliver(guestWv, {
@@ -2169,16 +2269,18 @@ class AssistantManagerClass {
 
       planEl.querySelector('.npc-approve').addEventListener('click', () => {
         planEl.querySelector('.npc-actions').innerHTML = '<span class="npc-approved">Approved — executing...</span>';
-        window.navio.toolProposePlanAck({ approved: true, title });
+        window.navio.toolProposePlanAck({ approved: true, title, operationId });
       });
       planEl.querySelector('.npc-cancel')?.addEventListener('click', () => {
         planEl.querySelector('.npc-actions').innerHTML = '<span class="npc-cancelled">Cancelled</span>';
-        window.navio.toolProposePlanAck({ cancelled: true, title });
+        window.navio.toolProposePlanAck({ cancelled: true, title, operationId });
       });
     });
 
     // Set up progress handler
-    const unProgress = window.navio.onToolProgress(({ step, tool, result }) => {
+    const unProgress = window.navio.onToolProgress((payload) => {
+      if (payload && payload.tabId != null && String(payload.tabId) !== tk) return;
+      const { step, tool, result } = payload || {};
       if (tool === 'navigate') return; // already shown
       if (tool === 'gmail_search' && result && !result.error) {
         this._ingestGmailSearchToolResults(result);
@@ -2211,7 +2313,8 @@ class AssistantManagerClass {
     this._turnStartedAt = performance.now();
     const response = await window.navio.aiRequestWithTools({
       messages,
-      webContentsId: toolWv?.getWebContentsId?.()
+      webContentsId: toolWv?.getWebContentsId?.(),
+      tabId: tk
     });
     const toolTurnMs =
       this._turnStartedAt != null ? Math.round(performance.now() - this._turnStartedAt) : null;
@@ -2308,7 +2411,7 @@ class AssistantManagerClass {
         { role: 'assistant', content: response.content }
       );
       this._trimHistory();
-      const graphTab = TabManager.getActiveTab?.() || null;
+      const graphTab = this._tabForTurnContext();
       await window.navio.contextGraph({
         op: 'addTurn',
         role: 'assistant',
@@ -2382,7 +2485,8 @@ class AssistantManagerClass {
   }
 
   async _processStream(messages, userHistory) {
-    this._clearStreamListeners();
+    const sk = String(this._turnConversationKey || this._conversationKey());
+    this._clearStreamListenersForTab(sk);
     this._turnStartedAt = performance.now();
     let buffer = '';
     let streamingMsg = null;
@@ -2396,7 +2500,7 @@ class AssistantManagerClass {
       if (finalized) return;
       finalized = true;
       clearTimeout(stallTimer);
-      this._clearStreamListeners();
+      this._clearStreamListenersForTab(sk);
       this.removeTypingIndicator();
 
       const elapsed =
@@ -2449,12 +2553,13 @@ class AssistantManagerClass {
         { role: 'assistant', content: buffer }
       );
       this._trimHistory();
+      const graphTab = this._tabForTurnContext();
       await window.navio.contextGraph({
         op: 'addTurn',
         role: 'assistant',
         summary: buffer.slice(0, 200),
-        tabId: TabManager.getActiveTab()?.id,
-        url: TabManager.getActiveTab()?.url || ''
+        tabId: graphTab?.id,
+        url: graphTab?.url || ''
       });
     };
 
@@ -2464,8 +2569,17 @@ class AssistantManagerClass {
       stallTimer = setTimeout(() => { finalize(); }, 25000);
     };
 
-    const unChunk = window.navio.onAiStreamChunk((chunk) => {
-      buffer += chunk;
+    const unChunk = window.navio.onAiStreamChunk((payload) => {
+      let tid = '__default__';
+      let chunkText = '';
+      if (typeof payload === 'string') {
+        chunkText = payload;
+      } else if (payload && typeof payload === 'object') {
+        tid = payload.tabId != null ? String(payload.tabId) : '__default__';
+        chunkText = payload.text != null ? String(payload.text) : '';
+      }
+      if (tid !== sk || !chunkText) return;
+      buffer += chunkText;
       resetStallTimer();
       if (!streamingMsg) {
         this.removeTypingIndicator();
@@ -2483,15 +2597,21 @@ class AssistantManagerClass {
     });
 
     const unDone = window.navio.onAiStreamDone(async (payload) => {
+      const tid = payload && payload.tabId != null ? String(payload.tabId) : '__default__';
+      if (tid !== sk) return;
       if (payload && payload.cancelled) streamCancelled = true;
       await finalize();
     });
 
     const unErr = window.navio.onAiStreamError(async (msg) => {
       clearTimeout(stallTimer);
-      this._clearStreamListeners();
+      this._clearStreamListenersForTab(sk);
       if (finalized) return;
-      if (msg === 'Stopped' || /abort/i.test(String(msg || ''))) {
+      const errObj = typeof msg === 'string' ? { tabId: '__default__', message: msg } : msg || {};
+      const tid = errObj.tabId != null ? String(errObj.tabId) : '__default__';
+      if (tid !== sk) return;
+      const errText = errObj.message != null ? String(errObj.message) : String(msg || '');
+      if (errText === 'Stopped' || /abort/i.test(errText)) {
         streamCancelled = true;
         await finalize();
         return;
@@ -2504,7 +2624,7 @@ class AssistantManagerClass {
           this._turnStartedAt != null ? Math.round(performance.now() - this._turnStartedAt) : null;
         this._turnStartedAt = null;
         if (fallback.error) {
-          this.addMessage('assistant', fallback.error || msg, 'error', fbMs != null ? { durationMs: fbMs } : null);
+          this.addMessage('assistant', fallback.error || errText, 'error', fbMs != null ? { durationMs: fbMs } : null);
         } else {
           const cite =
             this._pendingConnectorCitations && this._pendingConnectorCitations.length
@@ -2532,9 +2652,9 @@ class AssistantManagerClass {
     // Start the stall timer immediately (catches case where first chunk never arrives)
     resetStallTimer();
 
-    this._streamUnsubs.push(unChunk, unDone, unErr);
+    this._streamUnsubsByTab.set(sk, [unChunk, unDone, unErr]);
 
-    const streamResult = await window.navio.aiRequestStream({ messages });
+    const streamResult = await window.navio.aiRequestStream({ messages, tabId: sk });
     if (streamResult && streamResult.ok === false && !buffer) {
       clearTimeout(stallTimer);
       this.removeTypingIndicator();
@@ -2543,7 +2663,7 @@ class AssistantManagerClass {
   }
 
   _trimHistory() {
-    const k = this._conversationKey();
+    const k = this._turnConversationKey ?? this._conversationKey();
     let h = this._conversationsByTab.get(k);
     if (!h) return;
     if (h.length > 80) {
@@ -3418,8 +3538,10 @@ class AssistantManagerClass {
   async runDeepResearch(query) {
     const q = (query || '').trim();
     if (!q) return;
-    const prevBusy = this.isProcessing;
-    this.isProcessing = true;
+    const tk =
+      typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : NAVIO_PROFILE_CHAT_KEY;
+    const prevBusy = this._tabIsBusy(tk);
+    this._setTabBusy(tk, true);
     this.showTypingIndicator();
     try {
       const r = await window.navio.deepResearch({ query: q });
@@ -3444,7 +3566,8 @@ class AssistantManagerClass {
       this.addMessage('assistant', e.message || String(e), 'error');
     } finally {
       this.removeTypingIndicator();
-      this.isProcessing = prevBusy;
+      if (!prevBusy) this._setTabBusy(tk, false);
+      else this._updateAssistantBusyChrome();
     }
   }
 
@@ -4558,7 +4681,8 @@ class AssistantManagerClass {
 
   async _smartFollowUp() {
     const MAX_AUTO_STEPS = 35;
-    if (this.isProcessing || this._autoFollowCount >= MAX_AUTO_STEPS) {
+    const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
+    if ((aid && this._tabIsBusy(aid)) || this._autoFollowCount >= MAX_AUTO_STEPS) {
       if (this._autoFollowCount >= MAX_AUTO_STEPS) {
         this._addContinuePill('Reached step limit. Tell me what to do next.');
         this._autoFollowCount = 0;

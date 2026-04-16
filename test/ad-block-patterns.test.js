@@ -181,6 +181,36 @@ test('shouldBlockWebPopup: small real URL popup from FedEx opener allowed', () =
   );
 });
 
+test('urlMatchesAdBlock: scam download-gate host', () => {
+  assert.strictEqual(
+    urlMatchesAdBlock('https://continue2download.com/continue.html?sid=1'),
+    true
+  );
+});
+
+test('urlMatchesAdBlock: IMA / video preroll SDK hosts', () => {
+  assert.strictEqual(
+    urlMatchesAdBlock('https://imasdk.googleapis.com/js/sdkloader/ima3.js'),
+    true
+  );
+  assert.strictEqual(
+    urlMatchesAdBlock('https://innovid.com/vast.xml'),
+    true
+  );
+});
+
+test('urlMatchesAdBlock: extended SSP / data / mobile hosts', () => {
+  assert.strictEqual(urlMatchesAdBlock('https://adsrvr.org/bid'), true);
+  assert.strictEqual(urlMatchesAdBlock('https://contextweb.com/pixel'), true);
+  assert.strictEqual(urlMatchesAdBlock('https://unityads.unity3d.com/'), true);
+});
+
+test('urlMatchesAdBlock: extended batch 2 (measurement / exchanges)', () => {
+  assert.strictEqual(urlMatchesAdBlock('https://atdmt.com/pixel'), true);
+  assert.strictEqual(urlMatchesAdBlock('https://doubleverify.com/'), true);
+  assert.strictEqual(urlMatchesAdBlock('https://cedexis.com/radar'), true);
+});
+
 test('urlMatchesAdBlock is used only with adBlockEnabled', () => {
   assert.strictEqual(
     shouldBlockWebPopup({

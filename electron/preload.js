@@ -22,8 +22,8 @@ contextBridge.exposeInMainWorld('navio', {
 
   aiRequest: (params) => ipcRenderer.invoke('ai-request', params),
   aiRequestStream: (params) => ipcRenderer.invoke('ai-request-stream', params),
-  /** Abort in-flight streaming or tool-loop AI for this window (matches BrowserWindow webContents). */
-  aiAbort: () => ipcRenderer.invoke('ai-abort'),
+  /** Abort in-flight AI for a tab (`{ tabId }`) or all tabs for this window if omitted. */
+  aiAbort: (payload) => ipcRenderer.invoke('ai-abort', payload || {}),
   aiRequestWithTools: (params) => ipcRenderer.invoke('ai-request-with-tools', params),
   onToolProgress: (callback) => {
     const handler = (_, data) => callback(data);
@@ -78,7 +78,7 @@ contextBridge.exposeInMainWorld('navio', {
   },
   toolProposePlanAck: (result) => ipcRenderer.send('tool-propose-plan-ack', result),
   onAiStreamChunk: (callback) => {
-    const handler = (_, chunk) => callback(chunk);
+    const handler = (_, payload) => callback(payload);
     ipcRenderer.on('ai-stream-chunk', handler);
     return () => ipcRenderer.removeListener('ai-stream-chunk', handler);
   },
@@ -88,7 +88,7 @@ contextBridge.exposeInMainWorld('navio', {
     return () => ipcRenderer.removeListener('ai-stream-done', handler);
   },
   onAiStreamError: (callback) => {
-    const handler = (_, msg) => callback(msg);
+    const handler = (_, payload) => callback(payload);
     ipcRenderer.on('ai-stream-error', handler);
     return () => ipcRenderer.removeListener('ai-stream-error', handler);
   },

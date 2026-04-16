@@ -1552,18 +1552,18 @@ function appendAutoScreenshotMessages(messages, screenshotResult, provider) {
  * Wait for an IPC ack from the renderer within a timeout.
  * Used for navigate actions that must go through TabManager in the renderer.
  */
-function waitForRendererAck(sender, channel, timeoutMs) {
+function waitForRendererAck(sender, channel, timeoutMs, matchOperationId) {
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
       ipcMain.removeListener(channel, handler);
       resolve({ error: 'Navigation timed out' });
     }, timeoutMs);
     const handler = (event, result) => {
-      if (event.sender === sender) {
-        clearTimeout(timer);
-        ipcMain.removeListener(channel, handler);
-        resolve(result || { success: true });
-      }
+      if (event.sender !== sender) return;
+      if (matchOperationId != null && (!result || result.operationId !== matchOperationId)) return;
+      clearTimeout(timer);
+      ipcMain.removeListener(channel, handler);
+      resolve(result || { success: true });
     };
     ipcMain.on(channel, handler);
   });
@@ -1600,22 +1600,31 @@ async function navioSleep(ms) {
   await new Promise((r) => setTimeout(r, ms));
 }
 
-/** One in-flight AI operation per window (stream + tool loop); new work aborts the previous. */
-const aiFetchAbortByWebContentsId = new Map();
+/**
+ * In-flight AI abort controllers keyed by `${webContentsId}:${tabId}` so each tab can run its own
+ * stream/tool loop without cancelling another tab's work. Same tab starting new work still aborts
+ * the previous run on that tab only.
+ */
+const aiFetchAbortByKey = new Map();
 
-function registerAiAbortController(sender) {
+function registerAiAbortController(sender, tabId = '__default__') {
   const id = sender && sender.id;
   if (typeof id !== 'number') return new AbortController();
-  const prev = aiFetchAbortByWebContentsId.get(id);
+  const tid = tabId != null && String(tabId).length ? String(tabId) : '__default__';
+  const key = `${id}:${tid}`;
+  const prev = aiFetchAbortByKey.get(key);
   if (prev) prev.abort();
   const ac = new AbortController();
-  aiFetchAbortByWebContentsId.set(id, ac);
+  aiFetchAbortByKey.set(key, ac);
   return ac;
 }
 
-function releaseAiAbortController(sender) {
+function releaseAiAbortController(sender, tabId = '__default__') {
   const id = sender && sender.id;
-  if (typeof id === 'number') aiFetchAbortByWebContentsId.delete(id);
+  if (typeof id !== 'number') return;
+  const tid = tabId != null && String(tabId).length ? String(tabId) : '__default__';
+  const key = `${id}:${tid}`;
+  aiFetchAbortByKey.delete(key);
 }
 
 function navioGmailApiTransientError(msg) {
@@ -1654,6 +1663,9 @@ async function performAiFetchResilient(cfg, apiKey, messages, fetchOpts, attempt
  */
 async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts = {}) {
   const signal = opts && opts.signal;
+  const tabId = opts.tabId != null ? String(opts.tabId) : '__default__';
+  const tp = (p) => sender.send('tool-progress', { ...p, tabId });
+  const tr = (p) => sender.send('tool-reasoning', { ...p, tabId });
   const configured = Number(cfg.aiAgentMaxToolSteps);
   maxSteps = Math.min(500, Math.max(50, Number.isFinite(configured) && configured > 0 ? Math.round(configured) : 300));
   // Merge native tools with any connected MCP tools
@@ -1723,7 +1735,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
 
     // Emit any intermediate reasoning text the model produced alongside tool calls
     if (result.content && result.toolCalls && result.toolCalls.length) {
-      sender.send('tool-reasoning', { step, text: result.content });
+      tr({ step, text: result.content });
     }
 
     if (!result.toolCalls || !result.toolCalls.length) {
@@ -1743,7 +1755,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
           const toolResult = { error: 'Blocked: Navio cannot click Send on email services. Only drafts are allowed.' };
           currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
           toolLog.push({ tool: tc.name, args: tc.arguments, result: sanitizeToolResultForLog(tc.name, toolResult), blocked: true });
-          sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog(tc.name, toolResult) });
+          tp({ step, tool: tc.name, result: sanitizeToolResultForLog(tc.name, toolResult) });
           continue;
         }
       }
@@ -1757,7 +1769,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
           const toolResult = gmIntercept.result;
           currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
           toolLog.push({ tool: 'navigate', args: tc.arguments, result: sanitizeToolResultForLog('navigate', toolResult), gmail_api_intercept: true });
-          sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog('navigate', toolResult) });
+          tp({ step, tool: tc.name, result: sanitizeToolResultForLog('navigate', toolResult) });
           continue;
         }
         const browseIntercept = await maybeInterceptGmailBrowseNavForAgent(navUrl, { allowGmailWebUi });
@@ -1771,14 +1783,15 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
             gmail_api_intercept: true,
             gmail_browse_intercept: true
           });
-          sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog('navigate', toolResult) });
+          tp({ step, tool: tc.name, result: sanitizeToolResultForLog('navigate', toolResult) });
           continue;
         }
-        sender.send('tool-navigate', { url: tc.arguments.url, stepIndex: step });
-        const navResult = await waitForRendererAck(sender, 'tool-navigate-ack', 60000);
+        const navOpId = crypto.randomUUID();
+        sender.send('tool-navigate', { url: tc.arguments.url, stepIndex: step, tabId, operationId: navOpId });
+        const navResult = await waitForRendererAck(sender, 'tool-navigate-ack', 60000, navOpId);
         currentMessages = appendToolResult(currentMessages, tc, navResult, provider);
         toolLog.push({ tool: 'navigate', args: tc.arguments, result: sanitizeToolResultForLog('navigate', navResult) });
-        sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog('navigate', navResult) });
+        tp({ step, tool: tc.name, result: sanitizeToolResultForLog('navigate', navResult) });
 
         if (!navResult.error && activeWc) {
           await waitForWebContentsSettled(activeWc);
@@ -1790,7 +1803,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
             await new Promise(r => setTimeout(r, 500));
             const autoScreenshot = await toolExecutors.screenshot(activeWc, {});
             if (autoScreenshot.images?.length || autoScreenshot.image) {
-              sender.send('tool-progress', { step, tool: 'screenshot', result: { success: true, auto: true } });
+              tp({ step, tool: 'screenshot', result: { success: true, auto: true } });
               currentMessages = appendAutoScreenshotMessages(currentMessages, autoScreenshot, provider);
             }
           } catch { /* non-fatal */ }
@@ -1800,11 +1813,12 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
 
       // Planning mode: propose_plan pauses execution and awaits user approval
       if (tc.name === 'propose_plan') {
-        sender.send('tool-propose-plan', tc.arguments || {});
-        const planResult = await waitForRendererAck(sender, 'tool-propose-plan-ack', 300000); // 5 min timeout
+        const planOpId = crypto.randomUUID();
+        sender.send('tool-propose-plan', { ...(tc.arguments || {}), tabId, operationId: planOpId });
+        const planResult = await waitForRendererAck(sender, 'tool-propose-plan-ack', 300000, planOpId); // 5 min timeout
         currentMessages = appendToolResult(currentMessages, tc, planResult, provider);
         toolLog.push({ tool: tc.name, args: tc.arguments, result: sanitizeToolResultForLog(tc.name, planResult) });
-        sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog(tc.name, planResult) });
+        tp({ step, tool: tc.name, result: sanitizeToolResultForLog(tc.name, planResult) });
         if (planResult.cancelled) {
           return finishAgentRun({ content: 'Plan was cancelled by the user.', toolLog });
         }
@@ -1821,7 +1835,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
             const toolResult = gmIntercept.result;
             currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
             toolLog.push({ tool: 'open_tab', args: tc.arguments, result: sanitizeToolResultForLog('open_tab', toolResult), gmail_api_intercept: true });
-            sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog('open_tab', toolResult) });
+            tp({ step, tool: tc.name, result: sanitizeToolResultForLog('open_tab', toolResult) });
             continue;
           }
           const browseIntercept = await maybeInterceptGmailBrowseNavForAgent(openUrl, { allowGmailWebUi: allowGmailWebUiOt });
@@ -1835,11 +1849,11 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
               gmail_api_intercept: true,
               gmail_browse_intercept: true
             });
-            sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog('open_tab', toolResult) });
+            tp({ step, tool: tc.name, result: sanitizeToolResultForLog('open_tab', toolResult) });
             continue;
           }
         }
-        const tabResult = await executeTabTool(tc, sender);
+        const tabResult = await executeTabTool(tc, sender, tabId);
         // switch_tab returns a new webContentsId — update activeWc
         if (tc.name === 'switch_tab' && tabResult.webContentsId) {
           const newWc = electronWebContents.fromId(tabResult.webContentsId);
@@ -1854,7 +1868,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
         }
         currentMessages = appendToolResult(currentMessages, tc, tabResult, provider);
         toolLog.push({ tool: tc.name, args: tc.arguments, result: sanitizeToolResultForLog(tc.name, tabResult) });
-        sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog(tc.name, tabResult) });
+        tp({ step, tool: tc.name, result: sanitizeToolResultForLog(tc.name, tabResult) });
         continue;
       }
 
@@ -1863,7 +1877,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
         const mcpResult = await callMcpTool(tc.name, tc.arguments);
         currentMessages = appendToolResult(currentMessages, tc, mcpResult, provider);
         toolLog.push({ tool: tc.name, args: tc.arguments, result: sanitizeToolResultForLog(tc.name, mcpResult) });
-        sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog(tc.name, mcpResult) });
+        tp({ step, tool: tc.name, result: sanitizeToolResultForLog(tc.name, mcpResult) });
         continue;
       }
 
@@ -1873,7 +1887,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
         const toolResult = { error: `Unknown tool: ${tc.name}` };
         currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
         toolLog.push({ tool: tc.name, args: tc.arguments, result: sanitizeToolResultForLog(tc.name, toolResult) });
-        sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog(tc.name, toolResult) });
+        tp({ step, tool: tc.name, result: sanitizeToolResultForLog(tc.name, toolResult) });
         continue;
       }
 
@@ -1881,7 +1895,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
       recordGmailMutationForDeferredNav(tc.name, toolResult);
       currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
       toolLog.push({ tool: tc.name, args: tc.arguments, result: sanitizeToolResultForLog(tc.name, toolResult) });
-      sender.send('tool-progress', { step, tool: tc.name, result: sanitizeToolResultForLog(tc.name, toolResult) });
+      tp({ step, tool: tc.name, result: sanitizeToolResultForLog(tc.name, toolResult) });
     }
   }
   return finishAgentRun({
@@ -1898,7 +1912,8 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
  * Execute a tab management tool by sending an IPC event to the renderer
  * and waiting for an acknowledgement with the result.
  */
-async function executeTabTool(tc, sender) {
+async function executeTabTool(tc, sender, tabId) {
+  const tid = tabId != null ? String(tabId) : '__default__';
   const channelMap = {
     open_tab:   { send: 'tool-open-tab',   ack: 'tool-open-tab-ack' },
     close_tab:  { send: 'tool-close-tab',  ack: 'tool-close-tab-ack' },
@@ -1907,9 +1922,10 @@ async function executeTabTool(tc, sender) {
   };
   const ch = channelMap[tc.name];
   if (!ch) return { error: `Unknown tab tool: ${tc.name}` };
-  sender.send(ch.send, tc.arguments || {});
+  const operationId = crypto.randomUUID();
+  sender.send(ch.send, { ...(tc.arguments || {}), tabId: tid, operationId });
   const ackMs = tc.name === 'open_tab' ? 60000 : 30000;
-  return await waitForRendererAck(sender, ch.ack, ackMs);
+  return await waitForRendererAck(sender, ch.ack, ackMs, operationId);
 }
 
 ipcMain.handle('ai-request', async (event, payload) => {
@@ -1983,28 +1999,36 @@ ipcMain.handle('ai-request', async (event, payload) => {
   }
 });
 
-ipcMain.handle('ai-abort', async (event) => {
+ipcMain.handle('ai-abort', async (event, payload) => {
   const id = event.sender && event.sender.id;
-  if (typeof id === 'number') {
-    const ac = aiFetchAbortByWebContentsId.get(id);
+  if (typeof id !== 'number') return { ok: true };
+  const tabId = payload && payload.tabId != null ? String(payload.tabId) : null;
+  if (tabId) {
+    const key = `${id}:${tabId}`;
+    const ac = aiFetchAbortByKey.get(key);
     if (ac) ac.abort();
+  } else {
+    for (const [key, ac] of aiFetchAbortByKey) {
+      if (key.startsWith(`${id}:`) && ac) ac.abort();
+    }
   }
   return { ok: true };
 });
 
-ipcMain.handle('ai-request-stream', async (event, { messages }) => {
+ipcMain.handle('ai-request-stream', async (event, { messages, tabId: streamTabId }) => {
   const cfg = loadConfig();
   const sender = event.sender;
-  const ac = registerAiAbortController(sender);
+  const tid = streamTabId != null && String(streamTabId).length ? String(streamTabId) : '__default__';
+  const ac = registerAiAbortController(sender, tid);
   if (cfg.aiKillSwitch) {
-    releaseAiAbortController(sender);
-    sender.send('ai-stream-error', 'AI is turned off (kill switch).');
+    releaseAiAbortController(sender, tid);
+    sender.send('ai-stream-error', { tabId: tid, message: 'AI is turned off (kill switch).' });
     return { ok: false };
   }
   const apiKey = secureConfig.getApiKey(app.getPath('userData'));
   if (!apiKey) {
-    releaseAiAbortController(sender);
-    sender.send('ai-stream-error', 'No API key configured.');
+    releaseAiAbortController(sender, tid);
+    sender.send('ai-stream-error', { tabId: tid, message: 'No API key configured.' });
     return { ok: false };
   }
 
@@ -2095,12 +2119,12 @@ ipcMain.handle('ai-request-stream', async (event, { messages }) => {
     const CHUNK = 40;
     for (let i = 0; i < text.length; i += CHUNK) {
       if (ac.signal.aborted) {
-        sender.send('ai-stream-done', { cancelled: true });
+        sender.send('ai-stream-done', { cancelled: true, tabId: tid });
         return;
       }
-      sender.send('ai-stream-chunk', text.slice(i, i + CHUNK));
+      sender.send('ai-stream-chunk', { tabId: tid, text: text.slice(i, i + CHUNK) });
     }
-    sender.send('ai-stream-done', cancelled ? { cancelled: true } : {});
+    sender.send('ai-stream-done', cancelled ? { cancelled: true, tabId: tid } : { tabId: tid });
   };
 
   try {
@@ -2111,13 +2135,13 @@ ipcMain.handle('ai-request-stream', async (event, { messages }) => {
 
     for (let attempt = 0; attempt <= MAX_FORMAT_RETRIES; attempt++) {
       if (ac.signal.aborted) {
-        sender.send('ai-stream-done', { cancelled: true });
+        sender.send('ai-stream-done', { cancelled: true, tabId: tid });
         return { ok: false, stopped: true };
       }
       console.log(`[navio] ai-request-stream attempt ${attempt + 1}, model=${cfg.aiModel}, messages=${currentMessages.length}`);
       const fetchResult = await performAiFetch(cfg, apiKey, currentMessages, true, { signal: ac.signal });
       if (fetchResult.aborted) {
-        sender.send('ai-stream-done', { cancelled: true });
+        sender.send('ai-stream-done', { cancelled: true, tabId: tid });
         return { ok: false, stopped: true };
       }
       const collected = await collectStream(fetchResult);
@@ -2129,7 +2153,7 @@ ipcMain.handle('ai-request-stream', async (event, { messages }) => {
       }
 
       if (collected.error) {
-        sender.send('ai-stream-error', collected.error);
+        sender.send('ai-stream-error', { tabId: tid, message: collected.error });
         return { ok: false };
       }
 
@@ -2147,13 +2171,13 @@ ipcMain.handle('ai-request-stream', async (event, { messages }) => {
     return { ok: true };
   } catch (err) {
     if (err && (err.name === 'AbortError' || ac.signal.aborted)) {
-      sender.send('ai-stream-done', { cancelled: true });
+      sender.send('ai-stream-done', { cancelled: true, tabId: tid });
       return { ok: false, stopped: true };
     }
-    sender.send('ai-stream-error', err.message);
+    sender.send('ai-stream-error', { tabId: tid, message: err.message });
     return { ok: false };
   } finally {
-    releaseAiAbortController(sender);
+    releaseAiAbortController(sender, tid);
   }
 });
 
@@ -2204,7 +2228,7 @@ ipcMain.handle('extract-page-content', async (event, webContentsId) => {
 });
 
 // ── Tool-calling AI request (agentic loop) ──────────────────────────────────
-ipcMain.handle('ai-request-with-tools', async (event, { messages, webContentsId }) => {
+ipcMain.handle('ai-request-with-tools', async (event, { messages, webContentsId, tabId: toolTabId }) => {
   const cfg = loadConfig();
   if (cfg.aiKillSwitch) {
     return { error: 'AI is turned off (kill switch). Enable it in Settings → AI.' };
@@ -2248,16 +2272,20 @@ ipcMain.handle('ai-request-with-tools', async (event, { messages, webContentsId 
     return { error: 'No active tab — open a page first.' };
   }
 
-  const ac = registerAiAbortController(event.sender);
+  const tid = toolTabId != null && String(toolTabId).length ? String(toolTabId) : '__default__';
+  const ac = registerAiAbortController(event.sender, tid);
   try {
-    return await executeToolLoop(cfg, apiKey, processed, wc, event.sender, undefined, { signal: ac.signal });
+    return await executeToolLoop(cfg, apiKey, processed, wc, event.sender, undefined, {
+      signal: ac.signal,
+      tabId: tid
+    });
   } catch (err) {
     if (err && (err.name === 'AbortError' || ac.signal.aborted)) {
       return { content: '**Stopped.**', cancelled: true, toolLog: [] };
     }
     return { error: err.message };
   } finally {
-    releaseAiAbortController(event.sender);
+    releaseAiAbortController(event.sender, tid);
   }
 });
 
