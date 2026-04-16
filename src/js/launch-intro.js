@@ -1,18 +1,17 @@
 /**
- * Startup sequence: smooth prelude fade-in → preload first tab under the hood →
- * wait for paint / first load → crossfade prelude out while the shell fades in →
- * optional intro video.
+ * Startup sequence: show branded prelude → preload first tab → one paint → remove prelude (no opacity crossfade — avoids jank).
+ * Optional intro video after.
  */
 
 const LaunchIntro = {
-  /** Minimum time after preload completes — avoids overlapping heavy layout with the opacity crossfade (reduces jank). */
-  MIN_HOLD_WITH_BROWSER_MS: 980,
-  MIN_HOLD_REDUCED_MS: 320,
-  /** Prelude-only path (e.g. first-run onboarding next): shorter but still smooth. */
-  MIN_HOLD_NO_BROWSER_MS: 720,
-  MIN_HOLD_NO_BROWSER_REDUCED_MS: 220,
-  /** Brief beat so the crossfade doesn’t cut off the first paint. */
-  POST_READY_SETTLE_MS: 160,
+  /** Minimum time after preload completes — lets the first tab settle before we show chrome. */
+  MIN_HOLD_WITH_BROWSER_MS: 520,
+  MIN_HOLD_REDUCED_MS: 200,
+  /** Prelude-only path (e.g. first-run onboarding next). */
+  MIN_HOLD_NO_BROWSER_MS: 380,
+  MIN_HOLD_NO_BROWSER_REDUCED_MS: 120,
+  /** Short settle after hold before stripping prelude. */
+  POST_READY_SETTLE_MS: 48,
 
   _sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -50,45 +49,15 @@ const LaunchIntro = {
     }
   },
 
-  /**
-   * Crossfade: shell chrome fades in while prelude fades out (same duration feels premium).
-   */
-  async _crossfadePreludeOut() {
-    const el = document.getElementById('shell-prelude');
-    if (!el || !document.body.classList.contains('shell-prelude-active')) {
+  /** Drop the splash in one shot after the next frames paint (no CSS fade — avoids transition glitches). */
+  async _revealShellNow() {
+    if (!document.body.classList.contains('shell-prelude-active')) {
       this._stripPrelude();
       return;
     }
-
-    document.body.classList.add('shell-prelude-fading');
-    document.body.classList.add('shell-browser-reveal');
-
-    return new Promise((resolve) => {
-      let done = false;
-      const finish = () => {
-        if (done) return;
-        done = true;
-        el.removeEventListener('transitionend', onEnd);
-        clearTimeout(fallback);
-        document.body.classList.remove('shell-prelude-fading');
-        this._stripPrelude();
-        resolve();
-      };
-      const onEnd = (e) => {
-        if (e.target !== el || e.propertyName !== 'opacity') return;
-        finish();
-      };
-      el.addEventListener('transitionend', onEnd);
-      const fallback = setTimeout(finish, 620);
-      /* Let shell paint at full opacity before prelude opacity animates (less contention on the compositor). */
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          /* Inline pass-through so clicks reach the shell even if CSS cascade regresses */
-          el.style.pointerEvents = 'none';
-          el.classList.add('shell-prelude-exiting');
-        });
-      });
-    });
+    await new Promise((r) => requestAnimationFrame(r));
+    await new Promise((r) => requestAnimationFrame(r));
+    this._stripPrelude();
   },
 
   _playVideo(url) {
@@ -182,7 +151,7 @@ const LaunchIntro = {
     await new Promise((r) => requestAnimationFrame(r));
     document.body.classList.add('shell-prelude-in');
 
-    await this._sleep(this._motionOk() ? 420 : 100);
+    await this._sleep(this._motionOk() ? 180 : 80);
 
     const preload = opts.preloadBrowser;
     const holdMs = typeof preload === 'function' ? this._holdWithBrowserMs() : this._holdNoBrowserMs();
@@ -206,7 +175,7 @@ const LaunchIntro = {
       url = null;
     }
 
-    await this._crossfadePreludeOut();
+    await this._revealShellNow();
 
     if (url) {
       await this._playVideo(url);

@@ -338,27 +338,12 @@ body.launch-intro-active #launch-intro {
    Shell prelude — always-on quick intro before first tab (no empty webview)
    ============================================ */
 
-/* Chrome below title bar stays hidden until crossfade into the shell (no half-loaded NTP flash). */
-body.shell-prelude-active:not(.shell-browser-reveal) #tab-strip,
-body.shell-prelude-active:not(.shell-browser-reveal) #btn-tabstrip-show,
-body.shell-prelude-active:not(.shell-browser-reveal) #app {
+/* Chrome below title bar hidden while prelude is up — prelude removed in JS with no CSS fade (avoids transition glitches). */
+body.shell-prelude-active #tab-strip,
+body.shell-prelude-active #btn-tabstrip-show,
+body.shell-prelude-active #app {
   opacity: 0;
   pointer-events: none;
-}
-
-/* Shell reveals instantly; only .shell-prelude crossfades — avoids two simultaneous opacity animations (jank). */
-body.shell-prelude-active.shell-browser-reveal #tab-strip,
-body.shell-prelude-active.shell-browser-reveal #btn-tabstrip-show,
-body.shell-prelude-active.shell-browser-reveal #app {
-  opacity: 1;
-  pointer-events: auto;
-  transition: none;
-  transform: translateZ(0);
-  backface-visibility: hidden;
-}
-
-body.shell-prelude-active.shell-prelude-fading .shell-prelude.shell-prelude-exiting {
-  will-change: opacity;
 }
 
 .shell-prelude {
@@ -379,34 +364,14 @@ body.shell-prelude-active.shell-prelude-fading .shell-prelude.shell-prelude-exit
   visibility: hidden;
   pointer-events: none;
   transform: translateZ(0);
-  transition:
-    opacity 0.42s cubic-bezier(0.22, 1, 0.36, 1),
-    visibility 0s linear 0.48s;
+  transition: none;
 }
 
-/* Smooth fade-in of the prelude panel */
 body.shell-prelude-active.shell-prelude-in .shell-prelude {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
-  transition:
-    opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1),
-    visibility 0s linear 0s;
-}
-
-.shell-prelude.shell-prelude-exiting {
-  opacity: 0 !important;
-  pointer-events: none;
-  visibility: hidden;
-  transition:
-    opacity 0.42s cubic-bezier(0.22, 1, 0.36, 1) !important,
-    visibility 0s linear 0.45s !important;
-}
-
-/* Must beat `body…shell-prelude-in .shell-prelude { pointer-events: auto }` (higher specificity),
-   or the invisible prelude keeps intercepting clicks (navbar AI, etc.) during / after the fade. */
-body.shell-prelude-active.shell-prelude-in .shell-prelude.shell-prelude-exiting {
-  pointer-events: none !important;
+  transition: none;
 }
 
 /* Dismissed splash must never sit above the shell and eat clicks */
@@ -414,26 +379,10 @@ body.shell-prelude-active.shell-prelude-in .shell-prelude.shell-prelude-exiting 
   pointer-events: none !important;
 }
 
-.shell-prelude.shell-prelude-exiting .shell-prelude-inner {
-  animation: none !important;
-}
-
 .shell-prelude-inner {
   text-align: center;
   max-width: 320px;
   padding: 24px;
-  animation: shell-prelude-inner-in 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@keyframes shell-prelude-inner-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
 }
 
 .shell-prelude-orb {
@@ -474,13 +423,8 @@ body.shell-prelude-active.shell-prelude-in .shell-prelude.shell-prelude-exiting 
 
 @media (prefers-reduced-motion: reduce) {
   .shell-prelude-inner {
-    animation: none;
     opacity: 1;
     transform: none;
-  }
-  .shell-prelude,
-  .shell-prelude.shell-prelude-exiting {
-    transition-duration: 0.01ms !important;
   }
 }
 
