@@ -42,6 +42,58 @@ function navioDetectMailboxIntent(text) {
   return !!(mailThing || mailPlusCasual || inboxPhrases || threadStuff || mailCasual);
 }
 
+/** User is asking about Google Drive, Calendar, Docs, etc. — not generic web browsing. */
+function navioDetectGoogleWorkspaceIntent(text) {
+  const s = (text || '').trim().toLowerCase();
+  if (s.length < 2) return false;
+  return (
+    /\b(gdrive|google drive|google calendar|google doc|google sheet|google slides|google meet|gcal)\b/.test(s) ||
+    /drive\.google\.|docs\.google\.|sheets\.google|slides\.google|calendar\.google/.test(s) ||
+    /\b(my\s+calendar|calendar\s+event|meeting\s+invite|drive\s+folder|file\s+in\s+drive|spreadsheet\s+in\s+drive)\b/.test(s)
+  );
+}
+
+/**
+ * True when this user turn should be treated as mail-related: explicit mailbox wording,
+ * or a short follow-up after the previous user message was clearly mail-related.
+ */
+function navioMailContextActiveForTurn(text, getHistoryFn) {
+  if (navioDetectMailboxIntent(text)) return true;
+  let h = [];
+  try {
+    h = typeof getHistoryFn === 'function' ? getHistoryFn() : [];
+  } catch {
+    h = [];
+  }
+  if (!Array.isArray(h) || h.length === 0) return false;
+  let lastUserContent = '';
+  for (let i = h.length - 1; i >= 0; i--) {
+    if (h[i].role === 'user' && typeof h[i].content === 'string') {
+      lastUserContent = h[i].content;
+      break;
+    }
+  }
+  if (!lastUserContent || !navioDetectMailboxIntent(lastUserContent)) return false;
+  const t = (text || '').trim();
+  if (t.length <= 220) {
+    if (
+      /^(yes|yeah|yep|no|nope|ok|sure|the|that|this|same|more|next|show|continue|load|which|second|first|third|fourth|fifth|draft|reply|please|go|do it|send|archive|delete|trash|mark|open|forward|star|unread|read|again|thanks|thank you|fine|do that|exactly|go ahead|confirm)\b/i.test(
+        t
+      )
+    ) {
+      return true;
+    }
+  }
+  if (
+    /\b(email|mail|message|thread|draft|inbox|reply|gmail|unread|sent|from|subject|snippet|sender|attachment|letter|compose|forward|bcc|cc)\b/i.test(
+      t
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
 /** OAuth row from `oauth-status`: connected and token not past expiresAt. */
 function navioOAuthSlotActive(entry) {
   return !!(entry && entry.connected && !entry.expired);
@@ -737,7 +789,7 @@ class AssistantManagerClass {
 
   /** Gmail API is available (connector and/or Google OAuth) and the user is asking about mail — prefer backend tools, not the Gmail web UI. */
   async _gmailApiMailBackendPreferred(text, config) {
-    if (!navioDetectMailboxIntent(text)) return false;
+    if (!navioMailContextActiveForTurn(text, () => this._currentHistory())) return false;
     const mailMode = (config && config.assistantConnectorMail) || 'auto';
     if (mailMode === 'never') return false;
     let oauth = false;
@@ -763,9 +815,27 @@ class AssistantManagerClass {
     });
   }
 
-  /** Injects which Google / Microsoft OAuth slots exist so the model never assumes a single account. */
-  async _maybePushGoogleAccountsPolicy(messages, { isQuickAction = false } = {}) {
+  /**
+   * When the turn is not mail/workspace-related, remind the model to stay on task — OAuth does not mean “open Gmail”.
+   */
+  _maybePushNonMailTaskFocus(messages, userText) {
+    const t = userText != null ? String(userText) : '';
+    if (navioMailContextActiveForTurn(t, () => this._currentHistory())) return;
+    if (navioDetectGoogleWorkspaceIntent(t)) return;
+    messages.push({
+      role: 'system',
+      content:
+        '[Task focus]\nThis user message is **not** asking about their inbox or email unless they say so. Help with what they actually asked (code, browsing, research, the page, files, automation, etc.). Do **not** open Gmail, call Gmail tools, or redirect to mail unless they clearly ask for email/inbox/triage or are continuing a mail thread.'
+    });
+  }
+
+  /** Injects which Google / Microsoft OAuth slots exist — full mail/Drive detail only when the turn is actually Google-workspace or mail-related. */
+  async _maybePushGoogleAccountsPolicy(messages, { isQuickAction = false, userText = '' } = {}) {
     if (isQuickAction) return;
+    const t = userText != null ? String(userText) : '';
+    const mailContext = navioMailContextActiveForTurn(t, () => this._currentHistory());
+    const workspaceContext = navioDetectGoogleWorkspaceIntent(t);
+    const detailedGoogle = mailContext || workspaceContext;
     let oauthSt = {};
     try {
       oauthSt = (await window.navio.oauthStatus()) || {};
@@ -778,30 +848,46 @@ class AssistantManagerClass {
     if (!gPri && !gSec && !ms) return;
     const label = (e, fallback) => ((e && e.email) || fallback).trim() || fallback;
     if (gPri && gSec) {
-      messages.push({
-        role: 'system',
-        content:
-          `[Navio — two Google accounts in this profile]\n` +
-          `**Primary:** ${label(oauthSt.google, '(signed in)')} — tools use \`google_account: "primary"\` (default).\n` +
-          `**Secondary:** ${label(oauthSt.google_2, '(2nd account)')} — tools use \`google_account: "secondary"\`.\n\n` +
-          `If the user asks about mail, unread, inbox, triage, "anything new", Drive, or Calendar **without** naming which account, you MUST consider **both** Google slots (run the relevant tool/query twice with primary vs secondary when applicable, then merge). ` +
-          `Do not infer from the active browser tab alone.`
-      });
+      if (detailedGoogle) {
+        messages.push({
+          role: 'system',
+          content:
+            `[Navio — two Google accounts in this profile]\n` +
+            `**Primary:** ${label(oauthSt.google, '(signed in)')} — tools use \`google_account: "primary"\` (default).\n` +
+            `**Secondary:** ${label(oauthSt.google_2, '(2nd account)')} — tools use \`google_account: "secondary"\`.\n\n` +
+            `If the user asks about mail, unread, inbox, triage, "anything new", Drive, or Calendar **without** naming which account, you MUST consider **both** Google slots (run the relevant tool/query twice with primary vs secondary when applicable, then merge). ` +
+            `Do not infer from the active browser tab alone.`
+        });
+      } else {
+        messages.push({
+          role: 'system',
+          content:
+            `[Navio — OAuth] Two Google accounts: **${label(oauthSt.google, 'primary')}** (primary) and **${label(oauthSt.google_2, 'secondary')}** (secondary). ` +
+            `Use \`google_account\` only when a Google tool (mail, Drive, Calendar, etc.) applies to this task. ` +
+            `Do **not** open Gmail or use mail tools for unrelated questions.`
+        });
+      }
     } else if (gPri) {
       messages.push({
         role: 'system',
-        content: `[Navio — Google account] **${label(oauthSt.google, 'Primary')}** — use \`google_account: "primary"\` when a tool accepts it.`
+        content: detailedGoogle
+          ? `[Navio — Google account] **${label(oauthSt.google, 'Primary')}** — use \`google_account: "primary"\` when a tool accepts it.`
+          : `[Navio — OAuth] Google signed in as **${label(oauthSt.google, 'Primary')}**. Use Google/mail tools only when this task involves those services — not for unrelated requests.`
       });
     } else if (gSec) {
       messages.push({
         role: 'system',
-        content: `[Navio — Google account] **${label(oauthSt.google_2, 'Secondary')}** only — use \`google_account: "secondary"\` for Gmail API tools.`
+        content: detailedGoogle
+          ? `[Navio — Google account] **${label(oauthSt.google_2, 'Secondary')}** only — use \`google_account: "secondary"\` for Gmail API tools.`
+          : `[Navio — OAuth] Google (secondary) **${label(oauthSt.google_2, 'Secondary')}**. Use Google/mail tools only when the task involves those services.`
       });
     }
     if (ms && oauthSt.microsoft?.email) {
       messages.push({
         role: 'system',
-        content: `[Navio — Microsoft account] **${oauthSt.microsoft.email}** — Outlook / OneDrive connectors use this login when connected.`
+        content: detailedGoogle
+          ? `[Navio — Microsoft account] **${oauthSt.microsoft.email}** — Outlook / OneDrive connectors use this login when connected.`
+          : `[Navio — OAuth] Microsoft **${oauthSt.microsoft.email}** — use Outlook/OneDrive tools only when this task involves Microsoft services.`
       });
     }
   }
@@ -1605,8 +1691,9 @@ class AssistantManagerClass {
       }
     }
 
+    this._maybePushNonMailTaskFocus(messages, text);
     await this._maybePushMailBackendOnlyPolicy(messages, text, config, mailBackendPreferred);
-    await this._maybePushGoogleAccountsPolicy(messages, { isQuickAction });
+    await this._maybePushGoogleAccountsPolicy(messages, { isQuickAction, userText: text });
     const ctxMsg = await this.buildPageContextSystemMessage(config, isQuickAction, {
       skipGmailPageExcerpt: mailBackendPreferred
     });
@@ -1682,7 +1769,7 @@ class AssistantManagerClass {
     // also asks about the visible page (navioDetectPageFocusIntent), always include the snapshot so
     // mixed questions are not confusing.
     const isMailTriageQuery =
-      /\b(email|gmail|mail|inbox|draft|reply|unread|thread|message|mailbox|notification)\b/i.test(text) &&
+      navioMailContextActiveForTurn(text, () => this._currentHistory()) &&
       /\b(check|show|list|read|summarize|search|draft|reply|unread|any|find|what|whats|what's|how|connected|got|gotten|missed|look|see|view|peek|triage|new|latest|arrived|anything|something|important|came\s+in|waiting)\b/i.test(
         text
       ) &&
@@ -1886,7 +1973,10 @@ class AssistantManagerClass {
         });
       }
     }
-    await this._maybePushGoogleAccountsPolicy(messages, { isQuickAction: false });
+    const mailBackendPreferred = await this._gmailApiMailBackendPreferred(text, config);
+    this._maybePushNonMailTaskFocus(messages, text);
+    await this._maybePushMailBackendOnlyPolicy(messages, text, config, mailBackendPreferred);
+    await this._maybePushGoogleAccountsPolicy(messages, { isQuickAction: false, userText: text });
     if (typeof ConnectorsManager !== 'undefined') {
       const connectorCtx = await this._buildConnectorContext(text, this._connectorOptsFromConfig(config));
       if (connectorCtx) messages.push({ role: 'system', content: connectorCtx });
@@ -2000,8 +2090,9 @@ class AssistantManagerClass {
       }
     }
 
+    this._maybePushNonMailTaskFocus(messages, text);
     await this._maybePushMailBackendOnlyPolicy(messages, text, config, mailBackendPreferred);
-    await this._maybePushGoogleAccountsPolicy(messages, { isQuickAction: false });
+    await this._maybePushGoogleAccountsPolicy(messages, { isQuickAction: false, userText: text });
     // Page context scope (selection/excerpt/full) — still useful for non-browsing queries
     const ctxMsg = await this.buildPageContextSystemMessage(config, false, {
       skipGmailPageExcerpt: mailBackendPreferred
@@ -5059,7 +5150,7 @@ ${pageInfo}${snapText}`;
       }
 
       // ── Gmail ──────────────────────────────────────────────────────────
-      let gmailIntent = navioDetectMailboxIntent(text);
+      let gmailIntent = navioMailContextActiveForTurn(text, () => this._currentHistory());
       if (mailMode === 'never') gmailIntent = false;
       // "Mail: always" used to prefetch on every message — that matched non-mail questions. Intent must still be mail-like.
       const gmailApiConnected = has('gmail') || has('gmail_2');
@@ -5246,7 +5337,7 @@ ${pageInfo}${snapText}`;
         /\boutlook|hotmail|live\.com|office\s*365|microsoft\s*365|exchange\b/i.test(text);
       const outlookMailIntent =
         has('outlook') &&
-        (outlookExplicit || (!(has('gmail') || has('gmail_2')) && navioDetectMailboxIntent(text)));
+        (outlookExplicit || (!(has('gmail') || has('gmail_2')) && navioMailContextActiveForTurn(text, () => this._currentHistory())));
       if (outlookMailIntent) {
         const wantsUnreadOutlook = /\bunread\b/i.test(text);
         const rawOutlookQ = clean(/\b(outlook|email|mail|inbox|message)\b/gi);
