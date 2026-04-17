@@ -58,6 +58,9 @@ function navioDetectGoogleWorkspaceIntent(text) {
  * or a short follow-up after the previous user message was clearly mail-related.
  */
 function navioMailContextActiveForTurn(text, getHistoryFn) {
+  const t0 = (text || '').trim();
+  // Drive / Calendar / Docs without mail wording — do not extend a Gmail thread from prior turns.
+  if (navioDetectGoogleWorkspaceIntent(t0) && !navioDetectMailboxIntent(t0)) return false;
   if (navioDetectMailboxIntent(text)) return true;
   let h = [];
   try {
@@ -892,6 +895,19 @@ class AssistantManagerClass {
     }
   }
 
+  /**
+   * Prepended to every outbound user turn so the model keeps the current ask in view
+   * (reduces scope drift and random tools in long threads). Not stored in chat history.
+   */
+  _taskAnchorPrefix() {
+    return (
+      '[What to do now — only this]\n' +
+      'Address **this** user message. Do not start a different goal, topic, or side task. ' +
+      'Do not use tools for things they did not ask for in this turn. ' +
+      'If they only say something short because the thread is continuing, keep the **same** task as before — do not invent a new one.\n\n'
+    );
+  }
+
   _buildAttachmentPayloadForApi(baseText) {
     const imageParts = [];
     const pdfParts = [];
@@ -928,7 +944,7 @@ class AssistantManagerClass {
         )} MB or could not be encoded — describe what you need, split the file, or convert to a smaller PDF/image if the model must read it.]`;
       }
     }
-    const fullText = (baseText || '') + textExtra;
+    const fullText = this._taskAnchorPrefix() + (baseText || '') + textExtra;
     const hasShot = !!this._pendingScreenshotDataUrl;
     if (!imageParts.length && !pdfParts.length && !inlineParts.length && !hasShot) {
       return fullText;
@@ -937,7 +953,7 @@ class AssistantManagerClass {
     let head = fullText;
     if (hasShot) {
       head +=
-        '\n\n[Attached: screenshot of the active browsing tab after the last action. First infer what the user wants from the conversation, then describe only what you see in the image, then decide the next tool (read_page, click, navigate, scroll, screenshot) until their goal is met — do not stop after this image alone unless the task is clearly complete or blocked.]';
+        '\n\n[Attached: screenshot of the active browsing tab after the last action. Stay on the task in **What to do now** above. Describe what you see, then pick the next tool (read_page, click, navigate, scroll, screenshot) only as needed for that task — do not stop after one image unless the task is done or blocked.]';
     }
     parts.push({ type: 'text', text: head || '(see attachments)' });
     for (const p of pdfParts) parts.push(p);
@@ -1793,7 +1809,14 @@ class AssistantManagerClass {
       if (snapText) messages.push({ role: 'system', content: snapText });
     }
 
-    const recentHistory = this._currentHistory().slice(-40);
+    messages.push({
+      role: 'system',
+      content:
+        '[Thread discipline]\nThe **latest user message** (see **What to do now** on it) is the only target. ' +
+        'Do not do work they did not ask for. Do not switch to a new goal mid-turn. ' +
+        'Earlier messages are context only; short replies mean “continue the same task,” not “start something new.”'
+    });
+    const recentHistory = this._currentHistory().slice(-72);
     messages.push(...recentHistory);
     this._maybePushAttachmentSystemHint(messages);
     const userContent = this._buildAttachmentPayloadForApi(text);
@@ -1981,9 +2004,16 @@ class AssistantManagerClass {
       const connectorCtx = await this._buildConnectorContext(text, this._connectorOptsFromConfig(config));
       if (connectorCtx) messages.push({ role: 'system', content: connectorCtx });
     }
-    const recentHistory = this._currentHistory().slice(-40);
+    messages.push({
+      role: 'system',
+      content:
+        '[Thread discipline]\nThe **latest user message** (see **What to do now** on it) is the only target. ' +
+        'Do not do work they did not ask for. Do not switch to a new goal mid-turn. ' +
+        'Earlier messages are context only; short replies mean “continue the same task,” not “start something new.”'
+    });
+    const recentHistory = this._currentHistory().slice(-72);
     messages.push(...recentHistory);
-    messages.push({ role: 'user', content: text });
+    messages.push({ role: 'user', content: this._taskAnchorPrefix() + (text || '') });
     const userHistory = this._historyLabelForAttachments(text);
 
     const gsk = '__guest__';
@@ -2152,9 +2182,17 @@ class AssistantManagerClass {
       if (connectorCtx) messages.push({ role: 'system', content: connectorCtx });
     }
 
+    messages.push({
+      role: 'system',
+      content:
+        '[Thread discipline]\nThe **latest user message** (see **What to do now** on it) is the only target. ' +
+        'Do not do work they did not ask for. Do not switch to a new goal mid-turn. ' +
+        'Earlier messages are context only; short replies mean “continue the same task,” not “start something new.”'
+    });
+
     // Conversation history (skip stale page snapshots)
     const recentHistory = this._currentHistory()
-      .slice(-40)
+      .slice(-72)
       .filter(m => {
         if (m.role === 'system' && typeof m.content === 'string' && m.content.startsWith('[Page elements')) return false;
         return true;
@@ -2594,7 +2632,13 @@ class AssistantManagerClass {
       case 'read_network': return `Read ${result?.count || 0} network requests`;
       case 'propose_plan': return `Proposed plan${result?.approved ? ' (approved)' : result?.cancelled ? ' (cancelled)' : ''}`;
       case 'list_workflows': return `Workflows: ${result?.count ?? (result?.workflows || []).length ?? 0} saved`;
-      case 'run_workflow': return `Running workflow: ${result?.workflow_name || ''}`;
+      case 'run_workflow': {
+        const n = result?.steps;
+        const prev = Array.isArray(result?.step_preview) ? result.step_preview.length : 0;
+        const wf = result?.workflow_name || '';
+        if (n != null && prev) return `Workflow "${wf}": ${n} step(s), ${prev} in preview`;
+        return `Running workflow: ${wf}`;
+      }
       case 'gmail_search': return `Gmail: ${result?.results?.length ?? 0} message(s)`;
       case 'gmail_get_message': return `Gmail: opened message`;
       case 'gmail_list_drafts': return `Gmail: ${result?.count ?? result?.drafts?.length ?? 0} draft(s)`;
@@ -2791,8 +2835,8 @@ class AssistantManagerClass {
     const k = this._turnConversationKey ?? this._conversationKey();
     let h = this._conversationsByTab.get(k);
     if (!h) return;
-    if (h.length > 80) {
-      h = h.slice(-60);
+    if (h.length > 96) {
+      h = h.slice(-72);
       this._conversationsByTab.set(k, h);
     }
     const len = h.length;
@@ -5361,21 +5405,37 @@ ${pageInfo}${snapText}`;
 
       // ── Google Drive ───────────────────────────────────────────────────
       const driveIntent =
-        /\b(drive|google\s*drive|gdrive|googledocs|google\s*docs|sheets?|slides?|file|document|doc|spreadsheet|presentation|folder|my\s+files)\b/i.test(
-          text
-        ) ||
-        /\b(what|show|list|find|where|anything)\b[\s\S]{0,48}\b(drive|docs|sheets|slides|files?)\b/i.test(text) ||
-        /\b(on|in)\s+my\s+drive\b/i.test(text);
+        /\b(google\s*drive|gdrive|googledocs|google\s*docs|drive\.google\.com)\b/i.test(text) ||
+        /\b(on|in)\s+my\s+drive\b/i.test(text) ||
+        /\b(search|find|look\s+for|list|show)\b[\s\S]{0,120}\b(google\s*drive|drive|gdrive)\b/i.test(text) ||
+        /\b(google\s*drive|drive|gdrive)\b[\s\S]{0,120}\b(search|find|look\s+for|list)\b/i.test(text) ||
+        /\b(what|show|list|find|where)\b[\s\S]{0,48}\b(drive|docs|sheets|slides)\b/i.test(text) ||
+        (/\b(sheets?|slides?|spreadsheet|presentation)\b/i.test(text) &&
+          /\b(in|on|from)\s+(my\s+)?(google\s+)?drive\b/i.test(text));
       if (has('gdrive') && driveIntent) {
-        let q = clean(/\b(drive|gdrive|file|document|doc|sheet|spreadsheet|slide|folder|googledocs|google\s*docs)\b/gi);
+        const driveClean = (t) =>
+          t
+            .replace(
+              /\b(google\s*drive|gdrive|googledocs|google\s*docs|drive|file|document|doc|sheet|spreadsheet|slide|folder|my\s+files|search|searches|find|look|for|in|from|the|a|an|on|my|can|you|please|could|would|something|anything|list|show|get|what|are|is|there|any|named|called)\b/gi,
+              ' '
+            )
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 120);
+        let q = driveClean(text);
         if (!q || q.length < 2) q = '__NAVIO_RECENT__';
         try {
-          const res = await ConnectorsManager.queryConnector('gdrive', q, { pageSize: 8 });
+          const res = await ConnectorsManager.queryConnector('gdrive', q, { pageSize: 15 });
           if (res?.error) {
             results.push(`[Google Drive connector error: ${res.error}]`);
           } else if (res?.results?.length) {
             const label = q === '__NAVIO_RECENT__' ? 'recent (last modified)' : q;
-            const lines = res.results.map((r) => `- ${r.name}${r.type ? ` [${r.type.replace('application/vnd.google-apps.', '')}]` : ''}`).join('\n');
+            const lines = res.results
+              .map((r) => {
+                const kind = r.type ? ` [${String(r.type).replace('application/vnd.google-apps.', '')}]` : '';
+                return r.url ? `- [${r.name}](${r.url})${kind}` : `- ${r.name}${kind}`;
+              })
+              .join('\n');
             results.push(`[Google Drive — ${res.total} file(s) — ${label}]\n${lines}`);
           }
         } catch (_) {}

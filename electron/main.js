@@ -1452,6 +1452,16 @@ function appendToolResult(messages, toolCall, result, provider) {
  */
 function sanitizeToolResultForLog(toolName, result) {
   if (!result || typeof result !== 'object' || result.error) return result;
+  if (toolName === 'run_workflow' && Array.isArray(result.step_preview)) {
+    return {
+      success: result.success,
+      workflow_name: result.workflow_name,
+      steps: result.steps,
+      step_preview_truncated: result.step_preview_truncated,
+      step_preview_in_message: result.step_preview.length,
+      step_preview_omitted_from_log: true
+    };
+  }
   if (toolName !== 'screenshot') return result;
   if (Array.isArray(result.images) && result.images.length) {
     return {
@@ -3063,11 +3073,36 @@ const toolExecutors = {
       const { loadWorkflow } = require('./navio-workflows');
       const workflow = loadWorkflow(args.name);
       if (!workflow) return { error: `Workflow "${args.name}" not found. Call list_workflows for names.` };
+      const allSteps = Array.isArray(workflow.steps) ? workflow.steps : [];
+      const MAX_PREVIEW = 50;
+      const MAX_ARG_STR = 4000;
+      const truncateVal = (v, depth) => {
+        if (depth <= 0) return '[…]';
+        if (v === null || typeof v !== 'object') {
+          if (typeof v === 'string' && v.length > MAX_ARG_STR) return v.slice(0, MAX_ARG_STR) + '…';
+          return v;
+        }
+        if (Array.isArray(v)) return v.map((x) => truncateVal(x, depth - 1));
+        const o = {};
+        for (const [k, val] of Object.entries(v)) {
+          o[k] = truncateVal(val, depth - 1);
+        }
+        return o;
+      };
+      const step_preview = allSteps.slice(0, MAX_PREVIEW).map((s) => ({
+        tool: s.tool || '',
+        args: truncateVal(s.args || {}, 8)
+      }));
+      const step_preview_truncated = allSteps.length > MAX_PREVIEW;
       return {
         success: true,
         workflow_name: args.name,
-        steps: workflow.steps.length,
-        note: 'Workflow loaded. Execute the saved tool steps in order with navigate/read_page/click/etc., or follow the step list if shown in context.'
+        steps: allSteps.length,
+        step_preview,
+        step_preview_truncated,
+        note:
+          'Replay: call the same tools in order with the same arguments (adapt URLs/refs if the page changed). ' +
+          'After each navigate or major DOM change, use read_page before click/type.'
       };
     } catch (e) {
       return { error: 'run_workflow failed: ' + e.message };
@@ -5659,12 +5694,27 @@ async function queryGmail(token, query, options = {}) {
 }
 
 async function queryGoogleDrive(token, query, options = {}) {
-  const pageSize = options.pageSize || 6;
-  const q = (query || '').trim();
-  const isRecent = !q || q === '__NAVIO_RECENT__';
-  const url = isRecent
-    ? `https://www.googleapis.com/drive/v3/files?pageSize=${pageSize}&fields=files(id,name,mimeType,modifiedTime,webViewLink)&orderBy=modifiedTime desc&q=${encodeURIComponent('trashed=false')}`
-    : `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(`fullText contains '${q.replace(/'/g, "\\'")}'`)}&pageSize=${pageSize}&fields=files(id,name,mimeType,modifiedTime,webViewLink)`;
+  const pageSize = Math.min(Math.max(Number(options.pageSize) || 15, 1), 50);
+  const raw = (query || '').trim();
+  const isRecent = !raw || raw === '__NAVIO_RECENT__';
+  const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  /** Drive `files.list` q: name OR fullText, trashed excluded */
+  let qParam;
+  if (isRecent) {
+    qParam = 'trashed=false';
+  } else {
+    const words = raw.split(/\s+/).filter((w) => w.length > 0).slice(0, 8);
+    if (words.length === 0) {
+      qParam = 'trashed=false';
+    } else if (words.length === 1) {
+      const t = esc(words[0]);
+      qParam = `trashed=false and (name contains '${t}' or fullText contains '${t}')`;
+    } else {
+      const parts = words.map((w) => `fullText contains '${esc(w)}'`);
+      qParam = `trashed=false and (${parts.join(' and ')})`;
+    }
+  }
+  const url = `https://www.googleapis.com/drive/v3/files?pageSize=${pageSize}&fields=files(id,name,mimeType,modifiedTime,webViewLink)&orderBy=${encodeURIComponent('modifiedTime desc')}&q=${encodeURIComponent(qParam)}`;
   const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   const data = await resp.json();
   if (!resp.ok) return { error: data.error?.message || 'Google Drive API error' };

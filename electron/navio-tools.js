@@ -413,8 +413,8 @@ const NAVIO_TOOLS = [
   {
     name: 'run_workflow',
     description:
-      'Load a saved workflow by name and return its metadata (step count, success). This **does not** automatically execute ' +
-      'every step — after loading, perform the recorded tool sequence yourself in order, or guide the user. ' +
+      'Load a saved workflow by name. Returns **steps** (total count), **step_preview** (up to 50 steps: tool + args), and ' +
+      '**step_preview_truncated** if there are more steps. This **does not** auto-run — execute each preview step in order with the same tools. ' +
       'Use **list_workflows** first if you do not know the exact name.',
     parameters: {
       type: 'object',
