@@ -691,7 +691,6 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
 
     window.navio.onDownloadDone(({ filename, savePath, state }) => {
       if (state === 'completed') {
-        // Show a richer toast with a "Show" button so the user can find the file.
         const stack = document.getElementById('live-notif-stack');
         if (stack) {
           const id = Date.now();
@@ -701,9 +700,17 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
           el.innerHTML = `
             <span class="live-toast-icon">✓</span>
             <span class="live-toast-msg">Saved: ${filename}</span>
-            <button class="live-toast-show-btn" title="Show in folder" style="background:none;border:1px solid rgba(0,216,255,0.4);color:#00d8ff;cursor:pointer;font-size:10.5px;padding:2px 8px;border-radius:5px;margin-left:6px;font-family:inherit;flex-shrink:0;">Show</button>
-            <button class="live-notif-x">×</button>`;
+            <button type="button" class="live-toast-open-btn" title="Open in Navio (PDFs and web files in a new tab)" style="background:rgba(0,216,255,0.12);border:1px solid rgba(0,216,255,0.45);color:#00d8ff;cursor:pointer;font-size:10.5px;padding:2px 8px;border-radius:5px;margin-left:6px;font-family:inherit;flex-shrink:0;">Open</button>
+            <button type="button" class="live-toast-show-btn" title="Show in folder" style="background:none;border:1px solid rgba(0,216,255,0.4);color:#00d8ff;cursor:pointer;font-size:10.5px;padding:2px 8px;border-radius:5px;margin-left:4px;font-family:inherit;flex-shrink:0;">Show</button>
+            <button type="button" class="live-notif-x">×</button>`;
           el.querySelector('.live-notif-x').addEventListener('click', () => el.remove());
+          el.querySelector('.live-toast-open-btn').addEventListener('click', () => {
+            if (typeof window.__navioOpenDownloadSmart === 'function') {
+              void window.__navioOpenDownloadSmart(savePath);
+            } else {
+              void window.navio.openFilePath?.(savePath);
+            }
+          });
           el.querySelector('.live-toast-show-btn').addEventListener('click', () => {
             window.navio.showInFolder(savePath);
           });

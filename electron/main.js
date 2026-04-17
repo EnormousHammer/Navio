@@ -6771,6 +6771,16 @@ ipcMain.handle('open-file-path', async (_, filePath) => {
   }
 });
 
+/** file:// URL for a local filesystem path (renderer opens PDFs/images in a tab). */
+ipcMain.handle('navio-path-to-file-url', (_, filePath) => {
+  try {
+    if (!filePath || typeof filePath !== 'string') return { ok: false, error: 'invalid path' };
+    return { ok: true, href: pathToFileURL(filePath).href };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 // ── Reading List ───────────────────────────────────────────────────────────
 // Entries: [ { url, title, favicon, added, read } ] in <userData>/navio-reading-list.json
 

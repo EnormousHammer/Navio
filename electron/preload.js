@@ -229,6 +229,8 @@ contextBridge.exposeInMainWorld('navio', {
   showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),
   /** Open a file with the default application (shell.openPath). */
   openFilePath: (filePath) => ipcRenderer.invoke('open-file-path', filePath),
+  /** Stable file:// URL for a local path (open downloads in a tab). */
+  pathToFileUrl: (filePath) => ipcRenderer.invoke('navio-path-to-file-url', filePath),
 
   // Reading List ("save for later")
   readingListAdd:      (url, title, favicon) => ipcRenderer.invoke('reading-list-add', { url, title, favicon }),

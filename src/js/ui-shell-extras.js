@@ -4,6 +4,39 @@
 (function () {
   let findUnsub;
 
+  /** Paths we prefer to open inside Navio (new tab) instead of the OS default app. */
+  const NAVIO_BROWSER_VIEWABLE_DOWNLOAD_RE =
+    /\.(pdf|html?|xhtml|svg|png|jpe?g|gif|webp|bmp|ico|txt|md)$/i;
+
+  function navioIsBrowserViewableDownloadPath(p) {
+    return !!(p && typeof p === 'string' && NAVIO_BROWSER_VIEWABLE_DOWNLOAD_RE.test(p));
+  }
+
+  /**
+   * PDFs, pages, images: open in a new browser tab. Other types: OS default app.
+   */
+  async function navioOpenDownloadSmart(filePath) {
+    if (!filePath) return;
+    if (navioIsBrowserViewableDownloadPath(filePath)) {
+      try {
+        const r = await window.navio.pathToFileUrl?.(filePath);
+        if (r && r.ok && r.href && typeof TabManager !== 'undefined') {
+          TabManager.createTab(r.href);
+          return;
+        }
+      } catch {
+        /* fall through */
+      }
+    }
+    try {
+      await window.navio.openFilePath?.(filePath);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  window.__navioOpenDownloadSmart = navioOpenDownloadSmart;
+
   function historyDayKey(ts) {
     const d = new Date(ts);
     return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
@@ -554,7 +587,7 @@
         row.classList.add('dd-openable');
         row.setAttribute('tabindex', '0');
         row.setAttribute('role', 'button');
-        row.setAttribute('aria-label', `Open ${filename || savePath || 'file'}`);
+        row.setAttribute('aria-label', `Open ${filename || savePath || 'file'} in Navio`);
       } else {
         row.classList.remove('dd-openable');
         row.removeAttribute('tabindex');
@@ -571,11 +604,7 @@
       const p = row.dataset.savePath;
       if (!p) return;
       e.preventDefault();
-      try {
-        window.navio.openFilePath?.(p);
-      } catch {
-        /* ignore */
-      }
+      void navioOpenDownloadSmart(p);
     });
 
     list.addEventListener('keydown', (e) => {
@@ -586,11 +615,7 @@
       e.preventDefault();
       const p = row.dataset.savePath;
       if (!p) return;
-      try {
-        window.navio.openFilePath?.(p);
-      } catch {
-        /* ignore */
-      }
+      void navioOpenDownloadSmart(p);
     });
 
     function trim() {
@@ -908,21 +933,19 @@
           meta.textContent = '';
         }
         const actions = row.querySelector('.dd-actions');
-        actions.innerHTML = '';
-        if (d.state === 'completed' && d.savePath) {
+        if (actions) actions.innerHTML = '';
+        if (d.state === 'completed' && d.savePath && actions) {
           setRowOpenable(row, { savePath: d.savePath, filename: d.filename, openable: true });
           const openB = document.createElement('button');
           openB.type = 'button';
           openB.className = 'dd-btn-folder dd-btn-open';
           openB.textContent = 'Open';
-          openB.title = 'Open file';
+          openB.title = navioIsBrowserViewableDownloadPath(d.savePath)
+            ? 'Open in Navio (new tab) — PDFs and web files open in the browser'
+            : 'Open with default app';
           openB.addEventListener('click', (ev) => {
             ev.stopPropagation();
-            try {
-              window.navio.openFilePath?.(d.savePath);
-            } catch {
-              /* ignore */
-            }
+            void navioOpenDownloadSmart(d.savePath);
           });
           actions.appendChild(openB);
           const b = document.createElement('button');
@@ -960,13 +983,11 @@
             openB.type = 'button';
             openB.className = 'download-shelf-btn-open';
             openB.textContent = 'Open';
-            openB.title = 'Open file';
+            openB.title = navioIsBrowserViewableDownloadPath(d.savePath)
+              ? 'Open in Navio (new tab)'
+              : 'Open with default app';
             openB.addEventListener('click', () => {
-              try {
-                window.navio.openFilePath?.(d.savePath);
-              } catch {
-                /* ignore */
-              }
+              void navioOpenDownloadSmart(d.savePath);
             });
             act.appendChild(openB);
             const foldB = document.createElement('button');
