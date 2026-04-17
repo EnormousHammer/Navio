@@ -677,8 +677,17 @@ class TabManagerClass {
           }
         } else if (e.channel === 'navio-chat-host') {
           const payload = data;
-          if (payload && typeof AssistantManager !== 'undefined' && AssistantManager.handleGuestChatHostMessage) {
-            AssistantManager.handleGuestChatHostMessage(tab, wv, payload);
+          const deliverGuest = () => {
+            if (payload && typeof AssistantManager !== 'undefined' && AssistantManager.handleGuestChatHostMessage) {
+              AssistantManager.handleGuestChatHostMessage(tab, wv, payload);
+              return true;
+            }
+            return false;
+          };
+          if (payload && !deliverGuest()) {
+            setTimeout(() => {
+              void deliverGuest();
+            }, 80);
           }
         }
       } catch {}

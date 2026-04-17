@@ -830,6 +830,33 @@
     });
   }
 
+  function getInitialPromptFromSearch(search) {
+    const qs = (search || '').replace(/^\?/, '');
+    if (!qs) return '';
+    try {
+      const p = new URLSearchParams(qs);
+      const direct = p.get('initial');
+      if (direct != null && String(direct).trim() !== '') return String(direct).trim();
+      for (const [k] of p.entries()) {
+        if (k.indexOf('initial-') === 0) return k.slice('initial-'.length).trim();
+      }
+    } catch {
+      /* ignore */
+    }
+    return '';
+  }
+
+  function stripInitialFromUrl() {
+    try {
+      const u = new URL(window.location.href);
+      if (!u.search) return;
+      u.search = '';
+      history.replaceState({}, '', u.pathname + u.search + u.hash);
+    } catch {
+      /* ignore */
+    }
+  }
+
   function boot() {
     if (!api || !api.postToHost) {
       messagesEl.innerHTML = '<div class="empty-hint">Open this tab from <strong>Navio</strong> (New Tab → Ask AI). It cannot run standalone.</div>';
@@ -839,18 +866,19 @@
     wire();
     loadModelHint();
     try {
-      const params = new URLSearchParams(window.location.search || '');
-      const initial = params.get('initial');
-      if (initial) {
-        const raw = decodeURIComponent(initial);
-        if (raw.trim().startsWith('>>')) {
-          const q = raw.replace(/^>>\s*/, '').trim();
-          addUserBubble(raw.trim());
-          post({ action: 'deepResearch', topic: q });
-        } else {
-          const sendText = raw.trim().startsWith('?') ? raw.trim().slice(1).trim() : raw.trim();
-          if (sendText) send(sendText);
-        }
+      const initialText = getInitialPromptFromSearch(window.location.search || '');
+      if (initialText) {
+        stripInitialFromUrl();
+        setTimeout(function () {
+          if (initialText.trim().indexOf('>>') === 0) {
+            const q = initialText.replace(/^>>\s*/, '').trim();
+            addUserBubble(initialText.trim());
+            post({ action: 'deepResearch', topic: q });
+          } else {
+            const sendText = initialText.trim().indexOf('?') === 0 ? initialText.trim().slice(1).trim() : initialText.trim();
+            if (sendText) send(sendText);
+          }
+        }, 0);
       } else {
         messagesEl.innerHTML =
           '<div class="empty-hint">Full-page assistant — same capabilities as the sidebar, with room to work. ' +

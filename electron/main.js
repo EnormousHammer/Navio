@@ -98,7 +98,18 @@ function messageContentToPlainString(content) {
     .join('\n');
 }
 
-/** OpenAI / custom chat: replace internal parts providers do not understand. */
+/** OpenAI Chat Completions file part (vision-capable models: PDF text + page images). See FileContentPart in API reference. */
+function openAiFilePartFromPdfBase64(filename, base64) {
+  return {
+    type: 'file',
+    file: {
+      filename: filename || 'document.pdf',
+      file_data: `data:application/pdf;base64,${base64}`
+    }
+  };
+}
+
+/** OpenAI / custom chat: map internal multimodal parts to Chat Completions schema. */
 function normalizeMessagesForOpenAI(messages) {
   return messages.map((m) => {
     if (!m || !Array.isArray(m.content)) return m;
@@ -106,11 +117,14 @@ function normalizeMessagesForOpenAI(messages) {
     for (const part of m.content) {
       if (!part) continue;
       if (part.type === 'navio_pdf') {
-        next.push({
-          type: 'text',
-          text:
-            `[Attached PDF: ${part.filename || 'document.pdf'}] This chat mode does not embed PDF bytes for OpenAI. Switch **Settings → AI** to **Anthropic** or **Google** to analyze PDFs, or paste text from the document.`
-        });
+        if (part.base64) {
+          next.push(openAiFilePartFromPdfBase64(part.filename || 'document.pdf', part.base64));
+        } else {
+          next.push({
+            type: 'text',
+            text: `[Attached PDF: ${part.filename || 'document.pdf'}] (file data was not available — try attaching again.)`
+          });
+        }
         continue;
       }
       if (part.type === 'navio_inline' && part.base64) {
@@ -120,11 +134,13 @@ function normalizeMessagesForOpenAI(messages) {
             type: 'image_url',
             image_url: { url: `data:${mt};base64,${part.base64}`, detail: 'high' }
           });
+        } else if (mt === 'application/pdf') {
+          next.push(openAiFilePartFromPdfBase64(part.filename || 'document.pdf', part.base64));
         } else {
           next.push({
             type: 'text',
             text:
-              `[Attached: ${part.filename || 'file'}] (${mt}) OpenAI Chat Completions cannot send arbitrary binary bytes in this mode. Use **Settings → AI → Google** and attach again, or convert to text/image/PDF.`
+              `[Attached: ${part.filename || 'file'}] (${mt}) This OpenAI chat path only sends images and PDFs as bytes. For other file types, switch **Settings → AI** to **Anthropic** or **Google**, or paste text.`
           });
         }
         continue;

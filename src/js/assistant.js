@@ -1766,14 +1766,21 @@ class AssistantManagerClass {
     }
   }
 
-  _guestDeliver(guestWv, msg) {
-    if (!guestWv || typeof guestWv.executeJavaScript !== 'function') return Promise.resolve();
+  async _guestDeliver(guestWv, msg) {
+    if (!guestWv || typeof guestWv.executeJavaScript !== 'function') return;
     const encoded = JSON.stringify(JSON.stringify(msg));
-    return guestWv
-      .executeJavaScript(
-        `void (function(){try{var m=${encoded};if(window.__navioGuestHost&&window.__navioGuestHost.deliver)window.__navioGuestHost.deliver(JSON.parse(m));}catch(e){console.error(e);}})()`
-      )
-      .catch(() => {});
+    const js = `void (function(){try{var m=${encoded};if(window.__navioGuestHost&&window.__navioGuestHost.deliver)window.__navioGuestHost.deliver(JSON.parse(m));}catch(e){console.error(e);}})()`;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        await guestWv.executeJavaScript(js);
+        return;
+      } catch (e) {
+        if (attempt === 3) {
+          console.warn('[navio-assistant] guest deliver failed after retries', e && e.message ? e.message : e);
+        }
+        await new Promise((r) => setTimeout(r, 50 + attempt * 45));
+      }
+    }
   }
 
   handleGuestChatHostMessage(tab, guestWv, payload) {
@@ -2306,8 +2313,23 @@ class AssistantManagerClass {
       if (!this._takeoverMode) TabManager.setAgentControlledTab?.(null);
       TabManager.ensureBrowserContextTab?.();
     }
-    const toolWv = typeof TabManager !== 'undefined' ? TabManager.getBrowserTargetWebview?.() : null;
+    let toolWv = typeof TabManager !== 'undefined' ? TabManager.getBrowserTargetWebview?.() : null;
     if (typeof TabManager !== 'undefined') {
+      let wait = 0;
+      const toolWvReady = (wv) => {
+        if (!wv || typeof wv.getWebContentsId !== 'function') return false;
+        try {
+          return wv.getWebContentsId() != null;
+        } catch {
+          return false;
+        }
+      };
+      while (!toolWvReady(toolWv) && wait < 25) {
+        TabManager.ensureBrowserContextTab?.();
+        await new Promise((r) => setTimeout(r, 40));
+        toolWv = TabManager.getBrowserTargetWebview?.();
+        wait++;
+      }
       TabManager.setAgentControlledTab?.(TabManager.findTabIdForWebview?.(toolWv));
     }
     this._turnStartedAt = performance.now();
@@ -2418,6 +2440,12 @@ class AssistantManagerClass {
         summary: response.content.slice(0, 200),
         tabId: graphTab?.id,
         url: graphTab?.url || ''
+      });
+    } else if (guestWv) {
+      void this._guestDeliver(guestWv, {
+        type: 'assistant',
+        error: true,
+        content: 'No reply from the model. Open another tab with a page, or try again.'
       });
     }
     } finally {
