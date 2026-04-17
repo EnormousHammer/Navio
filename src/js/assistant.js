@@ -12,12 +12,17 @@ function navioDetectMailboxIntent(text) {
   const s = (text || '').trim();
   if (s.length < 2) return false;
   if (/\b(send|forward|compose)\s+(an?\s+)?(e-?)?mail\s+to\s+\S+@\S+/i.test(s)) return false;
+  // "Notification" alone matched too many non-mail questions; require mail vocabulary with it.
+  const notificationAboutMail =
+    /\b(notifications?|notify)\b/i.test(s) && /\b(email|e-?mail|gmail|inbox|mailbox|message|mail)\b/i.test(s);
   const mailThing =
-    /\b(gmail|google\s*mail|inbox|mailbox|e-?mails?|unread|notification)\b/i.test(s) ||
+    /\b(gmail|google\s*mail|inbox|mailbox|e-?mails?|unread)\b/i.test(s) ||
     /\bmy\s+(e-?mails?|mail|inbox|messages?)\b/i.test(s) ||
-    /\b(messages?|mail)\s+from\b/i.test(s);
+    /\b(messages?|mail)\s+from\b/i.test(s) ||
+    notificationAboutMail;
   const mailPlusCasual =
-    /\b(e-?mails?|\bmail\b)\b/i.test(s) &&
+    (/\b(e-?mails?|gmail|inbox|mailbox)\b/i.test(s) ||
+      /\b(my|the|check|read|see|show)\s+mail\b/i.test(s)) &&
     /\b(check|see|show|read|view|open|look|got|get|gotten|miss|missed|unread|new|latest|any|what|whats|what's|triage|summarize|stuff|came|arrived|waiting|important|anything|something|peek|skim|catch\s*up)\b/i.test(
       s
     );
@@ -754,7 +759,7 @@ class AssistantManagerClass {
     messages.push({
       role: 'system',
       content:
-        '[Mail — API first, browser when needed]\nGmail is connected in Navio (Settings → Connectors and/or Google sign-in). Prefer **gmail_search**, **gmail_get_message**, **gmail_list_drafts**, and draft tools — they are fast and reliable. **If the API response does not contain what the task requires** (e.g. amounts or text inside an attachment, previews, or anything only visible in the Gmail UI), you MUST NOT stop with “I can’t” — use **navigate** or **open_tab** with **gmail_browser_takeover: true** to open the real Gmail tab, then **read_page**, **click** (open attachment / preview), **screenshot** as needed. Never click Send on email.'
+        '[Mail — API first, browser when needed]\nThe user’s message was detected as mail-related. Gmail is connected in Navio (Settings → Connectors and/or Google sign-in). Prefer **gmail_search**, **gmail_get_message**, **gmail_list_drafts**, and draft tools — they are fast and reliable. **Do not** open Gmail or use mail tools for questions that are not about email/inbox/messages/drafts. **If the API response does not contain what the task requires** (e.g. amounts or text inside an attachment, previews, or anything only visible in the Gmail UI), you MUST NOT stop with “I can’t” — use **navigate** or **open_tab** with **gmail_browser_takeover: true** to open the real Gmail tab, then **read_page**, **click** (open attachment / preview), **screenshot** as needed. Never click Send on email.'
     });
   }
 
@@ -5033,9 +5038,11 @@ ${pageInfo}${snapText}`;
 
       // ── Perplexity (real-time web search) ──────────────────────────────
       if (webMode !== 'never' && has('perplexity')) {
+        const webSearchIntentAuto =
+          /\b(search|look up|find out|latest|news|current|today|recent|on the web|from the web|web results|online|lookup|cite|verify|fact\s*check|browse\s+online|perplexity)\b/i.test(text) ||
+          /\bwhat\s+(is|are|was|were)\s+the\s+(latest|news|weather|price|stock|rate|situation|meaning|definition)\b/i.test(text);
         const webSearchIntent =
-          webMode === 'always' ||
-          /\b(search|look up|find out|what is|who is|latest|news|current|today|recent|web)\b/i.test(text);
+          webMode === 'always' || (webMode === 'auto' && webSearchIntentAuto);
         if (webSearchIntent) {
           try {
             const res = await ConnectorsManager.queryConnector('perplexity', text);
@@ -5043,7 +5050,9 @@ ${pageInfo}${snapText}`;
               if (Array.isArray(res.citations) && res.citations.length) {
                 this._pendingConnectorCitations = res.citations.slice(0, 12);
               }
-              results.push(`[Perplexity Web Search]\n${res.answer.slice(0, 1400)}${res.citations?.length ? `\n\nSources: ${res.citations.slice(0, 4).join(', ')}` : ''}`);
+              results.push(
+                `[Perplexity Web Search]\n${res.answer.slice(0, 1400)}${res.citations?.length ? `\n\nWeb sources: ${res.citations.slice(0, 4).join(', ')}` : ''}`
+              );
             }
           } catch (_) {}
         }
@@ -5052,7 +5061,7 @@ ${pageInfo}${snapText}`;
       // ── Gmail ──────────────────────────────────────────────────────────
       let gmailIntent = navioDetectMailboxIntent(text);
       if (mailMode === 'never') gmailIntent = false;
-      else if (mailMode === 'always' && (has('gmail') || has('gmail_2'))) gmailIntent = true;
+      // "Mail: always" used to prefetch on every message — that matched non-mail questions. Intent must still be mail-like.
       const gmailApiConnected = has('gmail') || has('gmail_2');
       if (gmailApiConnected && gmailIntent && oauthGoogle && oauthGoogle2 && oauthSt?.google?.email && oauthSt?.google_2?.email) {
         results.push(
