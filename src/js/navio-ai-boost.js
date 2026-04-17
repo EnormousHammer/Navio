@@ -191,10 +191,9 @@
   let omniAbort = null;
 
   function isQuestion(text) {
-    const t = text.trim().toLowerCase();
+    const t = text.trim().toLowerCase().replace(/^\?+/, '');
     if (/^(what|how|why|when|where|who|which|can|is|are|do|does|should|would|could|will|tell me|explain)\b/.test(t)) return true;
     if (t.endsWith('?')) return true;
-    if (t.startsWith('?')) return true;
     return false;
   }
 

@@ -141,9 +141,11 @@ class CommandPaletteClass {
   }
 
   async refresh() {
-    const raw = (this.input.value || '').trim().toLowerCase();
-    const isAsk = raw.startsWith('?');
-    const q = isAsk ? raw.slice(1).trim() : raw;
+    const rawTrim = (this.input.value || '').trim();
+    const askM = rawTrim.match(/^ai:\s*(.*)$/i);
+    const isAsk = !!askM;
+    const raw = rawTrim.toLowerCase();
+    const q = isAsk ? (askM[1] || '').trim().toLowerCase() : raw;
     this.items = [];
 
     if (isAsk) {

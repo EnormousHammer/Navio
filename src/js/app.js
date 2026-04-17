@@ -182,7 +182,8 @@ class NavioApp {
   // ── Auto Search Mode ────────────────────────────────────────────────────
   // Detects natural-language questions and routes them to AI automatically.
   _isAIQuery(input) {
-    const q = (input || '').trim().toLowerCase();
+    let q = (input || '').trim().toLowerCase();
+    q = q.replace(/^\?+/, '');
     if (q.length < 4) return false;
     // Starts with a question word or imperative
     if (/^(what|who|where|when|why|how|is |are |can |does |do |will |should |would |could |explain |tell me|summarize|compare|define|describe|help |write |create |draft |translate|analyze|list |give me|find |show me|what's|who's|where's|when's|why's|how's)\b/.test(q)) return true;
@@ -234,7 +235,7 @@ class NavioApp {
     const t = (raw || '').trim();
     if (!t) return true;
     if (/^https?:\/\//i.test(t)) return true;
-    if (t.startsWith('?') || t.startsWith('>>')) return false;
+    if (/^ai:/i.test(t) || t.startsWith('>>')) return false;
     if (t.includes('.') && t.split(/\s+/).length <= 4) return true;
     if (this._isAIQuery(t) && !t.includes('/') && !t.includes('.') && t.split(/\s+/).length >= 5) return false;
     return true;
@@ -553,9 +554,9 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
           }
           return;
         }
-        // Explicit AI prefix
-        if (raw.startsWith('?')) {
-          const q = raw.slice(1).trim();
+        // Explicit AI prefix (avoid leading ? — same key as typing questions)
+        if (/^ai:\s*/i.test(raw)) {
+          const q = raw.replace(/^ai:\s*/i, '').trim();
           AssistantManager.open();
           if (q) {
             AssistantManager.inputEl.value = q;
@@ -970,8 +971,8 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
       }
       return;
     }
-    if (raw.startsWith('?')) {
-      this._sendToAI(raw.slice(1).trim());
+    if (/^ai:\s*/i.test(raw)) {
+      this._sendToAI(raw.replace(/^ai:\s*/i, '').trim());
       return;
     }
     this.navigateTo(raw);

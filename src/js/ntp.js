@@ -122,11 +122,15 @@ const NTP = (() => {
     document.addEventListener(
       'keydown',
       (e) => {
-        if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (e.isComposing) return;
+        // Only plain "/" (no Shift). Shift+/ is "?" — some OSes still report key "/" + shiftKey;
+        // stealing that breaks typing ? with either Shift key.
+        if (e.code !== 'Slash' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
         const ntp = document.getElementById('new-tab-page');
         if (!ntp?.classList.contains('active')) return;
         const t = e.target;
         if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+        if (t && typeof t.closest === 'function' && t.closest('webview')) return;
         e.preventDefault();
         document.getElementById('ntp-search-input')?.focus();
       },
@@ -987,8 +991,8 @@ const NTP = (() => {
       }
       return;
     }
-    if (raw.startsWith('?')) {
-      const qq = raw.slice(1).trim();
+    if (/^ai:\s*/i.test(raw)) {
+      const qq = raw.replace(/^ai:\s*/i, '').trim();
       if (typeof App !== 'undefined' && App._sendToAI) App._sendToAI(qq);
       return;
     }
@@ -1019,7 +1023,7 @@ const NTP = (() => {
         await _openAssistantInNewTab(val, { taskMode: true });
       } else {
         const raw = val;
-        if (raw.startsWith('>>') || raw.startsWith('?')) {
+        if (raw.startsWith('>>') || /^ai:\s*/i.test(raw)) {
           await _openAssistantInNewTab(val, { taskMode: false });
         } else if (typeof App !== 'undefined' && App._isAIQuery && App._isAIQuery(val)) {
           await _openAssistantInNewTab(val, { taskMode: false });
