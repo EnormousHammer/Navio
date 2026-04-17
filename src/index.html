@@ -1344,6 +1344,7 @@
         <span id="context-page-title">No page loaded</span>
       </div>
 
+      <div class="assistant-controls-strip" aria-label="Chat context and AI options">
       <div class="assistant-toolbar">
         <label class="sr-only" for="assistant-data-scope">AI data scope</label>
         <div class="scope-pill-wrap">
@@ -1360,9 +1361,9 @@
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
         </button>
         <span class="assistant-context-receipt" id="assistant-context-receipt" hidden></span>
-        <label class="assistant-step-mode-label" title="Pause after each action when Navio is in control">
+        <label class="assistant-step-mode-label" title="Pause after each browser action until you click Continue">
           <input type="checkbox" id="assistant-step-mode-toggle">
-          <span>Step</span>
+          <span>Step-by-step</span>
         </label>
       </div>
 
@@ -1383,6 +1384,7 @@
           <input type="checkbox" id="assistant-tab-digest-toggle">
           <span>Tab digest</span>
         </label>
+      </div>
       </div>
 
       <details id="assistant-agent-log" class="assistant-agent-log" hidden>

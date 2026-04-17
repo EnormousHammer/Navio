@@ -1446,12 +1446,16 @@ class TabManagerClass {
     const contextEl = document.getElementById('context-page-title');
     if (contextEl) {
       const display = this.getTabDisplayTitle(tab);
-      let line = tab.url ? `${display} - ${tab.url}` : 'New Tab';
+      let line = tab.url ? `${display} — ${tab.url}` : 'New Tab';
       if (tab.customTitle && tab.title && tab.title !== display) {
-        line = `${display} (${tab.title}) - ${tab.url}`;
+        line = `${display} (${tab.title}) — ${tab.url}`;
       }
       if (typeof EmailAssistant !== 'undefined' && tab.url && EmailAssistant.isMailUrl(tab.url)) {
         line += ' · Mail';
+      }
+      contextEl.title = line;
+      if (line.length > 140) {
+        line = `${line.slice(0, 137)}…`;
       }
       contextEl.textContent = line;
     }

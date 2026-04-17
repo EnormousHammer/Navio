@@ -2208,7 +2208,7 @@ class AssistantManagerClass {
       activityEl = document.createElement('div');
       activityEl.className = 'navio-agent-activity';
       activityEl.innerHTML =
-        '<div class="naa-header"><span class="naa-header-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg></span><span class="naa-header-text"><span class="naa-title">Working</span><span class="naa-sub">Tools &amp; reasoning</span></span></div><div class="naa-steps"></div>';
+        '<div class="naa-header"><span class="naa-header-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg></span><span class="naa-header-text"><span class="naa-title">Working</span><span class="naa-sub">Steps run in order</span></span></div><div class="naa-steps"></div>';
       this.messagesEl.appendChild(activityEl);
       this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
       this._currentActivityEl = activityEl;
@@ -2497,7 +2497,8 @@ class AssistantManagerClass {
             const view = response.gmailOpenWhenDone.view === 'sent' ? 'Sent' : 'Drafts';
             const step = document.createElement('div');
             step.className = 'naa-step';
-            step.innerHTML = `<span class="naa-tool">gmail</span> <span class="naa-label">Opened Gmail (${this._escapeHtml(view)})</span>`;
+            const sn = stepsEl.children.length + 1;
+            step.innerHTML = `<span class="naa-step-index" aria-hidden="true">${sn}</span><span class="naa-tool">gmail</span><span class="naa-label">Opened Gmail (${this._escapeHtml(view)})</span>`;
             stepsEl.appendChild(step);
           }
         }
@@ -2604,7 +2605,8 @@ class AssistantManagerClass {
     const isThink = tool === 'thinking';
     step.className = isThink ? 'naa-step naa-step--thinking' : 'naa-step';
     const toolShown = isThink ? 'Thinking' : this._escapeHtml(String(tool));
-    step.innerHTML = `<span class="naa-tool">${toolShown}</span> <span class="naa-label">${this._escapeHtml(String(label))}</span>`;
+    const n = stepsEl.children.length + 1;
+    step.innerHTML = `<span class="naa-step-index" aria-hidden="true">${n}</span><span class="naa-tool">${toolShown}</span><span class="naa-label">${this._escapeHtml(String(label))}</span>`;
     stepsEl.appendChild(step);
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
   }
