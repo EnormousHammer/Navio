@@ -501,6 +501,8 @@ body.navio-vertical-tabs .top-chrome-drag {
   align-self: stretch;
   border-left: 1px solid var(--border);
   padding-left: 2px;
+  position: relative;
+  z-index: 1001;
 }
 
 #top-chrome .titlebar-controls {
@@ -509,6 +511,8 @@ body.navio-vertical-tabs .top-chrome-drag {
 
 .titlebar-btn {
   width: 46px;
+  min-width: 46px;
+  min-height: var(--tabstrip-height);
   height: 100%;
   border: none;
   background: transparent;
@@ -518,6 +522,18 @@ body.navio-vertical-tabs .top-chrome-drag {
   align-items: center;
   justify-content: center;
   transition: all var(--duration) var(--ease);
+  -webkit-app-region: no-drag;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1002;
+  padding: 0;
+  margin: 0;
+}
+
+/* Hollow SVG shapes (e.g. maximize outline) let clicks fall through to #top-chrome drag — route hits to the button */
+.titlebar-btn svg,
+.titlebar-controls .theme-toggle-btn svg {
+  pointer-events: none;
 }
 
 .titlebar-btn:hover {
