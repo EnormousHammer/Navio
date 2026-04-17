@@ -404,16 +404,24 @@ const NAVIO_TOOLS = [
     }
   },
   {
+    name: 'list_workflows',
+    description:
+      'List saved workflows (name, description, step count, dates). Call this before **run_workflow** when the user ' +
+      'asks to replay automation or you need to pick a workflow by name.',
+    parameters: { type: 'object', properties: {} }
+  },
+  {
     name: 'run_workflow',
     description:
-      'Run a previously saved workflow by name. Workflows are recorded sequences of browser actions ' +
-      'that can be replayed. Use list_workflows first to see available workflows.',
+      'Load a saved workflow by name and return its metadata (step count, success). This **does not** automatically execute ' +
+      'every step — after loading, perform the recorded tool sequence yourself in order, or guide the user. ' +
+      'Use **list_workflows** first if you do not know the exact name.',
     parameters: {
       type: 'object',
       properties: {
         name: {
           type: 'string',
-          description: 'Name of the saved workflow to run.'
+          description: 'Name of the saved workflow to load.'
         }
       },
       required: ['name']

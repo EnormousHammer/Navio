@@ -2593,6 +2593,7 @@ class AssistantManagerClass {
       case 'read_console': return `Read ${result?.count || 0} console messages`;
       case 'read_network': return `Read ${result?.count || 0} network requests`;
       case 'propose_plan': return `Proposed plan${result?.approved ? ' (approved)' : result?.cancelled ? ' (cancelled)' : ''}`;
+      case 'list_workflows': return `Workflows: ${result?.count ?? (result?.workflows || []).length ?? 0} saved`;
       case 'run_workflow': return `Running workflow: ${result?.workflow_name || ''}`;
       case 'gmail_search': return `Gmail: ${result?.results?.length ?? 0} message(s)`;
       case 'gmail_get_message': return `Gmail: opened message`;

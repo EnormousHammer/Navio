@@ -3049,12 +3049,26 @@ const toolExecutors = {
     }
   },
 
+  async list_workflows(_wc, _args) {
+    try {
+      const workflows = listWorkflows();
+      return { workflows, count: workflows.length };
+    } catch (e) {
+      return { error: 'list_workflows failed: ' + e.message };
+    }
+  },
+
   async run_workflow(wc, args) {
     try {
       const { loadWorkflow } = require('./navio-workflows');
       const workflow = loadWorkflow(args.name);
-      if (!workflow) return { error: `Workflow "${args.name}" not found. Use list_tabs or check saved workflows.` };
-      return { success: true, workflow_name: args.name, steps: workflow.steps.length, note: 'Workflow loaded. Execute the steps in order.' };
+      if (!workflow) return { error: `Workflow "${args.name}" not found. Call list_workflows for names.` };
+      return {
+        success: true,
+        workflow_name: args.name,
+        steps: workflow.steps.length,
+        note: 'Workflow loaded. Execute the saved tool steps in order with navigate/read_page/click/etc., or follow the step list if shown in context.'
+      };
     } catch (e) {
       return { error: 'run_workflow failed: ' + e.message };
     }

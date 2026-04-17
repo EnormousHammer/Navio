@@ -254,7 +254,7 @@ PLANNING MODE — **propose_plan** (use **sparingly**):
 SPECIAL CASES:
 - Use insert_text to paste into Google Docs/Sheets (canvas editors where type_text fails).
 - Use wait to pause execution or wait for specific text to appear.
-- Use run_workflow to execute a previously saved workflow by name.
+- Use **list_workflows** to list saved automation workflows; **run_workflow** only loads metadata (step count) — you still execute the tools in order (same observe→act loop as open-source browser agents).
 
 WORKFLOW:
 1. For browsing tasks: navigate → read_page → click/type → read_page → repeat (never skip the read after each change)
