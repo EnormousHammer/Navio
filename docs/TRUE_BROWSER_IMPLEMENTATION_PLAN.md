@@ -114,7 +114,7 @@ If a feature **spikes RAM or janks the UI**, ship it behind a setting or defer i
 
 **Goal:** Best-effort Chrome extensions without promising Chrome parity.
 
-- **Settings → Browser:** surface top failure modes from `[docs/EXTENSIONS.md](../EXTENSIONS.md)`; link to troubleshooting.
+- [x] **Settings → Browser:** collapsible **Extension troubleshooting** + expanded **`docs/EXTENSIONS.md` → Troubleshooting** (failure modes, what to try).
 - Optional: **compatibility toggles** only if Electron exposes stable flags (research-only sub-task; document in ADR if added).
 
 **Exit criteria:** Users report fewer “extension silently does nothing” mysteries—**or** we show a clear in-app error.
@@ -126,7 +126,7 @@ If a feature **spikes RAM or janks the UI**, ship it behind a setting or defer i
 **Goal:** Installable, updatable, trustworthy for non-devs.
 
 - **Windows installer story:** evaluate NSIS or electron-builder path (`[docs/PERFORMANCE.md](./PERFORMANCE.md)` notes Forge limits).
-- **Auto-update:** electron-updater already wired—verify release channel and UX (download + restart).
+- [x] **Auto-update UX:** **Settings → About → Check for updates** invokes `electron-updater` (`autoDownload` stays off); dev builds get an explanatory message. **Publishers** still need a configured update feed for checks to succeed.
 - **Crash reporting** (optional): gated, privacy-preserving.
 
 **Exit criteria:** A non-technical user can install, update, and recover from a bad update.
@@ -138,7 +138,7 @@ If a feature **spikes RAM or janks the UI**, ship it behind a setting or defer i
 **Goal:** Product feels **AI-native**, not a Chromium fork with a sidebar.
 
 - **Voice:** TTS for last assistant reply (opt-in); document provider/OS choice.
-- **Task chains:** surface saved workflows (`[electron/navio-workflows.js](../electron/navio-workflows.js)` if present) with confirmations.
+- [x] **Task chains:** **Settings → Browser → Saved workflows** lists, runs (opens assistant + queues steps), and deletes; command palette unchanged.
 - **Second search backend** (e.g. Brave Search API + user key) to reduce Perplexity-only dependency—citations-first.
 
 **Exit criteria:** Marketing copy matches what the binary actually does.

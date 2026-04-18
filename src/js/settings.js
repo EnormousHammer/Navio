@@ -92,6 +92,9 @@ class SettingsManagerClass {
       aiProfileGrid: document.getElementById('ai-profile-grid'),
       extCrxId: document.getElementById('ext-crx-id'),
       extInstallCrx: document.getElementById('btn-ext-install-crx'),
+      workflowsListSettings: document.getElementById('settings-workflows-list'),
+      btnCheckUpdates: document.getElementById('btn-check-updates'),
+      updateStatus: document.getElementById('settings-update-status'),
       profilesListSettings: document.getElementById('profiles-list-settings'),
       profileNewId: document.getElementById('profile-new-id'),
       profileCreateBtn: document.getElementById('btn-profile-create')
@@ -263,6 +266,22 @@ class SettingsManagerClass {
         this.close(true);
       }
     });
+
+    if (this.elements.btnCheckUpdates && !this.elements.btnCheckUpdates._navioBound) {
+      this.elements.btnCheckUpdates._navioBound = true;
+      this.elements.btnCheckUpdates.addEventListener('click', async () => {
+        const st = this.elements.updateStatus;
+        if (st) st.textContent = 'Checking…';
+        try {
+          const r = await window.navio.checkForUpdates();
+          if (st) st.textContent = r && r.message ? r.message : '';
+          if (r && r.ok === false && r.message) alert(r.message);
+        } catch (e) {
+          if (st) st.textContent = '';
+          alert(e.message || String(e));
+        }
+      });
+    }
   }
 
   _filterSettingsNav() {
@@ -642,6 +661,7 @@ class SettingsManagerClass {
     this._bindSyncButtons();
     this._bindCloudSyncControls();
     this._refreshExtensionsList();
+    this._refreshWorkflowsList();
     this._refreshProfilesList();
 
     // Live ad-blocker toggle (takes effect immediately without Save)
@@ -737,6 +757,53 @@ class SettingsManagerClass {
       });
     } catch {
       wrap.innerHTML = '<p class="settings-inline-hint">Could not list extensions.</p>';
+    }
+  }
+
+  async _refreshWorkflowsList() {
+    const wrap = this.elements.workflowsListSettings;
+    if (!wrap || !window.navio.workflowList) return;
+    try {
+      const r = await window.navio.workflowList();
+      const workflows = r.workflows || [];
+      wrap.innerHTML = workflows.length
+        ? workflows
+            .map((wf) => {
+              const n = wf.name || 'Workflow';
+              const steps = Array.isArray(wf.steps) ? wf.steps.length : 0;
+              return `<div class="ext-row ext-row-rich wf-row">
+          <span class="ext-row-title">${_esc(n)} <span class="text-muted">(${steps} steps)</span></span>
+          <span class="ext-row-actions">
+            <button type="button" class="btn btn-secondary wf-run">Run</button>
+            <button type="button" class="btn btn-secondary wf-del">Delete</button>
+          </span>
+        </div>`;
+            })
+            .join('')
+        : '<p class="settings-inline-hint">No saved workflows yet. After the assistant runs several tool steps, you may see an offer to save them.</p>';
+      const rows = wrap.querySelectorAll('.wf-row');
+      workflows.forEach((wf, i) => {
+        const row = rows[i];
+        if (!row) return;
+        row.querySelector('.wf-run')?.addEventListener('click', () => {
+          if (typeof AssistantManager === 'undefined') return;
+          if (!Array.isArray(wf.steps) || !wf.steps.length) {
+            alert('This workflow has no steps.');
+            return;
+          }
+          AssistantManager.runWorkflowFromCommandPalette(wf);
+          this.close(true);
+        });
+        row.querySelector('.wf-del')?.addEventListener('click', async () => {
+          const delKey = wf.name && String(wf.name).trim() ? wf.name : wf.id;
+          if (!delKey || !confirm(`Delete workflow "${wf.name || delKey}"?`)) return;
+          const res = await window.navio.workflowDelete({ name: delKey });
+          if (res && !res.ok && res.error) alert(res.error);
+          this._refreshWorkflowsList();
+        });
+      });
+    } catch {
+      wrap.innerHTML = '<p class="settings-inline-hint">Could not load workflows.</p>';
     }
   }
 

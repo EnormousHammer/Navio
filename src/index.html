@@ -581,7 +581,7 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
             <span>Appearance</span>
           </button>
-          <button type="button" class="settings-nav-item" data-panel="browser" data-search="browser search engine homepage extensions chrome web store import migration">
+          <button type="button" class="settings-nav-item" data-panel="browser" data-search="browser search engine homepage extensions chrome web store import migration workflows automation troubleshooting">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
             <span>Browser</span>
           </button>
@@ -597,7 +597,7 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             <span>Passwords</span>
           </button>
-          <button type="button" class="settings-nav-item" data-panel="about" data-search="about version shortcuts keyboard help navio">
+          <button type="button" class="settings-nav-item" data-panel="about" data-search="about version shortcuts keyboard help navio updates upgrade">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
             <span>About</span>
           </button>
@@ -937,7 +937,7 @@
             </div>
             <div class="settings-section">
               <h3>Optional extensions (advanced)</h3>
-              <p class="settings-inline-hint">Not required for browsing. <strong>Ad and pop-up blocking</strong> are under <strong>Privacy</strong> above — do not install an extension for that. This section is only if you want extra Manifest V3 extensions (many fail in Electron). Electron is not Chrome: extensions that rely on Chrome-only APIs, native messaging, or fine-grained <code>chrome.*</code> behavior may load but do nothing — check the alert after install. Prefer <strong>Load unpacked</strong> for debugging. Content scripts are isolated from page JS. AI access from extensions stays off unless you enable it under Privacy. See <code>docs/EXTENSIONS.md</code> in the repo for details.</p>
+              <p class="settings-inline-hint">Not required for browsing. <strong>Ad and pop-up blocking</strong> are under <strong>Privacy</strong> — you do not need a Web Store extension for that. Navio loads <strong>Manifest V3</strong> extensions via Electron; many Chrome extensions assume APIs or behavior Navio does not provide. Prefer <strong>Load unpacked</strong> while testing. <strong>Allow extensions to use AI</strong> is under Integrations (off by default).</p>
               <button type="button" class="btn btn-secondary" id="btn-ext-load-unpacked">Load unpacked extension…</button>
               <div class="setting-row" style="margin-top:10px;flex-wrap:wrap;gap:8px;align-items:center">
                 <label for="ext-crx-id" class="settings-inline-hint" style="margin:0">Web Store extension ID</label>
@@ -945,6 +945,22 @@
                 <button type="button" class="btn btn-secondary" id="btn-ext-install-crx">Fetch and load extension</button>
               </div>
               <div id="extensions-list-settings" class="extensions-list-settings"></div>
+              <details class="settings-troubleshoot-details">
+                <summary>Extension troubleshooting</summary>
+                <ul>
+                  <li><strong>Loads but does nothing:</strong> Often missing or incomplete <code>chrome.*</code> APIs in Electron, or the extension expects a Chrome service worker environment Navio does not mirror.</li>
+                  <li><strong>Native messaging / companion app:</strong> Not supported; extensions that talk to a desktop helper will not work.</li>
+                  <li><strong>Enterprise policy or Chrome-specific flags:</strong> Unavailable; behavior may differ from Chrome.</li>
+                  <li><strong>Content scripts:</strong> Run in an isolated world — they cannot see variables on the page; only DOM access works like in Chrome.</li>
+                  <li><strong>After install,</strong> read any error alert; use <strong>Popup</strong> / <strong>Options</strong> in the list below if the extension defines them.</li>
+                </ul>
+                <p class="settings-inline-hint" style="margin-top:8px;margin-bottom:0">Full notes: <code>docs/EXTENSIONS.md</code> in the source tree (clone or SDK).</p>
+              </details>
+            </div>
+            <div class="settings-section">
+              <h3>Saved workflows</h3>
+              <p class="settings-inline-hint">Automation sequences saved from the assistant or command palette. <strong>Run</strong> opens the AI panel and queues the same steps (confirm tier‑2 actions as usual). You can also run them via <kbd>Ctrl</kbd>+<kbd>K</kbd> → “Run workflow…”.</p>
+              <div id="settings-workflows-list" class="settings-workflows-list"></div>
             </div>
             <div class="settings-section">
               <h3>Import (migration)</h3>
@@ -1108,6 +1124,14 @@
                   <strong>Navio</strong> v1.0.0<br>
                   <span class="text-muted">Futuristic AI-powered browser</span>
                 </div>
+              </div>
+            </div>
+            <div class="settings-section">
+              <h3>Updates</h3>
+              <p class="settings-inline-hint">Installed builds (Setup or portable from a release) can check for newer versions when a publisher configures an update feed. Development runs from <code>npm start</code> do not receive auto-updates.</p>
+              <div class="setting-row setting-row-actions" style="flex-wrap:wrap;gap:8px;align-items:center">
+                <button type="button" class="btn btn-secondary" id="btn-check-updates">Check for updates</button>
+                <span class="settings-inline-hint" id="settings-update-status" style="margin:0"></span>
               </div>
             </div>
             <div class="settings-section">

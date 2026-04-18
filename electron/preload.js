@@ -103,6 +103,8 @@ contextBridge.exposeInMainWorld('navio', {
   workflowList: () => ipcRenderer.invoke('workflow-list'),
   workflowLoad: (params) => ipcRenderer.invoke('workflow-load', params),
   workflowDelete: (params) => ipcRenderer.invoke('workflow-delete', params),
+  /** Packaged app: ask main to check electron-updater (requires publish URL in shipped build). */
+  checkForUpdates: () => ipcRenderer.invoke('app-check-for-updates'),
 
   // Scheduler (recurring workflows)
   schedulerList: () => ipcRenderer.invoke('scheduler-list'),

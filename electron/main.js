@@ -1086,6 +1086,45 @@ ipcMain.handle('save-config', (event, partial) => {
   return true;
 });
 
+ipcMain.handle('app-check-for-updates', async () => {
+  if (!app.isPackaged) {
+    return {
+      ok: true,
+      message: 'Updates apply to installed releases. This session is a development run.'
+    };
+  }
+  try {
+    const { autoUpdater } = require('electron-updater');
+    autoUpdater.autoDownload = false;
+    autoUpdater.allowPrerelease = false;
+    const result = await autoUpdater.checkForUpdates();
+    const info = result && result.updateInfo;
+    const cur = app.getVersion();
+    if (info && info.version && info.version !== cur) {
+      return {
+        ok: true,
+        message:
+          `Update available: v${info.version} (you have v${cur}). Auto-download is off — install from your release channel when ready.`
+      };
+    }
+    return {
+      ok: true,
+      message: 'You are up to date, or no update feed is configured for this build.'
+    };
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    const low = msg.toLowerCase();
+    if (low.includes('404') || low.includes('not found') || low.includes('enotfound')) {
+      return {
+        ok: false,
+        message:
+          'No update feed responded for this build. The publisher must configure electron-updater (e.g. publish URL in the packaged app metadata).'
+      };
+    }
+    return { ok: false, message: msg };
+  }
+});
+
 ipcMain.handle('get-api-key-for-settings', () => {
   return secureConfig.getApiKey(app.getPath('userData'));
 });

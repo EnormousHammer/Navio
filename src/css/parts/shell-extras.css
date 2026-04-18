@@ -1030,6 +1030,30 @@
   gap: 4px;
 }
 
+.settings-troubleshoot-details {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-deep);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.settings-troubleshoot-details summary {
+  cursor: pointer;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.settings-troubleshoot-details ul {
+  margin: 8px 0 0 1.1em;
+  padding: 0;
+  line-height: 1.45;
+}
+.settings-workflows-list {
+  margin-top: 10px;
+  font-size: 12px;
+}
+
 .extension-toolbar {
   display: flex;
   flex-direction: row;

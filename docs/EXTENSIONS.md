@@ -31,3 +31,19 @@ The section below defines a **target** `navio.*` manifest shape for future tight
 ## Migration
 
 Bookmark import from Chromium-based browsers is supported ([electron/main.js](../electron/main.js)). Full extension migration is out of scope until a loader exists.
+
+## Troubleshooting (top failure modes)
+
+These are the usual reasons an extension **installs but seems dead**, or behaves differently than in Google Chrome:
+
+1. **Incomplete `chrome.*` APIs** — Electron implements a subset. Extensions that depend on missing APIs may fail silently or only log errors in their service worker (not always visible in Navio).
+2. **MV3 service worker assumptions** — Background logic may expect Chrome’s event or lifetime model; subtle differences can stop updates or messaging.
+3. **Native messaging / host apps** — Extensions that talk to a companion executable are not supported.
+4. **Chrome enterprise / policy features** — Not available; extensions that require managed policy will not work.
+5. **Content script isolation** — Scripts cannot read page JavaScript variables; DOM-only access matches Chrome, but anything that expects shared JS context will fail.
+6. **Permissions prompts** — Some permission flows differ; use **Popup** and **Options** from **Settings → Browser** when the manifest defines them.
+7. **Web Store `.crx` install** — Navio unpacks the ZIP payload from Google’s update endpoint; if the CRX format or signing changes, install can fail (an alert should explain).
+
+**What to try:** **Load unpacked** from a local folder, watch for alerts on load, toggle the extension **On** in the list, and exercise **Popup** / **Options**. For built-in blocking, use **Privacy** settings instead of a store ad-blocker.
+
+In the app, **Settings → Browser → Extension troubleshooting** summarizes this in the UI.
