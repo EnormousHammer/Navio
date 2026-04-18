@@ -412,6 +412,12 @@ class AssistantManagerClass {
       pinBtn.addEventListener('click', () => this.pinActiveTab());
     }
 
+    document.getElementById('btn-assistant-open-ai-settings')?.addEventListener('click', () => {
+      if (typeof SettingsManager !== 'undefined' && typeof SettingsManager.open === 'function') {
+        void SettingsManager.open('ai');
+      }
+    });
+
     this._bindVoiceMode();
     this._bindAssistantAttachments();
   }

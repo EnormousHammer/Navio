@@ -7571,7 +7571,7 @@ body.onboarding-active #app {
   opacity: 0.6;
 }
 
-/* Single visual block: context scope + web/mail — sidecar-quiet, same plane as thread */
+/* Slim strip: pin + receipt; context/web/mail/step live in Settings → AI */
 .assistant-controls-strip {
   flex-shrink: 0;
   display: flex;
@@ -7590,6 +7590,13 @@ body.onboarding-active #app {
   padding: 7px var(--ap-pad-x) 6px;
   border-bottom: none;
   background: transparent;
+}
+
+.assistant-toolbar.assistant-toolbar--compact {
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px 8px;
+  padding: 6px var(--ap-pad-x) 7px;
 }
 
 .scope-pill-wrap {
@@ -7837,6 +7844,34 @@ a.navio-citation-chip:hover::after {
   color: var(--text-tertiary);
   flex: 1 1 100%;
   line-height: 1.35;
+}
+
+.assistant-toolbar--compact .assistant-context-receipt:not([hidden]) {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.assistant-ai-settings-link {
+  margin-left: auto;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-accent);
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0.3rem 0.45rem;
+  border-radius: var(--ap-control-radius);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+
+.assistant-ai-settings-link:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 /* ── Welcome card ── */

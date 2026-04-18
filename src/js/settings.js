@@ -619,7 +619,7 @@ class SettingsManagerClass {
     this._syncModelCustomUI();
   }
 
-  async open() {
+  async open(initialPanel = 'general') {
     await this.loadConfig();
     this._openedConfig = JSON.parse(JSON.stringify(this.config));
     if (this.elements.clearSiteDataStatus) this.elements.clearSiteDataStatus.textContent = '';
@@ -629,7 +629,8 @@ class SettingsManagerClass {
       navSearch.value = '';
       this._filterSettingsNav();
     }
-    this.showPanel('general');
+    const panel = this.panelIds.includes(initialPanel) ? initialPanel : 'general';
+    this.showPanel(panel);
     this.modal.classList.add('visible');
     this._renderOAuthClientIdFields();
     this._refreshAdBlockStats();

@@ -1328,47 +1328,16 @@
         <span id="context-page-title">No page loaded</span>
       </div>
 
-      <div class="assistant-controls-strip" aria-label="Chat context and AI options">
-      <div class="assistant-toolbar">
-        <label class="sr-only" for="assistant-data-scope">AI data scope</label>
-        <div class="scope-pill-wrap">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="scope-pill-icon"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
-          <select id="assistant-data-scope" title="What the assistant may send about the current page">
-            <option value="none">Context: off</option>
-            <option value="selection">Context: selection</option>
-            <option value="excerpt">Context: excerpt</option>
-            <option value="full">Context: extended</option>
-          </select>
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="scope-pill-chevron"><polyline points="6 9 12 15 18 9"/></svg>
+      <div class="assistant-controls-strip assistant-controls-strip--compact" aria-label="This tab">
+        <div class="assistant-toolbar assistant-toolbar--compact">
+          <button type="button" class="assistant-pin-btn" id="btn-pin-tab" title="Pin this tab so AI always uses it as context">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          </button>
+          <span class="assistant-context-receipt" id="assistant-context-receipt" hidden></span>
+          <button type="button" class="assistant-ai-settings-link" id="btn-assistant-open-ai-settings" title="Context scope, live web, mail, tab digest, step mode — same as Settings → AI">
+            Settings → AI
+          </button>
         </div>
-        <button type="button" class="assistant-pin-btn" id="btn-pin-tab" title="Pin this tab so AI always uses it as context">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-        </button>
-        <span class="assistant-context-receipt" id="assistant-context-receipt" hidden></span>
-        <label class="assistant-step-mode-label" title="Pause after each browser action until you click Continue">
-          <input type="checkbox" id="assistant-step-mode-toggle">
-          <span>Step-by-step</span>
-        </label>
-      </div>
-
-      <div class="assistant-connector-row" title="Same as Settings → AI → Live web answers &amp; mail. Perplexity key in Connectors enables web answers.">
-        <label class="sr-only" for="assistant-connector-web">Live web answers</label>
-        <select id="assistant-connector-web" class="assistant-connector-select" aria-label="Live web answers mode">
-          <option value="auto">Web: auto</option>
-          <option value="always">Web: always</option>
-          <option value="never">Web: off</option>
-        </select>
-        <label class="sr-only" for="assistant-connector-mail">Mail context</label>
-        <select id="assistant-connector-mail" class="assistant-connector-select" aria-label="Mail context mode">
-          <option value="auto">Mail: auto</option>
-          <option value="always">Mail: always</option>
-          <option value="never">Mail: off</option>
-        </select>
-        <label class="assistant-tab-digest-label" title="Attach a short text excerpt from each open tab (slower)">
-          <input type="checkbox" id="assistant-tab-digest-toggle">
-          <span>Tab digest</span>
-        </label>
-      </div>
       </div>
 
       <details id="assistant-agent-log" class="assistant-agent-log" hidden>
