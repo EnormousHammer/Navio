@@ -71,6 +71,10 @@ const DEFAULT_CONFIG = {
   assistantConnectorMail: 'auto',
   /** When true, assistant receives short text excerpts from each open tab (capped). */
   assistantTabDigest: false,
+  /** User-defined NTP shortcuts (array of { title, url }). Empty → fallback defaults in ntp.js. */
+  ntpShortcuts: [],
+  /** Show the bottom ticker on the NTP (markets/news/sports). */
+  ntpShowTicker: true,
   /**
    * New tab page — bottom SPORTS ticker: curated streamed.pk slugs (id = /matches/{id}).
    * Edit in navio-config.json to add/remove/reorder. Empty array [] falls back to app defaults in ntp.js.

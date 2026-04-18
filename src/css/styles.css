@@ -1674,7 +1674,16 @@ body.navio-incognito-active .url-bar-container {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+}
+.ntp-subtitle {
+  width: 100%;
+  text-align: center;
+  margin-top: 2px;
+  margin-bottom: 14px;
+  font-size: 12.5px;
+  color: var(--ntp-subtext);
+  letter-spacing: 0.2px;
 }
 .ntp-title {
   font-size: 18px !important;
@@ -1696,6 +1705,23 @@ body.navio-incognito-active .url-bar-container {
   padding: 0 20px;
   position: relative;
   z-index: 1;
+}
+.ntp-smart-row {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--ntp-subtext);
+  font-size: 12px;
+  box-shadow: var(--shadow-sm);
+  min-height: 32px;
+}
+.ntp-smart-row:empty {
+  display: none;
 }
 
 /* ── NTP Mode Tabs ──────────────────────────────────────────────────────── */
@@ -3069,6 +3095,17 @@ body.navio-incognito-active .url-bar-container {
   border-right: 1px solid rgba(0, 212, 255, 0.18);
   background: rgba(0, 0, 0, 0.25);
 }
+#ntp-ticker-hide {
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.55);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  padding: 0 12px;
+  cursor: pointer;
+  transition: color var(--duration) var(--ease);
+}
+#ntp-ticker-hide:hover { color: #00d8ff; }
 .ntp-ticker-tab {
   padding: 0 10px;
   font-size: 9px;
@@ -3299,6 +3336,143 @@ button.ntp-ticker-sport--stream:focus-visible {
   box-sizing: border-box;
   gap: 0;
   column-gap: 0;
+}
+.ntp-shortcuts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: min(1100px, 100%);
+  padding: 0 clamp(6px, 2vw, 12px);
+  box-sizing: border-box;
+  margin-bottom: 6px;
+  color: var(--ntp-subtext);
+}
+.ntp-shortcuts-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.ntp-shortcuts-hint {
+  font-size: 12px;
+  color: var(--ntp-subtext);
+}
+.ntp-shortcuts-actions {
+  display: flex;
+  gap: 8px;
+}
+.ntp-shortcuts-btn {
+  background: rgba(255,255,255,0.06);
+  color: var(--text-primary);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--duration) var(--ease), border-color var(--duration) var(--ease);
+}
+.ntp-shortcuts-btn:hover {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.14);
+}
+.ntp-shortcuts-btn.primary,
+.ntp-shortcuts-btn--primary {
+  background: linear-gradient(135deg, #00d8ff 0%, #5468ff 100%);
+  color: #0a0c14;
+  border-color: transparent;
+  font-weight: 700;
+  box-shadow: var(--shadow-sm), 0 0 16px rgba(0,216,255,0.2);
+}
+.ntp-shortcuts-btn.ghost {
+  background: transparent;
+  border-color: rgba(255,255,255,0.08);
+  color: var(--text-secondary);
+}
+[data-theme="light"] .ntp-shortcuts-btn.ghost {
+  border-color: rgba(20,30,80,0.12);
+  color: var(--text-tertiary);
+}
+.ntp-shortcuts-head.editing .ntp-shortcuts-actions {
+  gap: 6px;
+}
+.ntp-shortcuts-editor {
+  width: 100%;
+  max-width: min(1100px, 100%);
+  margin-top: 8px;
+  border: 1px solid var(--ntp-border);
+  border-radius: 14px;
+  background: rgba(0,0,0,0.28);
+  padding: 10px;
+  box-shadow: var(--shadow-sm);
+  box-sizing: border-box;
+}
+[data-theme="light"] .ntp-shortcuts-editor {
+  background: rgba(255,255,255,0.85);
+  border-color: rgba(20,30,80,0.1);
+}
+.ntp-shortcuts-editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ntp-shortcuts-editor-row {
+  display: grid;
+  grid-template-columns: 1.1fr 1.6fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.ntp-shortcut-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+  background: rgba(0,0,0,0.3);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+[data-theme="light"] .ntp-shortcut-input {
+  background: rgba(255,255,255,0.9);
+}
+.ntp-shortcuts-editor-row-actions {
+  display: flex;
+  gap: 4px;
+}
+.ntp-shortcuts-editor-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.ntp-shortcuts-editor-actions-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.ntp-shortcuts-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255,255,255,0.04);
+  box-shadow: var(--shadow-sm);
+  width: 100%;
+  max-width: min(1100px, 100%);
+  box-sizing: border-box;
+}
+.ntp-shortcuts-form input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  background: rgba(0,0,0,0.25);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
 }
 
 .ntp-shortcuts-col {

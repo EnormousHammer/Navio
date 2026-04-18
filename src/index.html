@@ -236,8 +236,8 @@
 
           <!-- Hero: AI search + suggestions + shortcuts -->
           <div class="ntp-hero">
-            <!-- Orb + title — hidden but preserved for JS refs -->
-            <div class="ntp-brand" style="display:none">
+            <!-- Orb + title -->
+            <div class="ntp-brand">
               <div class="ntp-orb">
                 <div class="orb-ring orb-ring-1"></div>
                 <div class="orb-ring orb-ring-2"></div>
@@ -247,6 +247,7 @@
                 </div>
               </div>
               <h1 class="ntp-title">NAVIO</h1>
+              <p class="ntp-subtitle">AI-native browser. Fast, cited, production-ready.</p>
             </div>
 
             <!-- Mode tabs — hidden, functionality merged into search bar -->
@@ -287,26 +288,24 @@
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
               </button>
             </div>
+            <div class="ntp-smart-row" id="ntp-smart-row" aria-live="polite"></div>
           </div>
 
           <!-- Quick links: one glass panel — two columns on wide viewports (saves vertical space above widgets) -->
           <div class="ntp-shortcuts" id="ntp-shortcuts">
+            <div class="ntp-shortcuts-head">
+              <div class="ntp-shortcuts-title">
+                <span>Shortcuts</span>
+                <span class="ntp-shortcuts-hint">Pinned by you · live favicons</span>
+              </div>
+              <div class="ntp-shortcuts-actions">
+                <button type="button" class="ntp-shortcuts-btn" id="ntp-shortcuts-edit">Customize</button>
+                <button type="button" class="ntp-shortcuts-btn ghost" id="ntp-shortcuts-reset" title="Reset to defaults">Reset</button>
+              </div>
+            </div>
             <div class="ntp-shortcuts-panel" role="group" aria-label="Shortcuts">
               <div class="ntp-shortcuts-col">
-                <div class="ntp-shortcuts-row-inner">
-                  <button type="button" class="ntp-shortcut" data-url="https://www.google.com">
-                    <div class="shortcut-icon"><img src="https://www.google.com/s2/favicons?domain=google.com&sz=128" alt="Google" loading="lazy"></div>
-                    <span>Google</span>
-                  </button>
-                  <button type="button" class="ntp-shortcut" data-url="https://mail.google.com">
-                    <div class="shortcut-icon"><img src="https://www.gstatic.com/images/icons/material/product/2x/gmail_48dp.png" onerror="this.src='https://cdn.simpleicons.org/gmail/EA4335'" alt="Gmail" loading="lazy"></div>
-                    <span>Gmail</span>
-                  </button>
-                  <button type="button" class="ntp-shortcut" data-url="https://drive.google.com">
-                    <div class="shortcut-icon"><img src="https://www.gstatic.com/images/icons/material/product/2x/drive_48dp.png" onerror="this.src='https://cdn.simpleicons.org/googledrive/4285F4'" alt="Drive" loading="lazy"></div>
-                    <span>Drive</span>
-                  </button>
-                </div>
+                <div class="ntp-shortcuts-row-inner" id="ntp-shortcuts-left"></div>
               </div>
               <div class="ntp-shortcuts-center" aria-label="Time and date">
                 <div class="ntp-clock-block">
@@ -319,28 +318,16 @@
                 </div>
               </div>
               <div class="ntp-shortcuts-col ntp-shortcuts-col--secondary">
-                <div class="ntp-shortcuts-row-inner">
-                  <button type="button" class="ntp-shortcut" data-url="https://www.youtube.com">
-                    <div class="shortcut-icon"><img src="https://www.google.com/s2/favicons?domain=youtube.com&sz=128" alt="YouTube" loading="lazy"></div>
-                    <span>YouTube</span>
-                  </button>
-                  <button type="button" class="ntp-shortcut ntp-shortcut-watch-live" data-url="https://predicta-bet.vercel.app/" title="Live sports">
-                    <div class="shortcut-icon shortcut-icon-watch-live" aria-hidden="true">
-                      <svg class="shortcut-tv-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <path d="M8 3.5L9.2 5h5.6L16 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
-                        <rect x="4" y="5.5" width="16" height="11.5" rx="2" stroke="currentColor" stroke-width="1.35" fill="currentColor" fill-opacity="0.12"/>
-                        <rect x="6" y="7.5" width="12" height="7.5" rx="1" fill="currentColor" fill-opacity="0.88"/>
-                        <path d="M10.8 10.2v2.6l2.4-1.3-2.4-1.3z" fill="#0a0c14"/>
-                        <rect x="10" y="18.5" width="4" height="2" rx="0.5" fill="currentColor" fill-opacity="0.45"/>
-                        <circle cx="18.5" cy="8" r="1.6" fill="currentColor" fill-opacity="0.55"/>
-                      </svg>
-                    </div>
-                    <span>Live Sports</span>
-                  </button>
-                  <button type="button" class="ntp-shortcut" data-url="https://web.stremio.com/" title="Stremio — movies &amp; shows">
-                    <div class="shortcut-icon"><img src="https://www.google.com/s2/favicons?domain=web.stremio.com&amp;sz=128" alt="Stremio" loading="lazy"></div>
-                    <span>Movies &amp; Shows</span>
-                  </button>
+                <div class="ntp-shortcuts-row-inner" id="ntp-shortcuts-right"></div>
+              </div>
+            </div>
+            <div class="ntp-shortcuts-editor" id="ntp-shortcuts-editor" hidden>
+              <div class="ntp-shortcuts-editor-list" id="ntp-shortcuts-editor-list"></div>
+              <div class="ntp-shortcuts-editor-actions">
+                <button type="button" class="ntp-shortcuts-btn ghost" id="ntp-shortcuts-cancel">Cancel</button>
+                <div class="ntp-shortcuts-editor-actions-right">
+                  <button type="button" class="ntp-shortcuts-btn" id="ntp-shortcuts-add-row">Add</button>
+                  <button type="button" class="ntp-shortcuts-btn primary" id="ntp-shortcuts-save">Save</button>
                 </div>
               </div>
             </div>
@@ -399,6 +386,7 @@
         <button class="ntp-ticker-tab active" data-tab="markets">MARKETS</button>
         <button class="ntp-ticker-tab" data-tab="sports">SPORTS</button>
         <button class="ntp-ticker-tab" data-tab="news">NEWS</button>
+        <button class="ntp-ticker-close" id="ntp-ticker-hide" title="Hide ticker">Hide</button>
       </div>
       <div class="ntp-ticker-viewport">
         <div class="ntp-ticker-track" id="ntp-ticker-track">
@@ -1362,6 +1350,12 @@
             Settings → AI
           </button>
         </div>
+      </div>
+
+      <div class="assistant-smart-row" id="assistant-smart-row" aria-label="Smart suggestions">
+        <button type="button" class="assistant-smart-chip" data-smart="summarize-page">Summarize page</button>
+        <button type="button" class="assistant-smart-chip" data-smart="with-sources">Answer with sources</button>
+        <button type="button" class="assistant-smart-chip" data-smart="next-actions">Next actions</button>
       </div>
 
       <details id="assistant-agent-log" class="assistant-agent-log" hidden>

@@ -23,6 +23,18 @@ const NTP = (() => {
   let _streamedTickerCacheRows = null;
   let _streamedTickerCacheAt = 0;
   const STREAMED_TICKER_CACHE_MS = 60000;
+  const DEFAULT_NTP_SHORTCUTS = [
+    { title: 'Google', url: 'https://www.google.com' },
+    { title: 'Gmail', url: 'https://mail.google.com' },
+    { title: 'Drive', url: 'https://drive.google.com' },
+    { title: 'YouTube', url: 'https://www.youtube.com' },
+    { title: 'Live Sports', url: 'https://predicta-bet.vercel.app/' },
+    { title: 'Movies & Shows', url: 'https://web.stremio.com/' }
+  ];
+  let _shortcuts = DEFAULT_NTP_SHORTCUTS.slice();
+  let _shortcutDraft = null;
+  let _showTicker = true;
+  let _shortcutEditorBound = false;
   const DEFAULT_NTP_LIVE_SPORTS_CATALOG = [
     { id: 'football', name: 'Football' },
     { id: 'basketball', name: 'NBA' },
@@ -94,6 +106,9 @@ const NTP = (() => {
       requestAnimationFrame(() => _applyTickerBottomReserve());
       _onShow();
     }
+
+    // Hydrate config-driven NTP preferences (shortcuts, ticker visibility)
+    void _hydrateNtpPreferences();
 
     _syncNtpNoEmailLayout();
   }
@@ -404,9 +419,46 @@ const NTP = (() => {
 
   // ── Bottom Ticker — Tab Switching ─────────────────────────────────────────
 
+  function _applyTickerVisibility() {
+    const ticker = document.getElementById('ntp-stock-ticker');
+    const toggle = document.getElementById('ntp-ticker-hide');
+    if (!ticker) return;
+    if (_showTicker) {
+      ticker.style.display = '';
+      ticker.classList.add('visible');
+      if (toggle) toggle.textContent = 'Hide';
+      _applyTickerBottomReserve();
+    } else {
+      ticker.style.display = 'none';
+      ticker.classList.remove('visible');
+      if (toggle) toggle.textContent = 'Show ticker';
+      if (document.documentElement) {
+        document.documentElement.style.setProperty('--ntp-ticker-reserve', '0px');
+      }
+    }
+  }
+
+  function _bindTickerToggle() {
+    const toggle = document.getElementById('ntp-ticker-hide');
+    if (!toggle) return;
+    toggle.addEventListener('click', async () => {
+      _showTicker = !_showTicker;
+      _applyTickerVisibility();
+      try {
+        const cfg = await window.navio.getConfig();
+        cfg.ntpShowTicker = _showTicker;
+        await window.navio.saveConfig(cfg);
+        if (typeof App !== 'undefined') App.config = cfg;
+      } catch {
+        /* ignore */
+      }
+    });
+  }
+
   function _bindTickerTabs() {
     const tabs = document.getElementById('ntp-ticker-tabs');
     if (!tabs) return;
+    _bindTickerToggle();
     tabs.addEventListener('click', e => {
       const btn = e.target.closest('.ntp-ticker-tab');
       if (!btn) return;
@@ -1105,33 +1157,217 @@ const NTP = (() => {
     return null;
   }
 
-  // ── Quick links shortcuts ─────────────────────────────────────────────────
+  // ── Quick links shortcuts (configurable) ──────────────────────────────────
+
+  function _sanitizeShortcuts(list) {
+    if (!Array.isArray(list)) return [];
+    return list
+      .map((row) => {
+        if (!row) return null;
+        const title = String(row.title || row.name || '').trim();
+        const url = String(row.url || '').trim();
+        if (!title || !url) return null;
+        try { new URL(url); } catch { return null; }
+        return { title, url };
+      })
+      .filter(Boolean)
+      .slice(0, 12);
+  }
+
+  async function _hydrateNtpPreferences() {
+    try {
+      const cfg = await window.navio.getConfig();
+      _showTicker = cfg?.ntpShowTicker !== false;
+      const sc = _sanitizeShortcuts(cfg?.ntpShortcuts);
+      _shortcuts = sc.length ? sc : DEFAULT_NTP_SHORTCUTS.slice();
+    } catch {
+      _shortcuts = DEFAULT_NTP_SHORTCUTS.slice();
+      _showTicker = true;
+    }
+    _renderShortcuts();
+    _applyTickerVisibility();
+    _bindShortcutEditor();
+  }
+
+  function _renderShortcuts() {
+    const left = document.getElementById('ntp-shortcuts-left');
+    const right = document.getElementById('ntp-shortcuts-right');
+    if (!left || !right) return;
+    const slots = _shortcuts.slice(0, 6);
+    const leftItems = slots.slice(0, 3);
+    const rightItems = slots.slice(3, 6);
+    const buildBtn = (item, idx) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ntp-shortcut';
+      btn.dataset.url = item.url;
+      let favicon = '';
+      try {
+        const u = new URL(item.url);
+        favicon = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(u.hostname)}&sz=128`;
+      } catch {
+        favicon = '';
+      }
+      btn.innerHTML = `
+        <div class="shortcut-icon"><img src="${favicon}" alt="${_esc(item.title)}" loading="lazy"></div>
+        <span>${_esc(item.title)}</span>
+      `;
+      btn.addEventListener('click', () => _handleShortcutClick(item.url));
+      return btn;
+    };
+    left.innerHTML = '';
+    right.innerHTML = '';
+    leftItems.forEach((item, i) => left.appendChild(buildBtn(item, i)));
+    rightItems.forEach((item, i) => right.appendChild(buildBtn(item, i + 3)));
+  }
+
+  function _handleShortcutClick(url) {
+    if (!url) return;
+    void (async () => {
+      const multi = await _ntpShortcutMultiGoogleTargets(url);
+      if (
+        multi &&
+        multi.length > 1 &&
+        typeof App !== 'undefined' &&
+        typeof TabManager !== 'undefined'
+      ) {
+        App.handleSearch(multi[0]);
+        for (let i = 1; i < multi.length; i++) {
+          TabManager.createTab(multi[i], { switchTo: false });
+        }
+        return;
+      }
+      if (typeof App !== 'undefined') App.handleSearch(url);
+    })();
+  }
 
   function _bindShortcuts() {
-    document.querySelectorAll('#ntp-shortcuts .ntp-shortcut').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const url = btn.dataset.url;
-        if (!url) return;
-        void (async () => {
-          const multi = await _ntpShortcutMultiGoogleTargets(url);
-          if (
-            multi &&
-            multi.length > 1 &&
-            typeof App !== 'undefined' &&
-            typeof TabManager !== 'undefined'
-          ) {
-            App.handleSearch(multi[0]);
-            for (let i = 1; i < multi.length; i++) {
-              TabManager.createTab(multi[i], { switchTo: false });
-            }
-            return;
-          }
-          // Shortcuts are only visible when NTP is active, meaning the current
-          // tab has no URL — navigate in-place rather than replacing with a new tab.
-          if (typeof App !== 'undefined') App.handleSearch(url);
-        })();
-      });
+    _renderShortcuts();
+    const editBtn = document.getElementById('ntp-shortcuts-edit');
+    const resetBtn = document.getElementById('ntp-shortcuts-reset');
+    if (editBtn) editBtn.addEventListener('click', () => _toggleShortcutEditor(true));
+    if (resetBtn) resetBtn.addEventListener('click', () => _resetShortcutsToDefault());
+  }
+
+  function _bindShortcutEditor() {
+    if (_shortcutEditorBound) return;
+    _shortcutEditorBound = true;
+    const addBtn = document.getElementById('ntp-shortcuts-add-row');
+    const saveBtn = document.getElementById('ntp-shortcuts-save');
+    const cancelBtn = document.getElementById('ntp-shortcuts-cancel');
+    if (addBtn) addBtn.addEventListener('click', () => _appendShortcutRow());
+    if (saveBtn) saveBtn.addEventListener('click', () => _persistShortcuts());
+    if (cancelBtn) cancelBtn.addEventListener('click', () => _toggleShortcutEditor(false));
+  }
+
+  function _toggleShortcutEditor(show) {
+    const editor = document.getElementById('ntp-shortcuts-editor');
+    const head = document.querySelector('.ntp-shortcuts-head');
+    if (!editor) return;
+    editor.hidden = !show;
+    if (head) head.classList.toggle('editing', show);
+    if (show) {
+      _shortcutDraft = _shortcuts.slice();
+      _renderShortcutEditorRows();
+    } else {
+      _shortcutDraft = null;
+    }
+  }
+
+  function _renderShortcutEditorRows() {
+    const host = document.getElementById('ntp-shortcuts-editor-list');
+    if (!host) return;
+    host.innerHTML = '';
+    const rows = (_shortcutDraft || _shortcuts).slice(0, 12);
+    if (rows.length === 0) rows.push({ title: '', url: '' });
+    rows.forEach((row, idx) => {
+      const el = document.createElement('div');
+      el.className = 'ntp-shortcuts-editor-row';
+      el.innerHTML = `
+        <input type="text" class="ntp-shortcut-input ntp-shortcut-input-title" value="${_esc(row.title)}" placeholder="Title" autocomplete="off" spellcheck="false">
+        <input type="url" class="ntp-shortcut-input" value="${_esc(row.url)}" placeholder="https://example.com" autocomplete="off" spellcheck="false">
+        <div class="ntp-shortcuts-editor-row-actions">
+          <button type="button" class="ntp-shortcuts-btn ghost" data-move="up" title="Move up">↑</button>
+          <button type="button" class="ntp-shortcuts-btn ghost" data-move="down" title="Move down">↓</button>
+          <button type="button" class="ntp-shortcuts-btn ghost" data-remove="1" title="Remove">✕</button>
+        </div>
+      `;
+      const moveUp = el.querySelector('[data-move="up"]');
+      const moveDown = el.querySelector('[data-move="down"]');
+      const remove = el.querySelector('[data-remove]');
+      if (moveUp) moveUp.addEventListener('click', () => _moveShortcutRow(idx, -1));
+      if (moveDown) moveDown.addEventListener('click', () => _moveShortcutRow(idx, 1));
+      if (remove) remove.addEventListener('click', () => _removeShortcutRow(idx));
+      host.appendChild(el);
     });
+  }
+
+  function _appendShortcutRow() {
+    if (!_shortcutDraft) _shortcutDraft = _shortcuts.slice();
+    _shortcutDraft.push({ title: '', url: '' });
+    _renderShortcutEditorRows();
+  }
+
+  function _moveShortcutRow(idx, delta) {
+    const working = _shortcutDraft || _shortcuts.slice();
+    const nextIdx = idx + delta;
+    if (nextIdx < 0 || nextIdx >= working.length) return;
+    const copy = working.slice();
+    const [moved] = copy.splice(idx, 1);
+    copy.splice(nextIdx, 0, moved);
+    _shortcutDraft = copy;
+    _renderShortcutEditorRows();
+  }
+
+  function _removeShortcutRow(idx) {
+    const working = _shortcutDraft || _shortcuts.slice();
+    if (working.length <= 1) {
+      _shortcutDraft = [{ title: '', url: '' }];
+    } else {
+      working.splice(idx, 1);
+      _shortcutDraft = working;
+    }
+    _renderShortcutEditorRows();
+  }
+
+  async function _persistShortcuts() {
+    const host = document.getElementById('ntp-shortcuts-editor-list');
+    if (!host) return;
+    const rows = Array.from(host.querySelectorAll('.ntp-shortcuts-editor-row'));
+    const next = [];
+    rows.forEach((row) => {
+      const inputs = row.querySelectorAll('.ntp-shortcut-input');
+      const title = String(inputs[0]?.value || '').trim();
+      const url = String(inputs[1]?.value || '').trim();
+      if (!title || !url) return;
+      try { new URL(url); } catch { return; }
+      next.push({ title, url });
+    });
+    _shortcuts = next.length ? next.slice(0, 12) : DEFAULT_NTP_SHORTCUTS.slice();
+    _shortcutDraft = null;
+    try {
+      const cfg = await window.navio.getConfig();
+      cfg.ntpShortcuts = _shortcuts;
+      await window.navio.saveConfig(cfg);
+      if (typeof App !== 'undefined') App.config = cfg;
+    } catch {
+      /* ignore save errors; still render */
+    }
+    _renderShortcuts();
+    _toggleShortcutEditor(false);
+  }
+
+  async function _resetShortcutsToDefault() {
+    _shortcuts = DEFAULT_NTP_SHORTCUTS.slice();
+    _shortcutDraft = null;
+    try {
+      const cfg = await window.navio.getConfig();
+      cfg.ntpShortcuts = _shortcuts;
+      await window.navio.saveConfig(cfg);
+      if (typeof App !== 'undefined') App.config = cfg;
+    } catch { /* ignore */ }
+    _renderShortcuts();
+    _toggleShortcutEditor(false);
   }
 
   // ── Connected Services Status Bar ─────────────────────────────────────────

@@ -376,6 +376,15 @@ class AssistantManagerClass {
       });
     });
 
+    document.querySelectorAll('.assistant-smart-chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const prompt = this._smartPromptFor(chip.dataset.smart);
+        if (!prompt || !this.inputEl) return;
+        this.inputEl.value = prompt;
+        this.sendMessage();
+      });
+    });
+
     if (this.scopeSelect) {
       this.scopeSelect.addEventListener('change', () => this.persistScopeFromUI());
     }
@@ -469,6 +478,20 @@ class AssistantManagerClass {
         const dt = e.dataTransfer?.files;
         if (dt?.length) this._addFilesFromList(dt);
       });
+    }
+  }
+
+  _smartPromptFor(kind) {
+    const baseContext = 'Use the page open in my active tab as context. Keep the answer concise and actionable.';
+    switch (kind) {
+      case 'summarize-page':
+        return `${baseContext} Give a 3-bullet TL;DR and three concrete next actions I can take.`;
+      case 'with-sources':
+        return `${baseContext} Answer with citations. If the question needs web context, fetch it and cite sources clearly.`;
+      case 'next-actions':
+        return `${baseContext} List the top 5 next actions I should take, with short reasons and links if relevant.`;
+      default:
+        return '';
     }
   }
 
