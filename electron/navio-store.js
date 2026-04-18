@@ -94,18 +94,8 @@ function createStore(userData) {
     return crypto.createHash('sha256').update(text.slice(0, 2000)).digest('hex').slice(0, 16);
   }
 
-  /** Persisted OpenAI-style turns for the sidebar assistant (user + assistant string content only). */
-  function loadAssistantChat() {
-    const fallback = { version: 1, messages: [] };
-    const data = readJson(assistantChatPath, fallback);
-    if (!data || typeof data !== 'object') return fallback;
-    const messages = Array.isArray(data.messages) ? data.messages : [];
-    return { version: 1, messages };
-  }
-
-  function saveAssistantChat(data) {
-    const raw = data && typeof data === 'object' ? data.messages : null;
-    let messages = Array.isArray(raw) ? raw : [];
+  function _cleanAssistantMessages(msgs) {
+    let messages = Array.isArray(msgs) ? msgs : [];
     messages = messages
       .filter(
         (m) =>
@@ -115,7 +105,50 @@ function createStore(userData) {
       )
       .map((m) => ({ role: m.role, content: m.content }));
     if (messages.length > 80) messages = messages.slice(-60);
-    return writeJson(assistantChatPath, { version: 1, messages });
+    return messages;
+  }
+
+  /**
+   * v2: per-tab (or tab-group) transcripts — `byKey` maps storage keys (e.g. tab-3, g:groupId).
+   * v1: single global array (deprecated; migrated away on load).
+   */
+  function loadAssistantChat() {
+    const emptyV2 = { version: 2, byKey: {} };
+    const data = readJson(assistantChatPath, null);
+    if (!data || typeof data !== 'object') return emptyV2;
+
+    if (data.version === 2 && data.byKey && typeof data.byKey === 'object') {
+      const byKey = {};
+      for (const [k, msgs] of Object.entries(data.byKey)) {
+        if (!k || typeof k !== 'string') continue;
+        const cleaned = _cleanAssistantMessages(msgs);
+        if (cleaned.length) byKey[k] = cleaned;
+      }
+      return { version: 2, byKey };
+    }
+
+    const legacy = _cleanAssistantMessages(data.messages);
+    if (legacy.length) {
+      try {
+        writeJson(assistantChatPath, { version: 2, byKey: {} });
+      } catch (e) {
+        console.error('navio-store migrate assistant v1→v2', e.message);
+      }
+    }
+    return emptyV2;
+  }
+
+  function saveAssistantChat(data) {
+    if (data && data.version === 2 && data.byKey && typeof data.byKey === 'object') {
+      const byKey = {};
+      for (const [k, msgs] of Object.entries(data.byKey)) {
+        if (!k || typeof k !== 'string') continue;
+        const cleaned = _cleanAssistantMessages(msgs);
+        if (cleaned.length) byKey[k] = cleaned;
+      }
+      return writeJson(assistantChatPath, { version: 2, byKey });
+    }
+    return writeJson(assistantChatPath, { version: 2, byKey: {} });
   }
 
   return {

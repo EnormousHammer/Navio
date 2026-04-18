@@ -143,7 +143,7 @@ const NAVIO_ASSISTANT_INLINE_MAX_BYTES = 4 * 1024 * 1024;
 /** Unknown extensions: try UTF-8 decode when under this size (code, configs, odd MIME). */
 const NAVIO_ASSISTANT_HEURISTIC_TEXT_MAX_BYTES = 768 * 1024;
 
-/** Legacy persisted chat bucket (single thread). Migrated once into the first active tab per session. */
+/** Fallback storage key when no tab is active (edge cases only). Never written to disk as v2 byKey. */
 const NAVIO_PROFILE_CHAT_KEY = '__profile__';
 
 function navioLooksLikePrintableText(s) {
@@ -315,8 +315,6 @@ class AssistantManagerClass {
     this._panelDisplayTabId = null;
     /** When true, `addMessage` always appends (rebuilding history from disk). */
     this._assistantHistoryDomReplay = false;
-    /** First tab id that receives a copy of the legacy persisted profile thread (once per session). */
-    this._profileChatSeededToTabId = null;
     /** Dedupe toggle when globalShortcut and guest webview forward both fire. */
     this._lastToggleAt = 0;
 
@@ -538,13 +536,7 @@ class AssistantManagerClass {
 
   _ensureConversationEntry(k) {
     if (this._conversationsByTab.has(k)) return;
-    const legacy = this._conversationsByTab.get(NAVIO_PROFILE_CHAT_KEY);
-    if (legacy && legacy.length && this._profileChatSeededToTabId == null) {
-      this._conversationsByTab.set(k, [...legacy]);
-      this._profileChatSeededToTabId = k;
-    } else {
-      this._conversationsByTab.set(k, []);
-    }
+    this._conversationsByTab.set(k, []);
   }
 
   async _ensureAssistantHistoryLoaded() {
@@ -558,15 +550,20 @@ class AssistantManagerClass {
     try {
       if (!window.navio || typeof window.navio.assistantChatLoad !== 'function') return;
       const data = await window.navio.assistantChatLoad();
-      const raw = data && Array.isArray(data.messages) ? data.messages : [];
-      const messages = [];
-      for (const m of raw) {
-        if (!m || (m.role !== 'user' && m.role !== 'assistant')) continue;
-        if (typeof m.content !== 'string') continue;
-        messages.push({ role: m.role, content: m.content });
-      }
-      if (messages.length) {
-        this._conversationsByTab.set(NAVIO_PROFILE_CHAT_KEY, messages);
+      this._conversationsByTab.delete(NAVIO_PROFILE_CHAT_KEY);
+      if (data && data.version === 2 && data.byKey && typeof data.byKey === 'object') {
+        for (const [k, raw] of Object.entries(data.byKey)) {
+          if (!k || k === NAVIO_PROFILE_CHAT_KEY || k.startsWith('__')) continue;
+          if (!Array.isArray(raw)) continue;
+          const messages = [];
+          for (const m of raw) {
+            if (!m || (m.role !== 'user' && m.role !== 'assistant')) continue;
+            if (typeof m.content !== 'string') continue;
+            messages.push({ role: m.role, content: m.content });
+          }
+          if (messages.length) this._conversationsByTab.set(k, messages);
+        }
+        return;
       }
     } catch (e) {
       console.warn('[navio-assistant] load persisted chat failed', e);
@@ -584,21 +581,22 @@ class AssistantManagerClass {
   async _persistAssistantHistoryNow() {
     try {
       if (!window.navio || typeof window.navio.assistantChatSave !== 'function') return;
-      const h = this._conversationsByTab.get(this._conversationKey());
-      if (!h || !h.length) {
-        await window.navio.assistantChatSave({ messages: [] });
-        return;
+      const byKey = {};
+      for (const [k, h] of this._conversationsByTab.entries()) {
+        if (!k || k === NAVIO_PROFILE_CHAT_KEY || k.startsWith('__')) continue;
+        if (!h || !h.length) continue;
+        const messages = h
+          .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+          .map((m) => ({ role: m.role, content: m.content }));
+        if (messages.length) byKey[k] = messages;
       }
-      const messages = h
-        .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
-        .map((m) => ({ role: m.role, content: m.content }));
-      await window.navio.assistantChatSave({ messages });
+      await window.navio.assistantChatSave({ version: 2, byKey });
     } catch (e) {
       console.warn('[navio-assistant] persist chat failed', e);
     }
   }
 
-  /** API message history (per tab, or shared per tab group; legacy profile migrates once into the first bucket). */
+  /** API message history (per ungrouped tab, or shared per tab group). Persisted under the same storage keys (disk v2). */
   _currentHistory() {
     const k = this._turnConversationKey ?? this._conversationKey();
     this._ensureConversationEntry(k);

@@ -4631,20 +4631,20 @@ ipcMain.handle('context-graph', (event, payload) => {
 });
 
 ipcMain.handle('assistant-chat-load', () => {
-  if (!store) return { version: 1, messages: [] };
+  if (!store) return { version: 2, byKey: {} };
   try {
     return store.loadAssistantChat();
   } catch (e) {
     console.error('[navio] assistant-chat-load', e.message);
-    return { version: 1, messages: [] };
+    return { version: 2, byKey: {} };
   }
 });
 
 ipcMain.handle('assistant-chat-save', (_, payload) => {
   if (!store) return { ok: false };
   try {
-    const messages = payload && Array.isArray(payload.messages) ? payload.messages : [];
-    return { ok: store.saveAssistantChat({ messages }) };
+    const p = payload && typeof payload === 'object' ? payload : {};
+    return { ok: store.saveAssistantChat(p) };
   } catch (e) {
     console.error('[navio] assistant-chat-save', e.message);
     return { ok: false };
