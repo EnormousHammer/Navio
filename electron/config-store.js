@@ -72,23 +72,7 @@ const DEFAULT_CONFIG = {
   /** When true, assistant receives short text excerpts from each open tab (capped). */
   assistantTabDigest: false,
   /** User-defined NTP shortcuts (array of { title, url }). Empty → fallback defaults in ntp.js. */
-  ntpShortcuts: [],
-  /** Show the bottom ticker on the NTP (markets/news/sports). */
-  ntpShowTicker: true,
-  /**
-   * New tab page — bottom SPORTS ticker: curated streamed.pk slugs (id = /matches/{id}).
-   * Edit in navio-config.json to add/remove/reorder. Empty array [] falls back to app defaults in ntp.js.
-   */
-  ntpLiveSportsCatalog: [
-    { id: 'football', name: 'Football' },
-    { id: 'basketball', name: 'NBA' },
-    { id: 'american-football', name: 'NFL / NCAA FB' },
-    { id: 'hockey', name: 'Hockey' },
-    { id: 'baseball', name: 'Baseball' },
-    { id: 'fight', name: 'UFC / Boxing' },
-    { id: 'tennis', name: 'Tennis' },
-    { id: 'motor-sports', name: 'Motorsports' }
-  ]
+  ntpShortcuts: []
 };
 
 function readConfigFile() {

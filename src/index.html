@@ -381,21 +381,6 @@
       </div>
     </main>
 
-    <!-- Bottom ticker bar — fixed to viewport, shown only on NTP -->
-    <div class="ntp-stock-ticker" id="ntp-stock-ticker">
-      <div class="ntp-ticker-tabs" id="ntp-ticker-tabs">
-        <button class="ntp-ticker-tab active" data-tab="markets">MARKETS</button>
-        <button class="ntp-ticker-tab" data-tab="sports">SPORTS</button>
-        <button class="ntp-ticker-tab" data-tab="news">NEWS</button>
-        <button class="ntp-ticker-close" id="ntp-ticker-hide" title="Hide ticker">Hide</button>
-      </div>
-      <div class="ntp-ticker-viewport">
-        <div class="ntp-ticker-track" id="ntp-ticker-track">
-          <span class="ntp-ticker-loading">Loading…</span>
-        </div>
-      </div>
-    </div>
-
     <!-- Inline AI Toolbar (appears above selected text) -->
     <div id="inline-ai-toolbar" class="inline-ai-toolbar" hidden>
       <button class="iai-btn" data-action="explain">Explain</button>
@@ -1312,7 +1297,7 @@
 
   <div id="navio-proactive-chips" class="navio-proactive-chips"></div>
 
-  <!-- AI assistant dock at body level: stacks above NTP ticker + webview layer -->
+  <!-- AI assistant dock at body level: stacks above webview layer -->
   <aside id="assistant-panel" class="assistant-panel">
       <div class="assistant-header">
         <div class="assistant-title">

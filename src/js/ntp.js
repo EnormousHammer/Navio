@@ -5,8 +5,7 @@
  *  • Greeting + live clock
  *  • Connected services status bar (IMAP email counts)
  *  • World News (Reddit r/worldnews — free, CORS-enabled JSON API)
- *  • Stock market ticker (Yahoo Finance via main-process IPC — bypasses CORS)
- *  • Bottom ticker SPORTS tab — streamed.pk listings (click to open stream), ESPN fallback
+ *  • Stock quotes (IPC) — cached for smart row / AI context
  *  • Inbox widget — unread emails from IMAP Gmail/Outlook
  *  • "Draft All" button — triggers batch email drafting
  */
@@ -17,12 +16,6 @@ const NTP = (() => {
   let _newsHeadlines  = [];   // cached for AI brief
   let _stockData      = [];   // cached for AI brief
   let _inboxMessages  = [];   // cached from _loadInbox() for AI brief
-  let _tickerMode = 'markets'; // 'markets' | 'sports' | 'news'
-  /** Matches shown in SPORTS ticker when using streamed.pk (indexed by data-stream-match-idx). */
-  let _tickerLiveMatches = [];
-  let _streamedTickerCacheRows = null;
-  let _streamedTickerCacheAt = 0;
-  const STREAMED_TICKER_CACHE_MS = 60000;
   const DEFAULT_NTP_SHORTCUTS = [
     { title: 'Google', url: 'https://www.google.com' },
     { title: 'Gmail', url: 'https://mail.google.com' },
@@ -33,33 +26,15 @@ const NTP = (() => {
   ];
   let _shortcuts = DEFAULT_NTP_SHORTCUTS.slice();
   let _shortcutDraft = null;
-  let _showTicker = true;
   let _shortcutEditorBound = false;
-  const DEFAULT_NTP_LIVE_SPORTS_CATALOG = [
-    { id: 'football', name: 'Football' },
-    { id: 'basketball', name: 'NBA' },
-    { id: 'american-football', name: 'NFL' },
-    { id: 'hockey', name: 'Hockey' },
-    { id: 'baseball', name: 'Baseball' },
-    { id: 'fight', name: 'Fight' },
-    { id: 'tennis', name: 'Tennis' },
-    { id: 'motor-sports', name: 'Motorsports' }
-  ];
 
   // ── Init ──────────────────────────────────────────────────────────────────
 
+  /** Bottom ticker removed — keep reserve at 0 so webviews / NTP use full height. */
   function _applyTickerBottomReserve() {
-    const ntp = document.getElementById('new-tab-page');
-    const ticker = document.getElementById('ntp-stock-ticker');
-    if (!ticker || !document.documentElement) return;
-    const show =
-      !!ntp?.classList.contains('active') && ticker.classList.contains('visible');
-    let reservePx = 0;
-    if (show) {
-      const h = ticker.offsetHeight || ticker.getBoundingClientRect().height || 34;
-      reservePx = Math.ceil(h + 4);
+    if (document.documentElement) {
+      document.documentElement.style.setProperty('--ntp-ticker-reserve', '0px');
     }
-    document.documentElement.style.setProperty('--ntp-ticker-reserve', `${reservePx}px`);
   }
 
   if (typeof window !== 'undefined') {
@@ -71,30 +46,20 @@ const NTP = (() => {
     _bindModeTabs();
     _bindSearchInput();
     _bindShortcuts();
-    _bindTickerTabs();
-    _bindSportsTickerClicks();
     _bindWidgetPopouts();
     _bindResultsPanel();
     _bindNtpSlashFocus();
 
-    const tickerEl = document.getElementById('ntp-stock-ticker');
-    if (tickerEl && typeof ResizeObserver !== 'undefined') {
-      const ro = new ResizeObserver(() => _applyTickerBottomReserve());
-      ro.observe(tickerEl);
-      _applyTickerBottomReserve();
-    }
+    _applyTickerBottomReserve();
 
     const observer = new MutationObserver(() => {
       const isActive = document.getElementById('new-tab-page')?.classList.contains('active');
-      const ticker = document.getElementById('ntp-stock-ticker');
       if (isActive && !_ntpVisible) {
         _ntpVisible = true;
-        if (ticker) ticker.classList.add('visible');
         requestAnimationFrame(() => _applyTickerBottomReserve());
         _onShow();
       } else if (!isActive) {
         _ntpVisible = false;
-        if (ticker) ticker.classList.remove('visible');
         _applyTickerBottomReserve();
       }
     });
@@ -102,12 +67,11 @@ const NTP = (() => {
     if (ntp) observer.observe(ntp, { attributes: true, attributeFilter: ['class'] });
     if (ntp?.classList.contains('active')) {
       _ntpVisible = true;
-      document.getElementById('ntp-stock-ticker')?.classList.add('visible');
       requestAnimationFrame(() => _applyTickerBottomReserve());
       _onShow();
     }
 
-    // Hydrate config-driven NTP preferences (shortcuts, ticker visibility)
+    // Hydrate config-driven NTP preferences (shortcuts)
     void _hydrateNtpPreferences();
 
     _syncNtpNoEmailLayout();
@@ -127,7 +91,7 @@ const NTP = (() => {
         _loadWorldNews().catch(() => {}),
         _loadServicesBar().catch(() => {}),
         _loadInbox().catch(() => {}),
-        _loadTickerForMode().catch(() => {})
+        _prefetchStockDataForNtp().catch(() => {})
       ]);
       await _updateSmartRow();
     })();
@@ -417,385 +381,15 @@ const NTP = (() => {
     } catch {}
   }
 
-  // ── Bottom Ticker — Tab Switching ─────────────────────────────────────────
-
-  function _applyTickerVisibility() {
-    const ticker = document.getElementById('ntp-stock-ticker');
-    const toggle = document.getElementById('ntp-ticker-hide');
-    if (!ticker) return;
-    if (_showTicker) {
-      ticker.style.display = '';
-      ticker.classList.add('visible');
-      if (toggle) toggle.textContent = 'Hide';
-      _applyTickerBottomReserve();
-    } else {
-      ticker.style.display = 'none';
-      ticker.classList.remove('visible');
-      if (toggle) toggle.textContent = 'Show ticker';
-      if (document.documentElement) {
-        document.documentElement.style.setProperty('--ntp-ticker-reserve', '0px');
-      }
-    }
-  }
-
-  function _bindTickerToggle() {
-    const toggle = document.getElementById('ntp-ticker-hide');
-    if (!toggle) return;
-    toggle.addEventListener('click', async () => {
-      _showTicker = !_showTicker;
-      _applyTickerVisibility();
-      try {
-        const cfg = await window.navio.getConfig();
-        cfg.ntpShowTicker = _showTicker;
-        await window.navio.saveConfig(cfg);
-        if (typeof App !== 'undefined') App.config = cfg;
-      } catch {
-        /* ignore */
-      }
-    });
-  }
-
-  function _bindTickerTabs() {
-    const tabs = document.getElementById('ntp-ticker-tabs');
-    if (!tabs) return;
-    _bindTickerToggle();
-    tabs.addEventListener('click', e => {
-      const btn = e.target.closest('.ntp-ticker-tab');
-      if (!btn) return;
-      const tab = btn.dataset.tab;
-      if (tab === _tickerMode) return;
-      _tickerMode = tab;
-      tabs.querySelectorAll('.ntp-ticker-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-      _loadTickerForMode();
-    });
-  }
-
-  function _loadTickerForMode() {
-    if (_tickerMode === 'markets') _loadStockTicker();
-    else if (_tickerMode === 'sports') _loadSportsTicker();
-    else if (_tickerMode === 'news') _loadNewsTicker();
-  }
-
-  function _bindSportsTickerClicks() {
-    const viewport = document.querySelector('.ntp-ticker-viewport');
-    if (!viewport || viewport.dataset.streamClicksBound === '1') return;
-    viewport.dataset.streamClicksBound = '1';
-    viewport.addEventListener('click', (e) => {
-      if (_tickerMode !== 'sports') return;
-      const btn = e.target.closest('[data-stream-match-idx]');
-      if (!btn) return;
-      e.preventDefault();
-      const idx = parseInt(btn.getAttribute('data-stream-match-idx'), 10);
-      if (Number.isNaN(idx)) return;
-      const match = _tickerLiveMatches[idx];
-      if (match) void _openStreamedMatch(match);
-    });
-  }
-
-  async function _loadLiveSportsCatalogFromConfig() {
-    try {
-      const cfg = await window.navio.getConfig();
-      const raw = cfg?.ntpLiveSportsCatalog;
-      if (!Array.isArray(raw) || raw.length === 0) {
-        return DEFAULT_NTP_LIVE_SPORTS_CATALOG.slice();
-      }
-      const out = raw
-        .map((row) => {
-          if (row == null) return null;
-          if (typeof row === 'string') {
-            const id = row.trim();
-            return id ? { id, name: id } : null;
-          }
-          const id = String(row.id ?? row.slug ?? '').trim();
-          if (!id) return null;
-          let name = String(row.name || row.title || id).trim() || id;
-          if (id === 'basketball' && /^basketball$/i.test(name)) name = 'NBA';
-          return { id, name };
-        })
-        .filter(Boolean);
-      return out.length ? out : DEFAULT_NTP_LIVE_SPORTS_CATALOG.slice();
-    } catch {
-      return DEFAULT_NTP_LIVE_SPORTS_CATALOG.slice();
-    }
-  }
-
-  async function _streamedPkRequest(apiPath) {
-    if (!window.navio?.streamedPkApi) return { error: 'streamed_api_unavailable' };
-    try {
-      const res = await window.navio.streamedPkApi(apiPath);
-      if (res?.error) return { error: res.error };
-      if (res?.ok && res.data !== undefined) return { ok: true, data: res.data };
-      return { error: 'bad_response' };
-    } catch (e) {
-      return { error: e?.message || 'ipc_failed' };
-    }
-  }
-
-  function _streamedExtractPlayableUrl(entry) {
-    if (entry == null) return null;
-    const isHttp = (x) => typeof x === 'string' && /^https?:\/\//i.test(x.trim());
-    if (typeof entry === 'string' && isHttp(entry)) return entry.trim();
-    if (typeof entry !== 'object') return null;
-    const o = entry;
-    const keys = ['stream', 'url', 'src', 'link', 'streamUrl', 'embedUrl', 'hls', 'm3u8', 'playlist'];
-    for (const k of keys) {
-      const v = o[k];
-      if (typeof v === 'string' && isHttp(v)) return v.trim();
-    }
-    const embed = o.embed;
-    if (typeof embed === 'string') {
-      const m = embed.match(/\bsrc\s*=\s*["']([^"']+)["']/i);
-      if (m && isHttp(m[1])) return m[1].trim();
-      if (isHttp(embed)) return embed.trim();
-    }
-    for (const v of Object.values(o)) {
-      if (typeof v === 'string' && isHttp(v)) return v.trim();
-    }
-    return null;
-  }
-
-  function _streamedTickerTitle(m) {
-    if (m?.title) return m.title;
-    const h = m?.teams?.home?.name;
-    const a = m?.teams?.away?.name;
-    if (h && a) return `${a} vs ${h}`;
-    return 'Live event';
-  }
-
-  /** Event start time is in the past but within max typical broadcast length → treat as live for the ticker. */
-  const STREAMED_LIVE_MAX_PAST_MS = 6 * 60 * 60 * 1000;
-
-  function _isStreamedMatchLiveNow(m) {
-    if (!m) return false;
-    if (m.live === true || m.isLive === true) return true;
-    const d = m?.date;
-    if (typeof d !== 'number' || Number.isNaN(d)) return false;
-    const delta = d - Date.now();
-    return delta <= 0 && delta > -STREAMED_LIVE_MAX_PAST_MS;
-  }
-
-  async function _openStreamedMatch(match) {
-    const sources = match?.sources;
-    if (!Array.isArray(sources) || sources.length === 0) return;
-    for (const src of sources) {
-      if (!src?.source || src.id == null) continue;
-      const p = `stream/${encodeURIComponent(src.source)}/${encodeURIComponent(String(src.id))}`;
-      const r = await _streamedPkRequest(p);
-      if (r.error || !Array.isArray(r.data)) continue;
-      for (const link of r.data) {
-        const url = _streamedExtractPlayableUrl(link);
-        if (url) {
-          if (typeof TabManager !== 'undefined') TabManager.createTab(url);
-          else if (window.navio?.openExternal) window.navio.openExternal(url);
-          return;
-        }
-      }
-    }
-  }
-
-  async function _fetchAggregatedStreamedMatches() {
-    const now = Date.now();
-    if (_streamedTickerCacheRows != null && now - _streamedTickerCacheAt < STREAMED_TICKER_CACHE_MS) {
-      if (_streamedTickerCacheRows.length === 0) return [];
-      const stillLive = _streamedTickerCacheRows.filter(_isStreamedMatchLiveNow);
-      if (stillLive.length > 0) return stillLive;
-    }
-    const catalog = await _loadLiveSportsCatalogFromConfig();
-    if (!catalog.length) return [];
-    const settled = await Promise.allSettled(
-      catalog.map(async (sport) => {
-        const mr = await _streamedPkRequest(`matches/${encodeURIComponent(sport.id)}`);
-        if (mr.error || !Array.isArray(mr.data)) return [];
-        const label = sport.name || sport.id;
-        return mr.data.slice(0, 24).map((m) => ({ ...m, _sportLabel: label }));
-      })
-    );
-    const rows = [];
-    for (const st of settled) {
-      if (st.status === 'fulfilled') rows.push(...st.value);
-    }
-    const liveRows = rows.filter(_isStreamedMatchLiveNow);
-    liveRows.sort((a, b) => {
-      const da = typeof a?.date === 'number' ? a.date : 9e15;
-      const db = typeof b?.date === 'number' ? b.date : 9e15;
-      return da - db;
-    });
-    const trimmed = liveRows.slice(0, 40);
-    _streamedTickerCacheRows = trimmed;
-    _streamedTickerCacheAt = now;
-    return trimmed;
-  }
-
-  // ── Sports Ticker — streamed.pk (click to watch) with ESPN fallback ─────────
-
-  async function _loadSportsTicker(retried = false) {
-    const track = document.getElementById('ntp-ticker-track');
-    if (!track) return;
-
-    _tickerLiveMatches = [];
-
-    try {
-      const streamed = await _fetchAggregatedStreamedMatches();
-      if (_tickerMode !== 'sports') return;
-      if (streamed.length > 0) {
-        _tickerLiveMatches = streamed;
-        const html = streamed
-          .map((m, i) => {
-            const rawTitle = _streamedTickerTitle(m);
-            const title = _esc(rawTitle);
-            const titleAttr = title.replace(/"/g, '&quot;');
-            const league = _esc(m._sportLabel || 'LIVE');
-            return `
-            <button type="button" class="ntp-ticker-sport ntp-ticker-sport--stream" data-stream-match-idx="${i}" title="Open live stream — ${titleAttr}">
-              <span class="ts-league">${league}</span>
-              <span class="ts-matchup">${title}</span>
-              <span class="ts-live">● LIVE</span>
-            </button>
-            <div class="ntp-ticker-sep">◆</div>`;
-          })
-          .join('');
-
-        _setTickerTrack(html);
-        return;
-      }
-    } catch {
-      /* ESPN fallback */
-    }
-
-    if (_tickerMode !== 'sports') return;
-
-    try {
-      const result = await window.navio.ntpFetchSports();
-      if (!result || result.error || !Array.isArray(result) || result.length === 0) {
-        if (!retried && result?.error) {
-          setTimeout(() => _loadSportsTicker(true), 3000);
-          return;
-        }
-        track.innerHTML = '<span class="ntp-ticker-loading">No live games right now</span>';
-        return;
-      }
-
-      const liveGames = result.filter((g) => g.live);
-      if (liveGames.length === 0) {
-        track.innerHTML = '<span class="ntp-ticker-loading">No live games right now</span>';
-        return;
-      }
-
-      const html = liveGames.map(g => {
-        const hasScore = g.homeScore !== '' && g.awayScore !== '';
-        const matchup = hasScore
-          ? `${g.away} <span class="ts-score">${g.awayScore}</span> · ${g.home} <span class="ts-score">${g.homeScore}</span>`
-          : `${g.away} vs ${g.home}`;
-        return `
-          <div class="ntp-ticker-sport">
-            <span class="ts-league">${g.league}</span>
-            <span class="ts-matchup">${matchup}</span>
-            <span class="ts-live">● LIVE</span>
-          </div>
-          <div class="ntp-ticker-sep">◆</div>
-        `;
-      }).join('');
-
-      _setTickerTrack(html);
-    } catch (e) {
-      track.innerHTML = '<span class="ntp-ticker-loading">Sports data unavailable</span>';
-    }
-  }
-
-  // ── News Ticker (reuses cached Reddit/HN headlines) ────────────────────────
-
-  function _loadNewsTicker() {
-    const track = document.getElementById('ntp-ticker-track');
-    if (!track) return;
-
-    const render = (headlines) => {
-      if (!headlines || headlines.length === 0) {
-        track.innerHTML = '<span class="ntp-ticker-loading">No headlines yet</span>';
-        return;
-      }
-      const html = headlines.slice(0, 20).map(h => `
-        <div class="ntp-ticker-news">
-          <span class="tn-source">NEWS</span>
-          <span class="tn-title">${_esc(h)}</span>
-        </div>
-        <div class="ntp-ticker-sep">◆</div>
-      `).join('');
-      _setTickerTrack(html);
-    };
-
-    if (_newsHeadlines.length > 0) {
-      render(_newsHeadlines);
-    } else {
-      track.innerHTML = '<span class="ntp-ticker-loading">Loading headlines…</span>';
-      // Wait briefly for _loadWorldNews to finish, then try again
-      setTimeout(() => render(_newsHeadlines), 3500);
-    }
-  }
-
-  // Helper: set ticker track content with seamless scroll duplication.
-  // Dynamically sets animation duration so all modes scroll at the same pixels/sec.
-  const TICKER_PX_PER_SEC = 120; // consistent scroll speed across markets/sports/news
-  function _setTickerTrack(html) {
-    const track = document.getElementById('ntp-ticker-track');
-    if (!track) return;
-    track.style.animation = 'none';
-    track.innerHTML = html + html; // duplicate for seamless loop
-    // Measure half-width (one content copy) after DOM update, then set duration
-    void track.offsetWidth; // force reflow so scrollWidth is accurate
-    const halfWidth = track.scrollWidth / 2;
-    const duration = Math.max(10, Math.round(halfWidth / TICKER_PX_PER_SEC));
-    track.style.setProperty('--ticker-duration', `${duration}s`);
-    track.style.animation = ''; // re-enable (picks up the CSS var)
-  }
-
-  // ── Stock Market Ticker ────────────────────────────────────────────────────
-
-  async function _loadStockTicker() {
-    const track = document.getElementById('ntp-ticker-track');
-    if (!track) return;
-    if (_tickerMode !== 'markets') return; // don't overwrite another mode's content
-
+  // Stock quotes for smart row / AI context (bottom ticker removed)
+  async function _prefetchStockDataForNtp() {
     try {
       const result = await window.navio.ntpFetchStocks();
-      if (!result || result.error || !Array.isArray(result) || result.length === 0) {
-        track.innerHTML = '<span class="ntp-ticker-loading">Market data unavailable</span>';
-        return;
+      if (result && !result.error && Array.isArray(result) && result.length) {
+        _stockData = result;
       }
-
-      if (_tickerMode !== 'markets') return; // mode may have changed while awaiting
-
-      _stockData = result;
-
-      const fmt = (n) => {
-        if (n == null) return '—';
-        return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      };
-
-      const nameMap = {
-        'GSPC': 'S&P 500', 'DJI': 'DOW', 'IXIC': 'NASDAQ',
-        'BTC-USD': 'BTC', 'ETH-USD': 'ETH',
-        'AAPL': 'AAPL', 'GOOGL': 'GOOGL', 'MSFT': 'MSFT',
-        'AMZN': 'AMZN', 'TSLA': 'TSLA', 'META': 'META', 'NVDA': 'NVDA'
-      };
-
-      const html = result.map(s => {
-        const up = (s.change || 0) >= 0;
-        const pctStr = `${up ? '+' : ''}${(s.pct || 0).toFixed(2)}%`;
-        const label = nameMap[s.symbol] || s.symbol;
-        return `
-          <div class="ntp-ticker-item ${up ? 'up' : 'down'}">
-            <span class="ti-symbol">${label}</span>
-            <span class="ti-price">${fmt(s.price)}</span>
-            <span class="ti-change">${up ? '▲' : '▼'} ${pctStr}</span>
-          </div>
-          <div class="ntp-ticker-sep">◆</div>
-        `;
-      }).join('');
-
-      _setTickerTrack(html);
-
-    } catch (e) {
-      track.innerHTML = '<span class="ntp-ticker-loading">Market data unavailable</span>';
+    } catch {
+      /* ignore */
     }
   }
 
@@ -1177,15 +771,12 @@ const NTP = (() => {
   async function _hydrateNtpPreferences() {
     try {
       const cfg = await window.navio.getConfig();
-      _showTicker = cfg?.ntpShowTicker !== false;
       const sc = _sanitizeShortcuts(cfg?.ntpShortcuts);
       _shortcuts = sc.length ? sc : DEFAULT_NTP_SHORTCUTS.slice();
     } catch {
       _shortcuts = DEFAULT_NTP_SHORTCUTS.slice();
-      _showTicker = true;
     }
     _renderShortcuts();
-    _applyTickerVisibility();
     _bindShortcutEditor();
   }
 
