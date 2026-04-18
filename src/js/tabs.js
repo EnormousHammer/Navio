@@ -1120,7 +1120,7 @@ class TabManagerClass {
     this.tabs.splice(index, 1);
 
     if (typeof AssistantManager !== 'undefined' && typeof AssistantManager.onTabClosed === 'function') {
-      AssistantManager.onTabClosed(id);
+      AssistantManager.onTabClosed(id, { groupId: tab.groupId || null });
     }
 
     // If the closed tab was in a group, rebuild the strip to update counts/remove empty headers
@@ -1539,16 +1539,31 @@ class TabManagerClass {
   }
 
   addTabToGroup(tabId, groupId) {
-    this.removeTabFromGroup(tabId);
+    this.removeTabFromGroup(tabId, true);
     const tab = this.tabs.find(t => t.id === tabId);
     if (!tab || !this.groups[groupId]) return;
     tab.groupId = groupId;
+    if (typeof AssistantManager !== 'undefined' && AssistantManager.onTabJoinedGroup) {
+      AssistantManager.onTabJoinedGroup(tabId, groupId);
+    }
     this._reRenderTabList();
   }
 
-  removeTabFromGroup(tabId) {
+  /**
+   * @param {boolean} [skipAssistantHooks] When true (e.g. internal regroup), assistant memory is unchanged —
+   *        used so moving a tab between groups does not fork/split threads.
+   */
+  removeTabFromGroup(tabId, skipAssistantHooks = false) {
     const tab = this.tabs.find(t => t.id === tabId);
     if (!tab || !tab.groupId) return;
+    const prevGid = tab.groupId;
+    if (
+      !skipAssistantHooks &&
+      typeof AssistantManager !== 'undefined' &&
+      AssistantManager.onTabLeftGroup
+    ) {
+      AssistantManager.onTabLeftGroup(tabId, prevGid);
+    }
     tab.groupId = null;
     this._reRenderTabList();
   }

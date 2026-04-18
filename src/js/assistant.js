@@ -311,6 +311,10 @@ class AssistantManagerClass {
     this._turnStartedAt = null;
     /** While a turn is in flight, history reads/writes go to this tab id (so tab switches don't mis-file replies). */
     this._turnConversationKey = null;
+    /** Sidebar transcript is for this tab id — DOM updates from other in-flight turns are suppressed. */
+    this._panelDisplayTabId = null;
+    /** When true, `addMessage` always appends (rebuilding history from disk). */
+    this._assistantHistoryDomReplay = false;
     /** First tab id that receives a copy of the legacy persisted profile thread (once per session). */
     this._profileChatSeededToTabId = null;
     /** Dedupe toggle when globalShortcut and guest webview forward both fire. */
@@ -464,19 +468,64 @@ class AssistantManagerClass {
     }
   }
 
+  /**
+   * Assistant transcript + API history: one bucket per **ungrouped** tab, or one shared per **tab group**
+   * (`g:${groupId}`). Grouped tabs share memory; everything else stays isolated.
+   */
+  _storageKeyForTab(tab) {
+    if (!tab) return NAVIO_PROFILE_CHAT_KEY;
+    if (tab.groupId) return `g:${tab.groupId}`;
+    return String(tab.id);
+  }
+
+  _storageKeyForTabId(tabId) {
+    if (tabId == null || tabId === '') return NAVIO_PROFILE_CHAT_KEY;
+    if (typeof TabManager === 'undefined' || !TabManager.tabs) return String(tabId);
+    const t = TabManager.tabs.find((x) => String(x.id) === String(tabId));
+    return t ? this._storageKeyForTab(t) : String(tabId);
+  }
+
   _conversationKey() {
     if (typeof TabManager !== 'undefined' && TabManager.activeTabId) {
-      return String(TabManager.activeTabId);
+      const t = TabManager.getActiveTab();
+      return this._storageKeyForTab(t);
     }
     return NAVIO_PROFILE_CHAT_KEY;
+  }
+
+  _panelDisplayStorageKey() {
+    if (this._panelDisplayTabId == null || this._panelDisplayTabId === '') return null;
+    return this._storageKeyForTabId(this._panelDisplayTabId);
+  }
+
+  /** Storage key for the in-flight turn (tab- or group-scoped). */
+  _domTurnTabId() {
+    if (this._turnConversationKey != null) return String(this._turnConversationKey);
+    return String(this._conversationKey());
+  }
+
+  /** Whether sidebar may show typing/streaming/messages for the current turn (avoids cross-tab DOM pollution). */
+  _panelShowsTurnDom() {
+    const turnKey = this._domTurnTabId();
+    if (turnKey === '__guest__') return true;
+    const panelKey = this._panelDisplayStorageKey();
+    if (panelKey == null) return true;
+    return panelKey === turnKey;
   }
 
   /** Tab object for the tab that started the current assistant turn (or active tab). */
   _tabForTurnContext() {
     const tid = this._turnConversationKey;
     if (tid && typeof TabManager !== 'undefined') {
-      const t = TabManager.tabs.find((x) => String(x.id) === String(tid));
-      if (t) return t;
+      const ts = String(tid);
+      if (ts.startsWith('g:')) {
+        const gid = ts.slice(2);
+        const t = TabManager.tabs.find((x) => x.groupId === gid);
+        if (t) return t;
+      } else {
+        const t = TabManager.tabs.find((x) => String(x.id) === ts);
+        if (t) return t;
+      }
     }
     return typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
   }
@@ -543,7 +592,7 @@ class AssistantManagerClass {
     }
   }
 
-  /** API message history (per tab; legacy profile thread migrates once into the first tab). */
+  /** API message history (per tab, or shared per tab group; legacy profile migrates once into the first bucket). */
   _currentHistory() {
     const k = this._turnConversationKey ?? this._conversationKey();
     this._ensureConversationEntry(k);
@@ -552,8 +601,9 @@ class AssistantManagerClass {
 
   /**
    * When the user switches tabs: show that tab’s conversation. Do **not** cancel in-flight work —
-   * automation stays on the agent-controlled tab via TabManager; streams/history stay on the tab
-   * that started the turn (`_turnConversationKey`).
+   * automation stays on the agent-controlled tab via TabManager; API history stays keyed by the tab
+   * that started the turn (`_turnConversationKey`). Sidebar DOM only updates for the tab being viewed
+   * (`_panelDisplayTabId`) so another tab’s stream does not append into this transcript.
    */
   onActiveTabChanged(prevTabId, nextTabId) {
     if (!prevTabId || prevTabId === nextTabId) return;
@@ -561,23 +611,72 @@ class AssistantManagerClass {
     navioAssistantDebug('onActiveTabChanged', { prevTabId, nextTabId });
   }
 
-  onTabClosed(tabId) {
+  onTabClosed(tabId, meta = {}) {
     if (!tabId) return;
-    const k = String(tabId);
-    this._conversationsByTab.delete(k);
-    this._busyTabs.delete(k);
+    const id = String(tabId);
+    const gid = meta && meta.groupId != null && meta.groupId !== '' ? String(meta.groupId) : '';
+    if (gid) {
+      const gk = `g:${gid}`;
+      const stillGrouped =
+        typeof TabManager !== 'undefined' && TabManager.tabs.some((t) => t.groupId === gid);
+      if (!stillGrouped) {
+        this._conversationsByTab.delete(gk);
+      }
+      this._busyTabs.delete(gk);
+    } else {
+      this._conversationsByTab.delete(id);
+      this._busyTabs.delete(id);
+    }
+  }
+
+  /**
+   * User removed a tab from a group (explicit ungroup): fork a copy of the group transcript onto the solo tab.
+   */
+  onTabLeftGroup(tabId, groupId) {
+    if (!tabId || !groupId) return;
+    const gk = `g:${groupId}`;
+    const id = String(tabId);
+    const grp = this._conversationsByTab.get(gk);
+    if (grp && grp.length) {
+      this._conversationsByTab.set(
+        id,
+        grp.map((m) => ({ role: m.role, content: m.content }))
+      );
+    } else {
+      this._ensureConversationEntry(id);
+    }
+  }
+
+  /**
+   * Tab joined a group: merge any solo transcript for this tab into the shared group bucket.
+   */
+  onTabJoinedGroup(tabId, groupId) {
+    if (!tabId || !groupId) return;
+    const id = String(tabId);
+    const gk = `g:${groupId}`;
+    const solo = this._conversationsByTab.get(id);
+    if (solo && solo.length) {
+      const cur = this._conversationsByTab.get(gk) || [];
+      this._conversationsByTab.set(gk, [...cur, ...solo]);
+    }
+    this._conversationsByTab.delete(id);
   }
 
   _renderDomFromHistoryKey(k) {
     if (!this.messagesEl) return;
     this.messagesEl.innerHTML = '';
     const h = this._conversationsByTab.get(k) || [];
-    for (const m of h) {
-      if (!m || (m.role !== 'user' && m.role !== 'assistant')) continue;
-      if (typeof m.content !== 'string') continue;
-      const text = m.content;
-      if (!String(text).trim() && m.role === 'user') continue;
-      this.addMessage(m.role, text);
+    this._assistantHistoryDomReplay = true;
+    try {
+      for (const m of h) {
+        if (!m || (m.role !== 'user' && m.role !== 'assistant')) continue;
+        if (typeof m.content !== 'string') continue;
+        const text = m.content;
+        if (!String(text).trim() && m.role === 'user') continue;
+        this.addMessage(m.role, text);
+      }
+    } finally {
+      this._assistantHistoryDomReplay = false;
     }
   }
 
@@ -593,7 +692,9 @@ class AssistantManagerClass {
   async _syncPanelToTab(tabId) {
     const k = String(tabId || '');
     if (!k) return;
-    this._ensureConversationEntry(k);
+    this._panelDisplayTabId = k;
+    const storageKey = this._storageKeyForTabId(k);
+    this._ensureConversationEntry(storageKey);
     try {
       this._clearAttachmentQueue();
     } catch {
@@ -601,9 +702,9 @@ class AssistantManagerClass {
     }
     this.setReceipt('');
     document.getElementById('navio-continue-pill')?.remove();
-    const h = this._conversationsByTab.get(k) || [];
+    const h = this._conversationsByTab.get(storageKey) || [];
     if (h.length) {
-      this._renderDomFromHistoryKey(k);
+      this._renderDomFromHistoryKey(storageKey);
     } else if (this.messagesEl) {
       this.messagesEl.innerHTML = '';
       await this._showGreeting();
@@ -1585,8 +1686,9 @@ class AssistantManagerClass {
   stopGeneration() {
     try {
       if (window.navio && typeof window.navio.aiAbort === 'function') {
-        const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
-        void window.navio.aiAbort(aid ? { tabId: aid } : {});
+        const t = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
+        const sk = t ? this._storageKeyForTab(t) : '';
+        void window.navio.aiAbort(sk ? { tabId: sk } : {});
       }
     } catch {
       /* ignore */
@@ -1595,7 +1697,8 @@ class AssistantManagerClass {
 
   _tabIsBusy(tabId) {
     if (tabId == null) return false;
-    return this._busyTabs.has(String(tabId));
+    const sk = this._storageKeyForTabId(tabId);
+    return this._busyTabs.has(sk);
   }
 
   _setTabBusy(tabId, busy) {
@@ -1607,7 +1710,8 @@ class AssistantManagerClass {
 
   _updateAssistantBusyChrome() {
     const active = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
-    const busy = !!(active && this._busyTabs.has(String(active.id)));
+    const sk = active ? this._storageKeyForTab(active) : '';
+    const busy = !!(active && sk && this._busyTabs.has(sk));
     const stop = document.getElementById('btn-assistant-stop');
     const send = document.getElementById('btn-send-message');
     if (stop) {
@@ -2204,7 +2308,7 @@ class AssistantManagerClass {
     // Agent activity UI — sidebar DOM or guest tab via executeJavaScript
     let activityEl = null;
     let stopBtn = null;
-    if (!guestWv) {
+    if (!guestWv && this._panelShowsTurnDom()) {
       activityEl = document.createElement('div');
       activityEl.className = 'navio-agent-activity';
       activityEl.innerHTML =
@@ -2212,6 +2316,8 @@ class AssistantManagerClass {
       this.messagesEl.appendChild(activityEl);
       this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
       this._currentActivityEl = activityEl;
+    } else if (!guestWv) {
+      this._currentActivityEl = null;
     } else {
       this._currentActivityEl = null;
       this._guestDeliver(guestWv, { type: 'activityStart' });
@@ -2594,6 +2700,7 @@ class AssistantManagerClass {
   }
 
   _appendActivityStep(tool, label) {
+    if (!this._panelShowsTurnDom()) return;
     if (this._guestChatWebview) {
       this._guestDeliver(this._guestChatWebview, { type: 'toolStep', tool, label });
       return;
@@ -2752,6 +2859,7 @@ class AssistantManagerClass {
       if (tid !== sk || !chunkText) return;
       buffer += chunkText;
       resetStallTimer();
+      if (!this._panelShowsTurnDom()) return;
       if (!streamingMsg) {
         this.removeTypingIndicator();
         streamingMsg = document.createElement('div');
@@ -2999,6 +3107,7 @@ class AssistantManagerClass {
   }
 
   addMessage(role, content, type = '', meta = null) {
+    if (!this._assistantHistoryDomReplay && !this._panelShowsTurnDom()) return;
     const msgEl = document.createElement('div');
     msgEl.className = `message ${role}-message${type ? ' message-' + type : ''}`;
 
@@ -5045,6 +5154,7 @@ ${pageInfo}${snapText}`;
   }
 
   showTypingIndicator() {
+    if (!this._assistantHistoryDomReplay && !this._panelShowsTurnDom()) return;
     const indicator = document.createElement('div');
     indicator.className = 'message assistant-message typing-indicator-wrap';
     indicator.id = 'typing-indicator';
