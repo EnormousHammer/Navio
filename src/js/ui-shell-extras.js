@@ -1162,6 +1162,15 @@
 
     input.addEventListener('input', render);
     close && close.addEventListener('click', () => (overlay.hidden = true));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        overlay.hidden = true;
+      }
+    });
+    window.addEventListener('navio-tabs-changed', () => {
+      if (!overlay.hidden) render();
+    });
   }
 
   function bindBookmarkStar() {

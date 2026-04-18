@@ -313,6 +313,7 @@ class TabManagerClass {
       }
     }
 
+    this._emitTabsChanged('create-tab');
     return tab;
   }
 
@@ -361,6 +362,22 @@ class TabManagerClass {
   async _nextPaint() {
     await new Promise((r) => requestAnimationFrame(r));
     await new Promise((r) => requestAnimationFrame(r));
+  }
+
+  _emitTabsChanged(reason = 'update') {
+    try {
+      window.dispatchEvent(
+        new CustomEvent('navio-tabs-changed', {
+          detail: {
+            reason,
+            activeTabId: this.activeTabId || null,
+            tabCount: this.tabs.length
+          }
+        })
+      );
+    } catch {
+      /* ignore */
+    }
   }
 
   /** Internal full-page AI chat (`navio-chat-tab.html`) — not a normal browsing surface. */
@@ -1053,6 +1070,7 @@ class TabManagerClass {
         AssistantManager.onActiveTabChanged(prevId, id);
       }
     }
+    this._emitTabsChanged('switch-tab');
   }
 
   _restoreDiscardedTab(tab) {
@@ -1190,6 +1208,7 @@ class TabManagerClass {
         this.createTab();
       }
     }
+    this._emitTabsChanged('close-tab');
   }
 
   closeActiveTab() {
@@ -1642,6 +1661,7 @@ class TabManagerClass {
     else tab.customTitle = String(nameOrNull).trim().slice(0, 120);
     this.updateTabUI(tab);
     if (tab.id === this.activeTabId) this.updateContextTitle(tab);
+    this._emitTabsChanged('rename-tab');
   }
 
   _promptRenameTab(tabId) {
@@ -1692,7 +1712,7 @@ class TabManagerClass {
   addTabToGroup(tabId, groupId) {
     const tPre = this.tabs.find((t) => t.id === tabId);
     if (tPre?.splitPartnerId) this._clearSplitPartner(tabId);
-    this.removeTabFromGroup(tabId, true);
+    this.removeTabFromGroup(tabId, true, true);
     const tab = this.tabs.find(t => t.id === tabId);
     if (!tab || !this.groups[groupId]) return;
     tab.groupId = groupId;
@@ -1706,7 +1726,7 @@ class TabManagerClass {
    * @param {boolean} [skipAssistantHooks] When true (e.g. internal regroup), assistant memory is unchanged —
    *        used so moving a tab between groups does not fork/split threads.
    */
-  removeTabFromGroup(tabId, skipAssistantHooks = false) {
+  removeTabFromGroup(tabId, skipAssistantHooks = false, skipRender = false) {
     const tab = this.tabs.find(t => t.id === tabId);
     if (!tab || !tab.groupId) return;
     const prevGid = tab.groupId;
@@ -1718,7 +1738,7 @@ class TabManagerClass {
       AssistantManager.onTabLeftGroup(tabId, prevGid);
     }
     tab.groupId = null;
-    this._reRenderTabList();
+    if (!skipRender) this._reRenderTabList();
   }
 
   // ── Rebuild the tab strip with group headers ───────────────────────────
@@ -1755,6 +1775,7 @@ class TabManagerClass {
 
     if (this._tabListTrail) this.tabListEl.appendChild(this._tabListTrail);
     this._applyAgentControlledTabClasses();
+    this._emitTabsChanged('tab-structure');
   }
 
   _buildGroupHeader(group, tabCount, collapsed) {
@@ -1810,7 +1831,9 @@ class TabManagerClass {
     menu.querySelectorAll('[data-action]').forEach(btn => {
       btn.addEventListener('click', () => {
         if (btn.dataset.action === 'ungroup-all') {
-          this.tabs.filter(t => t.groupId === groupId).forEach(t => { t.groupId = null; });
+          this.tabs
+            .filter((t) => t.groupId === groupId)
+            .forEach((t) => this.removeTabFromGroup(t.id, false, true));
           delete this.groups[groupId];
           this._reRenderTabList();
         } else if (btn.dataset.action === 'close-group') {

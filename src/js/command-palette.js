@@ -50,6 +50,11 @@ class CommandPaletteClass {
         this.close();
       }
     });
+
+    window.addEventListener('navio-tabs-changed', () => {
+      if (!this.visible) return;
+      void this.refresh();
+    });
   }
 
   open() {
