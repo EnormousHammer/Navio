@@ -1711,7 +1711,7 @@ class TabManagerClass {
 
   addTabToGroup(tabId, groupId) {
     const tPre = this.tabs.find((t) => t.id === tabId);
-    if (tPre?.splitPartnerId) this._clearSplitPartner(tabId);
+    const partnerId = tPre?.splitPartnerId || null;
     this.removeTabFromGroup(tabId, true, true);
     const tab = this.tabs.find(t => t.id === tabId);
     if (!tab || !this.groups[groupId]) return;
@@ -1719,6 +1719,19 @@ class TabManagerClass {
     if (typeof AssistantManager !== 'undefined' && AssistantManager.onTabJoinedGroup) {
       AssistantManager.onTabJoinedGroup(tabId, groupId);
     }
+
+    // Keep split pairs grouped together (Chrome-style) without breaking split mode.
+    if (partnerId) {
+      const partner = this.tabs.find((t) => t.id === partnerId);
+      if (partner && partner.groupId !== groupId) {
+        this.removeTabFromGroup(partner.id, true, true);
+        partner.groupId = groupId;
+        if (typeof AssistantManager !== 'undefined' && AssistantManager.onTabJoinedGroup) {
+          AssistantManager.onTabJoinedGroup(partner.id, groupId);
+        }
+      }
+    }
+
     this._reRenderTabList();
   }
 
@@ -1730,6 +1743,7 @@ class TabManagerClass {
     const tab = this.tabs.find(t => t.id === tabId);
     if (!tab || !tab.groupId) return;
     const prevGid = tab.groupId;
+    tab.groupId = null;
     if (
       !skipAssistantHooks &&
       typeof AssistantManager !== 'undefined' &&
@@ -1737,7 +1751,6 @@ class TabManagerClass {
     ) {
       AssistantManager.onTabLeftGroup(tabId, prevGid);
     }
-    tab.groupId = null;
     if (!skipRender) this._reRenderTabList();
   }
 

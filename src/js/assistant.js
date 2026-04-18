@@ -672,6 +672,13 @@ class AssistantManagerClass {
     } else {
       this._ensureConversationEntry(id);
     }
+
+    const stillGrouped =
+      typeof TabManager !== 'undefined' && TabManager.tabs.some((t) => String(t.groupId || '') === String(groupId));
+    if (!stillGrouped) {
+      this._conversationsByTab.delete(gk);
+      this._busyTabs.delete(gk);
+    }
   }
 
   /**
