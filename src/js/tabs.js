@@ -1196,6 +1196,49 @@ class TabManagerClass {
   }
 
   /**
+   * Put both tabs in one colored group (Chrome-style): split pairs stay grouped in the strip.
+   * If one tab is already grouped, the other joins that group. If both are in different groups,
+   * they merge into a new split-named group.
+   */
+  _assignSharedGroupForSplitPair(a, b) {
+    if (!a || !b) return;
+    if (a.groupId && b.groupId && a.groupId === b.groupId) return;
+
+    if (a.groupId && !b.groupId) {
+      this.addTabToGroup(b.id, a.groupId);
+      return;
+    }
+    if (!a.groupId && b.groupId) {
+      this.addTabToGroup(a.id, b.groupId);
+      return;
+    }
+
+    const titleA = (this.getTabDisplayTitle(a) || 'Tab').trim().slice(0, 18);
+    const titleB = (this.getTabDisplayTitle(b) || 'Tab').trim().slice(0, 18);
+    const name = `Split: ${titleA} · ${titleB}`.slice(0, 38);
+    const color = this._GROUP_COLORS[this._groupCounter % this._GROUP_COLORS.length];
+    const gid = this.createGroup(name, color);
+    this.addTabToGroup(a.id, gid);
+    this.addTabToGroup(b.id, gid);
+  }
+
+  /**
+   * Keep the two split tabs next to each other in strip order (Chrome-style).
+   * Skipped when either tab is pinned so pinned-first order stays intact.
+   */
+  _moveTabsAdjacentForSplit(leftTab, rightTab) {
+    if (!leftTab || !rightTab || leftTab.id === rightTab.id) return;
+    if (leftTab.pinned || rightTab.pinned) return;
+    const ids = new Set([leftTab.id, rightTab.id]);
+    const ia = this.tabs.findIndex((t) => t.id === leftTab.id);
+    const ib = this.tabs.findIndex((t) => t.id === rightTab.id);
+    if (ia < 0 || ib < 0) return;
+    const insertAt = Math.min(ia, ib);
+    const rest = this.tabs.filter((t) => !ids.has(t.id));
+    this.tabs.splice(0, this.tabs.length, ...rest.slice(0, insertAt), leftTab, rightTab, ...rest.slice(insertAt));
+  }
+
+  /**
    * Side-by-side split (Chrome-style): two http(s) tabs, same privacy mode.
    * @returns {boolean}
    */
@@ -1225,22 +1268,27 @@ class TabManagerClass {
       }
       return false;
     }
-    /* Comet-style: splitting tabs from different groups leaves one combined pair — exit those groups. */
-    if (a.groupId !== b.groupId) {
-      if (a.groupId) this.removeTabFromGroup(a.id);
-      if (b.groupId) this.removeTabFromGroup(b.id);
-    }
+
+    this._assignSharedGroupForSplitPair(a, b);
+
     this._clearSplitPartner(a.id);
     this._clearSplitPartner(b.id);
     const ia = this.tabs.findIndex((t) => t.id === a.id);
     const ib = this.tabs.findIndex((t) => t.id === b.id);
-    const leftId = ia <= ib ? a.id : b.id;
+    const leftTab = ia <= ib ? a : b;
+    const rightTab = ia <= ib ? b : a;
+    const leftId = leftTab.id;
     a.splitPartnerId = b.id;
     b.splitPartnerId = a.id;
     a.splitLeftPaneTabId = leftId;
     b.splitLeftPaneTabId = leftId;
-    this.updateTabUI(a);
-    this.updateTabUI(b);
+
+    if (!a.pinned && !b.pinned) {
+      this._moveTabsAdjacentForSplit(leftTab, rightTab);
+    }
+
+    this._reRenderTabList();
+    this._syncWebviewSizes();
     this.switchToTab(a.id);
     return true;
   }
@@ -1487,6 +1535,13 @@ class TabManagerClass {
     el.classList.toggle('tab-pinned', !!tab.pinned);
     el.classList.toggle('tab-incognito', !!tab.incognito);
     el.classList.toggle('tab-in-split', !!tab.splitPartnerId);
+    const splitPartner = tab.splitPartnerId
+      ? this.tabs.find((t) => t.id === tab.splitPartnerId)
+      : null;
+    const splitLeftId = tab.splitLeftPaneTabId;
+    const isSplitLeft = !!(splitPartner && splitLeftId && tab.id === splitLeftId);
+    el.classList.toggle('tab-split-pair-left', !!(splitPartner && isSplitLeft));
+    el.classList.toggle('tab-split-pair-right', !!(splitPartner && !isSplitLeft));
     el.classList.toggle('tab-discarded', !!tab._discarded);
     if (tab.webview) {
       try {
@@ -1791,7 +1846,8 @@ class TabManagerClass {
     const splitCandidates = otherTabs.filter(splitOk);
     const splitPickMax = 16;
     const splitWithList = !tab.splitPartnerId && splitCandidates.length
-      ? `<div class="tcm-label">Split view</div>
+      ? `<div class="tcm-label">Split view (side-by-side)</div>
+      <div class="tcm-hint">Puts both pages in one tab group, like Chrome.</div>
       ${splitCandidates.slice(0, splitPickMax).map((ot) => `
         <button class="tcm-item" data-action="split-with" data-other-id="${ot.id}">
           With: ${this.escapeHtml(this.getTabDisplayTitle(ot))}

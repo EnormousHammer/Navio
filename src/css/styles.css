@@ -862,6 +862,51 @@ body:not(.navio-vertical-tabs) .tab-item.active {
   box-shadow: inset 0 -2px 0 rgba(0, 216, 255, 0.45);
 }
 
+/* Linked split pair: visually “fused” like Chrome’s split tabs */
+body:not(.navio-vertical-tabs) .tab-item.tab-split-pair-left {
+  margin-right: -8px;
+  padding-right: 12px;
+  border-top-right-radius: 3px;
+  border-bottom-right-radius: 0;
+  z-index: 1;
+  box-shadow:
+    inset 0 -2px 0 rgba(0, 216, 255, 0.45),
+    4px 0 0 -1px var(--bg-deep, #101014);
+}
+body:not(.navio-vertical-tabs) .tab-item.tab-split-pair-left:hover,
+body:not(.navio-vertical-tabs) .tab-item.tab-split-pair-left.active {
+  z-index: 3;
+}
+body:not(.navio-vertical-tabs) .tab-item.tab-split-pair-right {
+  margin-left: 0;
+  padding-left: 10px;
+  border-top-left-radius: 3px;
+  border-bottom-left-radius: 0;
+  z-index: 1;
+  box-shadow: inset 0 -2px 0 rgba(0, 216, 255, 0.45);
+}
+body:not(.navio-vertical-tabs) .tab-item.tab-split-pair-right:hover,
+body:not(.navio-vertical-tabs) .tab-item.tab-split-pair-right.active {
+  z-index: 3;
+}
+body:not(.navio-vertical-tabs) .tab-item.tab-split-pair-left.active,
+body:not(.navio-vertical-tabs) .tab-item.tab-split-pair-right.active {
+  box-shadow:
+    inset 0 -2px 0 rgba(0, 216, 255, 0.55),
+    0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+body.navio-vertical-tabs .tab-item.tab-split-pair-left {
+  margin-bottom: -4px;
+  border-radius: 8px 8px 3px 3px;
+  box-shadow: inset 0 -2px 0 rgba(0, 216, 255, 0.45);
+}
+body.navio-vertical-tabs .tab-item.tab-split-pair-right {
+  margin-top: 0;
+  border-radius: 3px 3px 8px 8px;
+  box-shadow: inset 0 -2px 0 rgba(0, 216, 255, 0.45);
+}
+
 /* Background tab unloaded to save memory (see tabDiscardIdleMinutes) */
 .tab-item.tab-discarded:not(.active) {
   opacity: 0.78;
@@ -886,18 +931,22 @@ body.navio-incognito-active .url-bar-container {
 .tab-group-header {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 8px 3px 6px;
+  gap: 6px;
+  padding: 4px 10px 4px 8px;
   cursor: pointer;
-  border-radius: 5px;
-  transition: background 0.12s;
+  border-radius: 999px;
+  transition: background 0.12s, box-shadow 0.12s;
   user-select: none;
   flex-shrink: 0;
-  border-left: 2px solid var(--tg-color, #888);
-  margin: 3px 2px 0;
+  margin: 4px 4px 2px 2px;
   -webkit-app-region: no-drag;
+  border: 1px solid color-mix(in srgb, var(--tg-color, #888) 28%, transparent);
+  background: color-mix(in srgb, var(--tg-color, #64748b) 12%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--tg-color, #fff) 18%, transparent);
 }
-.tab-group-header:hover { background: rgba(255,255,255,0.05); }
+.tab-group-header:hover {
+  background: color-mix(in srgb, var(--tg-color, #64748b) 20%, transparent);
+}
 
 .tgh-dot {
   width: 8px;
@@ -975,6 +1024,16 @@ body.navio-incognito-active .url-bar-container {
   letter-spacing: 0.6px;
   color: var(--text-tertiary, rgba(255,255,255,0.3));
   padding: 5px 10px 3px;
+}
+.tcm-hint {
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-tertiary, rgba(255,255,255,0.42));
+  padding: 0 10px 6px;
+  line-height: 1.35;
+  opacity: 0.95;
 }
 .tcm-ng-row {
   display: flex;
@@ -10314,8 +10373,12 @@ button:focus-visible,
 [data-theme="dark"] #navbar {
   box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.055);
 }
+[data-theme="dark"] .tab-item {
+  color: var(--text-secondary);
+}
 [data-theme="dark"] .tab-item.active {
-  background: rgba(255, 255, 255, 0.065);
+  background: rgba(255, 255, 255, 0.09);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.04);
 }
 [data-theme="dark"] .tab-item.active::after {
   background: rgba(255, 255, 255, 0.38);
@@ -10376,6 +10439,16 @@ button:focus-visible,
 }
 [data-theme="light"] .tab-title { color: var(--text-secondary); }
 [data-theme="light"] .tab-item.active .tab-title { color: var(--text-primary); }
+
+[data-theme="light"] .tab-item.tab-in-split,
+[data-theme="light"] .tab-item.tab-split-pair-left,
+[data-theme="light"] .tab-item.tab-split-pair-right {
+  box-shadow: inset 0 -2px 0 rgba(26, 115, 232, 0.52);
+}
+[data-theme="light"] .tab-item.tab-split-pair-left.active,
+[data-theme="light"] .tab-item.tab-split-pair-right.active {
+  box-shadow: inset 0 -2px 0 rgba(26, 115, 232, 0.72), 0 1px 0 rgba(15, 23, 42, 0.05);
+}
 
 /* ── Light mode message bubbles ─────────────────────────────────────────── */
 [data-theme="light"] .user-message .message-content {
