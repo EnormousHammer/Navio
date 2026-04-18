@@ -499,8 +499,8 @@ body.navio-vertical-tabs .top-chrome-drag {
   gap: 0;
   flex-shrink: 0;
   align-self: stretch;
-  border-left: 1px solid var(--border);
-  padding-left: 2px;
+  border-left: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  padding-left: 4px;
   position: relative;
   z-index: 1001;
 }
@@ -1204,13 +1204,26 @@ body.navio-incognito-active .url-bar-container {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 10px;
+  gap: 10px;
+  padding: 0 12px;
   background: var(--bg-deep);
   border-bottom: 1px solid var(--border);
 }
 
-.nav-controls { display: flex; gap: 2px; align-items: center; }
+/* Chrome-style fused back / forward / reload cluster */
+.nav-controls {
+  display: flex;
+  gap: 0;
+  align-items: center;
+  padding: 3px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--bg-surface) 55%, transparent);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.nav-controls .nav-btn {
+  border-radius: 8px;
+}
 
 .nav-btn {
   width: var(--hit-compact);
@@ -1265,17 +1278,22 @@ body.navio-incognito-active .url-bar-container {
   gap: 8px;
   min-height: 38px;
   height: 38px;
-  padding: 0 14px;
+  padding: 0 16px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
   transition: border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease), background var(--duration) var(--ease);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
 .url-bar:focus-within {
   border-color: var(--border-accent);
-  box-shadow: 0 0 0 1px var(--accent-glow);
+  box-shadow:
+    0 0 0 1px var(--accent-glow-strong),
+    0 0 0 3px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
   background: var(--bg-elevated);
 }
 
@@ -1309,11 +1327,16 @@ body.navio-incognito-active .url-bar-container {
   background: transparent;
   color: var(--text-primary);
   font-size: 13px;
+  font-weight: 500;
   font-family: var(--font-sans);
   outline: none;
+  letter-spacing: 0.01em;
 }
 
-#url-input::placeholder { color: var(--text-tertiary); }
+#url-input::placeholder {
+  color: var(--text-tertiary);
+  opacity: 0.85;
+}
 #url-input::selection { background: var(--accent); color: white; }
 
 .url-ssl {
@@ -1350,10 +1373,13 @@ body.navio-incognito-active .url-bar-container {
 
 .nav-actions {
   display: flex;
-  gap: 1px;
-  margin-left: 4px;
-  padding-left: 8px;
+  gap: 3px;
+  margin-left: 2px;
+  padding-left: 10px;
   border-left: 1px solid var(--border);
+}
+.nav-actions .nav-btn {
+  border-radius: 9px;
 }
 
 /* ============================================
@@ -8836,17 +8862,7 @@ button:focus-visible,
 /* ── New Tab Page: subtle dot-grid AI pattern ── */
 /* Dark NTP background is handled by .ntp-bg-layer — no ::before override needed */
 
-/* ── URL bar focus: restrained rings (cleaner than heavy cyan glow) ── */
-[data-theme="dark"] .url-bar:focus-within {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.22);
-  background: rgba(255, 255, 255, 0.08);
-}
-[data-theme="light"] .url-bar:focus-within {
-  box-shadow: 0 0 0 2px rgba(0, 120, 220, 0.12);
-  border-color: var(--border-accent);
-  background: #ffffff;
-}
+/* URL bar focus rings: see THEME QUALITY OVERHAUL section (single source). */
 
 /* ── Connector cards: lift + glow on hover ── */
 [data-theme="dark"] .connector-card:hover {
@@ -10373,6 +10389,9 @@ button:focus-visible,
 [data-theme="dark"] #navbar {
   box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.055);
 }
+[data-theme="dark"] .titlebar-controls {
+  border-left-color: rgba(255, 255, 255, 0.06);
+}
 [data-theme="dark"] .tab-item {
   color: var(--text-secondary);
 }
@@ -10390,6 +10409,22 @@ button:focus-visible,
 [data-theme="dark"] .url-bar {
   background: rgba(255, 255, 255, 0.055);
   border-color: rgba(255, 255, 255, 0.09);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 2px 10px rgba(0, 0, 0, 0.38);
+}
+[data-theme="dark"] .url-bar:focus-within {
+  box-shadow:
+    0 0 0 1px rgba(125, 211, 252, 0.35),
+    0 0 0 3px rgba(0, 216, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 2px 12px rgba(0, 0, 0, 0.42);
+  background: rgba(255, 255, 255, 0.07);
+}
+[data-theme="dark"] .nav-controls {
+  background: rgba(255, 255, 255, 0.045);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 /* ── Light Chrome: one soft toolbar band + clean pill omnibox ───────────── */
@@ -10408,10 +10443,27 @@ button:focus-visible,
   border-bottom: none;
   box-shadow: 0 1px 0 rgba(15, 23, 42, 0.05);
 }
+[data-theme="light"] .titlebar-controls {
+  border-left-color: rgba(15, 23, 42, 0.08);
+}
 [data-theme="light"] .url-bar {
   background: #ffffff;
   border-color: rgba(15, 23, 42, 0.11);
-  box-shadow: none;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+[data-theme="light"] .url-bar:focus-within {
+  box-shadow:
+    0 0 0 1px rgba(26, 115, 232, 0.35),
+    0 0 0 3px rgba(26, 115, 232, 0.12),
+    0 2px 8px rgba(15, 23, 42, 0.07);
+  border-color: rgba(26, 115, 232, 0.45);
+}
+[data-theme="light"] .nav-controls {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(15, 23, 42, 0.09);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
 [data-theme="dark"] .bookmark-bar {
