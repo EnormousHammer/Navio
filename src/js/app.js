@@ -730,8 +730,20 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
       _showAppToast('You proceeded on an untrusted certificate (' + hostname + ')', 'warning');
     });
 
-       const shortcutDedupeMs = 120;
-    const shortcutDedupeAt = { 'new-tab': 0, 'new-private-tab': 0, 'close-tab': 0, 'focus-url': 0 };
+    const shortcutDedupeMs = 120;
+    const shortcutDedupeAt = {
+      'new-tab': 0,
+      'new-private-tab': 0,
+      'close-tab': 0,
+      'focus-url': 0,
+      'reopen-last-tab': 0,
+      reload: 0,
+      'hard-reload': 0,
+      'go-back': 0,
+      'go-forward': 0,
+      'next-tab': 0,
+      'prev-tab': 0
+    };
     const runDedupedShortcut = (id, fn) => {
       const now = Date.now();
       if (now - (shortcutDedupeAt[id] || 0) < shortcutDedupeMs) return;
@@ -751,7 +763,7 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
           runDedupedShortcut('close-tab', () => TabManager.closeActiveTab());
           break;
         case 'reopen-last-tab':
-          TabManager.reopenLastClosedTab();
+          runDedupedShortcut('reopen-last-tab', () => TabManager.reopenLastClosedTab());
           break;
         case 'focus-url':
           runDedupedShortcut('focus-url', () => document.getElementById('url-input').focus());
@@ -802,30 +814,36 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
           }
           break;
         case 'reload':
-          TabManager.reloadActive(false);
+          runDedupedShortcut('reload', () => TabManager.reloadActive(false));
           break;
         case 'hard-reload':
-          TabManager.reloadActive(true);
+          runDedupedShortcut('hard-reload', () => TabManager.reloadActive(true));
           break;
         case 'go-back': {
-          const wvb = TabManager.getActiveWebview();
-          if (wvb && TabManager.webviewCanGoBack(wvb)) wvb.goBack();
+          runDedupedShortcut('go-back', () => {
+            const wvb = TabManager.getActiveWebview();
+            if (wvb && TabManager.webviewCanGoBack(wvb)) wvb.goBack();
+          });
           break;
         }
         case 'go-forward': {
-          const wvf = TabManager.getActiveWebview();
-          if (wvf && TabManager.webviewCanGoForward(wvf)) wvf.goForward();
+          runDedupedShortcut('go-forward', () => {
+            const wvf = TabManager.getActiveWebview();
+            if (wvf && TabManager.webviewCanGoForward(wvf)) wvf.goForward();
+          });
           break;
         }
         case 'next-tab':
-          TabManager.switchToAdjacentTab(1);
+          runDedupedShortcut('next-tab', () => TabManager.switchToAdjacentTab(1));
           break;
         case 'prev-tab':
-          TabManager.switchToAdjacentTab(-1);
+          runDedupedShortcut('prev-tab', () => TabManager.switchToAdjacentTab(-1));
           break;
         default:
           if (/^tab-[1-9]$/.test(action)) {
-            TabManager.switchToTabOrdinal(parseInt(action.slice(4), 10));
+            runDedupedShortcut(action, () =>
+              TabManager.switchToTabOrdinal(parseInt(action.slice(4), 10))
+            );
           }
           break;
       }
@@ -873,19 +891,19 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
 
       if (e.key === 'Tab') {
         e.preventDefault();
-        if (e.shiftKey) TabManager.switchToAdjacentTab(-1);
-        else TabManager.switchToAdjacentTab(1);
+        if (e.shiftKey) runDedupedShortcut('prev-tab', () => TabManager.switchToAdjacentTab(-1));
+        else runDedupedShortcut('next-tab', () => TabManager.switchToAdjacentTab(1));
         return;
       }
 
       if (!e.shiftKey && (e.key === 'PageDown' || e.code === 'PageDown')) {
         e.preventDefault();
-        TabManager.switchToAdjacentTab(1);
+        runDedupedShortcut('next-tab', () => TabManager.switchToAdjacentTab(1));
         return;
       }
       if (!e.shiftKey && (e.key === 'PageUp' || e.code === 'PageUp')) {
         e.preventDefault();
-        TabManager.switchToAdjacentTab(-1);
+        runDedupedShortcut('prev-tab', () => TabManager.switchToAdjacentTab(-1));
         return;
       }
 
@@ -901,7 +919,7 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
       }
       if (k === 't' && e.shiftKey) {
         e.preventDefault();
-        TabManager.reopenLastClosedTab();
+        runDedupedShortcut('reopen-last-tab', () => TabManager.reopenLastClosedTab());
       }
       if (k === 'w' && !e.shiftKey) {
         e.preventDefault();
@@ -913,11 +931,13 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
       }
       if (k === 'r') {
         e.preventDefault();
-        TabManager.reloadActive(!!e.shiftKey);
+        const id = e.shiftKey ? 'hard-reload' : 'reload';
+        runDedupedShortcut(id, () => TabManager.reloadActive(!!e.shiftKey));
       }
       if (!e.shiftKey && /^[1-9]$/.test(e.key)) {
         e.preventDefault();
-        TabManager.switchToTabOrdinal(parseInt(e.key, 10));
+        const action = `tab-${e.key}`;
+        runDedupedShortcut(action, () => TabManager.switchToTabOrdinal(parseInt(e.key, 10)));
       }
       if (k === 'h' && !e.shiftKey) {
         e.preventDefault();

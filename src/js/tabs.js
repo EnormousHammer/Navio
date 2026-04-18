@@ -157,6 +157,48 @@ class TabManagerClass {
     return 0;
   }
 
+  /**
+   * Resolve a valid split partner for a tab.
+   * Keeps split links reciprocal: if A points to B but B does not point to A,
+   * the stale link is cleared instead of corrupting B's current split.
+   */
+  _resolveReciprocalSplitPartner(tab) {
+    if (!tab) return null;
+    if (!tab.splitPartnerId) {
+      if (tab.splitLeftPaneTabId) tab.splitLeftPaneTabId = null;
+      return null;
+    }
+    const partner = this.tabs.find((t) => t.id === tab.splitPartnerId);
+    if (!partner || partner.splitPartnerId !== tab.id) {
+      tab.splitPartnerId = null;
+      tab.splitLeftPaneTabId = null;
+      return null;
+    }
+    return partner;
+  }
+
+  /**
+   * Keep active/split visibility classes and sizes in sync without changing
+   * URL bar / focus / assistant hooks (used for internal split state repair).
+   */
+  _refreshActiveSplitPresentation() {
+    const focused = this.getActiveTab();
+    const splitPartner = this._resolveReciprocalSplitPartner(focused);
+
+    this.tabs.forEach((tab) => {
+      if (!tab.webview) return;
+      const isFocused = !!focused && tab.id === focused.id;
+      const inSplitPair = !!(focused && splitPartner && (tab.id === focused.id || tab.id === splitPartner.id));
+      tab.webview.classList.toggle('active', isFocused);
+      tab.webview.classList.toggle('split-visible', inSplitPair);
+
+      const tabEl = document.getElementById(`tabitem-${tab.id}`);
+      if (tabEl) tabEl.classList.toggle('active', isFocused);
+    });
+
+    this._syncWebviewSizes();
+  }
+
   _syncWebviewSizes() {
     const { width, height } = this.browserContainer.getBoundingClientRect();
     if (!width || !height) return;
@@ -164,13 +206,7 @@ class TabManagerClass {
     const usableH = Math.max(0, height - reserve);
 
     const focused = this.activeTabId ? this.tabs.find((t) => t.id === this.activeTabId) : null;
-    let partner = focused?.splitPartnerId
-      ? this.tabs.find((t) => t.id === focused.splitPartnerId)
-      : null;
-    if (focused?.splitPartnerId && !partner) {
-      focused.splitPartnerId = null;
-      partner = null;
-    }
+    const partner = this._resolveReciprocalSplitPartner(focused);
 
     this.tabs.forEach((tab) => {
       const wv = tab.webview;
@@ -967,13 +1003,7 @@ class TabManagerClass {
     nextTab._inactiveSince = undefined;
 
     const focused = nextTab;
-    let splitPartner = focused.splitPartnerId
-      ? this.tabs.find((t) => t.id === focused.splitPartnerId)
-      : null;
-    if (focused.splitPartnerId && !splitPartner) {
-      focused.splitPartnerId = null;
-      splitPartner = null;
-    }
+    const splitPartner = this._resolveReciprocalSplitPartner(focused);
 
     this.tabs.forEach((tab) => {
       if (!tab.webview) return;
@@ -1185,14 +1215,20 @@ class TabManagerClass {
 
   _clearSplitPartner(tabId) {
     const tab = this.tabs.find((t) => t.id === tabId);
-    if (!tab || !tab.splitPartnerId) return;
-    const p = this.tabs.find((t) => t.id === tab.splitPartnerId);
+    if (!tab) return;
+    if (!tab.splitPartnerId) {
+      if (tab.splitLeftPaneTabId) tab.splitLeftPaneTabId = null;
+      return;
+    }
+    const pid = tab.splitPartnerId;
+    const p = this.tabs.find((t) => t.id === pid);
     tab.splitPartnerId = null;
     tab.splitLeftPaneTabId = null;
-    if (p) {
+    if (p && p.splitPartnerId === tab.id) {
       p.splitPartnerId = null;
       p.splitLeftPaneTabId = null;
     }
+    this._refreshActiveSplitPresentation();
   }
 
   /**
@@ -1268,6 +1304,11 @@ class TabManagerClass {
       }
       return false;
     }
+
+    // If either tab is currently discarded (about:blank placeholder), restore it
+    // before entering split mode so both panes show real page content.
+    if (a._discarded && a._discardUrl && a.webview) this._restoreDiscardedTab(a);
+    if (b._discarded && b._discardUrl && b.webview) this._restoreDiscardedTab(b);
 
     this._assignSharedGroupForSplitPair(a, b);
 
