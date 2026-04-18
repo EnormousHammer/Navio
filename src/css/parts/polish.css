@@ -684,3 +684,283 @@
   .nav-history-menu,
   .screenshot-menu { animation: none; }
 }
+
+/* ---------------------------------------------
+   7) New tab page — calm, content-first (overrides styles.css NTP block)
+   --------------------------------------------- */
+.new-tab-page {
+  --ntp-accent: #7eb8ff;
+  --ntp-subtext: rgba(226, 232, 248, 0.5);
+  --ntp-border: rgba(255, 255, 255, 0.07);
+  --ntp-widget-list-max-h: min(220px, 32vh);
+  background: #0b0d12;
+}
+
+/* Quiet the photo: readable scrim, no competing color */
+.new-tab-page .ntp-bg-layer::before {
+  display: block !important;
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(7, 9, 14, 0.72) 0%, rgba(7, 9, 14, 0.82) 38%, rgba(6, 8, 13, 0.92) 100%);
+}
+.new-tab-page .ntp-bg-layer::after {
+  display: block !important;
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: radial-gradient(ellipse 85% 70% at 50% 35%, transparent 0%, rgba(5, 7, 12, 0.55) 100%);
+}
+
+.new-tab-page .ntp-hero {
+  padding-top: clamp(12px, 4vh, 36px);
+  padding-bottom: 4px;
+}
+
+.new-tab-page .ntp-brand {
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+.new-tab-page .ntp-title {
+  font-size: clamp(22px, 3vw, 28px) !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.02em !important;
+  text-transform: none !important;
+  background: none !important;
+  -webkit-text-fill-color: unset !important;
+  background-clip: unset !important;
+  color: rgba(248, 250, 255, 0.96) !important;
+  margin: 0 !important;
+}
+
+.new-tab-page .ntp-subtitle {
+  letter-spacing: 0 !important;
+  font-size: 13px !important;
+  margin: 0 0 16px !important;
+  color: var(--ntp-subtext) !important;
+  max-width: 28em;
+}
+
+/* Orb: logo only, no spinning rings or glow pulse */
+.new-tab-page .orb-ring {
+  display: none !important;
+  animation: none !important;
+}
+.new-tab-page .ntp-orb {
+  width: 40px;
+  height: 40px;
+}
+.new-tab-page .orb-core {
+  width: 40px;
+  height: 40px;
+  animation: none !important;
+  background: rgba(30, 36, 52, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+.new-tab-page .orb-core img {
+  opacity: 0.95;
+}
+
+/* Search: one quiet surface, no breathing / conic glow */
+.new-tab-page .ntp-search-glow {
+  display: none !important;
+}
+.new-tab-page .ntp-search {
+  animation: none !important;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(12, 14, 22, 0.72);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(20px) saturate(1.05);
+  -webkit-backdrop-filter: blur(20px) saturate(1.05);
+}
+.new-tab-page .ntp-search:focus-within {
+  animation: none !important;
+  border-color: rgba(126, 184, 255, 0.45);
+  box-shadow: 0 0 0 1px rgba(126, 184, 255, 0.12), 0 10px 32px rgba(0, 0, 0, 0.3);
+}
+.new-tab-page .ntp-search:focus-within svg {
+  color: var(--ntp-accent);
+}
+.new-tab-page .ntp-search-send {
+  background: rgba(126, 184, 255, 0.22);
+  border: 1px solid rgba(126, 184, 255, 0.35);
+  color: #e8f1ff;
+  box-shadow: none;
+}
+.new-tab-page .ntp-search-send:hover {
+  background: rgba(126, 184, 255, 0.32);
+  box-shadow: none;
+}
+
+/* Shortcuts row: lighter chrome */
+.new-tab-page .ntp-shortcuts-head {
+  margin-bottom: 4px;
+  opacity: 0.92;
+}
+.new-tab-page .ntp-shortcuts-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 248, 0.45);
+}
+.new-tab-page .ntp-shortcuts-hint {
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.new-tab-page .ntp-shortcuts-center {
+  border-image: none !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+.new-tab-page .ntp-clock {
+  font-weight: 400;
+  text-shadow: none;
+  color: rgba(244, 246, 252, 0.95);
+}
+
+/* Widgets: same family of surfaces, less “theme park” */
+.new-tab-page .ntp-widget {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(10, 12, 18, 0.55);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(18px) saturate(1.02);
+  -webkit-backdrop-filter: blur(18px) saturate(1.02);
+}
+.new-tab-page .ntp-widget:hover {
+  transform: none;
+  border-color: rgba(255, 255, 255, 0.11);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+}
+.new-tab-page .ntp-widget::before {
+  opacity: 0.35;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
+}
+
+.new-tab-page .ntp-widget-header {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom-color: rgba(255, 255, 255, 0.07);
+}
+
+.new-tab-page .ntp-news-widget .ntp-widget-header,
+.new-tab-page .ntp-email-widget .ntp-widget-header {
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom-color: rgba(255, 255, 255, 0.07);
+}
+.new-tab-page .ntp-news-widget .ntp-widget-header svg,
+.new-tab-page .ntp-email-widget .ntp-widget-header svg {
+  color: rgba(226, 232, 248, 0.55);
+  opacity: 1;
+}
+
+.new-tab-page .ntp-news-widget .ntp-widget-body,
+.new-tab-page .ntp-email-widget .ntp-widget-body {
+  background: rgba(6, 8, 14, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: none;
+  margin: 0 8px 8px;
+}
+.new-tab-page .ntp-news-widget:hover .ntp-widget-body,
+.new-tab-page .ntp-email-widget:hover .ntp-widget-body {
+  border-color: rgba(255, 255, 255, 0.09);
+  box-shadow: none;
+}
+
+.new-tab-page .ntp-news-widget .ntp-news-category {
+  color: rgba(186, 200, 230, 0.75);
+  text-shadow: none;
+}
+.new-tab-page .ntp-news-widget .ntp-news-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-left-color: rgba(126, 184, 255, 0.35);
+}
+
+.new-tab-page .ntp-widget-badge {
+  background: rgba(126, 184, 255, 0.12);
+  color: var(--ntp-accent);
+  border-color: rgba(126, 184, 255, 0.2);
+}
+.new-tab-page .ntp-widget-action {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(232, 240, 255, 0.9);
+  border-color: rgba(255, 255, 255, 0.1);
+  font-weight: 600;
+  box-shadow: none;
+}
+.new-tab-page .ntp-widget-action:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: none;
+}
+
+.new-tab-page .ntp-live-badge {
+  background: rgba(248, 113, 113, 0.2);
+  color: #fecaca;
+  font-weight: 600;
+  animation: none !important;
+}
+
+.new-tab-page .ntp-email-item.unread {
+  border-left-color: rgba(126, 184, 255, 0.65);
+  background: rgba(126, 184, 255, 0.04);
+}
+.new-tab-page .ntp-email-item.unread .ntp-email-sender {
+  color: var(--ntp-accent);
+}
+
+.new-tab-page .ntp-connect-email-btn {
+  background: rgba(126, 184, 255, 0.22);
+  color: #f0f6ff;
+  border: 1px solid rgba(126, 184, 255, 0.35);
+  box-shadow: none;
+  font-weight: 600;
+}
+.new-tab-page .ntp-connect-email-btn:hover {
+  opacity: 1;
+  background: rgba(126, 184, 255, 0.32);
+}
+
+/* Bottom ticker: thinner, less neon */
+.ntp-stock-ticker {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+.ntp-stock-ticker .ntp-ticker-tabs {
+  border-right-color: rgba(255, 255, 255, 0.08);
+}
+.ntp-ticker-tab.active {
+  color: #a8c9ff;
+  text-shadow: none;
+  background: rgba(255, 255, 255, 0.04);
+}
+#ntp-ticker-hide:hover {
+  color: #a8c9ff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .new-tab-page .ntp-search,
+  .new-tab-page .orb-core {
+    animation: none !important;
+  }
+  .ntp-ticker-track {
+    animation: none !important;
+  }
+}
