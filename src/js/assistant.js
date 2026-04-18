@@ -2980,11 +2980,14 @@ class AssistantManagerClass {
       a.href = raw;
       a.target = '_blank';
       a.rel = 'noopener noreferrer';
+      a.title = raw;
+      let host = 'Source';
       try {
-        a.textContent = `${idx}. ${new URL(raw).hostname}`;
+        host = new URL(raw).hostname.replace(/^www\./i, '');
       } catch {
-        a.textContent = `${idx}. source`;
+        /* keep label */
       }
+      a.innerHTML = `<span class="ncc-idx">${idx}</span><span class="ncc-host">${this._escapeHtml(host)}</span>`;
       row.appendChild(a);
     });
     wrap.appendChild(label);

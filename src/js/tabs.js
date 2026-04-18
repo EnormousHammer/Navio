@@ -148,9 +148,20 @@ class TabManagerClass {
     this._reRenderTabList();
   }
 
+  /** Matches `#browser-container webview { bottom: var(--ntp-ticker-reserve) }` for inline height. */
+  _ntpTickerReservePx() {
+    try {
+      const v = getComputedStyle(document.documentElement).getPropertyValue('--ntp-ticker-reserve').trim();
+      if (v.endsWith('px')) return Math.max(0, parseFloat(v) || 0);
+    } catch (_) {}
+    return 0;
+  }
+
   _syncWebviewSizes() {
     const { width, height } = this.browserContainer.getBoundingClientRect();
     if (!width || !height) return;
+    const reserve = this._ntpTickerReservePx();
+    const usableH = Math.max(0, height - reserve);
 
     const focused = this.activeTabId ? this.tabs.find((t) => t.id === this.activeTabId) : null;
     let partner = focused?.splitPartnerId
@@ -169,20 +180,23 @@ class TabManagerClass {
       if (partner && focused && (tab.id === focused.id || tab.id === partner.id)) {
         const ia = this.tabs.findIndex((t) => t.id === focused.id);
         const ib = this.tabs.findIndex((t) => t.id === partner.id);
-        const leftTab = ia <= ib ? focused : partner;
+        const fallbackLeft = ia <= ib ? focused : partner;
+        const leftId = focused.splitLeftPaneTabId || partner.splitLeftPaneTabId;
+        const leftTab = (leftId ? this.tabs.find((t) => t.id === leftId) : null) || fallbackLeft;
         const isLeft = tab.id === leftTab.id;
-        const half = width / 2;
-        wv.style.left = isLeft ? '0px' : `${half}px`;
+        const wLeft = Math.floor(width / 2);
+        const wRight = Math.max(0, width - wLeft);
+        wv.style.left = isLeft ? '0px' : `${wLeft}px`;
         wv.style.right = 'auto';
-        wv.style.width = `${half}px`;
-        wv.style.height = `${height}px`;
+        wv.style.width = `${isLeft ? wLeft : wRight}px`;
+        wv.style.height = `${usableH}px`;
         wv.style.top = '0px';
         wv.classList.add(isLeft ? 'split-left' : 'split-right');
       } else {
         wv.style.left = '0px';
         wv.style.right = '0px';
         wv.style.width = `${width}px`;
-        wv.style.height = `${height}px`;
+        wv.style.height = `${usableH}px`;
       }
     });
   }
@@ -202,7 +216,9 @@ class TabManagerClass {
       pinned: false,
       incognito,
       /** Other tab id when this tab shares a split view (Chrome-style side-by-side). */
-      splitPartnerId: null
+      splitPartnerId: null,
+      /** Which tab id is laid out in the left pane (both partners share the same value). */
+      splitLeftPaneTabId: null
     };
 
     // Build a clean user-agent that doesn't expose Electron
@@ -239,11 +255,7 @@ class TabManagerClass {
 
     // Size the new webview immediately and synchronously so Electron has the
     // correct viewport dimensions before dom-ready / loadURL fires.
-    const { width, height } = this.browserContainer.getBoundingClientRect();
-    if (width && height) {
-      webview.style.width  = width  + 'px';
-      webview.style.height = height + 'px';
-    }
+    this._syncWebviewSizes();
 
     this.tabs.push(tab);
     this.renderTabItem(tab);
@@ -456,17 +468,24 @@ class TabManagerClass {
     // before the first loadURL call; the page must load into the right viewport.
     wv.addEventListener('dom-ready', () => {
       wv._domReady = true;
-      const { width, height } = this.browserContainer.getBoundingClientRect();
-      if (width && height) {
-        wv.style.width  = width  + 'px';
-        wv.style.height = height + 'px';
-      }
+      // Apply split / full layout for all webviews; do not force this pane to full width
+      // or partner panes stay the wrong size until the next resize.
+      this._syncWebviewSizes();
       if (wv._pendingUrl) {
         const url = wv._pendingUrl;
         wv._pendingUrl = null;
         const run = () => wv.loadURL(url).catch(err => console.warn('Pending loadURL failed:', err));
         if (typeof queueMicrotask === 'function') queueMicrotask(run);
         else setTimeout(run, 0);
+      }
+    });
+
+    wv.addEventListener('focus', () => {
+      if (tab.id === this.activeTabId) return;
+      const active = this.getActiveTab();
+      if (!active?.splitPartnerId) return;
+      if (active.splitPartnerId === tab.id || tab.splitPartnerId === active.id) {
+        this.switchToTab(tab.id);
       }
     });
 
@@ -1169,7 +1188,11 @@ class TabManagerClass {
     if (!tab || !tab.splitPartnerId) return;
     const p = this.tabs.find((t) => t.id === tab.splitPartnerId);
     tab.splitPartnerId = null;
-    if (p) p.splitPartnerId = null;
+    tab.splitLeftPaneTabId = null;
+    if (p) {
+      p.splitPartnerId = null;
+      p.splitLeftPaneTabId = null;
+    }
   }
 
   /**
@@ -1202,14 +1225,46 @@ class TabManagerClass {
       }
       return false;
     }
+    /* Comet-style: splitting tabs from different groups leaves one combined pair — exit those groups. */
+    if (a.groupId !== b.groupId) {
+      if (a.groupId) this.removeTabFromGroup(a.id);
+      if (b.groupId) this.removeTabFromGroup(b.id);
+    }
     this._clearSplitPartner(a.id);
     this._clearSplitPartner(b.id);
+    const ia = this.tabs.findIndex((t) => t.id === a.id);
+    const ib = this.tabs.findIndex((t) => t.id === b.id);
+    const leftId = ia <= ib ? a.id : b.id;
     a.splitPartnerId = b.id;
     b.splitPartnerId = a.id;
+    a.splitLeftPaneTabId = leftId;
+    b.splitLeftPaneTabId = leftId;
     this.updateTabUI(a);
     this.updateTabUI(b);
     this.switchToTab(a.id);
     return true;
+  }
+
+  /**
+   * Swap which page is on the left in the active (or given) split pair — matches Chrome/Comet “arrange” behavior.
+   * @param {string} [tabIdInPair] Tab belonging to the pair; defaults to active tab.
+   */
+  swapSplitPanes(tabIdInPair) {
+    const t = tabIdInPair
+      ? this.tabs.find((x) => x.id === tabIdInPair)
+      : this.getActiveTab();
+    if (!t?.splitPartnerId) return;
+    const p = this.tabs.find((x) => x.id === t.splitPartnerId);
+    if (!p) return;
+    const curLeft = t.splitLeftPaneTabId || p.splitLeftPaneTabId;
+    const ia = this.tabs.findIndex((x) => x.id === t.id);
+    const ib = this.tabs.findIndex((x) => x.id === p.id);
+    const fallback = ia <= ib ? t.id : p.id;
+    const leftId = curLeft || fallback;
+    const nextLeft = leftId === t.id ? p.id : t.id;
+    t.splitLeftPaneTabId = nextLeft;
+    p.splitLeftPaneTabId = nextLeft;
+    this._syncWebviewSizes();
   }
 
   unsplitTab(tabId) {
@@ -1539,6 +1594,8 @@ class TabManagerClass {
   }
 
   addTabToGroup(tabId, groupId) {
+    const tPre = this.tabs.find((t) => t.id === tabId);
+    if (tPre?.splitPartnerId) this._clearSplitPartner(tabId);
     this.removeTabFromGroup(tabId, true);
     const tab = this.tabs.find(t => t.id === tabId);
     if (!tab || !this.groups[groupId]) return;
@@ -1570,6 +1627,10 @@ class TabManagerClass {
 
   // ── Rebuild the tab strip with group headers ───────────────────────────
   _reRenderTabList() {
+    const usedGroupIds = new Set(this.tabs.map((t) => t.groupId).filter(Boolean));
+    for (const gid of Object.keys(this.groups)) {
+      if (!usedGroupIds.has(gid)) delete this.groups[gid];
+    }
     // Remove all existing tab items and group headers from the strip
     this.tabListEl.querySelectorAll('.tab-item, .tab-group-header').forEach(el => el.remove());
 
@@ -1701,6 +1762,12 @@ class TabManagerClass {
       <div class="tcm-sep"></div>` : '';
 
     const otherTabs = this.tabs.filter(t => t.id !== tabId);
+    const splitOk = (ot) => {
+      if (this.isNavioChatTabUrl(ot.url || '')) return false;
+      const u = (ot.url || '').trim();
+      if (!u.startsWith('http')) return false;
+      return !!tab.incognito === !!ot.incognito;
+    };
     const maxPair = 16;
     const pairSection = otherTabs.length
       ? `<div class="tcm-label">Group with another tab</div>
@@ -1714,18 +1781,22 @@ class TabManagerClass {
 
     const pinLabel = tab.pinned ? 'Unpin tab' : 'Pin tab';
 
+    const splitSwap = tab.splitPartnerId
+      ? `<button class="tcm-item" data-action="swap-split">Swap left / right</button>`
+      : '';
     const splitExit = tab.splitPartnerId
       ? `<button class="tcm-item" data-action="unsplit-tab">Exit split view</button>`
       : '';
 
+    const splitCandidates = otherTabs.filter(splitOk);
     const splitPickMax = 16;
-    const splitWithList = !tab.splitPartnerId && otherTabs.length
-      ? `<div class="tcm-label">Split view (side by side)</div>
-      ${otherTabs.slice(0, splitPickMax).map((ot) => `
+    const splitWithList = !tab.splitPartnerId && splitCandidates.length
+      ? `<div class="tcm-label">Split view</div>
+      ${splitCandidates.slice(0, splitPickMax).map((ot) => `
         <button class="tcm-item" data-action="split-with" data-other-id="${ot.id}">
           With: ${this.escapeHtml(this.getTabDisplayTitle(ot))}
         </button>`).join('')}
-      ${otherTabs.length > splitPickMax ? `<div class="tcm-label">${otherTabs.length - splitPickMax} more tabs…</div>` : ''}`
+      ${splitCandidates.length > splitPickMax ? `<div class="tcm-label">${splitCandidates.length - splitPickMax} more eligible tabs…</div>` : ''}`
       : '';
 
     const menu = document.createElement('div');
@@ -1737,6 +1808,7 @@ class TabManagerClass {
       <div class="tcm-sep"></div>
       <button class="tcm-item" data-action="toggle-pin">${pinLabel}</button>
       <div class="tcm-sep"></div>
+      ${splitSwap}
       ${splitExit}
       ${splitWithList ? `${splitWithList}<div class="tcm-sep"></div>` : ''}
       ${pairSection}
@@ -1796,6 +1868,7 @@ class TabManagerClass {
         } else if (act === 'remove-from-group') this.removeTabFromGroup(tabId);
         else if (act === 'add-to-group') this.addTabToGroup(tabId, btn.dataset.gid);
         else if (act === 'unsplit-tab') this.unsplitTab(tabId);
+        else if (act === 'swap-split') this.swapSplitPanes(tabId);
         else if (act === 'split-with') this.splitTabWith(tabId, btn.dataset.otherId);
         else if (act === 'new-group-with-tab') {
           const oid = btn.dataset.otherId;

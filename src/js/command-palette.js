@@ -124,6 +124,11 @@ class CommandPaletteClass {
         run: () => TabManager.unsplitActiveSplit?.()
       },
       {
+        id: 'swap-split-panes',
+        label: 'Swap split panes (left ↔ right)',
+        run: () => TabManager.swapSplitPanes?.()
+      },
+      {
         id: 'tab-search-palette',
         label: 'Search open tabs (Ctrl+Shift+O or Ctrl+Shift+E)',
         run: () => {

@@ -423,9 +423,9 @@ class NavioApp {
       return d.innerHTML;
     };
     const badgeLabel = (b) => {
-      if (b === 'bookmark') return 'Bookmark';
-      if (b === 'frequent') return 'Top site';
-      return 'History';
+      if (b === 'bookmark') return 'Saved';
+      if (b === 'frequent') return 'Frequent';
+      return 'Recent';
     };
     const badgeClass = (b) => {
       if (b === 'bookmark') return 'url-suggestion-badge url-suggestion-badge--bookmark';
