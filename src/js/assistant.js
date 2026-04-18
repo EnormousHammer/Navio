@@ -3068,9 +3068,8 @@ class AssistantManagerClass {
       strip.innerHTML = '<span class="msg-role-label">Couldn’t complete</span>';
       return strip;
     }
-    strip.className = 'msg-role-strip msg-role-strip--assistant';
-    strip.innerHTML =
-      '<span class="msg-role-label">Navio</span><span class="msg-role-badge" aria-hidden="true">AI</span>';
+    strip.className = 'msg-role-strip msg-role-strip--assistant msg-role-strip--sidecar';
+    strip.innerHTML = '<span class="msg-role-label">Assistant</span>';
     return strip;
   }
 
@@ -5159,11 +5158,11 @@ ${pageInfo}${snapText}`;
     indicator.className = 'message assistant-message typing-indicator-wrap';
     indicator.id = 'typing-indicator';
     indicator.innerHTML = `
-      <div class="msg-role-strip msg-role-strip--assistant msg-role-strip--typing">
-        <span class="msg-role-label">Navio</span><span class="msg-role-badge" aria-hidden="true">AI</span>
+      <div class="msg-role-strip msg-role-strip--assistant msg-role-strip--sidecar msg-role-strip--typing">
+        <span class="msg-role-label">Assistant</span>
       </div>
       <div class="message-content typing-indicator">
-        <span class="typing-indicator-label">Composing</span>
+        <span class="typing-indicator-label">Thinking</span>
         <span class="typing-dots"><span></span><span></span><span></span></span>
       </div>
     `;
