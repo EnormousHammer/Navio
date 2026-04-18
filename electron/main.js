@@ -790,6 +790,26 @@ function navioOpenerOriginFromGuest(guestContents) {
   return '';
 }
 
+function navioIsExternalProtocolUrl(url) {
+  return /^(mailto|tel|sms|callto|wtai|market|ms-windows-store):/i.test(url || '');
+}
+
+function navioNormalizeTabOpenUrl(url) {
+  const raw = String(url || '').trim();
+  if (!raw) return 'about:blank';
+  if (raw === 'about:blank') return raw;
+  if (navioIsExternalProtocolUrl(raw)) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'file:') {
+      return u.href;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 /** Parse width= / height= from window.open(..., 'features') for popup heuristics. */
 function navioPopupDimsFromFeatures(feat) {
   const f = typeof feat === 'string' ? feat : '';
@@ -859,7 +879,7 @@ function bindNavioGuestWindowOpenOnce(guestContents) {
 
   guestContents.setWindowOpenHandler((details) => {
     const url = (details && details.url) || '';
-    if (/^(mailto|tel|sms|callto):/i.test(url)) {
+    if (navioIsExternalProtocolUrl(url)) {
       try {
         shell.openExternal(url);
       } catch {
@@ -921,7 +941,10 @@ function bindNavioGuestWindowOpenOnce(guestContents) {
     } catch {
       incognito = false;
     }
-    const openUrl = url && url !== '' ? url : 'about:blank';
+    const openUrl = navioNormalizeTabOpenUrl(url);
+    if (!openUrl) {
+      return { action: 'deny' };
+    }
     const mw = mainWindow;
     if (!mw || (typeof mw.isDestroyed === 'function' && mw.isDestroyed())) {
       return { action: 'deny' };
@@ -7060,11 +7083,21 @@ ipcMain.handle('show-webview-context-menu', (event, { webContentsId, x, y, param
     const menu = new Menu();
     const openInNewTabPayload = (url) => {
       if (!url || !mainWindow) return;
+      if (navioIsExternalProtocolUrl(url)) {
+        try {
+          shell.openExternal(url);
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      const openUrl = navioNormalizeTabOpenUrl(url);
+      if (!openUrl) return;
       try {
         const incognito = wc.session === session.fromPartition(NAVIO_PARTITION_INCOGNITO);
-        mainWindow.webContents.send('open-url-in-new-tab', { url, incognito });
+        mainWindow.webContents.send('open-url-in-new-tab', { url: openUrl, incognito });
       } catch {
-        mainWindow.webContents.send('open-url-in-new-tab', { url, incognito: false });
+        mainWindow.webContents.send('open-url-in-new-tab', { url: openUrl, incognito: false });
       }
     };
 

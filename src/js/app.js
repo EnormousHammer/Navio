@@ -617,6 +617,7 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
     const input = (raw || '').trim();
     if (!input) return null;
 
+    if (/^about:blank$/i.test(input)) return 'about:blank';
     if (/^https?:\/\//i.test(input)) return input;
 
     // External OS protocols — open in the default OS app, never load in a webview tab
@@ -667,8 +668,17 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
         incognito: !!opts.incognito,
         switchTo: opts.background !== true
       };
-      if (u) TabManager.createTab(u, tabOpts);
-      else TabManager.createTab(null, tabOpts);
+      if (!u) {
+        TabManager.createTab(null, tabOpts);
+        return;
+      }
+      const resolved = this.resolveNavigationInput(u);
+      if (!resolved) return;
+      if (!/^(https?:\/\/|file:\/\/|about:blank$)/i.test(resolved)) {
+        _showAppToast('Blocked unsupported popup URL protocol.', 'warning');
+        return;
+      }
+      TabManager.createTab(resolved, tabOpts);
     });
 
     // ── Download toasts ───────────────────────────────────────────────────

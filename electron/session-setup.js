@@ -63,6 +63,19 @@ function originHostname(origin) {
   }
 }
 
+function normalizePopupOriginInput(origin) {
+  const raw = typeof origin === 'string' ? origin.trim() : '';
+  if (!raw) return '';
+  if (raw === NAVIO_LOCAL_UI_ORIGIN) return raw;
+  try {
+    const u = new URL(raw);
+    if (u.protocol === 'http:' || u.protocol === 'https:') return u.origin;
+  } catch {
+    /* ignore */
+  }
+  return '';
+}
+
 function _navioFormatBytes(n) {
   if (n == null || !Number.isFinite(n) || n < 0) return '';
   if (n < 1024) return `${Math.round(n)} B`;
@@ -541,7 +554,7 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   });
 
   ipcMain.handle('navio-site-popups-set', (_, { origin, allowed }) => {
-    const o = typeof origin === 'string' ? origin.trim() : '';
+    const o = normalizePopupOriginInput(origin);
     if (!o) return { ok: false, error: 'origin required' };
     const ud = userData();
     if (allowed) sitePerms.set(ud, o, 'popups', true);
@@ -550,7 +563,7 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   });
 
   ipcMain.handle('navio-site-popups-get', (_, { origin }) => {
-    const o = typeof origin === 'string' ? origin.trim() : '';
+    const o = normalizePopupOriginInput(origin);
     if (!o) return { allowed: null };
     const v = sitePerms.get(userData(), o, 'popups');
     return { allowed: v };
