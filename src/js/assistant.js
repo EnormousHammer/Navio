@@ -367,7 +367,7 @@ class AssistantManagerClass {
 
     this.inputEl?.addEventListener('input', () => {
       this.inputEl.style.height = 'auto';
-      this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + 'px';
+      this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 120) + 'px';
       this._handleAtMention();
     });
 

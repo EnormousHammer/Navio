@@ -3454,8 +3454,8 @@ button.ntp-ticker-sport--stream:focus-visible {
 /* Fixed dock: the panel used to live in the #app flex row with main + other nodes; in Chromium
    that often collapsed or pushed the panel off-screen. Dock to the viewport instead. */
 .assistant-panel {
-  --ap-pad-x: 16px;
-  --ap-control-radius: 10px;
+  --ap-pad-x: 14px;
+  --ap-control-radius: 9px;
   position: fixed;
   top: calc(var(--titlebar-height) + var(--tabstrip-height));
   right: 0;
@@ -3514,8 +3514,8 @@ body.navio-vertical-tabs .assistant-panel {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px var(--ap-pad-x) 12px;
+  gap: 10px;
+  padding: 10px var(--ap-pad-x) 10px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   background: linear-gradient(180deg, var(--bg-surface) 0%, rgba(22, 27, 40, 0.92) 100%);
@@ -3592,17 +3592,17 @@ body.navio-vertical-tabs .assistant-panel {
 .assistant-context {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px var(--ap-pad-x);
+  gap: 8px;
+  padding: 8px var(--ap-pad-x);
   background: var(--bg-deep);
   border-bottom: 1px solid var(--border);
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--text-secondary);
   flex-shrink: 0;
   letter-spacing: 0.01em;
-  line-height: 1.45;
+  line-height: 1.4;
   backdrop-filter: blur(10px);
-  min-height: 2.5rem;
+  min-height: 2.25rem;
 }
 
 #context-page-title {
@@ -3738,10 +3738,10 @@ body.navio-vertical-tabs .assistant-panel {
 .assistant-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 12px var(--ap-pad-x) 20px;
+  padding: 10px var(--ap-pad-x) 14px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
   scroll-behavior: smooth;
   background: var(--bg-primary);
 }
@@ -3755,7 +3755,7 @@ body.navio-vertical-tabs .assistant-panel {
 
 .assistant-messages .user-message {
   align-self: flex-end;
-  max-width: min(92%, 380px);
+  max-width: min(92%, 340px);
 }
 .assistant-messages .assistant-message {
   align-self: stretch;
@@ -3798,10 +3798,10 @@ body.navio-vertical-tabs .assistant-panel {
 }
 
 .message-content {
-  padding: 14px 16px;
-  border-radius: 14px;
-  font-size: 14px;
-  line-height: 1.62;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
   word-wrap: break-word;
   user-select: text !important;
   -webkit-user-select: text !important;
@@ -3855,14 +3855,14 @@ body.navio-vertical-tabs .assistant-panel {
   align-self: flex-start;
 }
 .msg-role-strip--sidecar .msg-role-label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.01em;
   text-transform: none;
   color: var(--text-tertiary);
 }
 .msg-role-label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: none;
@@ -3924,7 +3924,7 @@ body.navio-vertical-tabs .assistant-panel {
 }
 
 /* ── Markdown typography ─────────────────────────────────────────────────── */
-.message-content p { margin: 0 0 9px; }
+.message-content p { margin: 0 0 6px; }
 .message-content p:last-child { margin-bottom: 0; }
 
 .message-content h2,
@@ -3936,11 +3936,11 @@ body.navio-vertical-tabs .assistant-panel {
   margin: 14px 0 6px;
   line-height: 1.3;
 }
-.message-content h2 { font-size: 15px; color: var(--text-accent); }
+.message-content h2 { font-size: 13px; color: var(--text-accent); }
 .assistant-message .message-content h2 { color: var(--text-primary); }
-.message-content h3 { font-size: 14px; color: var(--text-primary); }
-.message-content h4 { font-size: 13px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .04em; }
-.message-content h5 { font-size: 12px; color: var(--text-muted); }
+.message-content h3 { font-size: 12.5px; color: var(--text-primary); }
+.message-content h4 { font-size: 11.5px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .04em; }
+.message-content h5 { font-size: 11px; color: var(--text-muted); }
 .message-content h2:first-child,
 .message-content h3:first-child { margin-top: 0; }
 
@@ -3991,12 +3991,12 @@ body.navio-vertical-tabs .assistant-panel {
 .message-content em { color: var(--text-secondary); font-style: italic; }
 
 .message-content code {
-  padding: 2px 6px;
+  padding: 2px 5px;
   background: rgba(0, 216, 255, 0.08);
   border: 1px solid rgba(0, 216, 255, 0.15);
   border-radius: 4px;
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 10.5px;
   color: #7dd3fc;
 }
 .assistant-message .message-content code {
@@ -4018,7 +4018,7 @@ body.navio-vertical-tabs .assistant-panel {
   padding: 0;
   background: transparent;
   border: none;
-  font-size: 12px;
+  font-size: 11px;
   color: #e2e8f0;
 }
 
@@ -4034,16 +4034,16 @@ body.navio-vertical-tabs .assistant-panel {
 .assistant-message .message-content a {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   max-width: 100%;
-  padding: 4px 11px 4px 12px;
+  padding: 3px 9px 3px 10px;
   margin: 2px 0;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.055);
   color: var(--text-primary);
-  font-size: 12.5px;
+  font-size: 11.5px;
   font-weight: 500;
   text-decoration: none;
   vertical-align: middle;
@@ -4466,7 +4466,7 @@ body.navio-vertical-tabs .assistant-panel {
 
 /* Input area */
 .assistant-input-area {
-  padding: 14px var(--ap-pad-x) 16px;
+  padding: 10px var(--ap-pad-x) 12px;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
   background: linear-gradient(180deg, var(--bg-deep) 0%, var(--bg-primary) 65%);
@@ -4483,8 +4483,8 @@ body.navio-vertical-tabs .assistant-panel {
 .assistant-attachment-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: 6px;
+  margin-bottom: 8px;
   min-height: 0;
 }
 
@@ -4616,8 +4616,8 @@ body.navio-vertical-tabs .assistant-panel {
 }
 
 .user-msg-text {
-  font-size: 14px;
-  line-height: 1.55;
+  font-size: 12.5px;
+  line-height: 1.5;
 }
 
 .assistant-input-area::before {
@@ -4627,11 +4627,11 @@ body.navio-vertical-tabs .assistant-panel {
 .assistant-input-container {
   display: flex;
   align-items: flex-end;
-  gap: 6px;
-  padding: 10px 14px 10px 12px;
+  gap: 5px;
+  padding: 7px 10px 7px 10px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 22px;
+  border-radius: 18px;
   transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease), background 0.2s var(--ease);
   backdrop-filter: blur(12px) saturate(1.06);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 28px rgba(0, 0, 0, 0.12);
@@ -4639,9 +4639,9 @@ body.navio-vertical-tabs .assistant-panel {
 }
 
 .assistant-panel .assistant-input-container .voice-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 11px;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
 }
 
 .assistant-input-actions {
@@ -4664,17 +4664,17 @@ body.navio-vertical-tabs .assistant-panel {
   border: none;
   background: transparent;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 13px;
   font-family: var(--font-sans);
-  line-height: 1.55;
+  line-height: 1.45;
   resize: none;
   outline: none;
   box-shadow: none;
   -webkit-appearance: none;
   appearance: none;
-  max-height: 160px;
-  min-height: 24px;
-  padding: 2px 0;
+  max-height: 120px;
+  min-height: 20px;
+  padding: 1px 0;
   overflow-y: auto;
 }
 
@@ -4687,16 +4687,16 @@ body.navio-vertical-tabs .assistant-panel {
 
 #assistant-input::placeholder {
   color: var(--text-tertiary);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .send-btn {
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   border: 1px solid rgba(82, 213, 242, 0.42);
   background: linear-gradient(145deg, rgba(82, 213, 242, 0.22) 0%, rgba(0, 216, 255, 0.12) 100%);
   color: var(--text-bright);
-  border-radius: 12px;
+  border-radius: 10px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -4726,8 +4726,8 @@ body.navio-vertical-tabs .assistant-panel {
 }
 
 .assistant-input-hint {
-  margin-top: 9px;
-  font-size: 11px;
+  margin-top: 6px;
+  font-size: 10px;
   color: var(--text-tertiary);
   letter-spacing: 0.01em;
   opacity: 0.88;
@@ -7586,15 +7586,15 @@ body.onboarding-active #app {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 10px;
-  padding: 10px var(--ap-pad-x) 8px;
+  gap: 6px 8px;
+  padding: 7px var(--ap-pad-x) 6px;
   border-bottom: none;
   background: transparent;
 }
 
 .scope-pill-wrap {
   order: 1;
-  flex: 1 1 148px;
+  flex: 1 1 132px;
   min-width: 0;
 }
 
@@ -7615,9 +7615,9 @@ body.onboarding-active #app {
 .assistant-connector-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-  gap: 8px 10px;
+  gap: 6px 8px;
   align-items: center;
-  padding: 8px var(--ap-pad-x) 12px;
+  padding: 6px var(--ap-pad-x) 8px;
   border-bottom: none;
   border-top: 1px solid var(--border);
   background: rgba(0, 0, 0, 0.04);
@@ -7625,14 +7625,14 @@ body.onboarding-active #app {
 }
 
 .assistant-connector-select {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   font-family: var(--font-sans);
   color: var(--text-primary);
   background: var(--bg-deep);
   border: 1px solid var(--border);
   border-radius: var(--ap-control-radius);
-  padding: 7px 10px;
+  padding: 5px 8px;
   cursor: pointer;
   width: 100%;
   max-width: none;
@@ -7649,14 +7649,14 @@ body.onboarding-active #app {
 .assistant-tab-digest-label {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
+  gap: 5px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--text-secondary);
   cursor: pointer;
   user-select: none;
   margin-left: 0;
-  padding: 6px 8px;
+  padding: 4px 6px;
   border-radius: var(--ap-control-radius);
   border: 1px solid transparent;
   transition: background var(--duration) var(--ease), border-color var(--duration) var(--ease);
@@ -7758,9 +7758,9 @@ a.navio-citation-chip:hover::after {
 .scope-pill-wrap {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 11px 6px 10px;
-  min-height: 34px;
+  gap: 5px;
+  padding: 4px 9px 4px 8px;
+  min-height: 30px;
   box-sizing: border-box;
   border: 1px solid var(--border);
   border-radius: var(--ap-control-radius);
@@ -7790,7 +7790,7 @@ a.navio-citation-chip:hover::after {
   border: none;
   background: transparent;
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   font-family: var(--font-sans);
   letter-spacing: 0.01em;
@@ -7807,8 +7807,8 @@ a.navio-citation-chip:hover::after {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--ap-control-radius);
@@ -8387,10 +8387,10 @@ a.navio-citation-chip:hover::after {
 .assistant-input-container .assistant-stop-btn {
   flex-shrink: 0;
   margin: 0;
-  padding: 0 14px;
-  min-height: 36px;
-  border-radius: 11px;
-  font-size: 11px;
+  padding: 0 10px;
+  min-height: 32px;
+  border-radius: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.03em;
   cursor: pointer;
@@ -8504,10 +8504,10 @@ a.navio-citation-chip:hover::after {
 .assistant-step-mode-label {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
   margin-left: 0;
-  padding: 6px 10px;
-  font-size: 11px;
+  padding: 4px 8px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--text-secondary);
   cursor: pointer;
