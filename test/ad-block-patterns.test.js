@@ -5,6 +5,7 @@ const assert = require('node:assert');
 const {
   shouldBlockWebPopup,
   featuresSuggestScriptPopup,
+  isLikelyDocumentPictureInPictureShape,
   urlMatchesAdBlock,
   shouldBlockAdNetworkRequest
 } = require('../electron/ad-block-patterns');
@@ -148,6 +149,43 @@ test('shouldBlockWebPopup: streaming site script-style popup not blocked (stay o
       cfg: baseCfg
     }),
     false
+  );
+});
+
+test('isLikelyDocumentPictureInPictureShape: widescreen PiP yes, IAB 400x250 no', () => {
+  assert.strictEqual(isLikelyDocumentPictureInPictureShape(400, 225), true);
+  assert.strictEqual(isLikelyDocumentPictureInPictureShape(360, 270), true);
+  assert.strictEqual(isLikelyDocumentPictureInPictureShape(400, 250), false);
+  assert.strictEqual(isLikelyDocumentPictureInPictureShape(300, 250), false);
+});
+
+test('shouldBlockWebPopup: document PiP shaped blank window not blocked on generic site', () => {
+  assert.strictEqual(
+    shouldBlockWebPopup({
+      url: 'about:blank',
+      disposition: 'new-window',
+      optionsWidth: 400,
+      optionsHeight: 225,
+      features: 'menubar=no,toolbar=no,width=400,height=225',
+      openerOrigin: 'https://www.example-news.com',
+      cfg: baseCfg
+    }),
+    false
+  );
+});
+
+test('shouldBlockWebPopup: 400x250 script popup still blocked (not PiP shape)', () => {
+  assert.strictEqual(
+    shouldBlockWebPopup({
+      url: 'about:blank',
+      disposition: 'new-window',
+      optionsWidth: 400,
+      optionsHeight: 250,
+      features: 'menubar=no,toolbar=no,width=400,height=250',
+      openerOrigin: 'https://www.example-news.com',
+      cfg: baseCfg
+    }),
+    true
   );
 });
 

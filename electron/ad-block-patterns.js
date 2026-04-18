@@ -413,6 +413,21 @@ function isOAuthOrLoginUrl(url) {
   }
 }
 
+/**
+ * Document Picture-in-Picture (and similar) opens a blank same-origin window with explicit
+ * width/height like a wide video frame. Without this, strict pop-up rules block PiP on sites
+ * that are not in the streaming allowlist (e.g. embedded players on blogs).
+ * Excludes common IAB-style rectangles (e.g. 400×250) via aspect / minimum height rules.
+ */
+function isLikelyDocumentPictureInPictureShape(width, height) {
+  if (typeof width !== 'number' || typeof height !== 'number' || width < 1 || height < 1) return false;
+  if (width < 200 || width > 896 || height < 120 || height > 520) return false;
+  const r = width / height;
+  if (r >= 1.65 && height >= 140) return true;
+  if (r >= 1.28 && r <= 1.45 && height >= 220) return true;
+  return false;
+}
+
 /** Typical script-driven ad pop-ups; real SSO windows are usually larger. */
 function isLikelyAdSizedPopup(width, height) {
   if (typeof width !== 'number' || typeof height !== 'number' || width < 1 || height < 1) return false;
@@ -467,6 +482,8 @@ function shouldBlockWebPopup(payload) {
     (width >= 480 || height >= 520);
   if (oauthSizedBlank) return false;
 
+  if (noUrl && isLikelyDocumentPictureInPictureShape(width, height)) return false;
+
   if (featuresSuggestScriptPopup(features)) {
     if (noUrl && isMailGoogleOpenerOrigin(openerOrigin)) return false;
     if (noUrl && isShippingCarrierOpenerOrigin(openerOrigin)) return false;
@@ -498,6 +515,7 @@ module.exports = {
   isShippingCarrierOpenerOrigin,
   isStreamingVideoOpenerOrigin,
   isLikelyAdSizedPopup,
+  isLikelyDocumentPictureInPictureShape,
   featuresSuggestScriptPopup,
   shouldBlockWebPopup
 };
