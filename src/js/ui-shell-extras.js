@@ -379,6 +379,30 @@
     const cfg = await window.navio.getConfig();
     const show = cfg.showBookmarkBar !== false;
     bar.hidden = !show;
+    function _faviconUrl(b) {
+      if (b && b.favicon) return b.favicon;
+      try {
+        const u = new URL(b.url);
+        return `https://www.google.com/s2/favicons?sz=32&domain=${encodeURIComponent(u.hostname)}`;
+      } catch (_) {
+        return '';
+      }
+    }
+    function _letterFallback(b) {
+      const t = (b.title || b.url || '?').trim();
+      try {
+        const h = new URL(b.url).hostname.replace(/^www\./, '');
+        return (h[0] || t[0] || '?').toUpperCase();
+      } catch (_) {
+        return (t[0] || '?').toUpperCase();
+      }
+    }
+    function _hashColor(str) {
+      let h = 0;
+      for (let i = 0; i < (str || '').length; i++) h = ((h << 5) - h) + str.charCodeAt(i);
+      const palette = ['#60a5fa','#a78bfa','#34d399','#f87171','#fb923c','#fbbf24','#f472b6','#5eead4','#94a3b8'];
+      return palette[Math.abs(h) % palette.length];
+    }
     async function render() {
       const data = await window.navio.bookmarksGet();
       bar.innerHTML = '';
@@ -386,14 +410,62 @@
         const a = document.createElement('button');
         a.type = 'button';
         a.className = 'bookmark-bar-item';
-        a.textContent = b.title || b.url;
         a.title = b.url;
+        const isFolder = Array.isArray(b.children) && b.children.length > 0;
+        if (isFolder) a.classList.add('is-folder');
+
+        const iconUrl = !isFolder ? _faviconUrl(b) : '';
+        if (iconUrl) {
+          const img = document.createElement('img');
+          img.className = 'bm-favicon';
+          img.alt = '';
+          img.loading = 'lazy';
+          img.referrerPolicy = 'no-referrer';
+          img.src = iconUrl;
+          img.addEventListener('error', () => {
+            const fb = document.createElement('span');
+            fb.className = 'bm-favicon-fallback';
+            fb.style.background = _hashColor(b.url || b.title || '');
+            fb.textContent = _letterFallback(b);
+            img.replaceWith(fb);
+          }, { once: true });
+          a.appendChild(img);
+        } else {
+          const fb = document.createElement('span');
+          fb.className = 'bm-favicon-fallback';
+          if (isFolder) {
+            fb.style.background = 'transparent';
+            fb.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+          } else {
+            fb.style.background = _hashColor(b.url || b.title || '');
+            fb.textContent = _letterFallback(b);
+          }
+          a.appendChild(fb);
+        }
+
+        const label = document.createElement('span');
+        label.className = 'bm-label';
+        label.textContent = b.title || b.url;
+        a.appendChild(label);
+
         a.addEventListener('click', () => {
           if (typeof TabManager !== 'undefined') TabManager.navigateActive(b.url);
         });
         bar.appendChild(a);
       });
+      _updateBookmarkBarScrollShadows(bar);
     }
+    function _updateBookmarkBarScrollShadows(el) {
+      if (!el) return;
+      const { scrollLeft, scrollWidth, clientWidth } = el;
+      el.classList.remove('bm-scroll-start', 'bm-scroll-mid', 'bm-scroll-end');
+      const overflow = scrollWidth - clientWidth > 2;
+      if (!overflow) return;
+      if (scrollLeft <= 2) el.classList.add('bm-scroll-start');
+      else if (scrollLeft + clientWidth >= scrollWidth - 2) el.classList.add('bm-scroll-end');
+      else el.classList.add('bm-scroll-mid');
+    }
+    bar.addEventListener('scroll', () => _updateBookmarkBarScrollShadows(bar), { passive: true });
     await render();
     window.addEventListener('bookmarks-changed', render);
     syncBookmarkBarToggleButton();

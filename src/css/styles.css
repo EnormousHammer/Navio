@@ -5,6 +5,7 @@
    ============================================ */
 
 @import url('parts/shell-extras.css');
+/* parts/polish.css is loaded from index.html AFTER this file so its same-specificity rules win */
 
 /* ── Shared constants ── */
 :root {

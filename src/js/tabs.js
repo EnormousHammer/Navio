@@ -19,7 +19,7 @@ class TabManagerClass {
     // ── Tab Groups ────────────────────────────────────────────────────────
     this.groups = {};        // { [groupId]: { id, name, color } }
     this._groupCounter = 0;
-    this._GROUP_COLORS = ['#06b6d4','#8b5cf6','#22c55e','#ef4444','#f97316','#eab308','#ec4899'];
+    this._GROUP_COLORS = ['#60a5fa','#a78bfa','#34d399','#f87171','#fb923c','#fbbf24','#f472b6','#5eead4','#94a3b8'];
 
     /** Recent closed tabs for Ctrl+Shift+T (Chrome-style). */
     this._recentlyClosed = [];
@@ -1875,7 +1875,7 @@ class TabManagerClass {
     const currentGroupId = tab.groupId || null;
 
     const colorDots = this._GROUP_COLORS.map((c, i) =>
-      `<button class="tcm-color-dot${i === 0 ? ' selected' : ''}" data-color="${c}" style="background:${c}" title="${c}"></button>`
+      `<button class="tcm-color-dot${i === 0 ? ' selected' : ''}" data-color="${c}" style="background:${c};color:${c}" title="${c}"></button>`
     ).join('');
 
     const groupItems = existingGroups.length ? `

@@ -1,0 +1,686 @@
+/* ============================================
+   NAVIO — Comet/Atlas-inspired polish layer
+   Applied AFTER base styles to refine surfaces
+   without rewriting existing components.
+   Principles: thin borders · content-first ·
+   quiet accent · soft motion.
+   ============================================ */
+
+:root {
+  /* Spacing scale (4-pt) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* Unified motion — comet-like exponential ease */
+  --ease-pop: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-soft: cubic-bezier(0.32, 0.72, 0.24, 1);
+  --dur-fast: 140ms;
+  --dur-mid: 220ms;
+  --dur-slow: 360ms;
+
+  /* Refined group palette — softer, less cartoony */
+  --grp-blue: #60a5fa;
+  --grp-purple: #a78bfa;
+  --grp-green: #34d399;
+  --grp-rose: #f87171;
+  --grp-orange: #fb923c;
+  --grp-amber: #fbbf24;
+  --grp-pink: #f472b6;
+  --grp-teal: #5eead4;
+  --grp-slate: #94a3b8;
+}
+
+[data-theme="dark"] {
+  --p-surface-1: rgba(22, 27, 40, 0.92);
+  --p-surface-2: rgba(28, 33, 48, 0.94);
+  --p-surface-3: rgba(36, 42, 58, 0.92);
+  --p-border: rgba(255, 255, 255, 0.065);
+  --p-border-strong: rgba(255, 255, 255, 0.12);
+  --p-hover: rgba(255, 255, 255, 0.045);
+  --p-press: rgba(255, 255, 255, 0.075);
+  --p-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.28);
+}
+[data-theme="light"] {
+  --p-surface-1: rgba(255, 255, 255, 0.96);
+  --p-surface-2: rgba(250, 251, 254, 0.98);
+  --p-surface-3: rgba(244, 246, 251, 1);
+  --p-border: rgba(30, 41, 80, 0.09);
+  --p-border-strong: rgba(30, 41, 80, 0.16);
+  --p-hover: rgba(30, 41, 80, 0.05);
+  --p-press: rgba(30, 41, 80, 0.09);
+  --p-shadow: 0 8px 32px rgba(20, 30, 80, 0.12), 0 2px 8px rgba(20, 30, 80, 0.06);
+}
+
+/* ---------------------------------------------
+   1) TAB CONTEXT MENU — spacious, grouped, quiet
+   --------------------------------------------- */
+.tab-ctx-menu {
+  background: var(--p-surface-1);
+  border: 1px solid var(--p-border);
+  border-radius: 14px;
+  padding: 6px;
+  min-width: 248px;
+  box-shadow: var(--p-shadow), 0 0 0 1px var(--p-border);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  animation: tcm-pop var(--dur-mid) var(--ease-pop);
+}
+@keyframes tcm-pop {
+  from { transform: translateY(-4px) scale(0.98); opacity: 0; }
+  to   { transform: translateY(0) scale(1);       opacity: 1; }
+}
+
+.tcm-item {
+  padding: 8px 12px;
+  min-height: 32px;
+  gap: 10px;
+  font-size: 13px;
+  border-radius: 8px;
+  color: var(--text-primary);
+  line-height: 1;
+  transition: background var(--dur-fast) var(--ease-soft),
+              color var(--dur-fast) var(--ease-soft);
+}
+.tcm-item svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  stroke-width: 1.8;
+}
+.tcm-item:hover { background: var(--p-hover); color: var(--text-bright); }
+.tcm-item:hover svg { color: var(--text-primary); }
+.tcm-item.tcm-active {
+  background: var(--p-hover);
+  color: var(--text-primary);
+}
+.tcm-item.tcm-active::after {
+  content: '✓';
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+.tcm-item.tcm-danger { color: #fda4af; }
+.tcm-item.tcm-danger:hover { background: rgba(244, 63, 94, 0.10); color: #fecdd3; }
+[data-theme="light"] .tcm-item.tcm-danger { color: #e11d48; }
+[data-theme="light"] .tcm-item.tcm-danger:hover { background: rgba(244, 63, 94, 0.08); color: #be123c; }
+
+.tcm-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
+}
+
+.tcm-sep {
+  height: 1px;
+  background: var(--p-border);
+  margin: 6px 4px;
+}
+
+.tcm-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  padding: 10px 12px 6px;
+  opacity: 0.85;
+}
+
+.tcm-hint {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  padding: 0 12px 8px;
+  line-height: 1.45;
+  opacity: 0.8;
+}
+
+.tcm-ng-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 10px 10px;
+}
+
+.tcm-color-picker {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 2px 2px 6px;
+}
+.tcm-color-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  transition: transform var(--dur-fast) var(--ease-pop);
+  box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.18);
+}
+.tcm-color-dot:hover { transform: scale(1.15); }
+.tcm-color-dot.selected {
+  box-shadow:
+    inset 0 0 0 1.5px rgba(255,255,255,0.3),
+    0 0 0 2px var(--bg-surface),
+    0 0 0 4px currentColor;
+  transform: scale(1.1);
+}
+.tcm-color-dot.selected::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0.9;
+}
+
+.tcm-ng-input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--p-border);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-family: var(--font-sans);
+  outline: none;
+  transition: border-color var(--dur-fast) var(--ease-soft),
+              background var(--dur-fast) var(--ease-soft);
+}
+.tcm-ng-input:focus {
+  border-color: var(--p-border-strong);
+  background: var(--bg-surface);
+}
+
+.tcm-ng-btn {
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--p-border-strong);
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: background var(--dur-fast) var(--ease-soft),
+              border-color var(--dur-fast) var(--ease-soft);
+}
+.tcm-ng-btn:hover {
+  background: var(--p-hover);
+  border-color: var(--text-secondary);
+  opacity: 1;
+}
+.tcm-ng-btn:active { background: var(--p-press); }
+
+/* ---------------------------------------------
+   2) BOOKMARK BAR — Chrome-like, favicon-forward
+   --------------------------------------------- */
+.bookmark-bar {
+  padding: 4px 10px 6px;
+  gap: 2px;
+  min-height: 32px;
+  max-height: 36px;
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--p-border);
+  position: relative;
+}
+.bookmark-bar::before,
+.bookmark-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-soft);
+}
+.bookmark-bar::before {
+  left: 0;
+  background: linear-gradient(90deg, var(--bg-deep), transparent);
+}
+.bookmark-bar::after {
+  right: 0;
+  background: linear-gradient(270deg, var(--bg-deep), transparent);
+}
+.bookmark-bar.bm-scroll-start::after,
+.bookmark-bar.bm-scroll-end::before,
+.bookmark-bar.bm-scroll-mid::before,
+.bookmark-bar.bm-scroll-mid::after { opacity: 1; }
+
+.bookmark-bar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  max-width: 180px;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-soft),
+              color var(--dur-fast) var(--ease-soft);
+}
+.bookmark-bar-item .bm-favicon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  object-fit: contain;
+  background: transparent;
+}
+.bookmark-bar-item .bm-favicon-fallback {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0;
+}
+.bookmark-bar-item .bm-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bookmark-bar-item:hover {
+  background: var(--p-hover);
+  color: var(--text-primary);
+  border: none;
+}
+.bookmark-bar-item:active { background: var(--p-press); }
+
+/* Folder item (if bookmark has children) */
+.bookmark-bar-item.is-folder .bm-favicon,
+.bookmark-bar-item.is-folder .bm-favicon-fallback {
+  color: var(--accent);
+}
+
+.bookmark-bar::-webkit-scrollbar { height: 0; }
+
+/* ---------------------------------------------
+   3) NAV ARROW HISTORY DROPDOWN
+   --------------------------------------------- */
+.nav-history-menu {
+  position: fixed;
+  z-index: 99999;
+  min-width: 280px;
+  max-width: 420px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--p-surface-1);
+  border: 1px solid var(--p-border);
+  border-radius: 12px;
+  box-shadow: var(--p-shadow);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  animation: tcm-pop var(--dur-mid) var(--ease-pop);
+}
+.nav-history-menu .nhm-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  min-height: 32px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-family: var(--font-sans);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--dur-fast) var(--ease-soft);
+}
+.nav-history-menu .nhm-item:hover { background: var(--p-hover); }
+.nav-history-menu .nhm-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  object-fit: contain;
+}
+.nav-history-menu .nhm-icon-fallback {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  background: var(--p-border-strong);
+}
+.nav-history-menu .nhm-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.nav-history-menu .nhm-url {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-left: auto;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav-history-menu .nhm-current {
+  color: var(--text-bright);
+  font-weight: 600;
+  background: var(--p-hover);
+}
+
+/* ---------------------------------------------
+   4) SCREENSHOT DROPDOWN MENU (compact)
+   --------------------------------------------- */
+.screenshot-menu {
+  position: fixed;
+  z-index: 99999;
+  min-width: 240px;
+  padding: 6px;
+  background: var(--p-surface-1);
+  border: 1px solid var(--p-border);
+  border-radius: 12px;
+  box-shadow: var(--p-shadow);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  animation: tcm-pop var(--dur-mid) var(--ease-pop);
+}
+.screenshot-menu .sm-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  min-height: 36px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--dur-fast) var(--ease-soft);
+}
+.screenshot-menu .sm-item:hover { background: var(--p-hover); }
+.screenshot-menu .sm-item svg {
+  width: 16px;
+  height: 16px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+.screenshot-menu .sm-item .sm-sub {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.screenshot-menu .sm-sep {
+  height: 1px;
+  background: var(--p-border);
+  margin: 4px 6px;
+}
+
+/* ---------------------------------------------
+   4b) SCREENSHOT preview + source picker + toast
+   --------------------------------------------- */
+.screenshot-preview-overlay,
+.screenshot-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: rgba(5, 8, 16, 0.68);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  animation: sp-fade var(--dur-mid) var(--ease-soft);
+}
+@keyframes sp-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.screenshot-preview {
+  width: min(1100px, 92vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--p-surface-2);
+  border: 1px solid var(--p-border);
+  border-radius: 16px;
+  box-shadow: var(--p-shadow);
+  overflow: hidden;
+  animation: tcm-pop var(--dur-mid) var(--ease-pop);
+}
+.screenshot-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--p-border);
+}
+.screenshot-preview-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.screenshot-preview-actions { display: flex; gap: 6px; }
+.screenshot-preview-actions button {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--p-border);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-soft),
+              border-color var(--dur-fast) var(--ease-soft);
+}
+.screenshot-preview-actions button:hover {
+  background: var(--p-hover);
+  border-color: var(--p-border-strong);
+}
+.screenshot-preview-actions [data-act="close"] {
+  width: 30px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+.screenshot-preview-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 16px;
+  background: var(--bg-deep);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+.screenshot-preview-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+.screenshot-preview-foot {
+  padding: 10px 16px;
+  border-top: 1px solid var(--p-border);
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+}
+
+.screenshot-picker {
+  width: min(960px, 92vw);
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--p-surface-2);
+  border: 1px solid var(--p-border);
+  border-radius: 16px;
+  box-shadow: var(--p-shadow);
+  overflow: hidden;
+  animation: tcm-pop var(--dur-mid) var(--ease-pop);
+}
+.screenshot-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--p-border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.screenshot-picker-close {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 8px;
+  border-radius: 6px;
+  transition: background var(--dur-fast);
+}
+.screenshot-picker-close:hover { background: var(--p-hover); color: var(--text-primary); }
+.screenshot-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  padding: 18px;
+  overflow: auto;
+}
+.screenshot-picker-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--p-border);
+  border-radius: 12px;
+  cursor: pointer;
+  overflow: hidden;
+  text-align: left;
+  transition: border-color var(--dur-fast) var(--ease-soft),
+              transform var(--dur-fast) var(--ease-pop);
+}
+.screenshot-picker-card:hover {
+  border-color: var(--p-border-strong);
+  transform: translateY(-2px);
+}
+.screenshot-picker-thumb {
+  aspect-ratio: 16/9;
+  background-size: cover;
+  background-position: center;
+  background-color: var(--bg-deep);
+}
+.screenshot-picker-name {
+  padding: 8px 12px 12px;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screenshot-toast {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 99999;
+  padding: 10px 18px;
+  background: var(--p-surface-2);
+  border: 1px solid var(--p-border);
+  border-radius: 999px;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  box-shadow: var(--p-shadow);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  animation: sp-toast-in var(--dur-mid) var(--ease-pop);
+}
+.screenshot-toast.is-out { animation: sp-toast-out var(--dur-mid) var(--ease-soft) forwards; }
+@keyframes sp-toast-in {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes sp-toast-out {
+  to { opacity: 0; transform: translate(-50%, 12px); }
+}
+
+/* ---------------------------------------------
+   5) Quiet accent adjustments — URL bar, buttons
+   --------------------------------------------- */
+/* Thinner, less neon border on URL bar focus (comet-style) */
+.url-bar:focus-within {
+  border-color: var(--p-border-strong);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* Softer AI hint pill */
+.url-ai-hint {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  gap: 5px;
+}
+
+/* Nav-buttons: slightly smaller default, lighter hover */
+.nav-btn {
+  color: var(--text-secondary);
+}
+.nav-btn:hover {
+  background: var(--p-hover);
+  color: var(--text-bright);
+}
+[data-theme="dark"] .nav-btn:hover {
+  background: var(--p-hover);
+  color: var(--text-bright);
+  box-shadow: none;
+}
+
+/* Subtle nav-controls cluster */
+.nav-controls {
+  background: transparent;
+  border: 1px solid var(--p-border);
+  padding: 2px;
+  border-radius: 10px;
+}
+
+/* ---------------------------------------------
+   6) Motion fallbacks
+   --------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .tab-ctx-menu,
+  .nav-history-menu,
+  .screenshot-menu { animation: none; }
+}

@@ -611,6 +611,112 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
       const wv = TabManager.getActiveWebview();
       if (wv) wv.reload();
     });
+
+    const showHistoryMenu = async (btn, direction) => {
+      if (!window.navio || typeof window.navio.webviewGetNavHistory !== 'function') return;
+      const wv = TabManager.getActiveWebview();
+      if (!wv) return;
+      let wcId;
+      try { wcId = wv.getWebContentsId(); } catch (_) { return; }
+      if (wcId == null) return;
+      try {
+        const r = await window.navio.webviewGetNavHistory(wcId, direction, 15);
+        if (!r || !r.ok || !Array.isArray(r.entries) || r.entries.length === 0) return;
+        this._openNavHistoryMenu(btn, wcId, r.entries);
+      } catch (_) {
+        /* ignore */
+      }
+    };
+
+    const bindHistoryAffordance = (btn, direction) => {
+      if (!btn) return;
+      btn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        void showHistoryMenu(btn, direction);
+      });
+      let holdTimer = null;
+      btn.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        if (holdTimer) clearTimeout(holdTimer);
+        holdTimer = setTimeout(() => {
+          holdTimer = null;
+          void showHistoryMenu(btn, direction);
+        }, 320);
+      });
+      const clearHold = () => { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } };
+      btn.addEventListener('mouseup', clearHold);
+      btn.addEventListener('mouseleave', clearHold);
+    };
+    bindHistoryAffordance(btnBack, 'back');
+    bindHistoryAffordance(btnForward, 'forward');
+  }
+
+  _openNavHistoryMenu(anchor, webContentsId, entries) {
+    this._closeNavHistoryMenu();
+    const menu = document.createElement('div');
+    menu.className = 'nav-history-menu';
+    menu.setAttribute('role', 'menu');
+    entries.forEach((entry) => {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'nhm-item';
+      let icon;
+      try {
+        const u = new URL(entry.url);
+        icon = document.createElement('img');
+        icon.className = 'nhm-icon';
+        icon.alt = '';
+        icon.referrerPolicy = 'no-referrer';
+        icon.src = `https://www.google.com/s2/favicons?sz=32&domain=${encodeURIComponent(u.hostname)}`;
+        icon.addEventListener('error', () => {
+          const fb = document.createElement('span');
+          fb.className = 'nhm-icon-fallback';
+          icon.replaceWith(fb);
+        }, { once: true });
+      } catch (_) {
+        icon = document.createElement('span');
+        icon.className = 'nhm-icon-fallback';
+      }
+      const title = document.createElement('span');
+      title.className = 'nhm-title';
+      title.textContent = entry.title || entry.url;
+      row.appendChild(icon);
+      row.appendChild(title);
+      row.addEventListener('click', async () => {
+        this._closeNavHistoryMenu();
+        try {
+          await window.navio.webviewGotoNavIndex(webContentsId, entry.index);
+        } catch (_) { /* ignore */ }
+      });
+      menu.appendChild(row);
+    });
+
+    document.body.appendChild(menu);
+    const rect = anchor.getBoundingClientRect();
+    const mw = Math.min(360, menu.offsetWidth || 280);
+    let left = rect.left;
+    if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
+    menu.style.left = `${Math.max(8, left)}px`;
+    menu.style.top = `${rect.bottom + 4}px`;
+
+    const offClick = (ev) => {
+      if (!menu.contains(ev.target)) this._closeNavHistoryMenu();
+    };
+    const offKey = (ev) => { if (ev.key === 'Escape') this._closeNavHistoryMenu(); };
+    setTimeout(() => {
+      document.addEventListener('mousedown', offClick, { once: true, capture: true });
+      document.addEventListener('keydown', offKey, { once: true });
+    }, 0);
+    this._navHistoryMenu = { el: menu, offClick, offKey };
+  }
+
+  _closeNavHistoryMenu() {
+    const m = this._navHistoryMenu;
+    if (!m) return;
+    try { m.el.remove(); } catch (_) { /* ignore */ }
+    if (m.offClick) document.removeEventListener('mousedown', m.offClick, true);
+    if (m.offKey) document.removeEventListener('keydown', m.offKey);
+    this._navHistoryMenu = null;
   }
 
   resolveNavigationInput(raw) {

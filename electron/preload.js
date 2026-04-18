@@ -292,6 +292,12 @@ contextBridge.exposeInMainWorld('navio', {
   webviewPrint: (webContentsId) => ipcRenderer.invoke('webview-print', { webContentsId }),
   webviewSetZoom: (webContentsId, factor) => ipcRenderer.invoke('webview-set-zoom', { webContentsId, factor }),
   webviewGetZoom: (webContentsId) => ipcRenderer.invoke('webview-get-zoom', { webContentsId }),
+  webviewGetNavHistory: (webContentsId, direction, max) =>
+    ipcRenderer.invoke('webview-get-nav-history', { webContentsId, direction, max }),
+  webviewGotoNavIndex: (webContentsId, index) =>
+    ipcRenderer.invoke('webview-goto-nav-index', { webContentsId, index }),
+  captureScreen: (opts) => ipcRenderer.invoke('capture-screen', opts || {}),
+  captureScreenSources: (opts) => ipcRenderer.invoke('capture-screen-sources', opts || {}),
   onFoundInPageResult: (cb) => {
     const h = (_, d) => cb(d);
     ipcRenderer.on('found-in-page-result', h);
