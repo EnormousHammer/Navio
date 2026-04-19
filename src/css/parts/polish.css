@@ -883,6 +883,83 @@
   padding: 4px 10px;
   font-size: 11px;
 }
+
+/* Shortcuts editor: keep the same dark glass language as widgets even when the shell theme is light
+   (global [data-theme="light"] was painting this panel bright while the NTP stayed moody). */
+.new-tab-page .ntp-shortcuts-editor {
+  margin-top: 6px;
+  padding: 12px 12px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(10, 12, 18, 0.72);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(18px) saturate(1.02);
+  -webkit-backdrop-filter: blur(18px) saturate(1.02);
+  color-scheme: dark;
+}
+.new-tab-page .ntp-shortcuts-editor-head {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.new-tab-page .ntp-shortcuts-editor-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 248, 0.72);
+}
+.new-tab-page .ntp-shortcuts-editor-close {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(244, 246, 252, 0.92);
+}
+.new-tab-page .ntp-shortcuts-editor-close:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.new-tab-page .ntp-shortcut-input {
+  background: rgba(0, 0, 0, 0.38);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(244, 246, 252, 0.96);
+  caret-color: #7dd3fc;
+}
+.new-tab-page .ntp-shortcut-input::placeholder {
+  color: rgba(226, 232, 248, 0.42);
+}
+.new-tab-page .ntp-shortcut-input:focus {
+  outline: none;
+  border-color: rgba(126, 184, 255, 0.45);
+  box-shadow: 0 0 0 1px rgba(126, 184, 255, 0.12);
+}
+.new-tab-page .ntp-shortcut-input:-webkit-autofill,
+.new-tab-page .ntp-shortcut-input:-webkit-autofill:hover {
+  -webkit-text-fill-color: rgba(244, 246, 252, 0.96);
+  box-shadow: 0 0 0 1000px rgba(18, 22, 34, 0.95) inset;
+  transition: background-color 99999s ease-out;
+}
+.new-tab-page .ntp-shortcuts-editor .ntp-shortcuts-btn {
+  color: rgba(244, 246, 252, 0.92);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+}
+.new-tab-page .ntp-shortcuts-editor .ntp-shortcuts-btn:hover {
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.new-tab-page .ntp-shortcuts-editor .ntp-shortcuts-btn.ghost {
+  color: rgba(226, 232, 248, 0.82);
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+}
+.new-tab-page .ntp-shortcuts-editor .ntp-shortcuts-btn.ghost:hover {
+  color: rgba(244, 246, 252, 0.95);
+  background: rgba(255, 255, 255, 0.1);
+}
+.new-tab-page .ntp-shortcuts-editor .ntp-shortcuts-btn.primary {
+  color: #0a0c14;
+}
+
 .new-tab-page .ntp-shortcuts-center {
   border-image: none !important;
   border-left: 1px solid rgba(255, 255, 255, 0.06) !important;

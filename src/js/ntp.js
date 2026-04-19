@@ -846,9 +846,18 @@ const NTP = (() => {
     const addBtn = document.getElementById('ntp-shortcuts-add-row');
     const saveBtn = document.getElementById('ntp-shortcuts-save');
     const cancelBtn = document.getElementById('ntp-shortcuts-cancel');
+    const closeBtn = document.getElementById('ntp-shortcuts-editor-close');
     if (addBtn) addBtn.addEventListener('click', () => _appendShortcutRow());
     if (saveBtn) saveBtn.addEventListener('click', () => _persistShortcuts());
     if (cancelBtn) cancelBtn.addEventListener('click', () => _toggleShortcutEditor(false));
+    if (closeBtn) closeBtn.addEventListener('click', () => _toggleShortcutEditor(false));
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      const editor = document.getElementById('ntp-shortcuts-editor');
+      if (!editor || editor.hidden) return;
+      e.preventDefault();
+      _toggleShortcutEditor(false);
+    });
   }
 
   function _toggleShortcutEditor(show) {

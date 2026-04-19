@@ -3410,6 +3410,48 @@ button.ntp-ticker-sport--stream:focus-visible {
   box-shadow: var(--shadow-sm);
   box-sizing: border-box;
 }
+.ntp-shortcuts-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.ntp-shortcuts-editor-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+.ntp-shortcuts-editor-close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: var(--text-primary);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--duration) var(--ease), border-color var(--duration) var(--ease);
+}
+.ntp-shortcuts-editor-close:hover {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.18);
+}
+[data-theme="light"] .ntp-shortcuts-editor-close {
+  border-color: rgba(20,30,80,0.14);
+  background: rgba(0,0,0,0.04);
+}
+[data-theme="light"] .ntp-shortcuts-editor-close:hover {
+  background: rgba(0,0,0,0.07);
+}
 [data-theme="light"] .ntp-shortcuts-editor {
   background: rgba(255,255,255,0.85);
   border-color: rgba(20,30,80,0.1);
@@ -3433,6 +3475,10 @@ button.ntp-ticker-sport--stream:focus-visible {
   background: rgba(0,0,0,0.3);
   color: var(--text-primary);
   font-family: var(--font-sans);
+}
+.ntp-shortcut-input::placeholder {
+  color: var(--text-tertiary);
+  opacity: 1;
 }
 [data-theme="light"] .ntp-shortcut-input {
   background: rgba(255,255,255,0.9);
