@@ -895,6 +895,158 @@
       border-color: var(--cyan-500);
       box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.12);
     }
+    /* ── Drag-and-drop overlay (shown while a file is being dragged over the composer) ── */
+    .composer.is-drag-over {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.22);
+    }
+    .composer-drop {
+      position: absolute;
+      inset: 0;
+      border-radius: 16px;
+      background: rgba(34, 211, 238, 0.10);
+      border: 2px dashed var(--cyan);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 3;
+      color: var(--cyan);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+    .composer.is-drag-over .composer-drop { display: flex; }
+    .composer-drop svg { width: 18px; height: 18px; margin-right: 8px; }
+
+    /* ── Attachment chips row (above the textarea while composing) ── */
+    .att-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 10px 12px 2px;
+    }
+    .att-row[hidden] { display: none; }
+    .att-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      max-width: 260px;
+      padding: 6px 8px 6px 6px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-3);
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+    .att-chip.is-loading { border-style: dashed; opacity: 0.85; }
+    .att-chip.is-err {
+      border-color: rgba(248, 113, 113, 0.4);
+      background: rgba(248, 113, 113, 0.08);
+    }
+    .att-thumb {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      object-fit: cover;
+      flex-shrink: 0;
+      background: #111;
+    }
+    .att-ico {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: rgba(34, 211, 238, 0.14);
+      color: var(--cyan);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      flex-shrink: 0;
+    }
+    .att-name {
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .att-err-badge {
+      color: #fca5a5;
+      font-weight: 700;
+      cursor: help;
+    }
+    .att-remove {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--muted);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      line-height: 1;
+      padding: 0;
+    }
+    .att-remove:hover { background: rgba(248, 113, 113, 0.24); color: #fca5a5; }
+    .att-spinner {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 2px solid rgba(34, 211, 238, 0.25);
+      border-top-color: var(--cyan);
+      animation: att-spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes att-spin { to { transform: rotate(360deg); } }
+
+    /* ── File chips echoed on the user's own message bubble ── */
+    .msg.user .msg-files {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .msg.user .msg-file {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px 4px 4px;
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      font-size: 11.5px;
+      max-width: 200px;
+    }
+    .msg.user .msg-file img {
+      width: 22px; height: 22px;
+      border-radius: 4px;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+    .msg.user .msg-file .mf-ico {
+      width: 22px; height: 22px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.15);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .msg.user .msg-file .mf-name {
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     #input {
       display: block;
       width: 100%;
@@ -975,77 +1127,6 @@
     #send[data-mode="send"] .send-icon { display: inline-block; }
     #send[data-mode="send"] .stop-icon { display: none !important; }
     #send .stop-icon { width: 14px; height: 14px; }
-
-    /* ── Slash command picker ── */
-    .slash-picker {
-      position: absolute;
-      left: 12px;
-      right: 12px;
-      bottom: calc(100% + 6px);
-      background: #1f2028;
-      border: 1px solid var(--border-3);
-      border-radius: 12px;
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
-      padding: 6px;
-      max-height: 260px;
-      overflow-y: auto;
-      display: none;
-      z-index: 20;
-    }
-    .composer-wrap .composer { position: relative; }
-    .slash-picker.open { display: block; }
-    .slash-title {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--muted);
-      padding: 6px 10px 4px;
-      font-weight: 600;
-    }
-    .slash-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      width: 100%;
-      padding: 8px 10px;
-      border-radius: 8px;
-      border: none;
-      background: transparent;
-      color: var(--text);
-      font-size: 13px;
-      font-family: inherit;
-      cursor: pointer;
-      text-align: left;
-    }
-    .slash-item .s-icon {
-      width: 26px; height: 26px;
-      border-radius: 7px;
-      background: rgba(34, 211, 238, 0.12);
-      color: var(--cyan);
-      display: inline-flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
-    }
-    .slash-item .s-icon svg { width: 13px; height: 13px; }
-    .slash-item .s-label {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-    .slash-item .s-cmd { font-weight: 600; font-size: 12.5px; color: var(--text); }
-    .slash-item .s-desc { font-size: 11.5px; color: var(--muted); line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .slash-item .s-key {
-      flex-shrink: 0;
-      font-size: 10px;
-      color: var(--dim);
-      font-family: ui-monospace, monospace;
-    }
-    .slash-item:hover,
-    .slash-item.active {
-      background: rgba(34, 211, 238, 0.08);
-    }
-    .slash-item.active .s-cmd { color: var(--cyan); }
 
     /* ── Kebab menu (topbar) ── */
     .tb-kebab-wrap { position: relative; }
@@ -1336,28 +1417,31 @@
 
         <div class="composer-wrap">
           <div class="composer-toprow">
-            <button type="button" class="attach-btn" id="btn-attach" title="Attach files (opens the Navio sidebar assistant)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <button type="button" class="attach-btn" id="btn-attach" title="Attach images, PDFs, text, or code files">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
               Attach
             </button>
+            <input type="file" id="file-input" multiple hidden />
             <div class="composer-meta">
               <span class="model-dot" id="model-pill">—</span>
             </div>
           </div>
-          <div class="composer">
-            <div class="slash-picker" id="slash-picker" role="listbox" aria-label="Slash commands"></div>
+          <div class="composer" id="composer-box">
+            <div class="att-row" id="att-row" hidden></div>
             <textarea id="input" rows="1" placeholder="Ask anything — a question, a URL, or a task to run in your tabs…" autocomplete="off" maxlength="8000"></textarea>
             <button type="button" id="send" title="Send" aria-label="Send" data-mode="send">
               <svg class="send-icon"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22l-4-9-9-4 20-7z"/></svg>
               <svg class="stop-icon" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
             </button>
+            <div class="composer-drop" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Drop files to attach
+            </div>
           </div>
           <p class="composer-hint">
             <span><kbd>Enter</kbd> send</span>
             <span class="hint-sep">·</span>
             <span><kbd>Shift</kbd>+<kbd>Enter</kbd> new line</span>
-            <span class="hint-sep">·</span>
-            <span><kbd>/</kbd> commands</span>
             <span class="hint-sep">·</span>
             <span class="char-count" id="char-count">0 / 8000</span>
           </p>
@@ -1392,13 +1476,15 @@
   const drawerBackdrop = document.getElementById('drawer-backdrop');
   const btnSidebarToggle = document.getElementById('btn-sidebar-toggle');
   const btnAttach = document.getElementById('btn-attach');
+  const fileInput = document.getElementById('file-input');
+  const composerBox = document.getElementById('composer-box');
+  const attRow = document.getElementById('att-row');
   const sbSearch = document.getElementById('sb-search');
   const sbList = document.getElementById('sb-list');
   const sbEmpty = document.getElementById('sb-empty');
   const sbClearAll = document.getElementById('sb-clear-all');
   const btnKebab = document.getElementById('btn-kebab');
   const tbMenu = document.getElementById('tb-menu');
-  const slashPicker = document.getElementById('slash-picker');
   const charCountEl = document.getElementById('char-count');
 
   // ── SVG helpers (inline, minimal) ───────────────────────────────
@@ -1635,11 +1721,21 @@
     }
     return 'New Chat';
   }
-  function recordMessage(role, text) {
+  function recordMessage(role, text, files) {
     ensureActive();
     const s = activeSession();
     if (!s) return;
-    s.messages.push({ role, text: text || '', t: Date.now() });
+    const entry = { role, text: text || '', t: Date.now() };
+    if (Array.isArray(files) && files.length) {
+      // Strip heavy blobs; we only keep a lightweight display payload in history
+      // (filename, kind, and — for images — the thumbnail dataUrl if small enough).
+      entry.files = files.map(function (f) {
+        const out = { name: f.name || 'file', kind: f.kind || 'inline' };
+        if (f.thumb && String(f.thumb).length < 200000) out.thumb = f.thumb;
+        return out;
+      });
+    }
+    s.messages.push(entry);
     s.updatedAt = Date.now();
     s.title = titleFor(s);
     saveSessions();
@@ -1758,7 +1854,11 @@
     streamBuffer = '';
     if (s && s.messages.length) {
       s.messages.forEach(m => {
-        appendMessage(m.role === 'user' ? 'user' : 'assistant', m.text || '', { persist: false, error: !!m.error });
+        appendMessage(
+          m.role === 'user' ? 'user' : 'assistant',
+          m.text || '',
+          { persist: false, error: !!m.error, files: Array.isArray(m.files) ? m.files : undefined }
+        );
       });
     }
     updateLayoutMode();
@@ -1792,6 +1892,20 @@
     const body = bubble.querySelector('.body');
     if (isUser) {
       body.textContent = text || '';
+      if (Array.isArray(opts.files) && opts.files.length) {
+        const filesEl = document.createElement('div');
+        filesEl.className = 'msg-files';
+        filesEl.innerHTML = opts.files.map(function (f) {
+          const name = esc(f.name || 'file');
+          const kind = f.kind || 'inline';
+          const label = kindLabel(kind);
+          const visual = f.thumb
+            ? '<img src="' + String(f.thumb).replace(/"/g, '&quot;') + '" alt="">'
+            : '<span class="mf-ico">' + label + '</span>';
+          return '<span class="msg-file">' + visual + '<span class="mf-name" title="' + name + '">' + name + '</span></span>';
+        }).join('');
+        bubble.appendChild(filesEl);
+      }
     } else {
       body.innerHTML = renderMarkdown(text || '');
       wireCodeCopyButtons(body);
@@ -1912,8 +2026,8 @@
   function post(payload) { if (api && api.postToHost) api.postToHost(payload); }
   function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-  function addUserBubble(text) {
-    appendMessage('user', text || '');
+  function addUserBubble(text, files) {
+    appendMessage('user', text || '', files ? { files: files } : undefined);
   }
   function toast(t) {
     const el = document.createElement('div');
@@ -2097,7 +2211,7 @@
       sendBtn.classList.remove('is-stop');
       sendBtn.title = 'Send';
       sendBtn.setAttribute('aria-label', 'Send');
-      sendBtn.disabled = !inputEl.value.trim();
+      sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
     }
   }
   function stopGeneration() {
@@ -2115,16 +2229,26 @@
   // ── Send ────────────────────────────────────────────────────────
   function send(text) {
     const t = (text || '').trim();
-    if (!t || busy) return;
+    const hasAtt = attachmentsReady();
+    if ((!t && !hasAtt) || busy) return;
+    if (attachmentsLoading()) { toast('Wait until attachments finish loading.'); return; }
     setBusy(true);
     ensureActive();
-    addUserBubble(t);
-    recordMessage('user', t);
-    post({ action: 'send', text: t });
+    const filesDisplay = hasAtt ? attachmentsForDisplay() : null;
+    const filesSend    = hasAtt ? attachmentsForSend()    : null;
+    const bubbleText = t || 'Please help with the attached file(s).';
+    addUserBubble(bubbleText, filesDisplay);
+    recordMessage('user', bubbleText, filesDisplay);
+    post({ action: 'send', text: t, files: filesSend || [] });
+    if (hasAtt) clearAttachmentQueue();
   }
   function sendResearch(q) {
     const topic = (q || '').trim();
     if (!topic || busy) return;
+    if (attachmentsReady() || attachmentsLoading()) {
+      toast('Remove attachments before using >> research.');
+      return;
+    }
     setBusy(true);
     ensureActive();
     addUserBubble('>> ' + topic);
@@ -2134,7 +2258,7 @@
   function submitFromInput() {
     if (busy) { stopGeneration(); return; }
     const raw = inputEl.value;
-    if (!raw.trim()) return;
+    if (!raw.trim() && !attachmentsReady()) return;
     if (raw.trim().indexOf('>>') === 0) {
       sendResearch(raw.replace(/^>>\s*/, ''));
     } else {
@@ -2161,80 +2285,263 @@
     charCountEl.textContent = n + ' / ' + max;
     charCountEl.classList.toggle('warn', n >= max * 0.85 && n < max);
     charCountEl.classList.toggle('max',  n >= max);
-    if (!busy) sendBtn.disabled = !inputEl.value.trim();
+    if (!busy) sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
   }
 
-  // ── Slash command picker ────────────────────────────────────────
-  const SLASH_COMMANDS = [
-    { cmd: '/summarize',  desc: 'Summarize the page I was just reading.', icon: SVG.assistant,
-      fill: 'Summarize the page I was just reading.', send: false },
-    { cmd: '/research',   desc: 'Deep research a topic with citations.',  icon: SVG.regenerate,
-      fill: '>> ', send: false },
-    { cmd: '/compare',    desc: 'Compare the key points of my open tabs.', icon: SVG.copy,
-      fill: 'Compare the key points of my open tabs.', send: false },
-    { cmd: '/explain',    desc: 'Explain this simply, step by step.',      icon: SVG.assistant,
-      fill: 'Explain this simply, step by step: ', send: false },
-    { cmd: '/translate',  desc: 'Translate the following into English.',   icon: SVG.assistant,
-      fill: 'Translate the following into English:\n', send: false },
-    { cmd: '/draft',      desc: 'Draft a short reply I can send.',         icon: SVG.edit,
-      fill: 'Draft a short reply I can send about: ', send: false },
-    { cmd: '/code',       desc: 'Ask about or write code.',                icon: SVG.copy,
-      fill: 'Write a small code snippet that ', send: false },
-    { cmd: '/clear',      desc: 'Start a new chat.',                        icon: SVG.trash,
-      fill: '', send: false, action: 'new' }
-  ];
-  let slashIdx = 0;
-  let slashFiltered = [];
-  function openSlash(query) {
-    const q = (query || '').toLowerCase();
-    slashFiltered = SLASH_COMMANDS.filter(function (c) {
-      return c.cmd.toLowerCase().indexOf(q) === 0 || c.desc.toLowerCase().indexOf(q) >= 0;
-    });
-    if (!slashFiltered.length) { closeSlash(); return; }
-    slashIdx = Math.min(slashIdx, slashFiltered.length - 1);
-    let html = '<div class="slash-title">Slash commands</div>';
-    slashFiltered.forEach(function (c, i) {
-      html += '<button type="button" class="slash-item' + (i === slashIdx ? ' active' : '') + '" data-idx="' + i + '" role="option">' +
-                '<span class="s-icon">' + c.icon + '</span>' +
-                '<span class="s-label"><span class="s-cmd">' + c.cmd + '</span><span class="s-desc">' + c.desc + '</span></span>' +
-                '<span class="s-key">↵</span>' +
-              '</button>';
-    });
-    slashPicker.innerHTML = html;
-    slashPicker.classList.add('open');
-    Array.prototype.forEach.call(slashPicker.querySelectorAll('.slash-item'), function (el) {
-      el.addEventListener('mouseenter', function () {
-        slashIdx = parseInt(el.getAttribute('data-idx'), 10) || 0;
-        highlightSlash();
-      });
-      el.addEventListener('click', function () {
-        slashIdx = parseInt(el.getAttribute('data-idx'), 10) || 0;
-        applySlashSelection();
-      });
-    });
+  // ── File attachments ────────────────────────────────────────────
+  // Mirrors the sidebar (`AssistantManager` in src/js/assistant.js): we classify
+  // each file, read the bytes client-side, and forward the processed entry to
+  // the host via IPC. The host then plugs it into `_attachmentsSnapshot` so the
+  // existing API-payload builder ships images / PDFs / text to the model.
+  const ATT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+  const ATT_PDF_MAX_BYTES = 12 * 1024 * 1024;
+  const ATT_TEXT_MAX_CHARS = 180000;
+  const ATT_INLINE_MAX_BYTES = 4 * 1024 * 1024;
+  const ATT_HEURISTIC_TEXT_MAX_BYTES = 768 * 1024;
+  const ATT_MAX = 8;
+  const TEXT_EXT_RE = /\.(txt|md|mdx|json|json5|jsonc|csv|tsv|xml|html?|htm|xhtml|css|scss|sass|less|js|mjs|cjs|ts|tsx|jsx|c|h|cpp|hpp|cc|cxx|py|pyi|pyw|java|kt|kts|rs|go|yaml|yml|toml|ini|cfg|conf|config|log|sh|bash|zsh|fish|bat|cmd|ps1|psm1|env|svg|sql|vue|svelte|rb|erb|php|swift|dart|scala|sbt|gradle|clj|cljs|edn|ex|exs|erl|hrl|hs|lhs|ml|mli|fs|fsi|fsx|dockerfile|gitignore|gitattributes|editorconfig|properties|lock|pro|cmake|makefile|mk|dockerignore|graphql|gql)$/i;
+  const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|ico|tiff?|avif|heic|heif|jxl)$/i;
+
+  let attachmentQueue = []; // { id, name, status: 'loading'|'ready'|'error', kind, dataUrl, base64, text, mimeType, thumb, error }
+
+  function isImageFile(file) {
+    if (file.type && file.type.startsWith('image/')) return true;
+    return IMAGE_EXT_RE.test(file.name || '');
   }
-  function highlightSlash() {
-    Array.prototype.forEach.call(slashPicker.querySelectorAll('.slash-item'), function (el, i) {
-      el.classList.toggle('active', i === slashIdx);
-    });
+  function isPdfFile(file) {
+    return file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
   }
-  function closeSlash() {
-    slashPicker.classList.remove('open');
-    slashPicker.innerHTML = '';
-    slashFiltered = [];
-    slashIdx = 0;
+  function isTextLikeFile(file) {
+    if (file.type && file.type.startsWith('text/')) return true;
+    if (/^(application\/(json|xml|javascript|x-javascript|sql|graphql)|message\/rfc822)/i.test(file.type || '')) return true;
+    return TEXT_EXT_RE.test(file.name || '');
   }
-  function applySlashSelection() {
-    const cmd = slashFiltered[slashIdx];
-    if (!cmd) { closeSlash(); return; }
-    if (cmd.action === 'new') { closeSlash(); triggerNewChat(); return; }
-    inputEl.value = cmd.fill || '';
-    inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-    inputEl.focus();
+  function sniffImageMime(buf) {
+    if (!buf || buf.length < 12) return null;
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+    if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+    if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) return 'image/gif';
+    if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+        buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return 'image/webp';
+    if (buf[0] === 0x42 && buf[1] === 0x4d) return 'image/bmp';
+    return null;
+  }
+  async function peekImageMime(file) {
+    if (isPdfFile(file)) return null;
     try {
-      inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
-    } catch { /* ignore */ }
-    closeSlash();
+      const peek = await file.slice(0, 32).arrayBuffer();
+      return sniffImageMime(new Uint8Array(peek));
+    } catch { return null; }
+  }
+  function fixDataUrlMime(dataUrl, mime) {
+    if (!mime || !dataUrl) return dataUrl;
+    const m = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
+    if (!m) return dataUrl;
+    return 'data:' + mime + ';base64,' + m[1];
+  }
+  function looksPrintable(s) {
+    if (!s || typeof s !== 'string') return false;
+    const sample = s.slice(0, Math.min(12000, s.length));
+    if (!sample.length) return false;
+    let ctrl = 0;
+    for (let i = 0; i < sample.length; i++) {
+      const c = sample.charCodeAt(i);
+      if (c === 0) return false;
+      if (c < 9 || (c > 13 && c < 32)) ctrl++;
+    }
+    return ctrl / sample.length < 0.03;
+  }
+  function readAsDataURL(file) {
+    return new Promise(function (resolve, reject) {
+      const r = new FileReader();
+      r.onload = function () { resolve(String(r.result || '')); };
+      r.onerror = function () { reject(new Error('Could not read file.')); };
+      r.readAsDataURL(file);
+    });
+  }
+  function readAsText(file) {
+    return new Promise(function (resolve, reject) {
+      const r = new FileReader();
+      r.onload = function () { resolve(String(r.result || '')); };
+      r.onerror = function () { reject(new Error('Could not read file.')); };
+      r.readAsText(file, 'UTF-8');
+    });
+  }
+
+  function attachmentsReady() {
+    return attachmentQueue.some(function (e) { return e.status === 'ready'; });
+  }
+  function attachmentsLoading() {
+    return attachmentQueue.some(function (e) { return e.status === 'loading'; });
+  }
+
+  function addFilesFromList(fileList) {
+    const files = Array.prototype.slice.call(fileList || []).filter(function (f) { return f && f.size > 0; });
+    if (!files.length) return;
+    for (const file of files) {
+      if (attachmentQueue.length >= ATT_MAX) {
+        toast('Maximum ' + ATT_MAX + ' attachments per message.');
+        break;
+      }
+      const entry = {
+        id: 'att_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9),
+        name: file.name || 'file',
+        status: 'loading'
+      };
+      attachmentQueue.push(entry);
+      renderAttachmentChips();
+      processAttachment(file, entry);
+    }
+    if (!busy) sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
+  }
+
+  async function processAttachment(file, entry) {
+    try {
+      const sniffedImg = await peekImageMime(file);
+      if (isImageFile(file) || sniffedImg) {
+        if (file.size > ATT_IMAGE_MAX_BYTES) throw new Error('Image too large (max 8 MB).');
+        let dataUrl = await readAsDataURL(file);
+        if (sniffedImg) dataUrl = fixDataUrlMime(dataUrl, sniffedImg);
+        entry.status = 'ready';
+        entry.kind = 'image';
+        entry.dataUrl = dataUrl;
+        entry.thumb = dataUrl;
+      } else if (isPdfFile(file)) {
+        if (file.size > ATT_PDF_MAX_BYTES) throw new Error('PDF too large (max 12 MB).');
+        const dataUrl = await readAsDataURL(file);
+        const m = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
+        if (!m) throw new Error('Invalid PDF encoding.');
+        entry.status = 'ready';
+        entry.kind = 'pdf';
+        entry.base64 = m[1];
+      } else if (isTextLikeFile(file)) {
+        if (file.size > ATT_TEXT_MAX_CHARS * 2) throw new Error('Text file too large.');
+        const text = await readAsText(file);
+        entry.status = 'ready';
+        entry.kind = 'text';
+        entry.text = text.length > ATT_TEXT_MAX_CHARS
+          ? text.slice(0, ATT_TEXT_MAX_CHARS) + '\n\n… [truncated]'
+          : text;
+      } else if (file.size <= ATT_HEURISTIC_TEXT_MAX_BYTES) {
+        // Unknown extension, small: try UTF-8 decode first; fall back to inline bytes.
+        const buf = await file.arrayBuffer();
+        let decoded = '';
+        try { decoded = new TextDecoder('utf-8', { fatal: false }).decode(buf); } catch { decoded = ''; }
+        if (looksPrintable(decoded)) {
+          entry.status = 'ready';
+          entry.kind = 'text';
+          entry.text = decoded.length > ATT_TEXT_MAX_CHARS
+            ? decoded.slice(0, ATT_TEXT_MAX_CHARS) + '\n\n… [truncated]'
+            : decoded;
+        } else {
+          await encodeInlineOrBinary(file, entry);
+        }
+      } else {
+        await encodeInlineOrBinary(file, entry);
+      }
+    } catch (e) {
+      entry.status = 'error';
+      entry.error = (e && e.message) || String(e);
+    }
+    renderAttachmentChips();
+    if (!busy) sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
+  }
+
+  async function encodeInlineOrBinary(file, entry) {
+    if (file.size <= ATT_INLINE_MAX_BYTES) {
+      const dataUrl = await readAsDataURL(file);
+      const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (!m) throw new Error('Could not encode file.');
+      let mime = (m[1] || file.type || 'application/octet-stream').split(';')[0].trim();
+      if ((!mime || mime === 'application/octet-stream') && file.type) mime = String(file.type).split(';')[0].trim();
+      entry.status = 'ready';
+      entry.kind = 'inline';
+      entry.mimeType = mime || 'application/octet-stream';
+      entry.base64 = m[2];
+      entry.thumb = entry.mimeType.startsWith('image/') ? dataUrl : '';
+    } else {
+      entry.status = 'ready';
+      entry.kind = 'binary';
+      entry.thumb = '';
+    }
+  }
+
+  function kindLabel(kind) {
+    if (kind === 'image') return 'IMG';
+    if (kind === 'pdf') return 'PDF';
+    if (kind === 'text') return 'TXT';
+    if (kind === 'inline') return 'FILE';
+    if (kind === 'binary') return 'BIN';
+    return 'FILE';
+  }
+
+  function renderAttachmentChips() {
+    if (!attRow) return;
+    if (!attachmentQueue.length) {
+      attRow.hidden = true;
+      attRow.innerHTML = '';
+      return;
+    }
+    attRow.hidden = false;
+    attRow.innerHTML = attachmentQueue.map(function (e) {
+      const safe = esc(e.name);
+      if (e.status === 'loading') {
+        return '<div class="att-chip is-loading" data-id="' + e.id + '">' +
+                 '<span class="att-spinner" aria-hidden="true"></span>' +
+                 '<span class="att-name">' + safe + '</span>' +
+                 '<button type="button" class="att-remove" data-id="' + e.id + '" aria-label="Cancel attachment">×</button>' +
+               '</div>';
+      }
+      if (e.status === 'error') {
+        return '<div class="att-chip is-err" data-id="' + e.id + '">' +
+                 '<span class="att-ico">!</span>' +
+                 '<span class="att-name" title="' + esc(e.error || '') + '">' + safe + '</span>' +
+                 '<span class="att-err-badge" title="' + esc(e.error || '') + '">!</span>' +
+                 '<button type="button" class="att-remove" data-id="' + e.id + '" aria-label="Remove attachment">×</button>' +
+               '</div>';
+      }
+      const thumb = e.thumb
+        ? '<img class="att-thumb" src="' + e.thumb.replace(/"/g, '&quot;') + '" alt="">'
+        : '<span class="att-ico">' + kindLabel(e.kind) + '</span>';
+      return '<div class="att-chip" data-id="' + e.id + '">' +
+               thumb +
+               '<span class="att-name">' + safe + '</span>' +
+               '<button type="button" class="att-remove" data-id="' + e.id + '" aria-label="Remove attachment">×</button>' +
+             '</div>';
+    }).join('');
+    attRow.querySelectorAll('.att-remove').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const id = btn.getAttribute('data-id');
+        attachmentQueue = attachmentQueue.filter(function (x) { return x.id !== id; });
+        renderAttachmentChips();
+        if (!busy) sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
+      });
+    });
+  }
+
+  /** Strip large binary fields before we hand entries back to the display layer. */
+  function attachmentsForDisplay() {
+    return attachmentQueue.filter(function (e) { return e.status === 'ready'; }).map(function (e) {
+      return { name: e.name, kind: e.kind, thumb: e.thumb || '' };
+    });
+  }
+
+  /** Wire payload — full file contents, ready for IPC. */
+  function attachmentsForSend() {
+    return attachmentQueue.filter(function (e) { return e.status === 'ready'; }).map(function (e) {
+      const out = { name: e.name, kind: e.kind };
+      if (e.dataUrl) out.dataUrl = e.dataUrl;
+      if (e.base64)  out.base64  = e.base64;
+      if (e.text != null) out.text = e.text;
+      if (e.mimeType) out.mimeType = e.mimeType;
+      if (e.thumb) out.thumb = e.thumb;
+      return out;
+    });
+  }
+
+  function clearAttachmentQueue() {
+    attachmentQueue = [];
+    renderAttachmentChips();
   }
 
   function triggerNewChat() {
@@ -2250,6 +2557,7 @@
     renderSidebar();
     inputEl.value = '';
     inputEl.style.height = 'auto';
+    clearAttachmentQueue();
     updateCharCount();
     inputEl.focus();
   }
@@ -2282,28 +2590,12 @@
 
   function wire() {
     inputEl.addEventListener('keydown', function (e) {
-      if (slashPicker.classList.contains('open')) {
-        if (e.key === 'ArrowDown') { e.preventDefault(); slashIdx = (slashIdx + 1) % slashFiltered.length; highlightSlash(); return; }
-        if (e.key === 'ArrowUp')   { e.preventDefault(); slashIdx = (slashIdx - 1 + slashFiltered.length) % slashFiltered.length; highlightSlash(); return; }
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); applySlashSelection(); return; }
-        if (e.key === 'Escape' || e.key === 'Tab') { closeSlash(); if (e.key === 'Escape') e.preventDefault(); return; }
-      }
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitFromInput(); }
     });
     inputEl.addEventListener('input', function () {
       inputEl.style.height = 'auto';
       inputEl.style.height = Math.min(inputEl.scrollHeight, 240) + 'px';
       updateCharCount();
-      const v = inputEl.value;
-      // Open slash picker when input starts with '/' on first line
-      if (/^\/[\w-]*$/.test(v.trim()) && v.indexOf('\n') === -1) {
-        openSlash(v.trim().slice(1));
-      } else {
-        closeSlash();
-      }
-    });
-    inputEl.addEventListener('blur', function () {
-      setTimeout(closeSlash, 120);
     });
     sendBtn.addEventListener('click', submitFromInput);
 
@@ -2320,7 +2612,6 @@
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
         closeDrawer();
-        closeSlash();
         if (tbMenu.classList.contains('open')) toggleKebab(false);
       }
     });
@@ -2337,10 +2628,74 @@
       });
     });
 
-    // Attach — redirect to the real sidebar assistant that supports files
+    // Attach — open the native file picker.
     btnAttach.addEventListener('click', function () {
-      post({ action: 'openSidebarAssistant' });
-      toast('Open the Navio sidebar (Ctrl+Shift+A) to attach files.');
+      if (busy) { toast('Finish or stop the current response first.'); return; }
+      fileInput.click();
+    });
+    fileInput.addEventListener('change', function () {
+      if (fileInput.files && fileInput.files.length) {
+        addFilesFromList(fileInput.files);
+        fileInput.value = '';
+      }
+    });
+
+    // Drag-and-drop onto the composer.
+    let dragDepth = 0;
+    ['dragenter', 'dragover'].forEach(function (ev) {
+      composerBox.addEventListener(ev, function (e) {
+        if (!e.dataTransfer || !Array.prototype.includes.call(e.dataTransfer.types || [], 'Files')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (ev === 'dragenter') dragDepth++;
+        composerBox.classList.add('is-drag-over');
+      });
+    });
+    composerBox.addEventListener('dragleave', function (e) {
+      e.preventDefault();
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) composerBox.classList.remove('is-drag-over');
+    });
+    composerBox.addEventListener('drop', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dragDepth = 0;
+      composerBox.classList.remove('is-drag-over');
+      if (busy) { toast('Finish or stop the current response first.'); return; }
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length) addFilesFromList(files);
+    });
+    // Also accept drops anywhere on the page so users don't have to aim precisely.
+    document.addEventListener('dragover', function (e) {
+      if (e.dataTransfer && Array.prototype.includes.call(e.dataTransfer.types || [], 'Files')) {
+        e.preventDefault();
+      }
+    });
+    document.addEventListener('drop', function (e) {
+      if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+      if (composerBox.contains(e.target)) return; // already handled above
+      e.preventDefault();
+      if (busy) { toast('Finish or stop the current response first.'); return; }
+      addFilesFromList(e.dataTransfer.files);
+    });
+
+    // Paste images / files from clipboard.
+    inputEl.addEventListener('paste', function (e) {
+      const items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      const files = [];
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.kind === 'file') {
+          const f = it.getAsFile();
+          if (f && f.size > 0) files.push(f);
+        }
+      }
+      if (files.length) {
+        if (busy) { toast('Finish or stop the current response first.'); return; }
+        e.preventDefault();
+        addFilesFromList(files);
+      }
     });
 
     // Kebab menu (topbar)

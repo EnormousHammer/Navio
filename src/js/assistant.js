@@ -2052,9 +2052,58 @@ class AssistantManagerClass {
       if (topic) void this._guestDeepResearch(guestWv, topic);
       return;
     }
-    if (payload.action === 'send' && payload.text) {
-      void this.processGuestChatMessage(guestWv, String(payload.text).trim());
+    if (payload.action === 'send' && (payload.text || (Array.isArray(payload.files) && payload.files.length))) {
+      const text = payload.text != null ? String(payload.text).trim() : '';
+      const files = Array.isArray(payload.files) ? payload.files : null;
+      void this.processGuestChatMessage(guestWv, text, files);
     }
+  }
+
+  /**
+   * Build a ready `_attachmentsSnapshot` entry from a payload sent by the
+   * full-page chat tab. The tab has already read the file client-side into
+   * the same wire shape the sidebar uses (`kind` + `base64`/`dataUrl`/`text`),
+   * so we just re-stamp it as "ready" and let the existing API-payload
+   * builder (`_buildAttachmentPayloadForApi`) forward it to the model.
+   */
+  _normalizeGuestAttachment(f) {
+    if (!f || typeof f !== 'object') return null;
+    const kind = String(f.kind || '').toLowerCase();
+    if (!['image', 'pdf', 'text', 'inline', 'binary'].includes(kind)) return null;
+    const name = typeof f.name === 'string' && f.name.trim() ? f.name.trim() : 'file';
+    const entry = {
+      id: `att_guest_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+      name,
+      status: 'ready',
+      kind,
+      thumb: typeof f.thumb === 'string' ? f.thumb : ''
+    };
+    if (kind === 'image' && typeof f.dataUrl === 'string' && f.dataUrl.startsWith('data:')) {
+      entry.dataUrl = f.dataUrl;
+      if (!entry.thumb) entry.thumb = f.dataUrl;
+      return entry;
+    }
+    if (kind === 'pdf' && typeof f.base64 === 'string' && f.base64) {
+      entry.base64 = f.base64;
+      return entry;
+    }
+    if (kind === 'text' && typeof f.text === 'string') {
+      entry.text =
+        f.text.length > NAVIO_ASSISTANT_TEXT_MAX_CHARS
+          ? `${f.text.slice(0, NAVIO_ASSISTANT_TEXT_MAX_CHARS)}\n\n… [truncated]`
+          : f.text;
+      return entry;
+    }
+    if (kind === 'inline' && typeof f.base64 === 'string' && f.base64) {
+      entry.base64 = f.base64;
+      entry.mimeType = typeof f.mimeType === 'string' && f.mimeType ? f.mimeType : 'application/octet-stream';
+      if (!entry.thumb && entry.mimeType.startsWith('image/')) {
+        entry.thumb = `data:${entry.mimeType};base64,${entry.base64}`;
+      }
+      return entry;
+    }
+    if (kind === 'binary') return entry;
+    return null;
   }
 
   async _guestDeepResearch(guestWv, topic) {
@@ -2070,9 +2119,11 @@ class AssistantManagerClass {
     }
   }
 
-  async processGuestChatMessage(guestWv, text) {
+  async processGuestChatMessage(guestWv, text, files) {
     await this._ensureAssistantHistoryLoaded();
-    if (!text || !guestWv) return;
+    if (!guestWv) return;
+    const hasFiles = Array.isArray(files) && files.length > 0;
+    if (!text && !hasFiles) return;
     if (this._tabIsBusy('__guest__')) {
       this._guestDeliver(guestWv, { type: 'toast', text: 'Still working on the last message…' });
       return;
@@ -2086,15 +2137,29 @@ class AssistantManagerClass {
       this._guestDeliver(guestWv, { type: 'assistant', error: true, content: 'Add an API key in **Settings → AI** first.' });
       return;
     }
+    // Stage attachments for this turn so `_buildAttachmentPayloadForApi` / `_maybePushAttachmentSystemHint`
+    // forward them to the model exactly like they do for the sidebar.
+    let installedSnapshot = null;
+    if (hasFiles) {
+      const snapshot = files
+        .map((f) => this._normalizeGuestAttachment(f))
+        .filter(Boolean);
+      if (snapshot.length) {
+        installedSnapshot = snapshot;
+        this._attachmentsSnapshot = snapshot;
+      }
+    }
+    // Blank text + only attachments: mirror the sidebar's default prompt.
+    const effectiveText = text || (installedSnapshot ? 'Please help with the attached file(s).' : '');
     const prevTurn = this._turnConversationKey;
     this._turnConversationKey = '__guest__';
     this._setTabBusy('__guest__', true);
     this._updateAssistantBusyChrome();
     try {
       if (config.aiUseToolCalling !== false) {
-        await this._processWithTools(text, config, this._historyLabelForAttachments(text), guestWv);
+        await this._processWithTools(effectiveText, config, this._historyLabelForAttachments(effectiveText), guestWv);
       } else {
-        await this._processGuestLegacyAi(guestWv, text, config);
+        await this._processGuestLegacyAi(guestWv, effectiveText, config);
       }
     } catch (err) {
       this._guestDeliver(guestWv, { type: 'assistant', error: true, content: err.message || String(err) });
@@ -2102,6 +2167,9 @@ class AssistantManagerClass {
       this._turnConversationKey = prevTurn;
       this._setTabBusy('__guest__', false);
       this._updateAssistantBusyChrome();
+      if (installedSnapshot && this._attachmentsSnapshot === installedSnapshot) {
+        this._attachmentsSnapshot = null;
+      }
     }
   }
 

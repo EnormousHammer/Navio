@@ -3826,12 +3826,14 @@ button.ntp-ticker-sport--stream:focus-visible {
    ============================================ */
 
 /* Fixed dock: the panel used to live in the #app flex row with main + other nodes; in Chromium
-   that often collapsed or pushed the panel off-screen. Dock to the viewport instead. */
+   that often collapsed or pushed the panel off-screen. Dock to the viewport instead.
+   Top is measured below the full top chrome (tab strip + URL bar) so the panel header
+   sits neatly inside the main content area instead of overlapping the navbar. */
 .assistant-panel {
   --ap-pad-x: 14px;
   --ap-control-radius: 9px;
   position: fixed;
-  top: calc(var(--titlebar-height) + var(--tabstrip-height));
+  top: calc(var(--titlebar-height) + var(--tabstrip-height) + var(--navbar-height));
   right: 0;
   bottom: 0;
   width: 0;
@@ -3840,6 +3842,7 @@ button.ntp-ticker-sport--stream:focus-visible {
   overflow: hidden;
   background: var(--bg-primary);
   border-left: 1px solid var(--border);
+  border-top: 1px solid var(--border);
   box-shadow: -12px 0 40px rgba(0, 0, 0, 0.18);
   display: flex;
   flex-direction: column;
@@ -3852,6 +3855,27 @@ button.ntp-ticker-sport--stream:focus-visible {
 }
 
 body.navio-vertical-tabs .assistant-panel {
+  top: calc(var(--tabstrip-height) + var(--navbar-height));
+}
+
+/* Fills the top-right rectangle above the now-inset assistant panel with the
+   navbar background so the URL bar appears to extend cleanly across the full
+   width while the panel sits neatly in the main content area below it.
+   Only shown when the assistant is open. */
+body.navio-assistant-open::after {
+  content: '';
+  position: fixed;
+  top: calc(var(--titlebar-height) + var(--tabstrip-height));
+  right: 0;
+  width: var(--assistant-width);
+  height: var(--navbar-height);
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  pointer-events: none;
+  z-index: 4999; /* just below .assistant-panel (5000) */
+}
+body.navio-vertical-tabs.navio-assistant-open::after {
   top: var(--tabstrip-height);
 }
 
