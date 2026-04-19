@@ -80,18 +80,24 @@
         </div>
         <div id="extension-toolbar" class="extension-toolbar" aria-label="Extension shortcuts"></div>
         <div class="url-bar-container" style="position:relative">
-          <div class="url-bar">
-            <svg class="url-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <button type="button" id="url-popup-blocked" class="url-popup-blocked" hidden title="Pop-up was blocked — click to allow for this site">Pop-up blocked</button>
-            <input type="text" id="url-input" placeholder="Search, URL, or ask a question…" spellcheck="false" autocomplete="off">
-            <button class="url-ai-hint" id="url-ai-hint" title="Ask AI (detected a question — Shift+Enter to search web instead)">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-              Ask AI
+          <div class="url-bar-row">
+            <div class="url-bar">
+              <svg class="url-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <button type="button" id="url-popup-blocked" class="url-popup-blocked" hidden title="Pop-up was blocked — click to allow for this site">Pop-up blocked</button>
+              <input type="text" id="url-input" placeholder="Search, URL, or ask a question…" spellcheck="false" autocomplete="off">
+              <button class="url-ai-hint" id="url-ai-hint" title="Ask AI (detected a question — Shift+Enter to search web instead)">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                Ask AI
+              </button>
+              <button type="button" class="url-bookmark-star" id="btn-bookmark-page" title="Bookmark this page">☆</button>
+              <button type="button" class="url-bookmark-star" id="btn-bookmarks-manager" title="Manage bookmarks (Ctrl+Shift+B)">☰</button>
+              <span class="url-zoom-label" id="url-zoom-label" title="Zoom (Ctrl+Plus / Ctrl+Minus)"></span>
+              <div class="url-ssl" id="url-ssl" title="Connection info"></div>
+            </div>
+            <button type="button" id="btn-chat-with-ai" class="url-chat-ai-btn" title="Open full-page AI chat (uses what you typed, or a blank chat)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>
+              Chat with AI
             </button>
-            <button type="button" class="url-bookmark-star" id="btn-bookmark-page" title="Bookmark this page">☆</button>
-            <button type="button" class="url-bookmark-star" id="btn-bookmarks-manager" title="Manage bookmarks (Ctrl+Shift+B)">☰</button>
-            <span class="url-zoom-label" id="url-zoom-label" title="Zoom (Ctrl+Plus / Ctrl+Minus)"></span>
-            <div class="url-ssl" id="url-ssl" title="Connection info"></div>
           </div>
           <div id="omnibox-ai-preview" class="omnibox-ai-preview" style="display:none"></div>
           <div id="url-suggestions" class="url-suggestions" hidden role="listbox" aria-label="History and bookmarks"></div>

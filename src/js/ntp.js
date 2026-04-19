@@ -610,49 +610,9 @@ const NTP = (() => {
    * Task mode keeps the sidebar assistant so browser tools still work.
    */
   async function _openAssistantInNewTab(val, opts = {}) {
-    const taskMode = !!opts.taskMode;
     if (!val || typeof TabManager === 'undefined') return;
-    const raw = val.trim();
-
-    let chatBase = '';
-    try {
-      if (typeof window.navio.getInternalChatPageUrl === 'function') {
-        chatBase = await window.navio.getInternalChatPageUrl();
-      }
-    } catch {
-      chatBase = '';
-    }
-    if (chatBase) {
-      const sep = chatBase.includes('?') ? '&' : '?';
-      TabManager.createTab(`${chatBase}${sep}initial=${encodeURIComponent(raw)}`);
-      return;
-    }
-
-    TabManager.createTab('about:blank');
-    if (raw.startsWith('>>')) {
-      const q = raw.slice(2).trim();
-      if (q && typeof AssistantManager !== 'undefined') {
-        AssistantManager.open();
-        AssistantManager.addMessage('user', `>> ${q}`);
-        AssistantManager.runDeepResearch(q);
-      }
-      return;
-    }
-    if (/^ai:\s*/i.test(raw)) {
-      const qq = raw.replace(/^ai:\s*/i, '').trim();
-      if (typeof App !== 'undefined' && App._sendToAI) App._sendToAI(qq);
-      return;
-    }
-    if (typeof App !== 'undefined' && App._sendToAI) App._sendToAI(raw);
-    else if (typeof AssistantManager !== 'undefined') {
-      AssistantManager.open();
-      setTimeout(() => {
-        if (AssistantManager.inputEl) {
-          AssistantManager.inputEl.value = raw;
-          AssistantManager.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-          AssistantManager.sendMessage();
-        }
-      }, 150);
+    if (typeof App !== 'undefined' && typeof App.openAssistantInTab === 'function') {
+      await App.openAssistantInTab(val, opts);
     }
   }
 

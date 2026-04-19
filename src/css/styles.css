@@ -1271,7 +1271,63 @@ body.navio-incognito-active .url-bar-container {
   pointer-events: none;
 }
 
-.url-bar-container { flex: 1; }
+.url-bar-container { flex: 1; min-width: 0; }
+
+.url-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.url-bar-row .url-bar {
+  flex: 1;
+  min-width: 0;
+}
+
+.url-chat-ai-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex-shrink: 0;
+  height: 38px;
+  padding: 0 14px 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 1px 2px rgba(0, 0, 0, 0.12);
+  transition: border-color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease),
+    background var(--duration) var(--ease),
+    transform 0.15s var(--ease);
+}
+
+.url-chat-ai-btn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-accent);
+  color: var(--text-bright);
+}
+
+.url-chat-ai-btn:active {
+  transform: scale(0.98);
+}
+
+.url-chat-ai-btn svg {
+  flex-shrink: 0;
+  opacity: 0.72;
+  color: var(--text-secondary);
+}
 
 .url-bar {
   display: flex;

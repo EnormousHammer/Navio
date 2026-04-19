@@ -194,15 +194,68 @@ class NavioApp {
     return false;
   }
 
-  _sendToAI(query) {
+  _openAssistantSidebar(query) {
+    const q = (query || '').trim();
     AssistantManager.open();
     setTimeout(() => {
       if (AssistantManager.inputEl) {
-        AssistantManager.inputEl.value = query;
+        AssistantManager.inputEl.value = q;
         AssistantManager.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
         AssistantManager.sendMessage();
       }
     }, 150);
+  }
+
+  /**
+   * Full-page in-tab AI (same surface as New Tab → Ask AI). Falls back to the sidebar assistant
+   * when the internal chat page is unavailable.
+   * @param {string} val
+   * @param {{ allowEmpty?: boolean }} [opts]
+   */
+  async openAssistantInTab(val, opts = {}) {
+    const allowEmpty = !!opts.allowEmpty;
+    const raw = (val || '').trim();
+    if (!raw && !allowEmpty) return;
+    if (typeof TabManager === 'undefined') return;
+
+    let chatBase = '';
+    try {
+      if (typeof window.navio.getInternalChatPageUrl === 'function') {
+        chatBase = await window.navio.getInternalChatPageUrl();
+      }
+    } catch {
+      chatBase = '';
+    }
+    if (chatBase) {
+      const sep = chatBase.includes('?') ? '&' : '?';
+      if (raw) {
+        TabManager.createTab(`${chatBase}${sep}initial=${encodeURIComponent(raw)}`);
+      } else {
+        TabManager.createTab(chatBase);
+      }
+      return;
+    }
+
+    TabManager.createTab('about:blank');
+    if (raw.startsWith('>>')) {
+      const q = raw.slice(2).trim();
+      if (q && typeof AssistantManager !== 'undefined') {
+        AssistantManager.open();
+        AssistantManager.addMessage('user', `>> ${q}`);
+        AssistantManager.runDeepResearch(q);
+      }
+      return;
+    }
+    if (/^ai:\s*/i.test(raw)) {
+      const qq = raw.replace(/^ai:\s*/i, '').trim();
+      this._openAssistantSidebar(qq);
+      return;
+    }
+    this._openAssistantSidebar(raw);
+  }
+
+  _sendToAI(query) {
+    void this.openAssistantInTab((query || '').trim(), { allowEmpty: false });
   }
 
   _normalizeOmniboxUrl(url) {
@@ -486,7 +539,24 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
     });
     aiHint?.addEventListener('click', () => {
       const raw = urlInput.value.trim();
-      if (raw) { this._sendToAI(raw); urlInput.value = ''; urlInput.blur(); }
+      if (raw) {
+        void this.openAssistantInTab(raw, { allowEmpty: false });
+        urlInput.value = '';
+        urlInput.blur();
+        aiHint.classList.remove('visible');
+      }
+    });
+
+    const chatAiBtn = document.getElementById('btn-chat-with-ai');
+    chatAiBtn?.addEventListener('click', () => {
+      const raw = urlInput.value.trim();
+      void this.openAssistantInTab(raw, { allowEmpty: true });
+      if (raw) {
+        urlInput.value = '';
+        if (aiHint) aiHint.classList.remove('visible');
+      }
+      urlInput.blur();
+      this._hideUrlSuggestions();
     });
 
     const popupBlockedBtn = document.getElementById('url-popup-blocked');
@@ -544,30 +614,22 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
         e.preventDefault();
         const raw = urlInput.value.trim();
         if (raw.startsWith('>>')) {
-          const q = raw.slice(2).trim();
           urlInput.value = '';
           urlInput.blur();
-          if (q && typeof AssistantManager !== 'undefined') {
-            AssistantManager.open();
-            AssistantManager.addMessage('user', `>> ${q}`);
-            AssistantManager.runDeepResearch(q);
-          }
+          void this.openAssistantInTab(raw, { allowEmpty: false });
           return;
         }
         // Explicit AI prefix (avoid leading ? — same key as typing questions)
         if (/^ai:\s*/i.test(raw)) {
           const q = raw.replace(/^ai:\s*/i, '').trim();
-          AssistantManager.open();
-          if (q) {
-            AssistantManager.inputEl.value = q;
-            AssistantManager.sendMessage();
-          }
+          urlInput.value = '';
           urlInput.blur();
+          void this.openAssistantInTab(q, { allowEmpty: true });
           return;
         }
         // Auto-detect AI question (unless Shift held = force web search)
         if (!e.shiftKey && this._isAIQuery(raw)) {
-          this._sendToAI(raw);
+          void this.openAssistantInTab(raw, { allowEmpty: false });
           urlInput.value = '';
           urlInput.blur();
           return;
@@ -1099,16 +1161,12 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
     const raw = (input || '').trim();
     if (!raw) return;
     if (raw.startsWith('>>')) {
-      const q = raw.slice(2).trim();
-      if (q && typeof AssistantManager !== 'undefined') {
-        AssistantManager.open();
-        AssistantManager.addMessage('user', `>> ${q}`);
-        AssistantManager.runDeepResearch(q);
-      }
+      void this.openAssistantInTab(raw, { allowEmpty: false });
       return;
     }
     if (/^ai:\s*/i.test(raw)) {
-      this._sendToAI(raw.replace(/^ai:\s*/i, '').trim());
+      const q = raw.replace(/^ai:\s*/i, '').trim();
+      void this.openAssistantInTab(q, { allowEmpty: true });
       return;
     }
     this.navigateTo(raw);
