@@ -299,8 +299,45 @@
   }
 
   /**
-   * While Home (NTP) is visible the guest <webview> is hidden — mirror its zoom on the
-   * shell so Ctrl/Cmd +/− produces a visible change; clear when returning to a page.
+   * Home (NTP) has its OWN zoom factor, independent from the active web page's zoom.
+   * Rationale: the user's "Default page zoom" and per-page Ctrl +/− are for web
+   * content; Home is chrome UI and should stay readable regardless. Persisted in
+   * localStorage so it survives restart.
+   */
+  const NTP_ZOOM_KEY = 'navio.ntpZoom';
+  const NTP_ZOOM_MIN = 0.5;
+  const NTP_ZOOM_MAX = 2.5;
+  const NTP_ZOOM_STEP = 0.1;
+  const NTP_ZOOM_DEFAULT = 1.0;
+
+  function clampNtpZoom(v) {
+    return Math.min(NTP_ZOOM_MAX, Math.max(NTP_ZOOM_MIN, v));
+  }
+  function getNtpZoom() {
+    try {
+      const raw = localStorage.getItem(NTP_ZOOM_KEY);
+      const v = parseFloat(raw);
+      if (Number.isFinite(v) && v > 0) return clampNtpZoom(v);
+    } catch { /* storage unavailable — fall through to default */ }
+    return NTP_ZOOM_DEFAULT;
+  }
+  function setNtpZoom(f) {
+    const next = Number.isFinite(f) ? clampNtpZoom(f) : NTP_ZOOM_DEFAULT;
+    try {
+      if (next === NTP_ZOOM_DEFAULT) localStorage.removeItem(NTP_ZOOM_KEY);
+      else localStorage.setItem(NTP_ZOOM_KEY, String(next));
+    } catch { /* storage write may fail — zoom still applies for this session */ }
+    return next;
+  }
+  function isNtpActive() {
+    const ntp = document.getElementById('new-tab-page');
+    return !!(ntp && ntp.classList.contains('active'));
+  }
+
+  /**
+   * While Home (NTP) is visible, apply the independent NTP zoom on the shell element
+   * (the guest <webview> is hidden). Clear when returning to a page so CSS zoom does
+   * not affect web content.
    */
   function syncNewTabSurfaceZoom() {
     const ntp = document.getElementById('new-tab-page');
@@ -309,20 +346,26 @@
       ntp.style.zoom = '';
       return;
     }
-    const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
-    if (!wv || typeof wv.getZoomFactor !== 'function') return;
-    try {
-      const f = wv.getZoomFactor();
-      ntp.style.zoom = !f || f === 1 ? '' : String(f);
-    } catch {
-      ntp.style.zoom = '';
-    }
+    const f = getNtpZoom();
+    ntp.style.zoom = !f || f === 1 ? '' : String(f);
   }
   window.__navioSyncNewTabSurfaceZoom = syncNewTabSurfaceZoom;
+  window.__navioGetNtpZoom = getNtpZoom;
+  window.__navioSetNtpZoom = (f) => {
+    const applied = setNtpZoom(f);
+    syncNewTabSurfaceZoom();
+    if (typeof window.__navioUpdateZoomLabel === 'function') window.__navioUpdateZoomLabel();
+    return applied;
+  };
 
   async function updateUrlZoomLabel() {
     const el = document.getElementById('url-zoom-label');
     if (!el) return;
+    if (isNtpActive()) {
+      const pct = Math.round((getNtpZoom() || 1) * 100);
+      el.textContent = pct === 100 ? '' : `${pct}%`;
+      return;
+    }
     const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
     if (!wv) {
       el.textContent = '';
@@ -607,7 +650,6 @@
       const zoomOut = mod && (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract');
       const zoomReset = mod && e.key === '0';
       if (zoomIn || zoomOut || zoomReset) {
-        if (!wv || typeof TabManager === 'undefined' || !TabManager.zoomActiveTabBy) return;
         const t = e.target;
         const zoomOkInputs = new Set(['url-input', 'ntp-search-input']);
         if (
@@ -617,6 +659,18 @@
         ) {
           return;
         }
+        if (isNtpActive()) {
+          e.preventDefault();
+          let nextZoom;
+          if (zoomReset) nextZoom = NTP_ZOOM_DEFAULT;
+          else if (zoomIn) nextZoom = getNtpZoom() + NTP_ZOOM_STEP;
+          else nextZoom = getNtpZoom() - NTP_ZOOM_STEP;
+          setNtpZoom(nextZoom);
+          syncNewTabSurfaceZoom();
+          updateUrlZoomLabel();
+          return;
+        }
+        if (!wv || typeof TabManager === 'undefined' || !TabManager.zoomActiveTabBy) return;
         e.preventDefault();
         if (zoomReset) TabManager.setActiveTabZoomFactor(null);
         else if (zoomIn) TabManager.zoomActiveTabBy(0.1);

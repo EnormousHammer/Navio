@@ -1983,3 +1983,70 @@ html[data-theme="light"] .connectors-hub .connector-card.connected {
   border-color: rgba(34, 197, 94, 0.4);
   background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(10, 12, 18, 0.55) 55%);
 }
+
+/* ── Home / New Tab base sizing bump (readability) ───────────────────────
+   The default NTP type/hit-targets read very small on many displays. Bump
+   them modestly at the base zoom so Home is comfortable without relying on
+   zoom. Users can still fine-tune with Ctrl +/− on Home (NTP has its own
+   independent zoom — see syncNewTabSurfaceZoom / getNtpZoom in
+   ui-shell-extras.js). Scoped to .new-tab-page so nothing else is affected. */
+.new-tab-page .ntp-title {
+  font-size: 26px !important;
+  letter-spacing: 6px !important;
+}
+.new-tab-page .ntp-subtitle {
+  font-size: 13.5px;
+  margin-bottom: 18px;
+}
+.new-tab-page .ntp-search {
+  padding: 13px 22px;
+}
+.new-tab-page .ntp-search input {
+  font-size: 17px;
+}
+.new-tab-page .ntp-search-send {
+  width: 38px;
+  height: 38px;
+}
+.new-tab-page .ntp-smart-row {
+  font-size: 12.5px;
+}
+.new-tab-page .shortcut-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 13px;
+  padding: 11px;
+}
+.new-tab-page .ntp-shortcut span {
+  font-size: 12.5px;
+}
+.new-tab-page .ntp-clock {
+  font-size: clamp(26px, 3vw, 40px);
+}
+.new-tab-page .ntp-clock-sub,
+.new-tab-page .ntp-date {
+  font-size: 12.5px;
+}
+
+/* Keep the narrow-viewport overrides proportionally larger too so Home stays
+   readable on small windows without forcing users to change zoom. */
+@media (max-width: 480px) {
+  .new-tab-page .ntp-search {
+    padding: 10px 14px;
+  }
+  .new-tab-page .ntp-search input {
+    font-size: 15.5px;
+  }
+  .new-tab-page .ntp-search-send {
+    width: 34px;
+    height: 34px;
+  }
+  .new-tab-page .shortcut-icon {
+    width: 44px;
+    height: 44px;
+    padding: 10px;
+  }
+  .new-tab-page .ntp-shortcut span {
+    font-size: 11.5px;
+  }
+}

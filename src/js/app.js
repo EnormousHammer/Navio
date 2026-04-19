@@ -283,10 +283,11 @@ class NavioApp {
     return out;
   }
 
-  /** When true, show history/bookmark rows; when false (long AI-style question), skip to avoid noise. */
+  /** When true, show history/bookmark rows; when false (empty or long AI-style question), skip to avoid noise. */
   _shouldOfferUrlSuggestions(raw) {
     const t = (raw || '').trim();
-    if (!t) return true;
+    // Empty omnibox (e.g. new tab focus) → stay quiet; only populate once the user actually types.
+    if (!t) return false;
     if (/^https?:\/\//i.test(t)) return true;
     if (/^ai:/i.test(t) || t.startsWith('>>')) return false;
     if (t.includes('.') && t.split(/\s+/).length <= 4) return true;
@@ -652,7 +653,8 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
 
     urlInput.addEventListener('focus', () => {
       urlInput.select();
-      void this._refreshUrlSuggestions(urlInput, aiHint);
+      // Intentionally do NOT populate suggestions on focus; they should appear only once the user starts typing.
+      // This keeps the new-tab experience clean and avoids a flash of history/bookmarks on every focus.
     });
 
     urlInput.addEventListener('blur', () => {

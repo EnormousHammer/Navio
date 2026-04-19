@@ -1578,6 +1578,9 @@ class TabManagerClass {
     if (typeof window.__navioSyncNewTabSurfaceZoom === 'function') {
       requestAnimationFrame(() => window.__navioSyncNewTabSurfaceZoom());
     }
+    if (typeof window.__navioUpdateZoomLabel === 'function') {
+      requestAnimationFrame(() => window.__navioUpdateZoomLabel());
+    }
   }
 
   hideNewTabPage() {
@@ -1589,6 +1592,9 @@ class TabManagerClass {
     if (activeWv) activeWv.classList.add('active');
     if (typeof window.__navioSyncNewTabSurfaceZoom === 'function') {
       window.__navioSyncNewTabSurfaceZoom();
+    }
+    if (typeof window.__navioUpdateZoomLabel === 'function') {
+      window.__navioUpdateZoomLabel();
     }
   }
 
