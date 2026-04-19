@@ -692,8 +692,8 @@
   --ntp-accent: #7eb8ff;
   --ntp-subtext: rgba(226, 232, 248, 0.5);
   --ntp-border: rgba(255, 255, 255, 0.07);
-  /* Slightly shorter lists so tiles feel less “zoomed” vs viewport */
-  --ntp-widget-list-max-h: min(200px, 28vh);
+  /* Taller inbox/news lists — hero + shortcuts stay compact above */
+  --ntp-widget-list-max-h: min(320px, 46vh);
   background: #0b0d12;
   scroll-padding-bottom: clamp(24px, 5vh, 48px);
 }
@@ -727,18 +727,25 @@
   background: radial-gradient(ellipse 85% 70% at 50% 35%, transparent 0%, rgba(5, 7, 12, 0.55) 100%);
 }
 
+.new-tab-page .ntp-topbar {
+  padding-top: 6px;
+  padding-bottom: 0;
+}
+
 .new-tab-page .ntp-hero {
-  /* Use upper area so the stack doesn’t feel glued to the ticker */
-  padding-top: clamp(20px, 5.5vh, 64px);
-  padding-bottom: 8px;
+  padding-top: clamp(6px, 1.4vh, 20px);
+  padding-bottom: 2px;
 }
 
 .new-tab-page .ntp-brand {
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
+  justify-content: center;
+  gap: 8px 12px;
+  margin-bottom: 2px;
   text-align: center;
+  max-width: min(720px, 100%);
 }
 
 .new-tab-page .ntp-title {
@@ -755,10 +762,12 @@
 
 .new-tab-page .ntp-subtitle {
   letter-spacing: 0 !important;
-  font-size: 13px !important;
-  margin: 0 0 16px !important;
+  font-size: 11px !important;
+  margin: 0 0 8px !important;
   color: var(--ntp-subtext) !important;
-  max-width: 28em;
+  max-width: 36em;
+  flex: 1 1 100%;
+  opacity: 0.92;
 }
 
 /* Orb: logo only, no spinning rings or glow pulse */
@@ -767,12 +776,12 @@
   animation: none !important;
 }
 .new-tab-page .ntp-orb {
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
 }
 .new-tab-page .orb-core {
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   animation: none !important;
   background: rgba(30, 36, 52, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -788,12 +797,38 @@
 }
 .new-tab-page .ntp-search {
   animation: none !important;
-  border-radius: 14px;
+  border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(12, 14, 22, 0.72);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
   backdrop-filter: blur(20px) saturate(1.05);
   -webkit-backdrop-filter: blur(20px) saturate(1.05);
+  padding: 6px 12px;
+  gap: 8px;
+  max-width: min(560px, 100%);
+  margin-bottom: 4px;
+}
+.new-tab-page .ntp-search input {
+  font-size: 14px;
+}
+.new-tab-page .ntp-search-send {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+}
+.new-tab-page .ntp-smart-row {
+  width: 100%;
+  max-width: min(560px, 100%);
+  margin: 4px auto 0;
+  padding: 5px 10px;
+  min-height: 0;
+  font-size: 10.5px;
+  line-height: 1.35;
+  border-radius: 8px;
+  box-shadow: none;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: rgba(226, 232, 248, 0.48);
 }
 .new-tab-page .ntp-search:focus-within {
   animation: none !important;
@@ -814,46 +849,95 @@
   box-shadow: none;
 }
 
-/* Shortcuts row: lighter chrome */
+/* Shortcuts: dense row — less vertical than stacked hero + tiles */
 .new-tab-page .ntp-shortcuts {
-  margin-bottom: clamp(10px, 2vh, 20px);
+  margin-bottom: clamp(4px, 1vh, 12px);
+  padding-top: 2px;
 }
 .new-tab-page .ntp-shortcuts-head {
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   opacity: 0.92;
 }
 .new-tab-page .ntp-shortcuts-title {
-  font-size: 11px;
+  flex-direction: row;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: rgba(226, 232, 248, 0.45);
+  color: rgba(226, 232, 248, 0.42);
 }
 .new-tab-page .ntp-shortcuts-hint {
-  font-size: 11px;
-  font-weight: 400;
+  font-size: 10px;
+  font-weight: 500;
   text-transform: none;
   letter-spacing: 0;
+  color: rgba(226, 232, 248, 0.38);
+}
+.new-tab-page .ntp-shortcuts-panel {
+  padding: 2px 0 4px;
+}
+.new-tab-page .ntp-shortcuts-btn {
+  padding: 4px 10px;
+  font-size: 11px;
 }
 .new-tab-page .ntp-shortcuts-center {
   border-image: none !important;
   border-left: 1px solid rgba(255, 255, 255, 0.06) !important;
   border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+  min-width: min(120px, 18vw);
+  max-width: 180px;
+  padding: 2px 8px;
 }
 .new-tab-page .ntp-clock {
-  font-weight: 400;
+  font-size: clamp(15px, 1.9vw, 22px);
+  font-weight: 500;
   text-shadow: none;
   color: rgba(244, 246, 252, 0.95);
 }
+.new-tab-page .ntp-clock-sub {
+  font-size: 10px;
+  margin-top: 0;
+  gap: 4px;
+}
+.new-tab-page .ntp-date {
+  font-size: 10px;
+}
+.new-tab-page .ntp-shortcuts-row-inner {
+  gap: 5px;
+  row-gap: 4px;
+}
+.new-tab-page .ntp-shortcut {
+  gap: 3px;
+}
+.new-tab-page .shortcut-icon {
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  border-radius: 9px;
+}
+.new-tab-page .ntp-shortcut span {
+  font-size: 9.5px;
+  max-width: 68px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-/* Dashboard row: clear separation from shortcuts + from bottom/ticker */
+/* Dashboard: grows into remaining viewport like a real browser start surface */
 .new-tab-page .ntp-widgets {
-  margin-top: clamp(8px, 2vh, 28px);
+  flex: 1 1 auto;
+  align-items: start;
+  align-content: start;
+  min-height: min(360px, 42vh);
+  margin-top: clamp(4px, 1vh, 16px);
   padding-left: 0;
   padding-right: 0;
   padding-bottom: clamp(8px, 1.5vh, 16px);
   max-width: min(1120px, 100%);
-  gap: clamp(14px, 2.2vw, 22px);
+  gap: clamp(12px, 1.8vw, 18px);
 }
 
 /* Widgets: same family of surfaces, less “theme park” */
@@ -971,13 +1055,276 @@
 }
 
 @media (max-height: 720px) {
+  .new-tab-page {
+    --ntp-widget-list-max-h: min(260px, 40vh);
+  }
   .new-tab-page .ntp-bg-shell {
     padding-bottom: clamp(16px, 3.5vh, 40px);
   }
   .new-tab-page .ntp-hero {
-    padding-top: clamp(10px, 3vh, 36px);
+    padding-top: clamp(4px, 1vh, 14px);
   }
   .new-tab-page .ntp-widgets {
-    margin-top: clamp(4px, 1.2vh, 16px);
+    margin-top: clamp(2px, 0.8vh, 10px);
+    min-height: min(280px, 38vh);
   }
+  .new-tab-page .ntp-subtitle {
+    margin-bottom: 4px !important;
+  }
+}
+
+@media (min-width: 960px) {
+  .new-tab-page .ntp-hero {
+    max-width: min(1120px, 100%);
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+/* ---------------------------------------------
+   8) History & Bookmarks overlays — browser-style sheets
+   --------------------------------------------- */
+.shell-overlay {
+  align-items: center;
+  justify-content: center;
+  padding: max(16px, 3vh) 16px;
+  background: rgba(8, 10, 16, 0.52);
+  backdrop-filter: blur(10px) saturate(1.12);
+  -webkit-backdrop-filter: blur(10px) saturate(1.12);
+}
+
+.shell-overlay-panel {
+  width: min(560px, 94vw);
+  max-height: min(82vh, 680px);
+  border-radius: 14px;
+  border: 1px solid var(--p-border);
+  background: var(--p-surface-1);
+  box-shadow: var(--p-shadow);
+  backdrop-filter: blur(22px) saturate(1.1);
+  -webkit-backdrop-filter: blur(22px) saturate(1.1);
+}
+
+.shell-overlay-panel-history {
+  width: min(720px, 96vw);
+  max-height: min(84vh, 720px);
+}
+
+.shell-overlay-head {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--p-border);
+}
+
+.shell-overlay-head h2 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+}
+
+.shell-overlay-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-secondary);
+  transition:
+    background var(--dur-fast) var(--ease-soft),
+    color var(--dur-fast) var(--ease-soft);
+}
+
+.shell-overlay-x:hover {
+  background: var(--p-hover);
+  color: var(--text-primary);
+}
+
+.shell-overlay-toolbar {
+  padding: 10px 16px 12px;
+  border-bottom: 1px solid var(--p-border);
+  gap: 10px;
+}
+
+.shell-overlay-search,
+.shell-overlay-toolbar .shell-overlay-search-flex {
+  border-radius: 10px;
+  border: 1px solid var(--p-border);
+  background: var(--p-surface-3);
+  font-size: 13px;
+}
+
+.shell-overlay-search:focus,
+.shell-overlay-toolbar .shell-overlay-search-flex:focus {
+  outline: none;
+  border-color: var(--p-border-strong);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.shell-overlay-clear-all {
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--p-border);
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.shell-overlay-clear-all:hover {
+  background: var(--p-hover);
+  color: var(--text-primary);
+  border-color: var(--p-border-strong);
+}
+
+.shell-overlay-list {
+  padding: 10px 14px 16px;
+  gap: 2px;
+}
+
+.shell-overlay-list-history {
+  padding: 8px 12px 14px;
+}
+
+.bookmark-overlay-row {
+  margin: 0;
+  padding: 3px 0;
+  border-bottom: none;
+}
+
+.bookmark-overlay-main {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--p-border);
+  background: var(--p-surface-3);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.bookmark-overlay-main:hover {
+  background: var(--p-hover);
+  border-color: var(--p-border-strong);
+}
+
+.bookmark-overlay-section {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  max-width: 120px;
+  color: var(--text-tertiary);
+}
+
+.history-date-heading {
+  margin: 0;
+  padding: 10px 10px 6px;
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  background: linear-gradient(180deg, var(--p-surface-2) 72%, transparent);
+  border-bottom: 1px solid var(--p-border);
+}
+
+.history-overlay-row-wrap {
+  gap: 4px;
+  margin-bottom: 2px;
+}
+
+.history-overlay-row {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.history-overlay-row:hover {
+  background: var(--p-hover);
+  border-color: var(--p-border);
+}
+
+/* ---------------------------------------------
+   9) Settings — structured sidebar + calm content (chrome-like)
+   --------------------------------------------- */
+.modal.modal-settings {
+  width: min(960px, 96vw);
+  max-height: min(90vh, 820px);
+  border-radius: 12px;
+  border: 1px solid var(--p-border);
+  box-shadow: var(--p-shadow), 0 0 0 1px rgba(0, 0, 0, 0.1);
+  background: var(--p-surface-2);
+}
+
+.modal-header-settings {
+  padding: 16px 22px 14px;
+  border-bottom: 1px solid var(--p-border);
+  background: var(--p-surface-1);
+  align-items: center;
+}
+
+.modal-header-text h2 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.modal-settings-subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  max-width: 42rem;
+}
+
+.settings-nav {
+  width: 210px;
+  padding: 12px 10px 20px;
+  gap: 2px;
+  border-right: 1px solid var(--p-border);
+  background: var(--p-surface-1);
+}
+
+.settings-nav-search-wrap {
+  margin-bottom: 8px;
+  padding-bottom: 10px;
+}
+
+.settings-nav-search {
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--p-border);
+  background: var(--p-surface-3);
+}
+
+.settings-nav-item {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  border-left: 3px solid transparent;
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.settings-nav-item.active {
+  background: var(--p-hover);
+  color: var(--text-primary);
+  border-color: transparent;
+  border-left-color: color-mix(in srgb, var(--accent) 70%, var(--text-tertiary));
+  box-shadow: none;
+}
+
+.settings-nav-item:hover:not(.active) {
+  background: var(--p-hover);
+  color: var(--text-primary);
+}
+
+.settings-panels {
+  padding: 20px 26px 28px;
+  background: var(--p-surface-2);
+}
+
+[data-theme="light"] .shell-overlay {
+  background: rgba(15, 23, 42, 0.22);
+}
+
+[data-theme="light"] .modal.modal-settings {
+  box-shadow: var(--p-shadow), 0 0 0 1px rgba(15, 23, 42, 0.06);
 }
