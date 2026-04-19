@@ -303,16 +303,6 @@ class TabManagerClass {
       this.switchToTab(id);
     }
 
-    if (!url) {
-      if (doSwitch) {
-        this.showNewTabPage();
-        setTimeout(() => {
-          const ntpInput = document.getElementById('ntp-search-input');
-          if (ntpInput) ntpInput.focus();
-        }, 100);
-      }
-    }
-
     this._emitTabsChanged('create-tab');
     return tab;
   }
@@ -1052,11 +1042,13 @@ class TabManagerClass {
       if (typeof window.__navioUpdateZoomLabel === 'function') {
         window.__navioUpdateZoomLabel();
       }
-      // Move keyboard focus to the page so agent type_text / CDP input goes to the webview, not the assistant.
-      if (activeTab.webview) {
+      // New tab surface: omnibox is the primary input. Only focus the guest webview once this tab has a real URL.
+      if (activeTab.url && activeTab.webview) {
         try {
           activeTab.webview.focus();
         } catch (_) {}
+      } else if (!activeTab.url) {
+        this._focusUrlBarForNewTab();
       }
 
       const u = activeTab.url || '';
@@ -1486,6 +1478,20 @@ class TabManagerClass {
         return;
       }
     }
+  }
+
+  /** Omnibox is the default input when the new-tab surface is showing (empty `tab.url`). */
+  _focusUrlBarForNewTab() {
+    const el = document.getElementById('url-input');
+    if (!el) return;
+    requestAnimationFrame(() => {
+      try {
+        el.focus({ preventScroll: true });
+        el.select();
+      } catch {
+        /* ignore */
+      }
+    });
   }
 
   showNewTabPage() {

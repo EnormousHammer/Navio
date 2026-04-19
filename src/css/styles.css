@@ -3686,6 +3686,18 @@ button.ntp-ticker-sport--stream:focus-visible {
   border-radius: var(--radius-sm);
 }
 
+.ntp-shortcut[draggable="true"] {
+  cursor: grab;
+}
+.ntp-shortcut--dragging {
+  cursor: grabbing;
+  opacity: 0.55;
+}
+.ntp-shortcut--drop-hover .shortcut-icon {
+  box-shadow: 0 0 0 2px rgba(126, 184, 255, 0.55), 0 0 18px rgba(0, 216, 255, 0.22);
+  border-color: rgba(126, 184, 255, 0.45);
+}
+
 .shortcut-icon {
   width: 42px;
   height: 42px;
@@ -3820,8 +3832,8 @@ body.navio-vertical-tabs .assistant-panel {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 10px var(--ap-pad-x) 10px;
+  gap: 8px;
+  padding: 6px var(--ap-pad-x) 7px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   background: linear-gradient(180deg, var(--bg-surface) 0%, rgba(22, 27, 40, 0.92) 100%);
@@ -3849,7 +3861,7 @@ body.navio-vertical-tabs .assistant-panel {
 }
 
 .assistant-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: -0.025em;
@@ -3895,6 +3907,11 @@ body.navio-vertical-tabs .assistant-panel {
 
 .assistant-actions { display: flex; gap: 4px; }
 
+.assistant-panel .ai-orb.small {
+  width: 24px;
+  height: 24px;
+}
+
 .assistant-context {
   display: flex;
   align-items: flex-start;
@@ -3909,6 +3926,48 @@ body.navio-vertical-tabs .assistant-panel {
   line-height: 1.4;
   backdrop-filter: blur(10px);
   min-height: 2.25rem;
+}
+
+/* One row: tab title + pin / settings (saves a full strip vs stacked context + controls) */
+.assistant-meta-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px var(--ap-pad-x) 5px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg-deep);
+  backdrop-filter: blur(10px);
+}
+
+.assistant-meta-bar .assistant-context {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  margin: 0;
+  border-bottom: none;
+  min-height: 0;
+  background: transparent;
+  align-items: center;
+}
+
+.assistant-meta-bar .assistant-controls-strip {
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  padding: 0;
+  margin: 0;
+  border-bottom: none;
+  background: transparent;
+}
+
+.assistant-meta-bar .assistant-toolbar--compact {
+  padding: 0;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: min(300px, 48%);
 }
 
 #context-page-title {
@@ -4772,7 +4831,7 @@ body.navio-vertical-tabs .assistant-panel {
 
 /* Input area */
 .assistant-input-area {
-  padding: 10px var(--ap-pad-x) 12px;
+  padding: 8px var(--ap-pad-x) 10px;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
   background: linear-gradient(180deg, var(--bg-deep) 0%, var(--bg-primary) 65%);
@@ -4932,9 +4991,9 @@ body.navio-vertical-tabs .assistant-panel {
 
 .assistant-input-container {
   display: flex;
-  align-items: flex-end;
-  gap: 5px;
-  padding: 7px 10px 7px 10px;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 18px;
@@ -4944,10 +5003,10 @@ body.navio-vertical-tabs .assistant-panel {
   position: relative;
 }
 
-.assistant-panel .assistant-input-container .voice-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
+.assistant-panel .assistant-input-container .voice-btn:not(.assistant-stop-btn) {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
 }
 
 .assistant-input-actions {
@@ -4979,9 +5038,11 @@ body.navio-vertical-tabs .assistant-panel {
   -webkit-appearance: none;
   appearance: none;
   max-height: 120px;
-  min-height: 20px;
-  padding: 1px 0;
+  min-height: 34px;
+  padding: 6px 2px;
   overflow-y: auto;
+  box-sizing: border-box;
+  align-self: center;
 }
 
 #assistant-input:focus,
@@ -5032,7 +5093,7 @@ body.navio-vertical-tabs .assistant-panel {
 }
 
 .assistant-input-hint {
-  margin-top: 6px;
+  margin-top: 5px;
   font-size: 10px;
   color: var(--text-tertiary);
   letter-spacing: 0.01em;
@@ -5042,6 +5103,13 @@ body.navio-vertical-tabs .assistant-panel {
   justify-content: space-between;
   gap: 10px;
   padding: 0 4px;
+  min-height: 22px;
+}
+
+.assistant-input-hint #voice-hint {
+  line-height: 1.35;
+  flex: 1;
+  min-width: 0;
 }
 
 .ai-powered-badge {
@@ -5050,11 +5118,17 @@ body.navio-vertical-tabs .assistant-panel {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-secondary);
-  padding: 4px 8px;
+  padding: 3px 8px;
   border-radius: var(--radius-full);
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.03);
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  height: 22px;
+  box-sizing: border-box;
 }
 
 /* ============================================
@@ -7888,6 +7962,71 @@ body.onboarding-active #app {
   z-index: 1;
 }
 
+/* Quick prompts under context — was unstyled (browser-default buttons). */
+.assistant-smart-row {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 5px var(--ap-pad-x) 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-deep);
+  position: relative;
+  z-index: 1;
+}
+
+.assistant-smart-chip {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--duration) var(--ease), border-color var(--duration) var(--ease),
+    color var(--duration) var(--ease), transform 0.15s var(--ease);
+  white-space: nowrap;
+}
+
+.assistant-smart-chip:hover {
+  background: rgba(0, 216, 255, 0.1);
+  border-color: rgba(0, 216, 255, 0.32);
+  color: var(--text-bright);
+}
+
+.assistant-smart-chip:focus-visible {
+  outline: 2px solid rgba(0, 216, 255, 0.45);
+  outline-offset: 2px;
+}
+
+.assistant-smart-chip:active {
+  transform: scale(0.98);
+}
+
+[data-theme="light"] .assistant-smart-row {
+  background: var(--bg-deep);
+}
+
+[data-theme="light"] .assistant-smart-chip {
+  border-color: rgba(50, 70, 160, 0.14);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text-secondary);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+}
+
+[data-theme="light"] .assistant-smart-chip:hover {
+  border-color: rgba(0, 120, 220, 0.35);
+  background: rgba(0, 120, 220, 0.08);
+  color: var(--text-accent);
+}
+
 .assistant-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -8582,20 +8721,26 @@ a.navio-citation-chip:hover::after {
 }
 
 .navio-step-pause-pill .nsp-stop {
-  border-color: rgba(255, 100, 100, 0.45);
-  color: #ff8080;
+  border-color: rgba(255, 255, 255, 0.14);
+  color: rgba(252, 211, 211, 0.9);
+  background: rgba(255, 255, 255, 0.06);
+}
+.navio-step-pause-pill .nsp-stop:hover {
+  border-color: rgba(252, 165, 165, 0.35);
+  background: rgba(248, 113, 113, 0.12);
+  color: #fecaca;
 }
 
 /* ── Agent activity feed (tool-calling mode) ── */
 .navio-agent-activity {
   margin: 6px 0 12px;
   padding: 12px 14px 14px;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.065);
-  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
   font-size: 12px;
-  color: var(--text-secondary);
-  box-shadow: none;
+  color: rgba(226, 232, 248, 0.78);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
 }
 .navio-agent-activity .naa-header {
   display: flex;
@@ -8712,39 +8857,49 @@ a.navio-citation-chip:hover::after {
 }
 .navio-agent-stop-btn {
   margin-left: auto;
-  padding: 2px 10px;
-  border-radius: var(--radius-full);
+  padding: 4px 12px;
+  border-radius: 10px;
   font-size: 10.5px;
   font-weight: 600;
   cursor: pointer;
-  border: 1px solid rgba(255, 100, 100, 0.45);
-  background: transparent;
-  color: #ff8080;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(252, 211, 211, 0.92);
   font-family: var(--font-sans);
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 .navio-agent-stop-btn:hover {
-  background: rgba(255, 100, 100, 0.1);
+  background: rgba(248, 113, 113, 0.14);
+  border-color: rgba(252, 165, 165, 0.35);
+  color: #fecaca;
 }
 .assistant-input-container .assistant-stop-btn {
   flex-shrink: 0;
   margin: 0;
-  padding: 0 10px;
-  min-height: 32px;
-  border-radius: 9px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
+  padding: 0 12px;
+  min-height: 34px;
+  border-radius: 10px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   cursor: pointer;
-  border: 1px solid rgba(248, 113, 113, 0.45);
-  background: rgba(248, 113, 113, 0.1);
-  color: #fecaca;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(252, 211, 211, 0.92);
   font-family: var(--font-sans);
-  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s var(--ease-spring);
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 .assistant-input-container .assistant-stop-btn:hover {
-  background: rgba(248, 113, 113, 0.18);
-  border-color: rgba(252, 165, 165, 0.55);
-  transform: translateY(-1px);
+  background: rgba(248, 113, 113, 0.14);
+  border-color: rgba(252, 165, 165, 0.35);
+  color: #fecaca;
+}
+
+.assistant-panel .assistant-input-container .assistant-stop-btn {
+  width: auto;
+  min-width: 58px;
+  height: 34px;
+  padding: 0 12px;
 }
 
 /* ── Plan approval card (propose_plan tool) ── */
@@ -10810,6 +10965,14 @@ button:focus-visible,
   background: var(--bg-deep);
   border-bottom-color: var(--border);
 }
+[data-theme="light"] .assistant-meta-bar {
+  background: var(--bg-deep);
+  border-bottom-color: var(--border);
+}
+[data-theme="light"] .assistant-meta-bar .assistant-context {
+  background: transparent;
+  border-bottom-color: transparent;
+}
 [data-theme="light"] .quick-action {
   background: rgba(248,249,253,0.8);
   border-color: rgba(50,70,160,0.14);
@@ -10874,9 +11037,11 @@ button:focus-visible,
   color: #083a6e;
 }
 [data-theme="light"] .navio-agent-activity {
-  background: #f5f6fa;
-  border-color: rgba(50, 70, 160, 0.11);
+  /* Same language as dark: light theme was painting this slab #f5f6fa (unreadable on dark sidecar). */
+  background: rgba(0, 0, 0, 0.32);
+  border-color: rgba(255, 255, 255, 0.1);
   box-shadow: none;
+  color: rgba(226, 232, 248, 0.78);
 }
 
 /* ── Light mode settings modal ──────────────────────────────────────────── */
@@ -10998,6 +11163,14 @@ button:focus-visible,
 [data-theme="dark"] .assistant-context {
   background: var(--bg-deep);
   border-bottom-color: var(--border);
+}
+[data-theme="dark"] .assistant-meta-bar {
+  background: var(--bg-deep);
+  border-bottom-color: var(--border);
+}
+[data-theme="dark"] .assistant-meta-bar .assistant-context {
+  background: transparent;
+  border-bottom-color: transparent;
 }
 [data-theme="dark"] .assistant-messages {
   background: var(--bg-primary);

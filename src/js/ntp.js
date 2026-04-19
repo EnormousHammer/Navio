@@ -27,6 +27,7 @@ const NTP = (() => {
   let _shortcuts = DEFAULT_NTP_SHORTCUTS.slice();
   let _shortcutDraft = null;
   let _shortcutEditorBound = false;
+  let _shortcutDndBound = false;
 
   // ── Init ──────────────────────────────────────────────────────────────────
 
@@ -787,11 +788,16 @@ const NTP = (() => {
     const slots = _shortcuts.slice(0, 6);
     const leftItems = slots.slice(0, 3);
     const rightItems = slots.slice(3, 6);
+    const editor = document.getElementById('ntp-shortcuts-editor');
+    const editing = !!(editor && !editor.hidden);
     const buildBtn = (item, idx) => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'ntp-shortcut';
       btn.dataset.url = item.url;
+      btn.dataset.shortcutIndex = String(idx);
+      btn.draggable = !editing;
+      btn.title = editing ? '' : `${_esc(item.title)} — drag to reorder`;
       let favicon = '';
       try {
         const u = new URL(item.url);
@@ -810,6 +816,98 @@ const NTP = (() => {
     right.innerHTML = '';
     leftItems.forEach((item, i) => left.appendChild(buildBtn(item, i)));
     rightItems.forEach((item, i) => right.appendChild(buildBtn(item, i + 3)));
+    _bindShortcutDragDrop();
+  }
+
+  async function _persistNtpShortcutsToConfig() {
+    try {
+      const cfg = await window.navio.getConfig();
+      cfg.ntpShortcuts = _shortcuts;
+      await window.navio.saveConfig(cfg);
+      if (typeof App !== 'undefined') App.config = cfg;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function _reorderShortcuts(fromIdx, toIdx) {
+    if (fromIdx === toIdx) return;
+    const arr = _shortcuts.slice();
+    const n = arr.length;
+    if (fromIdx < 0 || toIdx < 0 || fromIdx >= n || toIdx >= n) return;
+    const [moved] = arr.splice(fromIdx, 1);
+    arr.splice(toIdx, 0, moved);
+    _shortcuts = arr;
+    void _persistNtpShortcutsToConfig();
+    _renderShortcuts();
+  }
+
+  function _bindShortcutDragDrop() {
+    const panel = document.querySelector('.ntp-shortcuts-panel');
+    if (!panel || _shortcutDndBound) return;
+    _shortcutDndBound = true;
+
+    const clearDropHover = () => {
+      panel.querySelectorAll('.ntp-shortcut--drop-hover').forEach((el) => el.classList.remove('ntp-shortcut--drop-hover'));
+    };
+
+    panel.addEventListener('dragstart', (e) => {
+      const editor = document.getElementById('ntp-shortcuts-editor');
+      if (editor && !editor.hidden) {
+        e.preventDefault();
+        return;
+      }
+      const btn = e.target.closest?.('.ntp-shortcut');
+      if (!btn || !panel.contains(btn)) return;
+      dragFrom = parseInt(btn.dataset.shortcutIndex, 10);
+      if (Number.isNaN(dragFrom)) return;
+      e.dataTransfer.setData('application/x-navio-shortcut-index', String(dragFrom));
+      e.dataTransfer.effectAllowed = 'move';
+      try {
+        e.dataTransfer.setDragImage(btn, btn.offsetWidth / 2, btn.offsetHeight / 2);
+      } catch {
+        /* ignore */
+      }
+      btn.classList.add('ntp-shortcut--dragging');
+    });
+
+    panel.addEventListener('dragend', () => {
+      panel.querySelectorAll('.ntp-shortcut--dragging').forEach((el) => el.classList.remove('ntp-shortcut--dragging'));
+      clearDropHover();
+    });
+
+    panel.addEventListener('dragover', (e) => {
+      const editor = document.getElementById('ntp-shortcuts-editor');
+      if (editor && !editor.hidden) return;
+      const btn = e.target.closest?.('.ntp-shortcut');
+      if (!btn || !panel.contains(btn)) {
+        clearDropHover();
+        return;
+      }
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      clearDropHover();
+      btn.classList.add('ntp-shortcut--drop-hover');
+    });
+
+    panel.addEventListener('dragleave', (e) => {
+      const related = e.relatedTarget;
+      if (related && panel.contains(related)) return;
+      clearDropHover();
+    });
+
+    panel.addEventListener('drop', (e) => {
+      const editor = document.getElementById('ntp-shortcuts-editor');
+      if (editor && !editor.hidden) return;
+      e.preventDefault();
+      const btn = e.target.closest?.('.ntp-shortcut');
+      if (!btn || !panel.contains(btn)) return;
+      const from = parseInt(e.dataTransfer.getData('application/x-navio-shortcut-index'), 10);
+      const to = parseInt(btn.dataset.shortcutIndex, 10);
+      clearDropHover();
+      if (Number.isNaN(from) || Number.isNaN(to)) return;
+      _reorderShortcuts(from, to);
+    });
   }
 
   function _handleShortcutClick(url) {
@@ -872,6 +970,7 @@ const NTP = (() => {
     } else {
       _shortcutDraft = null;
     }
+    _renderShortcuts();
   }
 
   function _renderShortcutEditorRows() {
@@ -945,14 +1044,7 @@ const NTP = (() => {
     });
     _shortcuts = next.length ? next.slice(0, 12) : DEFAULT_NTP_SHORTCUTS.slice();
     _shortcutDraft = null;
-    try {
-      const cfg = await window.navio.getConfig();
-      cfg.ntpShortcuts = _shortcuts;
-      await window.navio.saveConfig(cfg);
-      if (typeof App !== 'undefined') App.config = cfg;
-    } catch {
-      /* ignore save errors; still render */
-    }
+    await _persistNtpShortcutsToConfig();
     _renderShortcuts();
     _toggleShortcutEditor(false);
   }
@@ -960,12 +1052,7 @@ const NTP = (() => {
   async function _resetShortcutsToDefault() {
     _shortcuts = DEFAULT_NTP_SHORTCUTS.slice();
     _shortcutDraft = null;
-    try {
-      const cfg = await window.navio.getConfig();
-      cfg.ntpShortcuts = _shortcuts;
-      await window.navio.saveConfig(cfg);
-      if (typeof App !== 'undefined') App.config = cfg;
-    } catch { /* ignore */ }
+    await _persistNtpShortcutsToConfig();
     _renderShortcuts();
     _toggleShortcutEditor(false);
   }
