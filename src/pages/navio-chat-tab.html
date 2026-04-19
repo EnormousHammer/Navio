@@ -515,7 +515,6 @@
       max-width: min(94%, 620px);
       padding: 14px 18px;
       border-radius: 18px;
-      white-space: pre-wrap;
       word-break: break-word;
       font-size: 14.5px;
       line-height: 1.6;
@@ -535,6 +534,7 @@
       border: 1px solid rgba(255, 255, 255, 0.08);
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
     }
+    .msg.user .body { white-space: pre-wrap; }
     .msg.assistant {
       align-self: flex-start;
       border-radius: 22px 22px 22px 6px;
@@ -544,6 +544,154 @@
     }
     .msg.assistant.error { border-color: rgba(239, 68, 68, 0.35); color: #fecaca; }
     .msg.assistant.streaming { border-color: rgba(34, 211, 238, 0.28); }
+
+    /* ══════════════════════════════════════════════════════════════════
+       MARKDOWN — rich rendering inside assistant bubbles
+       ══════════════════════════════════════════════════════════════════ */
+    .msg .body > *:first-child { margin-top: 0; }
+    .msg .body > *:last-child  { margin-bottom: 0; }
+    .msg .body p {
+      margin: 0 0 10px;
+      white-space: pre-wrap;
+    }
+    .msg .body p:last-child { margin-bottom: 0; }
+    .msg .body h2,
+    .msg .body h3,
+    .msg .body h4,
+    .msg .body h5 {
+      margin: 16px 0 8px;
+      color: #ffffff;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      line-height: 1.3;
+    }
+    .msg .body h2 { font-size: 18px; }
+    .msg .body h3 { font-size: 16px; }
+    .msg .body h4 { font-size: 14.5px; color: var(--text); }
+    .msg .body h5 { font-size: 13px; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.06em; }
+    .msg .body strong { color: #ffffff; font-weight: 700; }
+    .msg .body em     { color: var(--text); }
+    .msg .body a {
+      color: var(--cyan);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(34, 211, 238, 0.35);
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .msg .body a:hover { color: #67e8f9; border-bottom-color: var(--cyan); }
+
+    .msg .body ul,
+    .msg .body ol {
+      margin: 4px 0 10px;
+      padding-left: 22px;
+    }
+    .msg .body li {
+      margin: 3px 0;
+      line-height: 1.55;
+    }
+    .msg .body li::marker { color: var(--cyan); }
+
+    .msg .body blockquote {
+      margin: 10px 0;
+      padding: 6px 14px;
+      border-left: 3px solid var(--cyan-border);
+      background: rgba(34, 211, 238, 0.06);
+      color: var(--text-2);
+      border-radius: 0 8px 8px 0;
+    }
+
+    .msg .body hr {
+      border: none;
+      border-top: 1px solid var(--border-3);
+      margin: 14px 0;
+    }
+
+    .msg .body code {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 13px;
+      padding: 1.5px 6px;
+      border-radius: 6px;
+      background: rgba(34, 211, 238, 0.1);
+      border: 1px solid rgba(34, 211, 238, 0.22);
+      color: #a5f3fc;
+    }
+
+    .msg .body pre {
+      margin: 10px 0;
+      padding: 0;
+      background: #0f1419;
+      border: 1px solid var(--border-3);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .msg .body pre .code-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 12px;
+      background: rgba(255, 255, 255, 0.04);
+      border-bottom: 1px solid var(--border-3);
+      font-size: 11px;
+      color: var(--muted);
+      font-family: inherit;
+    }
+    .msg .body pre .code-lang {
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+    }
+    .msg .body pre .code-copy {
+      padding: 3px 10px;
+      border: 1px solid var(--border-3);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-3);
+      border-radius: 999px;
+      font-size: 11px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .msg .body pre .code-copy:hover { background: rgba(34, 211, 238, 0.12); color: var(--cyan); border-color: var(--cyan-border); }
+    .msg .body pre .code-copy.copied { color: var(--green-400); border-color: rgba(74, 222, 128, 0.45); }
+    .msg .body pre code {
+      display: block;
+      padding: 12px 14px;
+      background: transparent;
+      border: none;
+      color: #e5e7eb;
+      font-size: 12.5px;
+      line-height: 1.55;
+      white-space: pre;
+      overflow-x: auto;
+      border-radius: 0;
+    }
+
+    .msg .body table {
+      border-collapse: collapse;
+      margin: 10px 0;
+      font-size: 13px;
+      width: 100%;
+    }
+    .msg .body th,
+    .msg .body td {
+      border: 1px solid var(--border-3);
+      padding: 6px 10px;
+      text-align: left;
+    }
+    .msg .body th {
+      background: rgba(255, 255, 255, 0.04);
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    /* Streaming caret after the last text node (skip research-wait bubble) */
+    .msg.streaming:not(#research-wait) .body::after {
+      content: '▍';
+      color: var(--cyan);
+      margin-left: 2px;
+      animation: blink 1s step-end infinite;
+      opacity: 0.9;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
 
     .plan-card {
       align-self: flex-start;
@@ -974,7 +1122,176 @@
   let busy = false;
   let streamBubble = null;
   let streamBody = null;
+  let streamBuffer = '';
   let agentStepIndex = 0;
+
+  // ── Markdown renderer (self-contained, safe HTML) ──────────────────
+  // Supports: fenced code with language + copy, headings, bold/italic,
+  // inline code, blockquotes, hr, ordered/unordered lists, links, tables,
+  // and paragraphs. HTML from the model is escaped before markdown runs.
+  function renderMarkdown(text) {
+    if (!text) return '';
+    const CODE_PLACE = [];
+    let src = String(text).replace(/\r\n/g, '\n');
+
+    // 1. Extract fenced code blocks first (before any escaping/markdown)
+    src = src.replace(/```([a-zA-Z0-9_+\-.]*)\n?([\s\S]*?)```/g, function (_, lang, code) {
+      const idx = CODE_PLACE.length;
+      CODE_PLACE.push({ lang: (lang || '').trim().toLowerCase(), code: code.replace(/\n$/, '') });
+      return '\x00CODE' + idx + '\x00';
+    });
+
+    // 2. HTML-escape everything else
+    const escHtml = function (s) {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    };
+    let html = escHtml(src);
+
+    // 3. Horizontal rule
+    html = html.replace(/^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/gm, '<hr>');
+
+    // 4. Headings (deepest first)
+    html = html.replace(/^####\s+(.+)$/gm, '<h5>$1</h5>');
+    html = html.replace(/^###\s+(.+)$/gm, '<h4>$1</h4>');
+    html = html.replace(/^##\s+(.+)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^#\s+(.+)$/gm, '<h2>$1</h2>');
+
+    // 5. Blockquotes (collapse consecutive > lines)
+    html = html.replace(/(^&gt;\s?.*(?:\n&gt;\s?.*)*)/gm, function (block) {
+      const inner = block.replace(/^&gt;\s?/gm, '').trim();
+      return '<blockquote>' + inner + '</blockquote>';
+    });
+
+    // 6. Inline code
+    html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+    // 7. Bold / italic / strikethrough
+    html = html.replace(/\*\*\*([^*\n]+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    html = html.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/(^|[\s(])\*([^*\n]+?)\*(?=[\s).,!?:;]|$)/g, '$1<em>$2</em>');
+    html = html.replace(/__([^_\n]+?)__/g, '<strong>$1</strong>');
+    html = html.replace(/~~([^~\n]+?)~~/g, '<del>$1</del>');
+
+    // 8. Links [text](url)
+    html = html.replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, function (_, label, url) {
+      const u = url.trim();
+      const safe = /^(https?:|mailto:|#)/i.test(u);
+      if (!safe) return label;
+      return '<a href="' + u.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener">' + label + '</a>';
+    });
+    // Autolink bare URLs — avoid touching already-linked text
+    html = html.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, function (_, pre, url) {
+      const trailing = (url.match(/[).,!?;:]+$/) || [''])[0];
+      const core = url.slice(0, url.length - trailing.length);
+      return pre + '<a href="' + core.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener">' + core + '</a>' + trailing;
+    });
+
+    // 9. Tables — GitHub-flavored basic tables
+    html = html.replace(
+      /(^\|.+\|\s*\n\|[-:| ]+\|\s*\n(?:\|.*\|\s*\n?)+)/gm,
+      function (block) {
+        const rows = block.trim().split('\n');
+        if (rows.length < 2) return block;
+        const splitRow = function (r) {
+          return r.replace(/^\||\|$/g, '').split('|').map(function (c) { return c.trim(); });
+        };
+        const head = splitRow(rows[0]);
+        const body = rows.slice(2).map(splitRow);
+        let out = '<table><thead><tr>';
+        head.forEach(function (c) { out += '<th>' + c + '</th>'; });
+        out += '</tr></thead><tbody>';
+        body.forEach(function (r) {
+          out += '<tr>';
+          r.forEach(function (c) { out += '<td>' + c + '</td>'; });
+          out += '</tr>';
+        });
+        out += '</tbody></table>';
+        return out;
+      }
+    );
+
+    // 10. Unordered lists
+    html = html.replace(/(^|\n)((?:[ \t]*[-*+][ \t]+.+\n?)+)/g, function (_, lead, block) {
+      const items = block.trim().split(/\n/).map(function (line) {
+        return '<li>' + line.replace(/^[ \t]*[-*+][ \t]+/, '') + '</li>';
+      }).join('');
+      return lead + '<ul>' + items + '</ul>';
+    });
+
+    // 11. Ordered lists
+    html = html.replace(/(^|\n)((?:[ \t]*\d+[.)][ \t]+.+\n?)+)/g, function (_, lead, block) {
+      const items = block.trim().split(/\n/).map(function (line) {
+        return '<li>' + line.replace(/^[ \t]*\d+[.)][ \t]+/, '') + '</li>';
+      }).join('');
+      return lead + '<ol>' + items + '</ol>';
+    });
+
+    // 12. Paragraphs — wrap loose lines that aren't already block-level
+    const BLOCK_RE = /^\s*<(?:h[2-5]|ul|ol|li|pre|blockquote|hr|table|thead|tbody|tr|th|td|div)\b/i;
+    const lines = html.split('\n');
+    const out = [];
+    let buf = [];
+    const flush = function () {
+      if (!buf.length) return;
+      const joined = buf.join('\n').trim();
+      if (joined) out.push('<p>' + joined + '</p>');
+      buf = [];
+    };
+    for (let i = 0; i < lines.length; i++) {
+      const ln = lines[i];
+      if (ln.trim() === '') { flush(); continue; }
+      if (BLOCK_RE.test(ln) || /<\/(?:ul|ol|blockquote|table|pre)>\s*$/.test(ln)) {
+        flush();
+        out.push(ln);
+      } else {
+        buf.push(ln);
+      }
+    }
+    flush();
+    html = out.join('\n').replace(/<p>\s*<\/p>/g, '');
+
+    // 13. Re-inject code blocks with language chip + copy button
+    html = html.replace(/\x00CODE(\d+)\x00/g, function (_, i) {
+      const c = CODE_PLACE[parseInt(i, 10)] || { lang: '', code: '' };
+      const codeId = 'mdc-' + Math.random().toString(36).slice(2, 9);
+      const langLabel = c.lang || 'code';
+      return (
+        '<pre>' +
+          '<div class="code-head">' +
+            '<span class="code-lang">' + escHtml(langLabel) + '</span>' +
+            '<button type="button" class="code-copy" data-copy-target="' + codeId + '">Copy</button>' +
+          '</div>' +
+          '<code id="' + codeId + '">' + escHtml(c.code) + '</code>' +
+        '</pre>'
+      );
+    });
+
+    return html;
+  }
+
+  // Wire copy buttons for any rendered code blocks inside `root`
+  function wireCodeCopyButtons(root) {
+    if (!root) return;
+    const btns = root.querySelectorAll('.code-copy:not([data-wired])');
+    btns.forEach(function (btn) {
+      btn.setAttribute('data-wired', '1');
+      btn.addEventListener('click', function () {
+        const id = btn.getAttribute('data-copy-target');
+        const codeEl = id ? document.getElementById(id) : null;
+        const txt = codeEl ? codeEl.textContent : '';
+        try {
+          navigator.clipboard.writeText(txt).then(function () {
+            btn.textContent = 'Copied';
+            btn.classList.add('copied');
+            setTimeout(function () {
+              btn.textContent = 'Copy';
+              btn.classList.remove('copied');
+            }, 1400);
+          });
+        } catch { /* ignore */ }
+      });
+    });
+  }
 
   // ── Local session store (real localStorage — never mocked) ────────
   const STORE_KEY = 'navio-chat-tab-sessions';
@@ -1145,12 +1462,20 @@
     messagesEl.innerHTML = '';
     streamBubble = null;
     streamBody = null;
+    streamBuffer = '';
     if (s && s.messages.length) {
       s.messages.forEach(m => {
         const wrap = document.createElement('div');
-        wrap.className = 'msg ' + (m.role === 'user' ? 'user' : 'assistant');
-        wrap.innerHTML = '<div class="role">' + (m.role === 'user' ? 'You' : 'Navio') + '</div><div class="body"></div>';
-        wrap.querySelector('.body').textContent = m.text || '';
+        const isUser = m.role === 'user';
+        wrap.className = 'msg ' + (isUser ? 'user' : 'assistant');
+        wrap.innerHTML = '<div class="role">' + (isUser ? 'You' : 'Navio') + '</div><div class="body"></div>';
+        const body = wrap.querySelector('.body');
+        if (isUser) {
+          body.textContent = m.text || '';
+        } else {
+          body.innerHTML = renderMarkdown(m.text || '');
+          wireCodeCopyButtons(body);
+        }
         messagesEl.appendChild(wrap);
       });
     }
@@ -1194,17 +1519,21 @@
     streamBubble.className = 'msg assistant streaming';
     streamBubble.innerHTML = '<div class="role">Navio</div><div class="body"></div>';
     streamBody = streamBubble.querySelector('.body');
-    streamBody.textContent = '';
+    streamBuffer = '';
+    streamBody.innerHTML = '';
     messagesEl.appendChild(streamBubble);
     updateLayoutMode();
   }
   function finalizeStream(text) {
     if (streamBubble && streamBody) {
-      streamBody.textContent = text || '';
+      const finalText = (text && text.length) ? text : streamBuffer;
+      streamBody.innerHTML = renderMarkdown(finalText || '');
+      wireCodeCopyButtons(streamBody);
       streamBubble.classList.remove('streaming');
     }
     streamBubble = null;
     streamBody = null;
+    streamBuffer = '';
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
   function addAssistantBubble(text, isError) {
@@ -1212,7 +1541,9 @@
     const wrap = document.createElement('div');
     wrap.className = 'msg assistant' + (isError ? ' error' : '');
     wrap.innerHTML = '<div class="role">Navio</div><div class="body"></div>';
-    wrap.querySelector('.body').textContent = text || '';
+    const body = wrap.querySelector('.body');
+    body.innerHTML = renderMarkdown(text || '');
+    wireCodeCopyButtons(body);
     messagesEl.appendChild(wrap);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     updateLayoutMode();
@@ -1277,7 +1608,11 @@
         }
         case 'streamDelta':
           ensureStreamBubble();
-          if (streamBody) streamBody.textContent += msg.text || '';
+          if (streamBody) {
+            streamBuffer += (msg.text || '');
+            streamBody.innerHTML = renderMarkdown(streamBuffer);
+            wireCodeCopyButtons(streamBody);
+          }
           messagesEl.scrollTop = messagesEl.scrollHeight;
           break;
         case 'streamFinalize':
