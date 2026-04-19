@@ -6,6 +6,9 @@
 /** In-memory webview partition; must match electron/navio-partitions.js */
 const NAVIO_INCOGNITO_PARTITION = 'navio-incognito';
 
+/** Default label for the built-in start surface (shown in tab strip when no page title yet). */
+const NAVIO_HOME_TAB_LABEL = 'Home';
+
 class TabManagerClass {
   constructor() {
     this.tabs = [];
@@ -123,7 +126,7 @@ class TabManagerClass {
     const wrap = document.createElement('div');
     wrap.className = 'tab-list-trail';
     wrap.innerHTML = `
-      <button type="button" class="tab-strip-new tab-strip-new-inline" id="btn-new-tab-inline" title="New Tab (Ctrl+T)" aria-label="New tab">
+      <button type="button" class="tab-strip-new tab-strip-new-inline" id="btn-new-tab-inline" title="Home (Ctrl+T)" aria-label="New tab — Home">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       </button>
     `;
@@ -242,7 +245,7 @@ class TabManagerClass {
     const incognito = !!opts.incognito;
     const tab = {
       id,
-      title: 'New Tab',
+      title: NAVIO_HOME_TAB_LABEL,
       /** User override shown in the tab strip; page title updates still fill `title`. */
       customTitle: null,
       url: url || '',
@@ -254,7 +257,9 @@ class TabManagerClass {
       /** Other tab id when this tab shares a split view (Chrome-style side-by-side). */
       splitPartnerId: null,
       /** Which tab id is laid out in the left pane (both partners share the same value). */
-      splitLeftPaneTabId: null
+      splitLeftPaneTabId: null,
+      /** Per-tab zoom override (null = use Settings default zoom). */
+      zoomFactor: null
     };
 
     // Build a clean user-agent that doesn't expose Electron
@@ -877,16 +882,70 @@ class TabManagerClass {
 
   applyZoomToWebview(wv) {
     if (!wv) return;
-    const z = typeof App !== 'undefined' && App.config ? App.config.defaultZoom : 1;
-    const n = typeof z === 'number' ? z : parseFloat(z);
-    const factor = Number.isFinite(n) ? Math.min(3, Math.max(0.25, n)) : 1;
+    const tab = this.tabs.find((t) => t.webview === wv);
+    const cfgZ = typeof App !== 'undefined' && App.config ? App.config.defaultZoom : 1;
+    const cfgN = typeof cfgZ === 'number' ? cfgZ : parseFloat(cfgZ);
+    const cfgFactor = Number.isFinite(cfgN) ? Math.min(3, Math.max(0.25, cfgN)) : 1;
+    const raw = tab && tab.zoomFactor != null ? tab.zoomFactor : cfgFactor;
+    const factor = Number.isFinite(raw) ? Math.min(3, Math.max(0.25, raw)) : cfgFactor;
     try {
       wv.setZoomFactor(factor);
-    } catch (e) { /* webview may not be ready */ }
+    } catch (e) {
+      /* webview may not be ready — main-process fallback for isolated builds */
+      try {
+        const id = typeof wv.getWebContentsId === 'function' ? wv.getWebContentsId() : null;
+        if (id != null && window.navio?.webviewSetZoom) {
+          void window.navio.webviewSetZoom(id, factor);
+        }
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   applyZoomFromConfig() {
-    this.tabs.forEach((t) => this.applyZoomToWebview(t.webview));
+    this.tabs.forEach((t) => {
+      t.zoomFactor = null;
+      this.applyZoomToWebview(t.webview);
+    });
+  }
+
+  /**
+   * Sets zoom for the active tab (persists on the tab; survives did-finish-load).
+   * Pass `null` to clear override and use Settings default.
+   */
+  setActiveTabZoomFactor(nextFactor) {
+    const tab = this.getActiveTab();
+    const wv = this.getActiveWebview();
+    if (!tab || !wv) return;
+    if (nextFactor == null) {
+      tab.zoomFactor = null;
+    } else {
+      const f = Math.min(3, Math.max(0.25, Number(nextFactor) || 1));
+      tab.zoomFactor = f;
+    }
+    this.applyZoomToWebview(wv);
+    if (typeof window.__navioSyncNewTabSurfaceZoom === 'function') {
+      window.__navioSyncNewTabSurfaceZoom();
+    }
+    if (typeof window.__navioUpdateZoomLabel === 'function') {
+      window.__navioUpdateZoomLabel();
+    }
+  }
+
+  /** Step zoom for the active tab (used by Ctrl/Cmd +/−). */
+  zoomActiveTabBy(delta) {
+    const wv = this.getActiveWebview();
+    if (!wv) return;
+    let cur = 1;
+    try {
+      cur = typeof wv.getZoomFactor === 'function' ? wv.getZoomFactor() : 1;
+    } catch {
+      cur = 1;
+    }
+    if (!Number.isFinite(cur)) cur = 1;
+    const next = Math.min(3, Math.max(0.25, cur + delta));
+    this.setActiveTabZoomFactor(next);
   }
 
   /** Hide new-tab overlay, set URL on tab, and load (fixes NTP + address bar navigation). */
@@ -1047,7 +1106,8 @@ class TabManagerClass {
         try {
           activeTab.webview.focus();
         } catch (_) {}
-      } else if (!activeTab.url) {
+      } else if (!activeTab.url && inSplit) {
+        /* Split blank pane: NTP is hidden — still focus omnibox (non-split uses showNewTabPage → focus). */
         this._focusUrlBarForNewTab();
       }
 
@@ -1484,13 +1544,25 @@ class TabManagerClass {
   _focusUrlBarForNewTab() {
     const el = document.getElementById('url-input');
     if (!el) return;
-    requestAnimationFrame(() => {
+    const run = () => {
       try {
+        const ae = document.activeElement;
+        if (ae && ae !== el && typeof ae.closest === 'function') {
+          if (ae.closest('#tab-list') || ae.closest('#btn-new-tab') || ae.closest('#btn-new-tab-inline') || ae.closest('.tab-strip-new')) {
+            ae.blur();
+          }
+        }
         el.focus({ preventScroll: true });
-        el.select();
+        if (typeof el.select === 'function') el.select();
       } catch {
         /* ignore */
       }
+    };
+    requestAnimationFrame(() => {
+      run();
+      requestAnimationFrame(run);
+      setTimeout(run, 0);
+      setTimeout(run, 50);
     });
   }
 
@@ -1502,6 +1574,10 @@ class TabManagerClass {
     if (apply) requestAnimationFrame(() => apply());
     const activeWv = this.getActiveWebview();
     if (activeWv) activeWv.classList.remove('active');
+    this._focusUrlBarForNewTab();
+    if (typeof window.__navioSyncNewTabSurfaceZoom === 'function') {
+      requestAnimationFrame(() => window.__navioSyncNewTabSurfaceZoom());
+    }
   }
 
   hideNewTabPage() {
@@ -1511,6 +1587,9 @@ class TabManagerClass {
     }
     const activeWv = this.getActiveWebview();
     if (activeWv) activeWv.classList.add('active');
+    if (typeof window.__navioSyncNewTabSurfaceZoom === 'function') {
+      window.__navioSyncNewTabSurfaceZoom();
+    }
   }
 
   renderTabItem(tab) {
@@ -1618,7 +1697,7 @@ class TabManagerClass {
     const contextEl = document.getElementById('context-page-title');
     if (contextEl) {
       const display = this.getTabDisplayTitle(tab);
-      let line = tab.url ? `${display} — ${tab.url}` : 'New Tab';
+      let line = tab.url ? `${display} — ${tab.url}` : NAVIO_HOME_TAB_LABEL;
       if (tab.customTitle && tab.title && tab.title !== display) {
         line = `${display} (${tab.title}) — ${tab.url}`;
       }
@@ -1646,7 +1725,7 @@ class TabManagerClass {
       return String(tab.customTitle).trim();
     }
     const p = (tab.title && String(tab.title).trim()) || '';
-    return p || 'New Tab';
+    return p || NAVIO_HOME_TAB_LABEL;
   }
 
   /** Group name for UI / assistant context, or null if the tab is not grouped. */

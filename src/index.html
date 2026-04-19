@@ -35,7 +35,7 @@
     <div class="top-chrome-drag" id="top-chrome-drag" aria-hidden="true"></div>
     <div id="tab-strip" class="tab-strip">
       <div id="tab-list" class="tab-strip-list"></div>
-      <button class="tab-strip-new" id="btn-new-tab" title="New Tab (Ctrl+T)">
+      <button class="tab-strip-new" id="btn-new-tab" title="Home (Ctrl+T)" aria-label="New tab — Home">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       </button>
       <button class="tab-strip-new tab-strip-private" id="btn-new-private-tab" title="New private tab (Ctrl+Shift+N)" aria-label="New private tab">
@@ -587,7 +587,7 @@
               <div class="setting-row">
                 <label for="setting-startup-mode">When the browser opens</label>
                 <select id="setting-startup-mode">
-                  <option value="new-tab">New tab page</option>
+                  <option value="new-tab">Home</option>
                   <option value="homepage">Homepage (from Browser settings)</option>
                 </select>
               </div>
@@ -1116,7 +1116,7 @@
               <h3>Keyboard shortcuts</h3>
               <ul class="settings-kbd-list">
                 <li>Right-click a tab: groups, split view (side-by-side pages in one colored group like Chrome, swap panes, exit split), pin, rename</li>
-                <li><kbd>Ctrl</kbd>+<kbd>T</kbd> New tab · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd> New private tab</li>
+                <li><kbd>Ctrl</kbd>+<kbd>T</kbd> New Home tab · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd> New private tab</li>
                 <li><kbd>Ctrl</kbd>+<kbd>W</kbd> Close tab · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> Reopen last closed tab</li>
                 <li><kbd>Ctrl</kbd>+<kbd>R</kbd> Reload · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> Hard reload (empty cache)</li>
                 <li><kbd>F5</kbd> Reload · <kbd>F12</kbd> or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>I</kbd> Page DevTools</li>

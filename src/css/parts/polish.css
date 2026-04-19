@@ -692,8 +692,8 @@
   --ntp-accent: #7eb8ff;
   --ntp-subtext: rgba(226, 232, 248, 0.5);
   --ntp-border: rgba(255, 255, 255, 0.07);
-  /* Taller inbox/news lists — hero + shortcuts stay compact above */
-  --ntp-widget-list-max-h: min(320px, 46vh);
+  /* Preview-height lists — keeps the mountain backdrop visible; full lists via pop-out */
+  --ntp-widget-list-max-h: clamp(160px, 24vh, 228px);
   background: #0b0d12;
   scroll-padding-bottom: clamp(24px, 5vh, 48px);
 }
@@ -1010,28 +1010,28 @@
   cursor: grabbing;
 }
 
-/* Dashboard: grows into remaining viewport like a real browser start surface */
+/* Dashboard: natural height — does not stretch to swallow the wallpaper */
 .new-tab-page .ntp-widgets {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   align-items: start;
   align-content: start;
-  min-height: min(360px, 42vh);
-  margin-top: clamp(4px, 1vh, 16px);
+  min-height: 0;
+  margin-top: clamp(10px, 2vh, 22px);
   padding-left: 0;
   padding-right: 0;
-  padding-bottom: clamp(8px, 1.5vh, 16px);
-  max-width: min(1120px, 100%);
-  gap: clamp(12px, 1.8vw, 18px);
+  padding-bottom: clamp(12px, 2vh, 24px);
+  max-width: min(1040px, 100%);
+  gap: clamp(10px, 1.4vw, 16px);
 }
 
-/* Widgets: same family of surfaces, less “theme park” */
+/* Widgets: lighter glass — one quiet layer instead of a heavy slab */
 .new-tab-page .ntp-widget {
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(10, 12, 18, 0.55);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22);
-  backdrop-filter: blur(18px) saturate(1.02);
-  -webkit-backdrop-filter: blur(18px) saturate(1.02);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  background: rgba(8, 10, 16, 0.38);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(22px) saturate(1.04);
+  -webkit-backdrop-filter: blur(22px) saturate(1.04);
 }
 .new-tab-page .ntp-widget:hover {
   transform: none;
@@ -1049,6 +1049,7 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   font-size: 10px;
+  padding: 7px 10px;
   background: rgba(255, 255, 255, 0.03);
   border-bottom-color: rgba(255, 255, 255, 0.07);
 }
@@ -1066,10 +1067,11 @@
 
 .new-tab-page .ntp-news-widget .ntp-widget-body,
 .new-tab-page .ntp-email-widget .ntp-widget-body {
-  background: rgba(6, 8, 14, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: none;
-  margin: 0 8px 8px;
+  background: rgba(4, 6, 12, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.045);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  margin: 0 6px 6px;
+  border-radius: 10px;
 }
 .new-tab-page .ntp-news-widget:hover .ntp-widget-body,
 .new-tab-page .ntp-email-widget:hover .ntp-widget-body {
@@ -1119,6 +1121,38 @@
   color: var(--ntp-accent);
 }
 
+/* Tighter rows — same data, less vertical noise */
+.new-tab-page .ntp-email-item {
+  padding: 7px 10px 7px 11px;
+}
+.new-tab-page .ntp-email-subject {
+  font-size: 12px;
+  -webkit-line-clamp: 1;
+}
+.new-tab-page .ntp-email-preview {
+  font-size: 10.5px;
+}
+.new-tab-page .ntp-news-item {
+  padding: 6px 10px 6px 9px;
+}
+.new-tab-page .ntp-news-title {
+  font-size: 12px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.new-tab-page .ntp-news-meta {
+  font-size: 10px;
+  opacity: 0.82;
+}
+.new-tab-page .ntp-news-category {
+  font-size: 8px;
+  margin-bottom: 2px;
+  letter-spacing: 0.06em;
+}
+
 .new-tab-page .ntp-connect-email-btn {
   background: rgba(126, 184, 255, 0.22);
   color: #f0f6ff;
@@ -1140,7 +1174,7 @@
 
 @media (max-height: 720px) {
   .new-tab-page {
-    --ntp-widget-list-max-h: min(260px, 40vh);
+    --ntp-widget-list-max-h: clamp(140px, 22vh, 200px);
   }
   .new-tab-page .ntp-bg-shell {
     padding-bottom: clamp(16px, 3.5vh, 40px);
@@ -1149,8 +1183,7 @@
     padding-top: clamp(4px, 1vh, 14px);
   }
   .new-tab-page .ntp-widgets {
-    margin-top: clamp(2px, 0.8vh, 10px);
-    min-height: min(280px, 38vh);
+    margin-top: clamp(4px, 1vh, 12px);
   }
   .new-tab-page .ntp-subtitle {
     margin-bottom: 4px !important;
@@ -1159,6 +1192,12 @@
 
 @media (min-width: 960px) {
   .new-tab-page .ntp-hero {
+    max-width: min(1120px, 100%);
+    margin-left: auto;
+    margin-right: auto;
+  }
+  /* Match hero width so Inbox + News use the same horizontal rhythm as search/shortcuts */
+  .new-tab-page .ntp-widgets {
     max-width: min(1120px, 100%);
     margin-left: auto;
     margin-right: auto;

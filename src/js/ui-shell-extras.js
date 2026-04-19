@@ -298,21 +298,53 @@
       });
   }
 
+  /**
+   * While Home (NTP) is visible the guest <webview> is hidden — mirror its zoom on the
+   * shell so Ctrl/Cmd +/− produces a visible change; clear when returning to a page.
+   */
+  function syncNewTabSurfaceZoom() {
+    const ntp = document.getElementById('new-tab-page');
+    if (!ntp) return;
+    if (!ntp.classList.contains('active')) {
+      ntp.style.zoom = '';
+      return;
+    }
+    const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
+    if (!wv || typeof wv.getZoomFactor !== 'function') return;
+    try {
+      const f = wv.getZoomFactor();
+      ntp.style.zoom = !f || f === 1 ? '' : String(f);
+    } catch {
+      ntp.style.zoom = '';
+    }
+  }
+  window.__navioSyncNewTabSurfaceZoom = syncNewTabSurfaceZoom;
+
   async function updateUrlZoomLabel() {
     const el = document.getElementById('url-zoom-label');
     if (!el) return;
     const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
-    if (!wv || typeof wv.getWebContentsId !== 'function') {
+    if (!wv) {
       el.textContent = '';
       return;
     }
+    let factor = 1;
     try {
-      const z = await window.navio.webviewGetZoom(wv.getWebContentsId());
-      const pct = Math.round((z.factor || 1) * 100);
-      el.textContent = pct === 100 ? '' : `${pct}%`;
+      if (typeof wv.getZoomFactor === 'function') {
+        factor = wv.getZoomFactor();
+      } else if (typeof wv.getWebContentsId === 'function' && window.navio?.webviewGetZoom) {
+        const z = await window.navio.webviewGetZoom(wv.getWebContentsId());
+        factor = z.factor || 1;
+      } else {
+        el.textContent = '';
+        return;
+      }
     } catch {
       el.textContent = '';
+      return;
     }
+    const pct = Math.round((factor || 1) * 100);
+    el.textContent = pct === 100 ? '' : `${pct}%`;
   }
   window.__navioUpdateZoomLabel = updateUrlZoomLabel;
 
@@ -561,28 +593,35 @@
   function bindPrintZoomFullscreen() {
     document.addEventListener('keydown', async (e) => {
       const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
-      if (!wv || !wv.getWebContentsId) return;
-      const id = wv.getWebContentsId();
-      if (e.ctrlKey && e.key === 'p') {
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key === 'p' && wv && wv.getWebContentsId) {
         e.preventDefault();
-        window.navio.webviewPrint(id).catch(() => {});
+        window.navio.webviewPrint(wv.getWebContentsId()).catch(() => {});
       }
-      if (e.ctrlKey && (e.key === '=' || e.key === '+')) {
+      const zoomIn =
+        mod &&
+        (e.key === '=' ||
+          e.key === '+' ||
+          e.code === 'NumpadAdd' ||
+          (e.code === 'Equal' && e.shiftKey));
+      const zoomOut = mod && (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract');
+      const zoomReset = mod && e.key === '0';
+      if (zoomIn || zoomOut || zoomReset) {
+        if (!wv || typeof TabManager === 'undefined' || !TabManager.zoomActiveTabBy) return;
+        const t = e.target;
+        const zoomOkInputs = new Set(['url-input', 'ntp-search-input']);
+        if (
+          t &&
+          !zoomOkInputs.has(t.id) &&
+          (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
+        ) {
+          return;
+        }
         e.preventDefault();
-        const z = await window.navio.webviewGetZoom(id);
-        window.navio.webviewSetZoom(id, (z.factor || 1) + 0.1).catch(() => {});
-        updateUrlZoomLabel();
-      }
-      if (e.ctrlKey && e.key === '-') {
-        e.preventDefault();
-        const z = await window.navio.webviewGetZoom(id);
-        window.navio.webviewSetZoom(id, Math.max(0.25, (z.factor || 1) - 0.1)).catch(() => {});
-        updateUrlZoomLabel();
-      }
-      if (e.ctrlKey && e.key === '0') {
-        e.preventDefault();
-        window.navio.webviewSetZoom(id, 1).catch(() => {});
-        updateUrlZoomLabel();
+        if (zoomReset) TabManager.setActiveTabZoomFactor(null);
+        else if (zoomIn) TabManager.zoomActiveTabBy(0.1);
+        else TabManager.zoomActiveTabBy(-0.1);
+        return;
       }
       if (e.key === 'F11') {
         e.preventDefault();

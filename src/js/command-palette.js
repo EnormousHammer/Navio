@@ -80,7 +80,7 @@ class CommandPaletteClass {
 
   baseCommands() {
     return [
-      { id: 'new-tab', label: 'New tab', run: () => TabManager.createTab() },
+      { id: 'new-tab', label: 'Home tab', run: () => TabManager.createTab() },
       {
         id: 'new-private-tab',
         label: 'New private tab',
