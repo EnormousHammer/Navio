@@ -1681,6 +1681,13 @@
     const CODE_PLACE = [];
     let src = String(text).replace(/\r\n/g, '\n');
 
+    // 0. Strip [FOLLOWUP]…[/FOLLOWUP] blocks before any other processing.
+    //    These are instruction tokens for the UI, never user-visible text.
+    src = src.replace(/\[FOLLOWUP\][\s\S]*?\[\/FOLLOWUP\]/gi, '');
+    // Also strip any partial / unclosed [FOLLOWUP] that may arrive mid-stream.
+    src = src.replace(/\[FOLLOWUP\][\s\S]*/gi, '').trim();
+    if (!src) return '';
+
     // 1. Extract fenced code blocks first (before any escaping/markdown)
     src = src.replace(/```([a-zA-Z0-9_+\-.]*)\n?([\s\S]*?)```/g, function (_, lang, code) {
       const idx = CODE_PLACE.length;
@@ -2244,20 +2251,22 @@
   }
   // ── FOLLOWUP chip extraction (mirrors assistant.js logic) ────────────
   function extractFollowUpChips(text) {
-    if (!text) return { clean: '', chips: [] };
-    const re = /\[FOLLOWUP\]\s*(\{[\s\S]*?\})\s*\[\/FOLLOWUP\]/g;
+    if (!text) return { clean: text || '', chips: [] };
     const chips = [];
-    const clean = text.replace(re, function (_, json) {
+    // Pull chips out of complete [FOLLOWUP]{...}[/FOLLOWUP] blocks
+    const clean = text.replace(/\[FOLLOWUP\]([\s\S]*?)\[\/FOLLOWUP\]/gi, function (_, inner) {
       try {
+        // inner may have leading/trailing whitespace
+        const json = inner.trim();
         const parsed = JSON.parse(json);
         const arr = Array.isArray(parsed) ? parsed
-                  : Array.isArray(parsed.chips) ? parsed.chips : [];
+                  : (parsed && Array.isArray(parsed.chips)) ? parsed.chips : [];
         arr.forEach(function (c) { if (typeof c === 'string' && c.trim()) chips.push(c.trim()); });
-      } catch { /* ignore malformed JSON */ }
+      } catch (e) { /* malformed JSON — still strip the block */ }
       return '';
     });
-    // Also strip any partial [FOLLOWUP] that may appear at end of live stream
-    const trimmed = clean.replace(/\[FOLLOWUP\][\s\S]*$/, '').trim();
+    // Strip any leftover partial block (e.g. stream cut off before [/FOLLOWUP])
+    const trimmed = clean.replace(/\[FOLLOWUP\][\s\S]*/gi, '').trim();
     return { clean: trimmed, chips: chips.slice(0, 4) };
   }
 
@@ -2437,8 +2446,10 @@
           ensureStreamBubble();
           if (streamBody) {
             streamBuffer += (msg.text || '');
-            // Hide partial [FOLLOWUP] blocks from live render — they'll be extracted on finalize
-            const liveText = streamBuffer.replace(/\[FOLLOWUP\][\s\S]*$/, '');
+            // Hide FOLLOWUP blocks from live render — finalize extracts chips
+            const liveText = streamBuffer
+              .replace(/\[FOLLOWUP\][\s\S]*?\[\/FOLLOWUP\]/gi, '')
+              .replace(/\[FOLLOWUP\][\s\S]*/gi, '');
             streamBody.innerHTML = renderMarkdown(liveText);
             wireCodeCopyButtons(streamBody);
           }
