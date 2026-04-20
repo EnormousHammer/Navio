@@ -1904,7 +1904,9 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
     for (const tc of result.toolCalls) {
       console.log(`[navio] tool-loop step ${step}: ${tc.name}(${JSON.stringify(tc.arguments).slice(0, 120)})`);
 
-      // Web search via Perplexity (model-callable, works mid-reasoning)
+      // Web search — Perplexity when connected (best citations), else fall back
+      // to the active LLM provider's native web-search tool so users never need
+      // a second paid key just to get cited answers.
       if (tc.name === 'web_search') {
         const query = (tc.arguments && tc.arguments.query) || '';
         let toolResult;
@@ -1912,19 +1914,31 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
           const connMap = loadConnectorKeys();
           const encKey = connMap['perplexity'];
           const perplexityKey = encKey ? decryptConnectorKey(encKey) : null;
-          if (!perplexityKey) {
-            toolResult = { error: 'Perplexity API key not connected. Add it in Settings → Connectors → Perplexity.' };
-          } else {
-            const searchRes = await queryPerplexity(perplexityKey, query);
-            if (searchRes.error) {
-              toolResult = { error: searchRes.error };
-            } else {
-              toolResult = {
-                answer: searchRes.answer || '',
-                citations: searchRes.citations || [],
-                model: searchRes.model || 'sonar'
-              };
+
+          let searchRes = null;
+          let source = null;
+          if (perplexityKey) {
+            searchRes = await queryPerplexity(perplexityKey, query);
+            source = 'perplexity';
+            if (searchRes && searchRes.error) {
+              console.warn(`[navio] Perplexity web_search failed, falling back to provider: ${searchRes.error}`);
+              searchRes = null;
             }
+          }
+          if (!searchRes) {
+            searchRes = await queryProviderWebSearch(cfg, apiKey, query);
+            source = cfg.aiProvider || 'openai';
+          }
+
+          if (searchRes.error) {
+            toolResult = { error: searchRes.error };
+          } else {
+            toolResult = {
+              answer: searchRes.answer || '',
+              citations: searchRes.citations || [],
+              model: searchRes.model || '',
+              source
+            };
           }
         } catch (e) {
           toolResult = { error: `Web search failed: ${e.message}` };
@@ -3364,13 +3378,32 @@ const toolExecutors = {
       const n = (data.results || []).length;
       const nextTok = data.nextPageToken || null;
       const oauthPid = gmailToolOAuthProviderId(args);
+      const acctEmail = gmailConnectedAccountEmail(oauthPid);
+      // Stamp an account-correct web URL on every result so the model can cite
+      // the email with a link that opens in the right Gmail account (authuser=email)
+      // instead of whichever inbox happens to sit in /u/0/ of the browser session.
+      const resultsWithUrl = (data.results || []).map((r) => {
+        if (!r || !r.id) return r;
+        const view =
+          Array.isArray(r.labelIds) && r.labelIds.includes('DRAFT')
+            ? 'drafts'
+            : Array.isArray(r.labelIds) && r.labelIds.includes('SENT')
+              ? 'sent'
+              : 'inbox';
+        return {
+          ...r,
+          web_url: buildGmailWebUrl(oauthPid, r.id, { view }),
+          account: acctEmail || undefined
+        };
+      });
       return {
-        results: data.results || [],
+        results: resultsWithUrl,
         total: data.total || 0,
         next_page_token: nextTok,
         /** So the shell can open mail.google.com in the same account slot as the API (u/0 vs u/1). */
         gmail_service_id: oauthPid === 'google_2' ? 'gmail_2' : 'gmail',
-        note: `Found ${n} email(s) matching "${query}".${nextTok ? ' More available — call gmail_search again with the same query and page_token set to next_page_token.' : ''}`
+        connected_account_email: acctEmail || undefined,
+        note: `Found ${n} email(s) matching "${query}".${nextTok ? ' More available — call gmail_search again with the same query and page_token set to next_page_token.' : ''} When citing any email, use its "web_url" field verbatim — do not reconstruct mail.google.com URLs.`
       };
     } catch (e) {
       return { error: 'gmail_search failed: ' + e.message };
@@ -3391,7 +3424,14 @@ const toolExecutors = {
         await navioSleep(600 * (attempt + 1));
       }
       if (data.error) return data;
-      return data;
+      const oauthPid = gmailToolOAuthProviderId(args);
+      const acctEmail = gmailConnectedAccountEmail(oauthPid);
+      return {
+        ...data,
+        web_url: buildGmailWebUrl(oauthPid, mid, { view: 'inbox' }),
+        account: acctEmail || undefined,
+        gmail_service_id: oauthPid === 'google_2' ? 'gmail_2' : 'gmail'
+      };
     } catch (e) {
       return { error: 'gmail_get_message failed: ' + e.message };
     }
@@ -3472,15 +3512,25 @@ const toolExecutors = {
 
       const drafts = detailRows.filter(Boolean);
       const n = drafts.length;
+      const oauthPid = gmailToolOAuthProviderId(args);
+      const acctEmail = gmailConnectedAccountEmail(oauthPid);
+      const draftsWithUrl = drafts.map((d) =>
+        d && d.message_id
+          ? { ...d, web_url: buildGmailWebUrl(oauthPid, d.message_id, { view: 'drafts' }), account: acctEmail || undefined }
+          : d
+      );
       return {
-        drafts,
+        drafts: draftsWithUrl,
         count: n,
         next_page_token: nextTok,
+        gmail_service_id: oauthPid === 'google_2' ? 'gmail_2' : 'gmail',
+        connected_account_email: acctEmail || undefined,
         note:
           `Loaded ${n} draft(s) with bodies and attachment filenames via API (no Gmail UI).` +
           (nextTok
             ? ' More drafts: call gmail_list_drafts again with the same max_results and page_token set to next_page_token.'
-            : '')
+            : '') +
+          ' When citing any draft, use its "web_url" field verbatim so the link opens in the connected account.'
       };
     } catch (e) {
       return { error: 'gmail_list_drafts failed: ' + e.message };
@@ -5175,6 +5225,48 @@ function gmailToolOAuthProviderId(args) {
 }
 
 /**
+ * Look up the stored email for a connected OAuth provider (used to build
+ * account-correct Gmail web URLs — `?authuser=<email>` routes to the right
+ * inbox regardless of which slot `/u/N/` picks in the user's browser session).
+ */
+function gmailConnectedAccountEmail(providerId) {
+  try {
+    const map = loadOAuthTokens();
+    const entry = map[providerId];
+    const email = entry && entry.email ? String(entry.email).trim() : '';
+    return email && email.includes('@') ? email : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Build the Gmail web URL for a single message that opens in the **connected**
+ * account, not whatever account the signed-in browser session happens to have
+ * in slot 0. Uses `?authuser=<email>` when we know the OAuth email; otherwise
+ * falls back to a slot-based URL.
+ *   providerId: 'google' | 'google_2'
+ *   messageId: Gmail API message id
+ *   opts.view: 'inbox' (default) | 'drafts' | 'sent' | 'all'
+ */
+function buildGmailWebUrl(providerId, messageId, opts = {}) {
+  const mid = String(messageId || '').trim();
+  if (!mid) return '';
+  const slot = providerId === 'google_2' ? 1 : 0;
+  const view = opts.view === 'drafts' || opts.view === 'sent' || opts.view === 'all'
+    ? opts.view
+    : 'inbox';
+  const email = gmailConnectedAccountEmail(providerId);
+  const frag = `#${view}/${encodeURIComponent(mid)}`;
+  if (email) {
+    const base = new URL('https://mail.google.com/mail/u/0/');
+    base.searchParams.set('authuser', email);
+    return `${base.origin}${base.pathname}?${base.searchParams.toString()}${frag}`;
+  }
+  return `https://mail.google.com/mail/u/${slot}/${frag}`;
+}
+
+/**
  * Gmail API unavailable — OAuth missing or expired. Keep the `not_signed_in` prefix so
  * renderers can detect it; body is shown to the user and to the model verbatim.
  */
@@ -5649,7 +5741,24 @@ ipcMain.handle('connector-query', async (event, { serviceId, query, options }) =
     if (serviceId === 'notion') return await queryNotion(token, query, options);
     if (serviceId === 'perplexity') return await queryPerplexity(token, query, options);
     if (serviceId === 'linear') return await queryLinear(token, query, options);
-    if (serviceId === 'gmail' || serviceId === 'gmail_2') return await queryGmail(token, query, options);
+    if (serviceId === 'gmail' || serviceId === 'gmail_2') {
+      const gmailRes = await queryGmail(token, query, options);
+      if (gmailRes && Array.isArray(gmailRes.results)) {
+        const oauthPid = serviceId === 'gmail_2' ? 'google_2' : 'google';
+        const acctEmail = gmailConnectedAccountEmail(oauthPid);
+        return {
+          ...gmailRes,
+          results: gmailRes.results.map((r) =>
+            r && r.id
+              ? { ...r, web_url: buildGmailWebUrl(oauthPid, r.id, { view: 'inbox' }), account: acctEmail || undefined }
+              : r
+          ),
+          gmail_service_id: serviceId,
+          connected_account_email: acctEmail || undefined
+        };
+      }
+      return gmailRes;
+    }
     if (serviceId === 'gdrive') return await queryGoogleDrive(token, query, options);
     if (serviceId === 'gcalendar') return await queryGoogleCalendar(token, query, options);
     if (serviceId === 'dropbox') return await queryDropbox(token, query, options);
@@ -5749,6 +5858,152 @@ async function queryPerplexity(apiKey, query, options = {}) {
   const content = data.choices?.[0]?.message?.content || '';
   const citations = data.citations || [];
   return { answer: content, citations, model };
+}
+
+/**
+ * Fallback web search using whatever LLM provider the user already pays for.
+ * Avoids forcing a second (Perplexity) API key — each major provider now
+ * ships a server-side web-search tool against the same key + token bill.
+ *
+ *   OpenAI  → /v1/responses with tools:[{type:"web_search"}] (falls back to web_search_preview)
+ *   Anthropic → /v1/messages with tools:[{type:"web_search_20250305", name:"web_search"}]
+ *   Google  → generateContent with tools:[{google_search:{}}]
+ *
+ * Returns { answer, citations: [{title,url}], model } on success, { error } on failure.
+ * Never throws — all failures are reported as an error string the agent can reason about.
+ */
+async function queryProviderWebSearch(cfg, apiKey, query) {
+  const provider = cfg.aiProvider || 'openai';
+  const model = cfg.aiModel || 'gpt-5.4';
+  const endpoint = cfg.customEndpoint || '';
+
+  if (!apiKey) {
+    return { error: 'No AI API key configured. Add one in Settings → AI.' };
+  }
+  const cleanQuery = String(query || '').trim();
+  if (!cleanQuery) return { error: 'Empty search query.' };
+
+  // Normalize citation shape to array of URL strings so it matches the existing
+  // Perplexity shape consumed by src/js/assistant.js (_appendCitationChips).
+  const pushUrl = (arr, seen, u) => {
+    if (!u || typeof u !== 'string') return;
+    if (seen.has(u)) return;
+    seen.add(u);
+    arr.push(u);
+  };
+
+  try {
+    if (provider === 'openai' || provider === 'custom') {
+      const base = endpoint
+        ? endpoint.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '')
+        : 'https://api.openai.com/v1';
+      const url = `${base}/responses`;
+      const isGpt5 = /^gpt-?5/i.test(model);
+      const toolType = isGpt5 ? 'web_search' : 'web_search_preview';
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model,
+          input: cleanQuery,
+          tools: [{ type: toolType }],
+          tool_choice: { type: toolType }
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        const msg = data?.error?.message || `OpenAI web search HTTP ${resp.status}`;
+        return { error: msg };
+      }
+      let answer = '';
+      const citations = [];
+      const seen = new Set();
+      const items = Array.isArray(data.output) ? data.output : [];
+      for (const item of items) {
+        if (item.type === 'message' && Array.isArray(item.content)) {
+          for (const part of item.content) {
+            if (part.type === 'output_text' && part.text) answer += part.text;
+            for (const a of part.annotations || []) {
+              if (a.type === 'url_citation') pushUrl(citations, seen, a.url);
+            }
+          }
+        }
+      }
+      if (!answer && typeof data.output_text === 'string') answer = data.output_text;
+      return { answer, citations, model };
+    }
+
+    if (provider === 'anthropic') {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: model || 'claude-opus-4-5',
+          max_tokens: 4096,
+          messages: [{ role: 'user', content: cleanQuery }],
+          tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }]
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        const msg = data?.error?.message || `Anthropic web search HTTP ${resp.status}`;
+        return { error: msg };
+      }
+      let answer = '';
+      const citations = [];
+      const seen = new Set();
+      for (const block of data.content || []) {
+        if (block.type === 'text' && block.text) {
+          answer += block.text;
+          for (const c of block.citations || []) {
+            pushUrl(citations, seen, c.url || c.source?.url);
+          }
+        } else if (block.type === 'web_search_tool_result' && Array.isArray(block.content)) {
+          for (const hit of block.content) pushUrl(citations, seen, hit.url);
+        }
+      }
+      return { answer, citations, model };
+    }
+
+    if (provider === 'google') {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemini-2.0-flash'}:generateContent?key=${apiKey}`;
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: cleanQuery }] }],
+          tools: [{ google_search: {} }]
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        const msg = data?.error?.message || `Gemini web search HTTP ${resp.status}`;
+        return { error: msg };
+      }
+      const cand = data.candidates?.[0];
+      let answer = '';
+      for (const part of cand?.content?.parts || []) {
+        if (part.text) answer += part.text;
+      }
+      const citations = [];
+      const seen = new Set();
+      for (const ch of cand?.groundingMetadata?.groundingChunks || []) {
+        pushUrl(citations, seen, ch.web?.uri);
+      }
+      return { answer, citations, model };
+    }
+
+    return { error: `Web search is not available for provider "${provider}". Add a Perplexity key in Settings → Connectors, or switch to OpenAI, Anthropic, or Google in Settings → AI.` };
+  } catch (e) {
+    return { error: `Provider web search failed: ${e.message}` };
+  }
 }
 
 async function queryLinear(apiKey, query, options = {}) {

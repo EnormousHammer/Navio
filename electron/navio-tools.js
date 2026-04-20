@@ -179,10 +179,10 @@ const NAVIO_TOOLS = [
   {
     name: 'web_search',
     description:
-      'Search the web for real-time information using Perplexity AI. Returns a synthesized answer with source URLs. ' +
+      'Search the live web. Returns a synthesized answer with source URLs (citations). ' +
+      'Navio uses Perplexity when a Perplexity key is connected (best citations); otherwise it transparently falls back to the active AI provider\'s built-in web search (OpenAI, Anthropic, or Google) using the same key the user already configured — no second paid key required. ' +
       'Use for: current events, prices, facts not available on the active page, general knowledge questions, comparisons, research. ' +
-      'Do NOT use when the answer is already on the active page — read_page or get_page_text is faster. ' +
-      'Requires a Perplexity API key in Settings → Connectors.',
+      'Do NOT use when the answer is already on the active page — read_page or get_page_text is faster.',
     parameters: {
       type: 'object',
       properties: {

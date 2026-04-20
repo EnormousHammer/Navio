@@ -10,6 +10,7 @@ Navio is built on **Electron and Chromium**, so core browsing (tabs, rendering, 
 
 - **Navio AI** - Built-in assistant that reads, understands, and interacts with any web page
 - **Multi-Provider** - OpenAI, Anthropic, Google, or any OpenAI-compatible endpoint (bring your own key)
+- **Cited web answers out of the box** - `web_search` uses Perplexity when connected, otherwise transparently falls back to the active provider's native web search (OpenAI Responses, Anthropic `web_search_20250305`, or Gemini `google_search`) — same key, no second bill
 - **Premium Dark UI** - Futuristic glass-morphism design with electric cyan-to-violet accents
 - **Tab Management** - Sidebar-based tabs with favicons, live loading indicators, and **rename** (double-click the tab title or use the tab context menu)
 - **Smart Navigation** - URL bar detects URLs vs search queries automatically

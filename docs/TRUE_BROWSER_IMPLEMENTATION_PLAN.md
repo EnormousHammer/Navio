@@ -48,7 +48,7 @@ If a feature **spikes RAM or janks the UI**, ship it behind a setting or defer i
 
 - [x] **1.1** Downloads drawer under toolbar; **Open Downloads folder** label; per-row **Show in folder**; **Ctrl+J** wired in `session-setup.js` → `downloads-panel`.
 - [x] **1.2** Google Workspace clipboard/file-picker auto-grant extended (Meet, Chat, Calendar, Sheets, Slides) alongside Gmail/Docs/Drive.
-- [x] **1.3** Tab discard logic unchanged (pinned / incognito / agent / chat / background); default remains **Off** (`tabDiscardIdleMinutes: 0`) to avoid surprise reloads — user picks 15–120 min in Settings.
+- [x] **1.3** Tab discard logic unchanged (pinned / incognito / agent / chat / AI-busy / split-partner / loading / non-http excluded); **default now 30 min** for fresh installs (`tabDiscardIdleMinutes: 30` in `electron/config-store.js`). Existing users who had `0` saved keep `0` because `loadConfig` merges the user file over defaults. User can still pick off / 15 / 30 / 60 / 120 in Settings.
 - [x] **1.4** Load failures show **human-readable** copy plus optional technical line (code + raw `ERR_*`), not only raw `ERR_ABORTED` text.
 
 ### 1.1 Downloads & files
@@ -88,7 +88,7 @@ If a feature **spikes RAM or janks the UI**, ship it behind a setting or defer i
 
 - [x] **2.1** **Settings → AI:** “Live web answers” and “Gmail / mail context” with **Auto / Always / Off**; **Tab digest** toggle; synced with assistant sidebar (`settings.js` + `assistantConnectorWeb` / `assistantConnectorMail`).
 - [x] **2.1** **NTP:** Single hero line + hint; **Quick starts** collapsed under `<details>` so the search box is the obvious primary action.
-- [x] **2.2** Citation **chips** from Perplexity unchanged; **fallback** parses markdown / `Sources` URLs in assistant replies when no connector array is present (bounded).
+- [x] **2.2** Citation **chips** rendered for every provider: Perplexity (when connected) **and** OpenAI/Anthropic/Gemini native web search via `queryProviderWebSearch` — users no longer need a Perplexity key to get cited answers. Markdown / `Sources` URL fallback in assistant replies is unchanged (bounded).
 - [x] **2.3** **Agent loop:** clearer **step-limit** message; **transient** provider errors append a short retry / **continue** hint.
 
 ### 2.1 Default intelligence path
@@ -139,7 +139,7 @@ If a feature **spikes RAM or janks the UI**, ship it behind a setting or defer i
 
 - **Voice:** TTS for last assistant reply (opt-in); document provider/OS choice.
 - [x] **Task chains:** **Settings → Browser → Saved workflows** lists, runs (opens assistant + queues steps), and deletes; command palette unchanged.
-- **Second search backend** (e.g. Brave Search API + user key) to reduce Perplexity-only dependency—citations-first.
+- ~~**Second search backend** (e.g. Brave Search API + user key)~~ — **Replaced by the provider-native `web_search` fallback** (Phase 2.2). Users stay on one key (their LLM provider) and still get cited web answers; adding a Brave/SerpAPI tier would cost them extra and offer little over the native OpenAI/Anthropic/Gemini web search.
 
 **Exit criteria:** Marketing copy matches what the binary actually does.
 

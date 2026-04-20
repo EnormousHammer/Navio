@@ -4055,8 +4055,53 @@ class AssistantManagerClass {
     }
 
     html = this._enrichPlainEmailSubjects(html);
+    html = this._rewriteGmailAnchorsToAuthUser(html);
 
     return html;
+  }
+
+  /**
+   * Catch-net: if the model wrote a raw `<a href="https://mail.google.com/mail/u/N/#inbox/<id>">`
+   * link, rewrite it so the href uses `?authuser=<connected-email>` — otherwise clicks open in
+   * whatever Gmail account happens to be in the browser session's slot N (often the user's
+   * personal mailbox, not the OAuth-connected one). This is a second line of defence; tool
+   * results already carry a `web_url` the model is told to use verbatim.
+   */
+  _rewriteGmailAnchorsToAuthUser(html) {
+    if (typeof html !== 'string' || !html || !/mail\.google\.com/i.test(html)) return html;
+    const refs = this._emailRefs;
+    const tpl = document.createElement('template');
+    tpl.innerHTML = html;
+    const anchors = tpl.content.querySelectorAll('a[href*="mail.google.com"]');
+    if (!anchors.length) return html;
+    let changed = false;
+    anchors.forEach((a) => {
+      const href = a.getAttribute('href') || '';
+      if (!href) return;
+      let msgId = null;
+      try {
+        const u = new URL(href);
+        if (!/^mail\.google\.com$/i.test(u.hostname)) return;
+        // Don't re-rewrite a URL that already targets a specific account.
+        if (u.searchParams.get('authuser')) return;
+        const frag = (u.hash || '').replace(/^#/, '');
+        const segs = frag.split('/').filter(Boolean);
+        const last = (segs[segs.length - 1] || '').split('?')[0];
+        if (last && (refs?.has?.(last) || /^[a-fA-F0-9]{10,}$/.test(last))) msgId = last;
+      } catch {
+        return;
+      }
+      if (!msgId) return;
+      const ref = refs?.get?.(msgId);
+      if (!ref || !ref.authEmail) return;
+      const fixed = this._gmailWebInboxUrl(msgId, ref.gmailUSlot || 0, ref.authEmail);
+      if (fixed && fixed !== href) {
+        a.setAttribute('href', fixed);
+        a.setAttribute('data-navio-authuser', '1');
+        changed = true;
+      }
+    });
+    return changed ? tpl.innerHTML : html;
   }
 
   // ── Takeover mode ────────────────────────────────────────────────────────

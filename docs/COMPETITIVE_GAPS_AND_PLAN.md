@@ -37,7 +37,7 @@
 
 | Theme | Gap |
 |--------|-----|
-| Bundled “answer web” | Comet ships with Perplexity’s stack; Navio requires user-supplied Perplexity API key (or other tools) for comparable live Q&A + citations. |
+| Bundled “answer web” | **Closed (Apr 2026):** `web_search` now falls back to the **active LLM provider’s own web search** (OpenAI Responses `web_search`, Anthropic `web_search_20250305`, Gemini `google_search`) when no Perplexity key is present — users never need a second paid key. Perplexity is still preferred when connected (best citations). See `queryProviderWebSearch` in `electron/main.js`. |
 | Productized agents | Comet markets long-running task chains, shopping, heavy delegation; Navio has tools + connectors but not the same packaged “operator” UX and onboarding. |
 | Mobile | Comet on Android/iOS; Navio is desktop Electron today. |
 | Voice | Navio: speech-to-text input; Comet emphasizes voice as a full modality (including multi-tab voice on mobile) — **TTS / voice replies** not first-class here. |
@@ -59,7 +59,7 @@ These are **epistemic** limits (not just missing buttons):
 1. **Full page and all frames** — Only what `extract-page-content` and scope allow; dynamic/auth-only content may be partial.
 2. **Deep multi-tab content** — Model sees **titles/URLs** for open tabs; full bodies require explicit actions (“summarize all tabs”), `@` references, or tools — not automatic like some competitor demos imply.
 3. **Connector coverage** — `_buildConnectorContext` uses **regex intents**; misclassified queries skip Gmail/Perplexity/etc. until improved routing or explicit UI toggles (“include web search”).
-4. **Live web without Perplexity/tools** — No omniscient index; needs browse/search tools, MCP, or connector.
+4. **Live web without Perplexity/tools** — `web_search` now works key-free-for-a-second-party by routing through the user’s active LLM provider (OpenAI/Anthropic/Google). If the user has no AI key at all, there is still no live web; deep-web / paywalled content still requires the browse tools.
 5. **Long-horizon personalization** — Local memory features exist, but not Atlas-style server memory unless the chosen provider supports it and user opts in.
 6. **Extensions** — Isolated; AI bridge off by default and not fully productized ([EXTENSIONS.md](./EXTENSIONS.md)).
 7. **MCP off by default** — `mcpEnabled: false` in config; users must enable and configure servers to unlock external tools.

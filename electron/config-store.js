@@ -55,8 +55,10 @@ const DEFAULT_CONFIG = {
   downloadAskWhere: false,
   /** When true, open File Explorer to the file after a successful download. Off by default to avoid interrupting browsing. */
   downloadRevealInFolder: false,
-  /** 0 = off. After N minutes inactive, background http(s) tabs unload to about:blank to free memory (Chrome-style discard). */
-  tabDiscardIdleMinutes: 0,
+  /** 0 = off. After N minutes inactive, background http(s) tabs unload to about:blank to free memory (Chrome-style discard).
+   *  Default 30: pinned, incognito, agent, chat, and audible tabs are excluded in tabs.js so active work is never surprise-reloaded.
+   *  Users who previously saved tabDiscardIdleMinutes: 0 keep that value (loadConfig merges saved file over defaults). */
+  tabDiscardIdleMinutes: 30,
   /** Google Translate "translate to" language (e.g. en, es, zh-cn). Empty = use OS locale. */
   translateTargetLang: '',
   aiAutoExecute: false,
