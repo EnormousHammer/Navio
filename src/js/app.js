@@ -1865,21 +1865,3 @@ const PageWatcher = (() => {
 })();
 
 // ── Local Model Privacy Badge ──────────────────────────────────────────────
-// Shows a "Local" badge in the navbar when Ollama is the active provider.
-
-(async () => {
-  try {
-    const cfg = await window.navio.getConfig();
-    const badge = document.getElementById('local-model-badge');
-    if (badge) badge.hidden = cfg.aiProvider !== 'ollama';
-  } catch { /* ignore */ }
-})();
-
-// Keep badge in sync after settings save
-document.addEventListener('navio-config-saved', async () => {
-  try {
-    const cfg = await window.navio.getConfig();
-    const badge = document.getElementById('local-model-badge');
-    if (badge) badge.hidden = cfg.aiProvider !== 'ollama';
-  } catch { /* ignore */ }
-});
