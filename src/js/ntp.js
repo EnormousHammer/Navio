@@ -2180,8 +2180,8 @@ const NTP = (() => {
 
   function _applyDim(value) {
     const clamped = Math.max(0, Math.min(85, Number(value)));
-    // 0 = no dim (brightness 1.0 = full photo), 85 = very dark (brightness 0.15)
-    const brightness = (1 - (clamped / 100)).toFixed(2);
+    // 0 = very dark (left/moon), 85 = fully bright (right/sun)
+    const brightness = (0.15 + (clamped / 100)).toFixed(2);
     const bgLayer = document.querySelector('.ntp-bg-layer');
     if (bgLayer) bgLayer.style.filter = `brightness(${brightness})`;
     const slider = document.getElementById('ntp-dim-slider');
@@ -2196,11 +2196,11 @@ const NTP = (() => {
     (async () => {
       try {
         const cfg = await window.navio.getConfig();
-        const saved = typeof cfg.ntpBgDim === 'number' ? cfg.ntpBgDim : 0;
+        const saved = typeof cfg.ntpBgDim === 'number' ? cfg.ntpBgDim : 85;
         slider.value = String(saved);
         _applyDim(saved);
       } catch {
-        _applyDim(0);
+        _applyDim(85);
       }
     })();
 
