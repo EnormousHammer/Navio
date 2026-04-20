@@ -2179,22 +2179,18 @@ const NTP = (() => {
   // ── Background dim slider ─────────────────────────────────────────────────
 
   function _applyDim(value) {
-    const opacity = Math.max(0, Math.min(80, value)) / 100;
-    const bgLayer = document.querySelector('.ntp-bg-layer');
-    if (bgLayer) bgLayer.style.setProperty('--ntp-bg-dim', String(opacity));
-    // Update filled-track visual via CSS custom property on the slider itself
+    const clamped = Math.max(0, Math.min(80, Number(value)));
+    const overlay = document.getElementById('ntp-dim-overlay');
+    if (overlay) overlay.style.opacity = String(clamped / 100);
     const slider = document.getElementById('ntp-dim-slider');
-    if (slider) {
-      const pct = (value / 80 * 100).toFixed(1) + '%';
-      slider.style.setProperty('--slider-pct', pct);
-    }
+    if (slider) slider.style.setProperty('--slider-pct', (clamped / 80 * 100).toFixed(1) + '%');
   }
 
   function _bindDimSlider() {
     const slider = document.getElementById('ntp-dim-slider');
     if (!slider) return;
 
-    // Load saved value
+    // Load saved value and apply immediately
     (async () => {
       try {
         const cfg = await window.navio.getConfig();
@@ -2206,10 +2202,8 @@ const NTP = (() => {
       }
     })();
 
-    // Live update as user drags
-    slider.addEventListener('input', () => {
-      _applyDim(Number(slider.value));
-    });
+    // Live update while dragging
+    slider.addEventListener('input', () => _applyDim(Number(slider.value)));
 
     // Persist on release
     slider.addEventListener('change', async () => {
