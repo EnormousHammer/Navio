@@ -67,6 +67,7 @@ class SettingsManagerClass {
       aiAutoExecute: document.getElementById('setting-ai-auto-execute'),
       aiAutoScreenshot: document.getElementById('setting-ai-auto-screenshot'),
       aiAgentStepMode: document.getElementById('setting-ai-agent-step-mode'),
+      ttsEnabled: document.getElementById('setting-tts-enabled'),
       assistantConnectorWeb: document.getElementById('setting-assistant-connector-web'),
       assistantConnectorMail: document.getElementById('setting-assistant-connector-mail'),
       assistantTabDigest: document.getElementById('setting-assistant-tab-digest'),
@@ -480,6 +481,9 @@ class SettingsManagerClass {
     }
     if (this.elements.aiAgentStepMode) {
       this.elements.aiAgentStepMode.checked = !!this.config.aiAgentStepMode;
+    }
+    if (this.elements.ttsEnabled) {
+      this.elements.ttsEnabled.checked = !!this.config.ttsEnabled;
     }
     if (this.elements.assistantConnectorWeb) {
       const w = this.config.assistantConnectorWeb || 'auto';
@@ -1339,6 +1343,7 @@ class SettingsManagerClass {
       aiAutoExecute: !!(this.elements.aiAutoExecute && this.elements.aiAutoExecute.checked),
       aiAutoScreenshotAfterNavigate: !!(this.elements.aiAutoScreenshot && this.elements.aiAutoScreenshot.checked),
       aiAgentStepMode: !!(this.elements.aiAgentStepMode && this.elements.aiAgentStepMode.checked),
+      ttsEnabled: !!(this.elements.ttsEnabled && this.elements.ttsEnabled.checked),
       assistantConnectorWeb: this.elements.assistantConnectorWeb
         ? this.elements.assistantConnectorWeb.value || 'auto'
         : (this.config.assistantConnectorWeb || 'auto'),

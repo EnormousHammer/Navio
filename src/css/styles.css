@@ -2150,6 +2150,321 @@ body.ntp-blank-mode .ntp-widgets,
 body.ntp-blank-mode .ntp-topbar {
   display: none !important;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   NTP Chat — Comet-style inline streaming conversation
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* When the chat panel is active, compress hero to search-bar-only and hide dashboard */
+body.ntp-chat-active .ntp-brand   { display: none !important; }
+body.ntp-chat-active .ntp-mode-tabs { display: none !important; }
+body.ntp-chat-active .ntp-smart-row { display: none !important; }
+body.ntp-chat-active .ntp-shortcuts { display: none !important; }
+body.ntp-chat-active .ntp-widgets   { display: none !important; }
+body.ntp-chat-active .ntp-hero {
+  padding-top: 12px;
+  padding-bottom: 10px;
+  flex-shrink: 0;
+}
+body.ntp-chat-active .ntp-model-selector { margin-bottom: 6px; }
+
+/* Full-page chat panel layout */
+.ntp-chat-panel {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  gap: 0;
+}
+.ntp-chat-panel[hidden] { display: none !important; }
+
+/* History sidebar */
+.ntp-chat-history-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255,255,255,0.03);
+  border-right: 1px solid rgba(255,255,255,0.06);
+  overflow: hidden;
+}
+.ntp-chat-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+.ntp-chat-new-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: rgba(0,216,255,0.1);
+  border: 1px solid rgba(0,216,255,0.25);
+  border-radius: 99px;
+  color: #00d8ff;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+.ntp-chat-new-btn:hover { background: rgba(0,216,255,0.18); }
+.ntp-chat-history-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+.ntp-history-empty {
+  font-size: 12px;
+  color: rgba(255,255,255,0.3);
+  text-align: center;
+  padding: 16px 12px;
+  margin: 0;
+}
+.ntp-history-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  margin: 1px 4px;
+  transition: background 0.12s;
+}
+.ntp-history-item:hover { background: rgba(255,255,255,0.06); }
+.ntp-history-title {
+  flex: 1;
+  font-size: 12px;
+  color: rgba(255,255,255,0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ntp-history-del {
+  padding: 0 4px;
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.25);
+  font-size: 14px;
+  cursor: pointer;
+  line-height: 1;
+  flex-shrink: 0;
+  font-family: inherit;
+}
+.ntp-history-del:hover { color: rgba(255,100,100,0.8); }
+
+/* Main chat column */
+.ntp-chat-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Messages list */
+.ntp-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+.ntp-chat-messages::-webkit-scrollbar { width: 4px; }
+.ntp-chat-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+/* Chat bubbles */
+.ntp-chat-bubble {
+  max-width: 78%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.6;
+  word-wrap: break-word;
+}
+.ntp-chat-bubble p { margin: 0 0 6px; }
+.ntp-chat-bubble p:last-of-type { margin-bottom: 0; }
+.ntp-chat-bubble strong { font-weight: 600; }
+.ntp-chat-bubble code { background: rgba(255,255,255,0.1); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+
+.ntp-chat-bubble-user {
+  align-self: flex-end;
+  background: rgba(0,216,255,0.12);
+  border: 1px solid rgba(0,216,255,0.2);
+  color: #e2e8f0;
+}
+.ntp-chat-bubble-ai {
+  align-self: flex-start;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.07);
+  color: #e2e8f0;
+  position: relative;
+}
+.ntp-chat-bubble-streaming .ntp-streaming-cursor::after {
+  content: '|';
+  color: #00d8ff;
+  animation: ntp-cursor-blink 0.9s step-end infinite;
+}
+@keyframes ntp-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+.ntp-chat-error { color: #f87171; font-size: 13px; }
+
+/* TTS button on AI bubbles */
+.ntp-chat-tts-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 8px;
+  padding: 3px 7px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 99px;
+  color: rgba(255,255,255,0.45);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.ntp-chat-tts-btn:hover { color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.1); }
+
+/* Follow-up input row */
+.ntp-chat-follow-up {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  background: rgba(0,0,0,0.15);
+  flex-shrink: 0;
+}
+.ntp-chat-followup-input {
+  flex: 1;
+  resize: none;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  color: #e2e8f0;
+  font-size: 14px;
+  font-family: inherit;
+  padding: 8px 12px;
+  min-height: 36px;
+  max-height: 120px;
+  line-height: 1.5;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.ntp-chat-followup-input:focus { border-color: rgba(0,216,255,0.35); }
+.ntp-chat-followup-input::placeholder { color: rgba(255,255,255,0.3); }
+.ntp-chat-followup-send,
+.ntp-chat-mic {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,216,255,0.1);
+  border: 1px solid rgba(0,216,255,0.2);
+  border-radius: 8px;
+  color: #00d8ff;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ntp-chat-followup-send:hover,
+.ntp-chat-mic:hover { background: rgba(0,216,255,0.2); }
+.ntp-chat-mic.listening {
+  background: rgba(0,216,255,0.25);
+  border-color: #00d8ff;
+  animation: context-pulse 1.2s ease-in-out infinite;
+}
+
+/* ── NTP Model Selector ── */
+.ntp-model-selector {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 10px;
+  position: relative;
+}
+.ntp-model-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 99px;
+  color: rgba(255,255,255,0.6);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ntp-model-btn:hover { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.85); }
+.ntp-model-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e2330;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 4px;
+  min-width: 180px;
+  z-index: 200;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.ntp-model-dropdown[hidden] { display: none; }
+.ntp-model-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  color: rgba(255,255,255,0.75);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.ntp-model-option:hover   { background: rgba(255,255,255,0.07); color: #fff; }
+.ntp-model-option.active  { color: #00d8ff; font-weight: 600; }
+
+/* ── NTP Search Mic button ── */
+.ntp-search-mic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.4);
+  cursor: pointer;
+  padding: 0 6px;
+  border-radius: 6px;
+  transition: color 0.15s;
+}
+.ntp-search-mic:hover { color: rgba(255,255,255,0.75); }
+.ntp-search-mic.listening {
+  color: #00d8ff;
+  animation: context-pulse 1.2s ease-in-out infinite;
+}
 @media (max-width: 700px) {
   .ntp-widgets {
     grid-template-columns: minmax(0, 1fr);
@@ -8950,6 +9265,88 @@ button.navio-followup-chip:active {
   background: rgba(248, 113, 113, 0.12);
   color: #fecaca;
 }
+
+/* ── Sidebar banner: Pause button (new, alongside existing Stop/Undo) ── */
+.ntb-pause {
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid rgba(0, 216, 255, 0.3);
+  border-radius: var(--radius-full);
+  color: #00d8ff;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+}
+.ntb-pause:hover  { background: rgba(0, 216, 255, 0.1); }
+.ntb-pause.paused { border-color: rgba(74, 222, 128, 0.4); color: #4ade80; }
+.ntb-pause.paused:hover { background: rgba(74, 222, 128, 0.1); }
+
+/* ── Floating agent chrome pill — injected into #navbar, always visible ── */
+.navio-agent-chrome-pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px 4px 8px;
+  background: rgba(0, 216, 255, 0.08);
+  border: 1px solid rgba(0, 216, 255, 0.22);
+  border-radius: var(--radius-full);
+  animation: nacp-slide-in 0.2s ease;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+@keyframes nacp-slide-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.nacp-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #00d8ff;
+  box-shadow: 0 0 6px #00d8ff;
+  flex-shrink: 0;
+  animation: context-pulse 1.4s infinite;
+}
+.nacp-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #00d8ff;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}
+.nacp-pause, .nacp-stop {
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.nacp-pause {
+  background: transparent;
+  border: 1px solid rgba(0, 216, 255, 0.3);
+  color: #00d8ff;
+}
+.nacp-pause:hover  { background: rgba(0, 216, 255, 0.1); }
+.nacp-pause.nacp-paused { border-color: rgba(74, 222, 128, 0.4); color: #4ade80; }
+.nacp-pause.nacp-paused:hover { background: rgba(74, 222, 128, 0.1); }
+.nacp-stop {
+  background: transparent;
+  border: 1px solid rgba(255, 100, 100, 0.35);
+  color: #ff8080;
+}
+.nacp-stop:hover { background: rgba(255, 100, 100, 0.1); border-color: #ff6b6b; color: #ff6b6b; }
+
+[data-theme="light"] .navio-agent-chrome-pill {
+  background: rgba(0, 100, 220, 0.07);
+  border-color: rgba(0, 100, 220, 0.2);
+}
+[data-theme="light"] .nacp-label { color: #0064dc; }
+[data-theme="light"] .nacp-dot   { background: #0064dc; box-shadow: 0 0 6px #0064dc; }
+[data-theme="light"] .nacp-pause { border-color: rgba(0,100,220,0.3); color: #0064dc; }
 
 /* ── Agent activity feed (tool-calling mode) ── */
 .navio-agent-activity {

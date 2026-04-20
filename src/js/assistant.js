@@ -309,6 +309,10 @@ class AssistantManagerClass {
     /** Snapshot of ready attachments for the in-flight `processMessage` (queue is cleared for UI). */
     this._attachmentsSnapshot = null;
     this._takeoverAbort = null;
+    /** When true the takeover loop waits at the next step boundary. */
+    this._takeoverPaused = false;
+    /** @type {(() => void) | null} Resolves when _resumeTakeover() is called. */
+    this._takeoverPausedResolve = null;
     /** @type {(() => void) | null} */
     this._takeoverAuthResume = null;
     this._agentLogEntries = [];
@@ -437,6 +441,28 @@ class AssistantManagerClass {
 
     this._bindVoiceMode();
     this._bindAssistantAttachments();
+    this._bindTTSDelegate();
+  }
+
+  /** Delegate TTS button clicks from any assistant bubble. */
+  _bindTTSDelegate() {
+    if (!this.messagesEl) return;
+    this.messagesEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('.assistant-tts-btn');
+      if (!btn) return;
+      const text = btn.dataset.tts || '';
+      if (btn.classList.contains('tts-speaking')) {
+        this._stopSpeaking();
+        btn.classList.remove('tts-speaking');
+      } else {
+        this.messagesEl.querySelectorAll('.assistant-tts-btn.tts-speaking').forEach(b => b.classList.remove('tts-speaking'));
+        btn.classList.add('tts-speaking');
+        this._speakText(text);
+        // Reset icon when speech ends
+        const utt = new SpeechSynthesisUtterance('');
+        window.speechSynthesis.addEventListener('end', () => btn.classList.remove('tts-speaking'), { once: true });
+      }
+    });
   }
 
   _bindAssistantAttachments() {
@@ -1212,6 +1238,44 @@ class AssistantManagerClass {
       if (listening) stopListening();
       else startListening();
     });
+  }
+
+  // ── Text-to-speech ───────────────────────────────────────────────────────
+
+  /**
+   * Speak `text` aloud using the Web Speech API SpeechSynthesis.
+   * Strips markdown before speaking.
+   */
+  _speakText(text) {
+    if (!window.speechSynthesis || !text) return;
+    const plain = String(text)
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/`[^`]+`/g, '')
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/#{1,6}\s/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/<[^>]+>/g, '')
+      .trim();
+    if (!plain) return;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(plain));
+  }
+
+  /** Stop any in-progress speech. */
+  _stopSpeaking() {
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+  }
+
+  /**
+   * Returns HTML for a speaker icon button to append after an AI reply bubble.
+   * The button's click is delegated via the messages container.
+   */
+  _makeTTSButton(text) {
+    const safe = text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+    return `<button class="assistant-tts-btn" type="button" title="Read aloud" data-tts="${safe.slice(0, 4000)}">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+    </button>`;
   }
 
   async persistScopeFromUI() {
@@ -2178,6 +2242,18 @@ class AssistantManagerClass {
     if (payload.action === 'deepResearch') {
       const topic = (payload.topic || payload.text || '').trim();
       if (topic) void this._guestDeepResearch(guestWv, topic);
+      return;
+    }
+    if (payload.action === 'pauseTakeover') {
+      this._pauseTakeover();
+      return;
+    }
+    if (payload.action === 'resumeTakeover') {
+      this._resumeTakeover();
+      return;
+    }
+    if (payload.action === 'stopTakeover') {
+      this.disableTakeover();
       return;
     }
     if (payload.action === 'send' && (payload.text || (Array.isArray(payload.files) && payload.files.length))) {
@@ -3449,7 +3525,7 @@ class AssistantManagerClass {
       if (role === 'assistant') this._wireActions(contentEl); // async — fire-and-forget is fine here
     }
 
-    // ── Copy button (assistant + error messages only) ────────────────────
+    // ── Copy + TTS buttons (assistant + error messages only) ────────────────
     if (role === 'assistant' || type === 'error') {
       const copyBtn = document.createElement('button');
       copyBtn.className = 'msg-copy-btn';
@@ -3468,6 +3544,22 @@ class AssistantManagerClass {
         }).catch(() => {});
       });
       msgEl.appendChild(copyBtn);
+
+      // TTS speaker button (only on assistant messages, not errors)
+      if (role === 'assistant' && window.speechSynthesis) {
+        const plainText = (contentEl.innerText || contentEl.textContent || content || '').slice(0, 4000);
+        const ttsBtn = document.createElement('button');
+        ttsBtn.className = 'msg-copy-btn assistant-tts-btn';
+        ttsBtn.title = 'Read aloud';
+        ttsBtn.dataset.tts = plainText;
+        ttsBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`;
+        msgEl.appendChild(ttsBtn);
+
+        // Auto-speak if enabled in config
+        void window.navio.getConfig().then(cfg => {
+          if (cfg && cfg.ttsEnabled) this._speakText(plainText);
+        }).catch(() => {});
+      }
     }
 
     msgEl.appendChild(contentEl);
@@ -4139,12 +4231,14 @@ class AssistantManagerClass {
 
   enableTakeover() {
     this._takeoverMode = true;
+    this._takeoverPaused = false;
+    this._takeoverPausedResolve = null;
     this._takeoverAbort = new AbortController();
     this._agentLogEntries = [];
     this._takeoverStepNum = 0;
     this._renderAgentLog();
     if (window.NavioAIBoost) window.NavioAIBoost.setOrbThinking(true);
-    // Banner above the input area
+    // Sidebar banner (Pause + Undo + Stop)
     if (!document.getElementById('navio-takeover-banner')) {
       const banner = document.createElement('div');
       banner.id = 'navio-takeover-banner';
@@ -4153,9 +4247,11 @@ class AssistantManagerClass {
         <span class="ntb-dot"></span>
         <span class="ntb-label">Navio is in control</span>
         <button class="ntb-undo" type="button">Undo</button>
+        <button class="ntb-pause" type="button">Pause</button>
         <button class="ntb-stop" type="button">Stop</button>`;
       banner.querySelector('.ntb-stop').addEventListener('click', () => this.disableTakeover());
       banner.querySelector('.ntb-undo').addEventListener('click', () => this._undoLastNavigation());
+      banner.querySelector('.ntb-pause').addEventListener('click', () => this._pauseTakeover());
       const inputArea = this.panel.querySelector('.assistant-input-area');
       if (inputArea) this.panel.insertBefore(banner, inputArea);
     }
@@ -4168,12 +4264,37 @@ class AssistantManagerClass {
         agentLog.parentNode.insertBefore(bar, agentLog);
       }
     }
+    // Floating chrome pill — visible even when sidebar is closed
+    if (!document.getElementById('navio-agent-chrome-pill')) {
+      const pill = document.createElement('div');
+      pill.id = 'navio-agent-chrome-pill';
+      pill.className = 'navio-agent-chrome-pill';
+      pill.innerHTML = `
+        <span class="nacp-dot"></span>
+        <span class="nacp-label">Navio is working</span>
+        <button class="nacp-pause" type="button">Pause</button>
+        <button class="nacp-stop" type="button">Stop</button>`;
+      pill.querySelector('.nacp-pause').addEventListener('click', () => this._pauseTakeover());
+      pill.querySelector('.nacp-stop').addEventListener('click', () => this.disableTakeover());
+      const navbar = document.getElementById('navbar');
+      if (navbar) navbar.appendChild(pill);
+    }
+    // Notify guest chat tab if agent triggered from there
+    if (this._guestChatWebview) {
+      void this._guestDeliver(this._guestChatWebview, { type: 'takeoverStart' });
+    }
   }
 
   disableTakeover() {
     if (typeof TabManager !== 'undefined') TabManager.setAgentControlledTab?.(null);
     this._takeoverMode = false;
     this._autoFollowCount = 0;
+    // Release any pending pause before aborting so the loop can exit cleanly
+    this._takeoverPaused = false;
+    if (this._takeoverPausedResolve) {
+      this._takeoverPausedResolve();
+      this._takeoverPausedResolve = null;
+    }
     if (window.NavioAIBoost) window.NavioAIBoost.setOrbThinking(false);
     if (typeof this._takeoverAuthResume === 'function') {
       try {
@@ -4193,11 +4314,16 @@ class AssistantManagerClass {
     document.getElementById('navio-step-pause-pill')?.remove();
     document.getElementById('navio-auth-gate-pill')?.remove();
     document.getElementById('agent-takeover-bar')?.remove();
+    document.getElementById('navio-agent-chrome-pill')?.remove();
     const logPanel = document.getElementById('assistant-agent-log');
     if (logPanel) {
       logPanel.hidden = true;
       const body = logPanel.querySelector('.assistant-agent-log-body');
       if (body) body.innerHTML = '';
+    }
+    // Notify guest chat tab
+    if (this._guestChatWebview) {
+      void this._guestDeliver(this._guestChatWebview, { type: 'takeoverStop' });
     }
     this._addContinuePill('Navio stopped. You\'re back in control.');
   }
@@ -5180,6 +5306,12 @@ class AssistantManagerClass {
       }
       if (stepMode) await this._waitStepContinueOrStop();
       if (!this._takeoverMode) break;
+      // Pause gate — agent is suspended until _resumeTakeover() is called
+      if (this._takeoverPaused) {
+        await new Promise((resolve) => { this._takeoverPausedResolve = resolve; });
+        this._takeoverPausedResolve = null;
+      }
+      if (!this._takeoverMode) break;
       const gap = card.dataset.action === 'navigate' ? 400 : 600;
       if (this._takeoverMode) await new Promise((r) => setTimeout(r, gap));
     }
@@ -5213,6 +5345,70 @@ class AssistantManagerClass {
       this.messagesEl.appendChild(pill);
       this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
     });
+  }
+
+  /** Suspend the running takeover loop at the next step boundary. */
+  _pauseTakeover() {
+    if (!this._takeoverMode) return;
+    this._takeoverPaused = true;
+    // Update chrome pill button → Resume
+    const pill = document.getElementById('navio-agent-chrome-pill');
+    if (pill) {
+      const pauseBtn = pill.querySelector('.nacp-pause');
+      if (pauseBtn) {
+        pauseBtn.textContent = 'Resume';
+        pauseBtn.classList.add('nacp-paused');
+        pauseBtn.onclick = () => this._resumeTakeover();
+      }
+      const label = pill.querySelector('.nacp-label');
+      if (label) label.textContent = 'Navio paused';
+    }
+    // Update sidebar banner
+    const banner = document.getElementById('navio-takeover-banner');
+    if (banner) {
+      const pauseBtn = banner.querySelector('.ntb-pause');
+      if (pauseBtn) { pauseBtn.textContent = 'Resume'; pauseBtn.onclick = () => this._resumeTakeover(); }
+      const labelEl = banner.querySelector('.ntb-label');
+      if (labelEl) labelEl.textContent = 'Navio paused';
+    }
+    // Notify guest chat tab
+    if (this._guestChatWebview) {
+      void this._guestDeliver(this._guestChatWebview, { type: 'takeoverPaused' });
+    }
+  }
+
+  /** Resume a paused takeover. */
+  _resumeTakeover() {
+    if (!this._takeoverMode) return;
+    this._takeoverPaused = false;
+    if (this._takeoverPausedResolve) {
+      this._takeoverPausedResolve();
+      this._takeoverPausedResolve = null;
+    }
+    // Restore chrome pill button → Pause
+    const pill = document.getElementById('navio-agent-chrome-pill');
+    if (pill) {
+      const pauseBtn = pill.querySelector('.nacp-pause');
+      if (pauseBtn) {
+        pauseBtn.textContent = 'Pause';
+        pauseBtn.classList.remove('nacp-paused');
+        pauseBtn.onclick = () => this._pauseTakeover();
+      }
+      const label = pill.querySelector('.nacp-label');
+      if (label) label.textContent = 'Navio is working';
+    }
+    // Restore sidebar banner
+    const banner = document.getElementById('navio-takeover-banner');
+    if (banner) {
+      const pauseBtn = banner.querySelector('.ntb-pause');
+      if (pauseBtn) { pauseBtn.textContent = 'Pause'; pauseBtn.onclick = () => this._pauseTakeover(); }
+      const labelEl = banner.querySelector('.ntb-label');
+      if (labelEl) labelEl.textContent = 'Navio is in control';
+    }
+    // Notify guest chat tab
+    if (this._guestChatWebview) {
+      void this._guestDeliver(this._guestChatWebview, { type: 'takeoverResumed' });
+    }
   }
 
   async _undoLastNavigation() {

@@ -269,38 +269,54 @@
               <button class="ntp-mode-tab" data-mode="task">Task</button>
             </div>
 
-            <!-- Inline AI results panel (appears on AI queries from NTP) -->
-            <div id="ntp-results" class="ntp-results" style="display:none">
-              <div class="ntp-results-tabs">
-                <button class="ntp-rt-tab active" data-tab="ai">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                  AI Answer
-                </button>
-                <button class="ntp-rt-tab" data-tab="news">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                  Related News
-                </button>
-                <button class="ntp-rt-close" id="ntp-results-close" title="Close results">✕</button>
-              </div>
-              <div class="ntp-rt-body">
-                <div id="ntp-rt-ai" class="ntp-rt-panel active">
-                  <div id="ntp-rt-ai-content" class="ntp-rt-content"></div>
-                </div>
-                <div id="ntp-rt-news" class="ntp-rt-panel" style="display:none">
-                  <div id="ntp-rt-news-content" class="ntp-rt-content"></div>
-                </div>
-              </div>
+            <!-- Model selector — shown above search bar -->
+            <div class="ntp-model-selector" id="ntp-model-selector-wrap">
+              <button id="ntp-model-btn" type="button" class="ntp-model-btn" title="Switch AI model">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+                <span id="ntp-model-label">AI</span>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="ntp-model-dropdown" id="ntp-model-dropdown" hidden></div>
             </div>
 
             <div class="ntp-search">
               <div class="ntp-search-glow"></div>
               <svg class="ntp-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <input type="text" id="ntp-search-input" placeholder="Search or ask anything…" spellcheck="false" autocomplete="off">
+              <button class="ntp-search-mic" id="ntp-search-mic" type="button" title="Voice input" aria-label="Voice input">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              </button>
               <button class="ntp-search-send" id="ntp-search-send" title="Ask Navio AI">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
               </button>
             </div>
             <div class="ntp-smart-row" id="ntp-smart-row" aria-live="polite"></div>
+          </div>
+
+          <!-- Full-page inline chat panel (Comet-style — replaces hero area when active) -->
+          <div id="ntp-chat-panel" class="ntp-chat-panel" hidden>
+            <div class="ntp-chat-history-sidebar" id="ntp-chat-history-sidebar">
+              <div class="ntp-chat-history-header">
+                <span>History</span>
+                <button id="ntp-chat-new" type="button" class="ntp-chat-new-btn" title="Start new chat">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  New
+                </button>
+              </div>
+              <div id="ntp-chat-history-list" class="ntp-chat-history-list"></div>
+            </div>
+            <div class="ntp-chat-main">
+              <div id="ntp-chat-messages" class="ntp-chat-messages"></div>
+              <div class="ntp-chat-follow-up">
+                <button id="ntp-chat-voice" class="ntp-chat-mic" type="button" title="Voice input" aria-label="Voice input">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                </button>
+                <textarea id="ntp-chat-followup-input" class="ntp-chat-followup-input" placeholder="Follow up…" rows="1" spellcheck="false"></textarea>
+                <button id="ntp-chat-followup-send" class="ntp-chat-followup-send" type="button" title="Send">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+              </div>
+            </div>
           </div>
 
           <!-- Quick links: one glass panel — two columns on wide viewports (saves vertical space above widgets) -->
@@ -861,6 +877,10 @@
               <label class="setting-toggle-row">
                 <input type="checkbox" id="setting-ai-agent-step-mode">
                 <span>Agent step mode — pause after each browser action until you click Continue</span>
+              </label>
+              <label class="setting-toggle-row">
+                <input type="checkbox" id="setting-tts-enabled">
+                <span>Read AI replies aloud (text-to-speech)</span>
               </label>
               <div class="setting-row">
                 <label for="setting-ai-proactivity">Proactive tips</label>

@@ -16,6 +16,12 @@ const NTP = (() => {
   let _newsHeadlines  = [];   // cached for AI brief
   let _stockData      = [];   // cached for AI brief
   let _inboxMessages  = [];   // cached from _loadInbox() for AI brief
+
+  // ── NTP Chat state ────────────────────────────────────────────────────────
+  let _ntpChatMessages  = [];   // current in-memory thread: [{role,content}]
+  let _ntpChatStreaming  = false;
+  let _ntpChatStreamUnsubs = []; // cleanup fns for stream listeners
+  const _ntpChatStreamKey = 'ntp-chat-' + Date.now();
   const DEFAULT_NTP_SHORTCUTS = [
     { title: 'Google', url: 'https://www.google.com' },
     { title: 'Gmail', url: 'https://mail.google.com' },
@@ -50,6 +56,9 @@ const NTP = (() => {
     _bindWidgetPopouts();
     _bindResultsPanel();
     _bindNtpSlashFocus();
+    _bindNtpVoiceMode();
+    _bindNtpModelSelector();
+    _bindNtpChatPanel();
 
     _applyTickerBottomReserve();
 
@@ -441,24 +450,14 @@ const NTP = (() => {
     }
   }
 
-  // ── NTP Inline Results Panel ──────────────────────────────────────────────
+  // ── NTP Inline Results Panel (legacy stub — panel replaced by #ntp-chat-panel) ──
 
   function _bindResultsPanel() {
-    document.getElementById('ntp-results-close')?.addEventListener('click', _closeResults);
-    document.querySelectorAll('.ntp-rt-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.ntp-rt-tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        const which = tab.dataset.tab;
-        document.getElementById('ntp-rt-ai').style.display = which === 'ai' ? '' : 'none';
-        document.getElementById('ntp-rt-news').style.display = which === 'news' ? '' : 'none';
-      });
-    });
+    // Old #ntp-results panel removed; binding is now a no-op kept for safety.
   }
 
   function _closeResults() {
-    const panel = document.getElementById('ntp-results');
-    if (panel) panel.style.display = 'none';
+    _ntpCloseChat();
   }
 
   /** True when the user is likely asking about their mail (inline NTP AI adds inbox text only; no actions). */
@@ -671,16 +670,16 @@ const NTP = (() => {
     const submit = async () => {
       const val = input.value.trim();
       if (!val) return;
-      if (_mode === 'ai') {
-        await _openAssistantInNewTab(val, { taskMode: false });
-      } else if (_mode === 'task') {
+      if (_mode === 'task') {
         await _openAssistantInNewTab(val, { taskMode: true });
+      } else if (_mode === 'ai') {
+        _ntpStartChat(val);
       } else {
         const raw = val;
         if (raw.startsWith('>>') || /^ai:\s*/i.test(raw)) {
-          await _openAssistantInNewTab(val, { taskMode: false });
+          _ntpStartChat(val.replace(/^ai:\s*/i, '').replace(/^>>/, '').trim() || val);
         } else if (typeof App !== 'undefined' && App._isAIQuery && App._isAIQuery(val)) {
-          await _openAssistantInNewTab(val, { taskMode: false });
+          _ntpStartChat(val);
         } else {
           if (typeof App !== 'undefined') App.handleSearch(val);
         }
@@ -1703,6 +1702,389 @@ const NTP = (() => {
       if (diff < 604800000) return `${Math.round(diff / 86400000)}d`;
       return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     } catch { return dateStr; }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  NTP CHAT — Comet-style inline streaming conversation
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /** Escape HTML for safe insertion */
+  function _ntpEsc(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  /** Minimal markdown → HTML for chat bubbles (bold, italic, code, newlines) */
+  function _ntpMd(text) {
+    return _ntpEsc(text)
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\n\n/g, '</p><p>')
+      .replace(/\n/g, '<br>');
+  }
+
+  /** Show the chat panel, hide hero/shortcuts/widgets */
+  function _ntpShowChatPanel() {
+    const panel = document.getElementById('ntp-chat-panel');
+    if (!panel) return;
+    panel.hidden = false;
+    document.body.classList.add('ntp-chat-active');
+  }
+
+  /** Hide chat panel, restore home view */
+  function _ntpCloseChat() {
+    const panel = document.getElementById('ntp-chat-panel');
+    if (panel) panel.hidden = true;
+    document.body.classList.remove('ntp-chat-active');
+  }
+
+  /** Cancel any in-flight stream subscriptions */
+  function _ntpCancelStream() {
+    _ntpChatStreamUnsubs.forEach(fn => { try { fn(); } catch {} });
+    _ntpChatStreamUnsubs = [];
+    _ntpChatStreaming = false;
+  }
+
+  /**
+   * Main entry: start or continue a chat on the NTP.
+   * Creates bubbles, subscribes to stream, then fires aiRequestStream.
+   */
+  async function _ntpStartChat(query) {
+    if (!query || !query.trim()) return;
+    const q = query.trim();
+
+    _ntpShowChatPanel();
+
+    const messagesEl = document.getElementById('ntp-chat-messages');
+    if (!messagesEl) return;
+
+    // Guard: don't start a second stream while one is active
+    if (_ntpChatStreaming) {
+      _ntpCancelStream();
+    }
+
+    // Append user bubble
+    const userBubble = document.createElement('div');
+    userBubble.className = 'ntp-chat-bubble ntp-chat-bubble-user';
+    userBubble.textContent = q;
+    messagesEl.appendChild(userBubble);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    // Append assistant streaming bubble
+    const aiBubble = document.createElement('div');
+    aiBubble.className = 'ntp-chat-bubble ntp-chat-bubble-ai ntp-chat-bubble-streaming';
+    aiBubble.innerHTML = '<span class="ntp-streaming-cursor"></span>';
+    messagesEl.appendChild(aiBubble);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    // Build messages array for the API
+    _ntpChatMessages.push({ role: 'user', content: q });
+    const messages = [{ role: 'user', content: q }];
+    if (_ntpChatMessages.length > 2) {
+      // Include prior context (last 10 turns)
+      const history = _ntpChatMessages.slice(0, -1).slice(-10);
+      messages.unshift(...history);
+    }
+
+    _ntpChatStreaming = true;
+    let buffer = '';
+
+    const unChunk = window.navio.onAiStreamChunk((payload) => {
+      let tid, text;
+      if (typeof payload === 'string') { tid = '__default__'; text = payload; }
+      else { tid = payload?.tabId != null ? String(payload.tabId) : '__default__'; text = payload?.text ?? ''; }
+      if (tid !== _ntpChatStreamKey && tid !== '__default__') return;
+      if (!text) return;
+      buffer += text;
+      aiBubble.innerHTML = '<p>' + _ntpMd(buffer) + '</p>';
+      aiBubble.scrollIntoView({ block: 'end', behavior: 'smooth' });
+    });
+
+    const finalize = (content) => {
+      _ntpCancelStream();
+      aiBubble.classList.remove('ntp-chat-bubble-streaming');
+      aiBubble.innerHTML = '<p>' + _ntpMd(content || buffer) + '</p>' + _ntpMakeTTSBtn(content || buffer);
+      _ntpChatMessages.push({ role: 'assistant', content: content || buffer });
+      _ntpSaveThread();
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    };
+
+    const unDone = window.navio.onAiStreamDone((payload) => {
+      const tid = payload?.tabId != null ? String(payload.tabId) : '__default__';
+      if (tid !== _ntpChatStreamKey && tid !== '__default__') return;
+      finalize(buffer);
+    });
+
+    const unErr = window.navio.onAiStreamError((msg) => {
+      const errObj = typeof msg === 'string' ? { tabId: '__default__', message: msg } : (msg || {});
+      const tid = errObj.tabId != null ? String(errObj.tabId) : '__default__';
+      if (tid !== _ntpChatStreamKey && tid !== '__default__') return;
+      if (!buffer) {
+        aiBubble.innerHTML = '<span class="ntp-chat-error">Error: ' + _ntpEsc(errObj.message || 'Unknown error') + '</span>';
+        _ntpChatStreaming = false;
+        _ntpCancelStream();
+      } else {
+        finalize(buffer);
+      }
+    });
+
+    _ntpChatStreamUnsubs = [unChunk, unDone, unErr];
+
+    try {
+      const cfg = await window.navio.getConfig();
+      if (!cfg.hasApiKey) {
+        aiBubble.innerHTML = '<span class="ntp-chat-error">No AI key configured. Add one in <strong>Settings → AI</strong>.</span>';
+        _ntpCancelStream();
+        return;
+      }
+      await window.navio.aiRequestStream({ messages, tabId: _ntpChatStreamKey });
+    } catch (e) {
+      aiBubble.innerHTML = '<span class="ntp-chat-error">Error: ' + _ntpEsc(e.message) + '</span>';
+      _ntpCancelStream();
+    }
+  }
+
+  /** Build a small speaker button HTML for TTS */
+  function _ntpMakeTTSBtn(text) {
+    const safe = _ntpEsc(text).replace(/'/g, '&#39;');
+    return `<button class="ntp-chat-tts-btn" type="button" title="Read aloud" data-text="${safe}">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+    </button>`;
+  }
+
+  /** Bind follow-up input in the chat panel */
+  function _bindNtpChatPanel() {
+    const followInput = document.getElementById('ntp-chat-followup-input');
+    const followSend  = document.getElementById('ntp-chat-followup-send');
+    const newBtn      = document.getElementById('ntp-chat-new');
+
+    const submitFollowUp = () => {
+      const val = followInput?.value.trim();
+      if (!val) return;
+      if (followInput) followInput.value = '';
+      _ntpStartChat(val);
+    };
+
+    followInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitFollowUp(); }
+    });
+    followSend?.addEventListener('click', submitFollowUp);
+
+    newBtn?.addEventListener('click', () => {
+      _ntpChatMessages = [];
+      const messagesEl = document.getElementById('ntp-chat-messages');
+      if (messagesEl) messagesEl.innerHTML = '';
+      _ntpCloseChat();
+      document.getElementById('ntp-search-input')?.focus();
+    });
+
+    // Delegate TTS button clicks in the chat panel
+    document.getElementById('ntp-chat-messages')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('.ntp-chat-tts-btn');
+      if (!btn) return;
+      const text = btn.dataset.text || '';
+      _ntpSpeak(text);
+    });
+
+    // Load and render history list
+    _ntpRenderHistoryList();
+  }
+
+  // ── NTP Chat History ──────────────────────────────────────────────────────
+
+  const _NTP_STORAGE_KEY = 'navio-ntp-chat-threads';
+
+  function _ntpLoadSessions() {
+    try {
+      return JSON.parse(localStorage.getItem(_NTP_STORAGE_KEY) || '[]');
+    } catch { return []; }
+  }
+
+  function _ntpSaveThread() {
+    if (_ntpChatMessages.length < 2) return;
+    const sessions = _ntpLoadSessions();
+    const title = (_ntpChatMessages[0]?.content || 'Chat').slice(0, 60);
+    const id = _ntpChatStreamKey;
+    const existing = sessions.findIndex(s => s.id === id);
+    const entry = { id, title, ts: Date.now(), messages: _ntpChatMessages.slice() };
+    if (existing >= 0) sessions[existing] = entry;
+    else sessions.unshift(entry);
+    // Keep last 50 sessions
+    localStorage.setItem(_NTP_STORAGE_KEY, JSON.stringify(sessions.slice(0, 50)));
+    _ntpRenderHistoryList();
+  }
+
+  function _ntpRenderHistoryList() {
+    const list = document.getElementById('ntp-chat-history-list');
+    if (!list) return;
+    const sessions = _ntpLoadSessions();
+    if (sessions.length === 0) {
+      list.innerHTML = '<p class="ntp-history-empty">No history yet</p>';
+      return;
+    }
+    list.innerHTML = sessions.map(s => `
+      <div class="ntp-history-item" data-id="${_ntpEsc(s.id)}">
+        <span class="ntp-history-title">${_ntpEsc(s.title)}</span>
+        <button class="ntp-history-del" type="button" data-id="${_ntpEsc(s.id)}" title="Delete">×</button>
+      </div>`).join('');
+
+    list.querySelectorAll('.ntp-history-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        if (e.target.closest('.ntp-history-del')) return;
+        const id = item.dataset.id;
+        const session = sessions.find(s => s.id === id);
+        if (!session) return;
+        _ntpChatMessages = session.messages.slice();
+        const messagesEl = document.getElementById('ntp-chat-messages');
+        if (!messagesEl) return;
+        messagesEl.innerHTML = '';
+        _ntpChatMessages.forEach(msg => {
+          const bubble = document.createElement('div');
+          bubble.className = 'ntp-chat-bubble ' + (msg.role === 'user' ? 'ntp-chat-bubble-user' : 'ntp-chat-bubble-ai');
+          if (msg.role === 'assistant') {
+            bubble.innerHTML = '<p>' + _ntpMd(msg.content) + '</p>' + _ntpMakeTTSBtn(msg.content);
+          } else {
+            bubble.textContent = msg.content;
+          }
+          messagesEl.appendChild(bubble);
+        });
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+        _ntpShowChatPanel();
+      });
+    });
+
+    list.querySelectorAll('.ntp-history-del').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        const updated = sessions.filter(s => s.id !== id);
+        localStorage.setItem(_NTP_STORAGE_KEY, JSON.stringify(updated));
+        _ntpRenderHistoryList();
+      });
+    });
+  }
+
+  // ── NTP Voice Mode ────────────────────────────────────────────────────────
+
+  function _bindNtpVoiceMode() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    let recognition = null;
+    let listening = false;
+
+    const startListening = (targetInput, onFinal) => {
+      if (listening) { stopListening(); return; }
+      recognition = new SpeechRecognition();
+      recognition.lang = 'en-US';
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => { listening = true; };
+      recognition.onresult = (e) => {
+        const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
+        if (targetInput) targetInput.value = transcript;
+        if (e.results[e.results.length - 1].isFinal) {
+          stopListening();
+          if (transcript.trim()) onFinal(transcript.trim());
+        }
+      };
+      recognition.onerror = () => stopListening();
+      recognition.onend   = () => stopListening();
+      recognition.start();
+    };
+
+    const stopListening = () => {
+      listening = false;
+      if (recognition) { try { recognition.stop(); } catch {} recognition = null; }
+      document.getElementById('ntp-search-mic')?.classList.remove('listening');
+      document.getElementById('ntp-chat-voice')?.classList.remove('listening');
+    };
+
+    // Search bar mic
+    const searchMic = document.getElementById('ntp-search-mic');
+    const searchInput = document.getElementById('ntp-search-input');
+    searchMic?.addEventListener('click', () => {
+      searchMic.classList.toggle('listening');
+      startListening(searchInput, (text) => { _ntpStartChat(text); });
+    });
+
+    // Follow-up mic inside chat panel
+    const chatMic = document.getElementById('ntp-chat-voice');
+    const followInput = document.getElementById('ntp-chat-followup-input');
+    chatMic?.addEventListener('click', () => {
+      chatMic.classList.toggle('listening');
+      startListening(followInput, (text) => { _ntpStartChat(text); });
+    });
+  }
+
+  // ── NTP TTS ───────────────────────────────────────────────────────────────
+
+  function _ntpSpeak(text) {
+    if (!window.speechSynthesis) return;
+    const plain = text.replace(/<[^>]+>/g, '').replace(/[#*`_~]/g, '').trim();
+    if (!plain) return;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(plain));
+  }
+
+  // ── NTP Model Selector ────────────────────────────────────────────────────
+
+  const _NTP_KNOWN_MODELS = [
+    { label: 'GPT-4o',         value: 'gpt-4o',            provider: 'openai' },
+    { label: 'GPT-4o mini',    value: 'gpt-4o-mini',       provider: 'openai' },
+    { label: 'o3',             value: 'o3',                 provider: 'openai' },
+    { label: 'Claude Opus 4',  value: 'claude-opus-4-5',   provider: 'anthropic' },
+    { label: 'Claude Sonnet 4',value: 'claude-sonnet-4-5', provider: 'anthropic' },
+    { label: 'Gemini 2.5 Pro', value: 'gemini-2.5-pro',    provider: 'google' },
+    { label: 'Gemini 2.5 Flash',value:'gemini-2.5-flash',  provider: 'google' },
+  ];
+
+  async function _bindNtpModelSelector() {
+    const btn      = document.getElementById('ntp-model-btn');
+    const label    = document.getElementById('ntp-model-label');
+    const dropdown = document.getElementById('ntp-model-dropdown');
+    if (!btn || !dropdown) return;
+
+    // Load current model from config
+    let currentModel = '';
+    try {
+      const cfg = await window.navio.getConfig();
+      currentModel = cfg.model || '';
+    } catch {}
+
+    const updateLabel = (val) => {
+      const m = _NTP_KNOWN_MODELS.find(m => m.value === val);
+      if (label) label.textContent = m ? m.label : (val || 'AI');
+    };
+    updateLabel(currentModel);
+
+    // Build dropdown items
+    const renderDropdown = (current) => {
+      dropdown.innerHTML = _NTP_KNOWN_MODELS.map(m => `
+        <button class="ntp-model-option${m.value === current ? ' active' : ''}" type="button" data-value="${m.value}">
+          ${_ntpEsc(m.label)}
+        </button>`).join('');
+      dropdown.querySelectorAll('.ntp-model-option').forEach(opt => {
+        opt.addEventListener('click', async () => {
+          const val = opt.dataset.value;
+          try { await window.navio.setConfig({ model: val }); } catch {}
+          currentModel = val;
+          updateLabel(val);
+          renderDropdown(val);
+          dropdown.hidden = true;
+        });
+      });
+    };
+    renderDropdown(currentModel);
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dropdown.hidden = !dropdown.hidden;
+    });
+    document.addEventListener('click', () => { dropdown.hidden = true; });
   }
 
   return { init };
