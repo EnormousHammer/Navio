@@ -2179,28 +2179,28 @@ const NTP = (() => {
   // ── Background dim slider ─────────────────────────────────────────────────
 
   function _applyDim(value) {
-    const clamped = Math.max(0, Math.min(85, Number(value)));
-    // 0 = very dark (left/moon), 85 = fully bright (right/sun)
-    const brightness = (0.15 + (clamped / 100)).toFixed(2);
+    const clamped = Math.max(0, Math.min(100, Number(value)));
+    // 0 = black, 100 = original photo (brightness 1.0)
+    const brightness = (clamped / 100).toFixed(2);
     const bgLayer = document.querySelector('.ntp-bg-layer');
     if (bgLayer) bgLayer.style.filter = `brightness(${brightness})`;
     const slider = document.getElementById('ntp-dim-slider');
-    if (slider) slider.style.setProperty('--slider-pct', (clamped / 85 * 100).toFixed(1) + '%');
+    if (slider) slider.style.setProperty('--slider-pct', clamped.toFixed(1) + '%');
   }
 
   function _bindDimSlider() {
     const slider = document.getElementById('ntp-dim-slider');
     if (!slider) return;
 
-    // Load saved value (default 0 = fully bright)
+    // Load saved value — key ntpBgBrightness, default 100 = fully bright
     (async () => {
       try {
         const cfg = await window.navio.getConfig();
-        const saved = typeof cfg.ntpBgDim === 'number' ? cfg.ntpBgDim : 85;
+        const saved = typeof cfg.ntpBgBrightness === 'number' ? cfg.ntpBgBrightness : 100;
         slider.value = String(saved);
         _applyDim(saved);
       } catch {
-        _applyDim(85);
+        _applyDim(100);
       }
     })();
 
@@ -2213,7 +2213,7 @@ const NTP = (() => {
       _applyDim(val);
       try {
         const cfg = await window.navio.getConfig();
-        cfg.ntpBgDim = val;
+        cfg.ntpBgBrightness = val;
         await window.navio.saveConfig(cfg);
       } catch { /* ignore */ }
     });
