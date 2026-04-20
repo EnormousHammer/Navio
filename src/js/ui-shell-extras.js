@@ -875,6 +875,76 @@
         if (shelf && activeDownloadCount === 0) shelf.hidden = true;
       });
 
+    // Track the origin URL for each download so we can retry on failure.
+    // Populated on download-started; cleared on drawer row remove / clear.
+    const downloadUrlByPath = new Map();
+    const downloadPausedByPath = new Map();
+
+    /** Safely call an IPC method that may be undefined on older builds. */
+    function _invokeIpcSafe(fnName, arg) {
+      try {
+        const fn = window.navio && window.navio[fnName];
+        if (typeof fn === 'function') return fn(arg);
+      } catch { /* swallow — UI should never crash on a missing IPC */ }
+      return null;
+    }
+
+    /**
+     * Build the per-row action buttons shown while a download is active
+     * (progressing or paused). Called once on download-started and again
+     * on download-progress when the pause flag flips.
+     *   target    = 'drawer' | 'shelf'
+     *   actionsEl = the container element to (re)fill
+     *   savePath  = download id (also the destination path)
+     */
+    function renderActiveActions(target, actionsEl, savePath) {
+      if (!actionsEl) return;
+      actionsEl.innerHTML = '';
+      const paused = downloadPausedByPath.get(savePath) === true;
+
+      const btnPause = document.createElement('button');
+      btnPause.type = 'button';
+      btnPause.className =
+        target === 'shelf' ? 'download-shelf-btn-cancel' : 'dd-btn-cancel';
+      btnPause.textContent = paused ? 'Resume' : 'Pause';
+      btnPause.title = paused ? 'Resume this download' : 'Pause this download';
+      btnPause.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (downloadPausedByPath.get(savePath) === true) {
+          _invokeIpcSafe('resumeDownload', savePath);
+        } else {
+          _invokeIpcSafe('pauseDownload', savePath);
+        }
+      });
+      actionsEl.appendChild(btnPause);
+
+      const btnCancel = document.createElement('button');
+      btnCancel.type = 'button';
+      btnCancel.className =
+        target === 'shelf' ? 'download-shelf-btn-cancel' : 'dd-btn-cancel';
+      btnCancel.textContent = 'Cancel';
+      btnCancel.title = 'Cancel this download';
+      btnCancel.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        _invokeIpcSafe('cancelDownload', savePath);
+      });
+      actionsEl.appendChild(btnCancel);
+
+      if (target === 'shelf') {
+        const dismissShelf = document.createElement('button');
+        dismissShelf.type = 'button';
+        dismissShelf.className = 'download-shelf-btn-dismiss';
+        dismissShelf.textContent = '×';
+        dismissShelf.title = 'Hide in bar (download continues)';
+        dismissShelf.setAttribute('aria-label', 'Hide in download bar');
+        dismissShelf.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          dismissShelfRow(savePath);
+        });
+        actionsEl.appendChild(dismissShelf);
+      }
+    }
+
     function ensureShelfRow(savePath, filename) {
       if (!shelfList || !savePath) return null;
       let row = shelfRowsByPath.get(savePath);
@@ -930,6 +1000,12 @@
 
     window.navio.onDownloadStarted((d) => {
       clearShelfHideTimer();
+      // Remember retry info and pause state.
+      if (d.savePath) {
+        if (d.url) downloadUrlByPath.set(d.savePath, d.url);
+        downloadPausedByPath.set(d.savePath, false);
+      }
+
       const row = ensureRow(d.savePath, d.filename);
       if (!row) return;
       activeDownloadCount++;
@@ -937,30 +1013,15 @@
       row.classList.remove('dd-row-done', 'dd-row-failed');
       setRowOpenable(row, { savePath: d.savePath, filename: d.filename, openable: false });
       const wrapEl = row.querySelector('.dd-progress-wrap');
-      if (wrapEl) wrapEl.classList.remove('dd-progress-indeterminate');
+      // Flip to indeterminate immediately for size-unknown servers, otherwise
+      // the bar would sit at 0% until the first 'updated' event.
+      if (wrapEl) wrapEl.classList.toggle('dd-progress-indeterminate', !!d.indeterminate);
       const meta = row.querySelector('.dd-meta');
       if (meta) meta.textContent = d.totalStr || (d.total > 0 ? '' : '');
       row.querySelector('.dd-state').textContent = 'Starting…';
       const bar = row.querySelector('.dd-progress-bar');
       if (bar) bar.style.width = '0%';
-      const ddAct = row.querySelector('.dd-actions');
-      if (ddAct) {
-        ddAct.innerHTML = '';
-        const cancelDrawer = document.createElement('button');
-        cancelDrawer.type = 'button';
-        cancelDrawer.className = 'dd-btn-cancel';
-        cancelDrawer.textContent = 'Cancel';
-        cancelDrawer.title = 'Cancel download';
-        cancelDrawer.addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          try {
-            window.navio.cancelDownload?.(d.savePath);
-          } catch {
-            /* ignore */
-          }
-        });
-        ddAct.appendChild(cancelDrawer);
-      }
+      renderActiveActions('drawer', row.querySelector('.dd-actions'), d.savePath);
 
       if (shelf && shelfList) {
         shelf.hidden = false;
@@ -970,39 +1031,21 @@
           if (sm) sm.textContent = d.totalStr ? `Starting… · ${d.totalStr}` : 'Starting…';
           const sb = srow.querySelector('.download-shelf-progress-bar');
           if (sb) sb.style.width = '0%';
-          const act = srow.querySelector('.download-shelf-actions');
-          if (act) {
-            act.innerHTML = '';
-            const cancelShelf = document.createElement('button');
-            cancelShelf.type = 'button';
-            cancelShelf.className = 'download-shelf-btn-cancel';
-            cancelShelf.textContent = 'Cancel';
-            cancelShelf.title = 'Cancel download';
-            cancelShelf.addEventListener('click', () => {
-              try {
-                window.navio.cancelDownload?.(d.savePath);
-              } catch {
-                /* ignore */
-              }
-            });
-            act.appendChild(cancelShelf);
-            const dismissShelf = document.createElement('button');
-            dismissShelf.type = 'button';
-            dismissShelf.className = 'download-shelf-btn-dismiss';
-            dismissShelf.textContent = '×';
-            dismissShelf.title = 'Hide in bar (download continues)';
-            dismissShelf.setAttribute('aria-label', 'Hide in download bar');
-            dismissShelf.addEventListener('click', (ev) => {
-              ev.stopPropagation();
-              dismissShelfRow(d.savePath);
-            });
-            act.appendChild(dismissShelf);
-          }
+          renderActiveActions('shelf', srow.querySelector('.download-shelf-actions'), d.savePath);
         }
       }
     });
     window.navio.onDownloadProgress((d) => {
       if (!d.savePath) return;
+
+      // Detect pause-state change. If it flipped, re-render the action row
+      // so the Pause button becomes Resume (or vice versa).
+      const wasPaused = downloadPausedByPath.get(d.savePath) === true;
+      const nowPaused = d.paused === true;
+      if (wasPaused !== nowPaused) {
+        downloadPausedByPath.set(d.savePath, nowPaused);
+      }
+
       const row = rowsByPath.get(d.savePath);
       if (!row) return;
       const total = d.total || 0;
@@ -1024,58 +1067,55 @@
       }
       const st = row.querySelector('.dd-state');
       if (st) {
-        st.textContent = total ? `${pct}%` : 'Downloading…';
+        if (nowPaused) st.textContent = 'Paused';
+        else st.textContent = total ? `${pct}%` : 'Downloading…';
+      }
+
+      if (wasPaused !== nowPaused) {
+        renderActiveActions('drawer', row.querySelector('.dd-actions'), d.savePath);
       }
 
       if (shelf && shelfList && !shelfRowsByPath.get(d.savePath)) {
         shelf.hidden = false;
         ensureShelfRow(d.savePath, d.filename);
-        const act = shelfRowsByPath.get(d.savePath)?.querySelector('.download-shelf-actions');
-        if (act) {
-          act.innerHTML = '';
-          const cancelShelf = document.createElement('button');
-          cancelShelf.type = 'button';
-          cancelShelf.className = 'download-shelf-btn-cancel';
-          cancelShelf.textContent = 'Cancel';
-          cancelShelf.addEventListener('click', () => {
-            try {
-              window.navio.cancelDownload?.(d.savePath);
-            } catch {
-              /* ignore */
-            }
-          });
-          act.appendChild(cancelShelf);
-          const dismissShelf = document.createElement('button');
-          dismissShelf.type = 'button';
-          dismissShelf.className = 'download-shelf-btn-dismiss';
-          dismissShelf.textContent = '×';
-          dismissShelf.title = 'Hide in bar (download continues)';
-          dismissShelf.addEventListener('click', (ev) => {
-            ev.stopPropagation();
-            dismissShelfRow(d.savePath);
-          });
-          act.appendChild(dismissShelf);
+        const srowNew = shelfRowsByPath.get(d.savePath);
+        if (srowNew) {
+          renderActiveActions('shelf', srowNew.querySelector('.download-shelf-actions'), d.savePath);
         }
       }
 
-      let srow = shelfRowsByPath.get(d.savePath);
+      const srow = shelfRowsByPath.get(d.savePath);
       if (srow) {
         const sb = srow.querySelector('.download-shelf-progress-bar');
         if (sb) sb.style.width = `${pct}%`;
         const sm = srow.querySelector('.download-shelf-meta');
         if (sm) {
-          const parts = [];
-          if (d.receivedStr && d.totalStr) parts.push(`${d.receivedStr} of ${d.totalStr}`);
-          else if (d.receivedStr) parts.push(d.receivedStr);
-          const spd = formatDownloadSpeed(d.bytesPerSec);
-          if (spd) parts.push(spd);
-          if (d.etaStr) parts.push(d.etaStr);
-          sm.textContent = parts.length ? parts.join(' · ') : total ? `${pct}%` : 'Downloading…';
+          if (nowPaused) {
+            sm.textContent = d.totalStr ? `Paused · ${d.receivedStr || '0 B'} of ${d.totalStr}` : 'Paused';
+          } else {
+            const parts = [];
+            if (d.receivedStr && d.totalStr) parts.push(`${d.receivedStr} of ${d.totalStr}`);
+            else if (d.receivedStr) parts.push(d.receivedStr);
+            const spd = formatDownloadSpeed(d.bytesPerSec);
+            if (spd) parts.push(spd);
+            if (d.etaStr) parts.push(d.etaStr);
+            sm.textContent = parts.length ? parts.join(' · ') : total ? `${pct}%` : 'Downloading…';
+          }
+        }
+        if (wasPaused !== nowPaused) {
+          renderActiveActions('shelf', srow.querySelector('.download-shelf-actions'), d.savePath);
         }
       }
     });
     window.navio.onDownloadDone((d) => {
       if (activeDownloadCount > 0) activeDownloadCount--;
+      const retryUrl = d.url || (d.savePath ? downloadUrlByPath.get(d.savePath) || '' : '');
+      // Clean up transient maps — but keep retryUrl local for the button below.
+      if (d.savePath) {
+        downloadPausedByPath.delete(d.savePath);
+        if (d.state === 'completed') downloadUrlByPath.delete(d.savePath);
+      }
+
       let row = d.savePath ? rowsByPath.get(d.savePath) : null;
       if (!row && d.savePath) {
         row = ensureRow(d.savePath, d.filename);
@@ -1125,6 +1165,23 @@
           actions.appendChild(b);
         } else {
           setRowOpenable(row, { savePath: d.savePath || '', filename: d.filename, openable: false });
+          if (actions && /^https?:\/\//i.test(retryUrl)) {
+            const retryB = document.createElement('button');
+            retryB.type = 'button';
+            retryB.className = 'dd-btn-folder dd-btn-open';
+            retryB.textContent = 'Retry';
+            retryB.title = 'Re-download this file';
+            retryB.addEventListener('click', (ev) => {
+              ev.stopPropagation();
+              const incognito = !!(
+                typeof TabManager !== 'undefined' &&
+                TabManager.getActiveTab &&
+                TabManager.getActiveTab()?.incognito
+              );
+              _invokeIpcSafe('retryDownload', { url: retryUrl, incognito });
+            });
+            actions.appendChild(retryB);
+          }
         }
       }
 
@@ -1158,10 +1215,25 @@
             const foldB = document.createElement('button');
             foldB.type = 'button';
             foldB.className = 'download-shelf-btn-folder';
-            foldB.textContent = 'Folder';
-            foldB.title = 'Show in File Explorer';
+            foldB.textContent = 'Show in folder';
+            foldB.title = 'Reveal in File Explorer';
             foldB.addEventListener('click', () => window.navio.showInFolder(d.savePath));
             act.appendChild(foldB);
+          } else if (/^https?:\/\//i.test(retryUrl)) {
+            const retryB = document.createElement('button');
+            retryB.type = 'button';
+            retryB.className = 'download-shelf-btn-open';
+            retryB.textContent = 'Retry';
+            retryB.title = 'Re-download this file';
+            retryB.addEventListener('click', () => {
+              const incognito = !!(
+                typeof TabManager !== 'undefined' &&
+                TabManager.getActiveTab &&
+                TabManager.getActiveTab()?.incognito
+              );
+              _invokeIpcSafe('retryDownload', { url: retryUrl, incognito });
+            });
+            act.appendChild(retryB);
           }
           const dismissB = document.createElement('button');
           dismissB.type = 'button';
@@ -1232,6 +1304,25 @@
           window.navio.openDownloadsFolder?.();
         } catch {
           /* ignore */
+        }
+      });
+
+    const clearCompletedBtn = document.getElementById('btn-downloads-clear-completed');
+    clearCompletedBtn &&
+      clearCompletedBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Remove all .dd-row-done rows (completed only). Failed/cancelled rows
+        // stay visible so users can still retry. Files on disk are not touched.
+        const toRemove = [];
+        for (const [p, r] of rowsByPath.entries()) {
+          if (r.classList.contains('dd-row-done')) toRemove.push(p);
+        }
+        for (const p of toRemove) {
+          const r = rowsByPath.get(p);
+          rowsByPath.delete(p);
+          const idx = order.indexOf(p);
+          if (idx >= 0) order.splice(idx, 1);
+          try { r?.remove(); } catch { /* ignore */ }
         }
       });
 
@@ -1388,10 +1479,8 @@
             _showAppToast(res.error, 'warning');
           }
         });
-        b.style.backgroundImage = '';
+        b.classList.add('extension-toolbar-btn-fallback');
         b.textContent = (ex.name && ex.name[0]) || '?';
-        b.style.fontSize = '11px';
-        b.style.color = 'var(--text-secondary)';
         bar.appendChild(b);
       });
     } catch (_) {}

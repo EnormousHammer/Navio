@@ -24,6 +24,7 @@ class SettingsManagerClass {
 
     this.elements = {
       startupMode: document.getElementById('setting-startup-mode'),
+      newTabMode: document.getElementById('setting-new-tab-mode'),
       launchIntro: document.getElementById('setting-launch-intro'),
       downloadAskWhere: document.getElementById('setting-download-ask-where'),
       downloadRevealInFolder: document.getElementById('setting-download-reveal'),
@@ -94,6 +95,7 @@ class SettingsManagerClass {
       extInstallCrx: document.getElementById('btn-ext-install-crx'),
       workflowsListSettings: document.getElementById('settings-workflows-list'),
       btnCheckUpdates: document.getElementById('btn-check-updates'),
+      btnInstallUpdate: document.getElementById('btn-install-update'),
       updateStatus: document.getElementById('settings-update-status'),
       profilesListSettings: document.getElementById('profiles-list-settings'),
       profileNewId: document.getElementById('profile-new-id'),
@@ -282,6 +284,41 @@ class SettingsManagerClass {
         }
       });
     }
+
+    if (this.elements.btnInstallUpdate && !this.elements.btnInstallUpdate._navioBound) {
+      this.elements.btnInstallUpdate._navioBound = true;
+      this.elements.btnInstallUpdate.addEventListener('click', async () => {
+        if (!confirm('Navio will restart to install the update. Continue?')) return;
+        try {
+          const r = await window.navio.installUpdate();
+          if (r && r.ok === false && r.message) alert(r.message);
+        } catch (e) {
+          alert(e.message || String(e));
+        }
+      });
+    }
+
+    this._applyUpdateState = (state) => {
+      const st = this.elements.updateStatus;
+      const btn = this.elements.btnInstallUpdate;
+      if (!state) return;
+      if (st && state.message) st.textContent = state.message;
+      if (btn) {
+        const ready = state.status === 'ready';
+        btn.style.display = ready ? '' : 'none';
+        btn.disabled = !ready;
+      }
+    };
+
+    if (typeof window.navio?.getUpdateStatus === 'function' && !this._navioUpdateInit) {
+      this._navioUpdateInit = true;
+      window.navio.getUpdateStatus().then((r) => {
+        if (r && r.state) this._applyUpdateState(r.state);
+      }).catch(() => { /* ignore */ });
+      if (typeof window.navio.onUpdateStatusChanged === 'function') {
+        window.navio.onUpdateStatusChanged((state) => this._applyUpdateState(state));
+      }
+    }
   }
 
   _filterSettingsNav() {
@@ -352,7 +389,11 @@ class SettingsManagerClass {
         });
       });
     } catch (e) {
-      container.innerHTML = `<p class="pwd-list-empty">Could not load passwords: ${e.message}</p>`;
+      while (container.firstChild) container.removeChild(container.firstChild);
+      const p = document.createElement('p');
+      p.className = 'pwd-list-empty';
+      p.textContent = `Could not load passwords: ${e && e.message ? e.message : String(e)}`;
+      container.appendChild(p);
     }
   }
 
@@ -399,6 +440,11 @@ class SettingsManagerClass {
   async populateFields() {
     this.elements.startupMode.value =
       this.config.startupMode === 'homepage' ? 'homepage' : 'new-tab';
+
+    if (this.elements.newTabMode) {
+      const mode = String(this.config.newTabMode || 'home');
+      this.elements.newTabMode.value = ['home', 'chat', 'blank'].includes(mode) ? mode : 'home';
+    }
 
     const z = this.config.defaultZoom;
     const zVal = typeof z === 'number' ? String(z) : String(parseFloat(z) || 1);
@@ -1270,6 +1316,10 @@ class SettingsManagerClass {
     const newConfig = {
       ...this.config,
       startupMode: this.elements.startupMode.value === 'homepage' ? 'homepage' : 'new-tab',
+      newTabMode: (() => {
+        const v = this.elements.newTabMode ? String(this.elements.newTabMode.value || '').trim() : '';
+        return ['home', 'chat', 'blank'].includes(v) ? v : 'home';
+      })(),
       showLaunchIntro: !!(this.elements.launchIntro && this.elements.launchIntro.checked),
       downloadAskWhere: !!(this.elements.downloadAskWhere && this.elements.downloadAskWhere.checked),
       downloadRevealInFolder: !!(this.elements.downloadRevealInFolder && this.elements.downloadRevealInFolder.checked),
@@ -1356,6 +1406,10 @@ class SettingsManagerClass {
       if (typeof TabManager._maybeDiscardBackgroundTabs === 'function') {
         TabManager._maybeDiscardBackgroundTabs();
       }
+    }
+
+    if (typeof window.__navioApplyNewTabMode === 'function') {
+      try { void window.__navioApplyNewTabMode(); } catch { /* non-critical */ }
     }
 
     if (typeof AssistantManager !== 'undefined') {

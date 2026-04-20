@@ -659,6 +659,42 @@ class TabManagerClass {
       }
     });
 
+    // ── Tab crash recovery (Chrome-style "Aw snap") ──────────────────────────
+    // When the guest renderer dies (OOM, site-isolated segfault, killed, etc.)
+    // the webview becomes a blank black rectangle with no indication of why.
+    // Render a dedicated crash card and let the user reload the URL directly.
+    // 'render-process-gone' replaced 'crashed' in Electron 12+; listen for both.
+    const onGuestGone = (e) => {
+      tab.loading = false;
+      this.updateTabUI(tab);
+      try { App.showLoading(false); } catch { /* ignore */ }
+      if (tab.id !== this.activeTabId) return;
+      const reason = (e && (e.reason || e.details?.reason)) || 'crashed';
+      const reasonMap = {
+        'clean-exit': 'The page process exited unexpectedly.',
+        'abnormal-exit': 'The page process exited abnormally.',
+        'killed': 'The page process was killed (likely out of memory or terminated by the OS).',
+        'crashed': 'The page crashed.',
+        'oom': 'The page ran out of memory.',
+        'launch-failed': 'The page process failed to start.',
+        'integrity-failure': 'The page was blocked by integrity protection.'
+      };
+      const desc = reasonMap[reason] || 'The page stopped responding.';
+      this._scheduleWebviewCrashPage(wv, desc, tab.url || '', reason);
+    };
+    wv.addEventListener('render-process-gone', onGuestGone);
+    // Legacy fallback (older Electron) — harmless to register both.
+    wv.addEventListener('crashed', () => onGuestGone({ reason: 'crashed' }));
+    wv.addEventListener('unresponsive', () => {
+      // Do NOT auto-inject a crash page here — many SPAs block the main thread
+      // temporarily. Just mark the tab so the user can see it in the strip.
+      tab.title = tab.title ? `⏳ ${tab.title}` : '⏳ Unresponsive';
+      this.updateTabUI(tab);
+    });
+    wv.addEventListener('responsive', () => {
+      // Restore title on next navigate/finish.
+    });
+
     wv.addEventListener('did-finish-load', async () => {
       // Safety net: if the guest is blank but our model still has a real URL (and
       // this tab has session history), resync — avoids a blank webview with NTP
@@ -839,6 +875,53 @@ class TabManagerClass {
       }
     };
     requestAnimationFrame(() => requestAnimationFrame(inject));
+  }
+
+  _scheduleWebviewCrashPage(wv, description, pageUrl, reason) {
+    const errHtml = this._buildCrashPage(description, pageUrl, reason);
+    const b64 = this._utf8ToBase64(errHtml);
+    const dataUrl = b64
+      ? `data:text/html;charset=UTF-8;base64,${b64}`
+      : `data:text/html;charset=utf-8,${encodeURIComponent(errHtml)}`;
+    const inject = () => {
+      try { if (typeof wv.stop === 'function') wv.stop(); } catch { /* ignore */ }
+      try { wv.loadURL(dataUrl).catch(() => {}); } catch { /* ignore */ }
+    };
+    requestAnimationFrame(() => requestAnimationFrame(inject));
+  }
+
+  _buildCrashPage(description, url, reason) {
+    const safeUrl = url ? String(url).replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+    const safeDesc = String(description || 'The page crashed.').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const safeReason = String(reason || 'crashed').replace(/[^a-z0-9-]/gi, '').slice(0, 40);
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+  body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;
+    background:#080c18;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#8892b4;}
+  .box{text-align:center;max-width:520px;padding:40px 24px;}
+  .icon{font-size:56px;margin-bottom:12px;opacity:.7;}
+  h1{font-size:24px;font-weight:700;color:#e2e8f8;margin:0 0 8px;letter-spacing:-0.01em;}
+  p{font-size:14px;line-height:1.6;margin:0 0 24px;opacity:.75;}
+  .url{font-size:12px;word-break:break-all;padding:8px 12px;background:rgba(80,160,255,.05);
+    border:1px solid rgba(80,160,255,.10);border-radius:6px;margin:0 0 20px;opacity:.65;}
+  .tech{font-size:12px;margin:0 0 20px;opacity:.5;}
+  .actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+  button{padding:10px 22px;background:linear-gradient(135deg,#00d8ff,#5468ff);border:none;
+    border-radius:8px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;}
+  button.ghost{background:transparent;border:1px solid rgba(80,160,255,.25);color:#cfe0ff;}
+  button:hover{opacity:.9;}
+</style></head><body>
+<div class="box">
+  <div class="icon">💥</div>
+  <h1>Aw snap — this page stopped</h1>
+  <p>${safeDesc}</p>
+  ${safeUrl ? `<div class="url">${safeUrl}</div>` : ''}
+  <div class="tech">reason: ${safeReason}</div>
+  <div class="actions">
+    ${safeUrl ? `<button onclick="location.href=${JSON.stringify(url)}">Reload</button>` : ''}
+    <button class="ghost" onclick="history.back()">Go back</button>
+  </div>
+</div></body></html>`;
   }
 
   _buildErrorPage(description, url, errorCode, rawDescription) {
@@ -1662,7 +1745,14 @@ class TabManagerClass {
 
     const faviconEl = el.querySelector('.tab-favicon');
     if (tab.favicon) {
-      faviconEl.innerHTML = `<img src="${tab.favicon}" alt="">`;
+      // setAttribute safely quotes the URL — a crafted favicon URL containing
+      // a double-quote can no longer break out and inject attributes like
+      // onerror=… the way ${tab.favicon} in a raw template string could.
+      while (faviconEl.firstChild) faviconEl.removeChild(faviconEl.firstChild);
+      const img = document.createElement('img');
+      img.alt = '';
+      img.setAttribute('src', String(tab.favicon));
+      faviconEl.appendChild(img);
     }
 
     el.classList.toggle('loading', tab.loading);

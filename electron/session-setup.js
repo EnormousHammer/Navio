@@ -159,134 +159,186 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   applySessionFixes(incognitoSession);
   applySessionFixes(session.defaultSession);
 
+  /**
+   * Pick a non-colliding save path in the default downloads dir. Up to 99 " (n)"
+   * variants before falling back to a timestamped suffix — never silently
+   * overwrites an existing file.
+   */
+  function pickUniqueDownloadPath(downloadsDir, filename) {
+    const ext = path.extname(filename);
+    const base = path.basename(filename, ext) || 'download';
+    let candidate = path.join(downloadsDir, filename);
+    if (!fs.existsSync(candidate)) return candidate;
+    for (let n = 1; n <= 99; n++) {
+      candidate = path.join(downloadsDir, `${base} (${n})${ext}`);
+      if (!fs.existsSync(candidate)) return candidate;
+    }
+    // After 99 duplicates, fall back to timestamped filename (never overwrite).
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    return path.join(downloadsDir, `${base} (${stamp})${ext}`);
+  }
+
+  /**
+   * Download lifecycle telemetry sent to the renderer. Emits 5 event shapes:
+   *   download-started   { filename, savePath, total, totalStr, url, indeterminate }
+   *   download-progress  { ...bytes, paused, state }
+   *   download-done      { filename, savePath, state, totalStr, url }
+   * The renderer uses these to render shelf + drawer + toolbar badge.
+   */
+  function wireDownloadItem(item, savePath, originalUrl) {
+    activeDownloadItemsByPath.set(savePath, item);
+    const displayName = path.basename(savePath);
+    console.log(`[navio] Download started: ${displayName} → ${savePath}`);
+
+    let lastProgT = Date.now();
+    let lastProgB = 0;
+
+    const startTotal = item.getTotalBytes();
+    getMainWindow()?.webContents.send('download-started', {
+      filename: displayName,
+      savePath,
+      total: startTotal,
+      totalStr: startTotal > 0 ? _navioFormatBytes(startTotal) : '',
+      url: originalUrl || '',
+      /** Size-unknown servers — renderer can flip to indeterminate immediately instead of waiting. */
+      indeterminate: !(startTotal > 0)
+    });
+
+    item.on('updated', (_, state) => {
+      const received = item.getReceivedBytes();
+      const total = item.getTotalBytes();
+      const now = Date.now();
+      let bytesPerSec = null;
+      let etaSec = null;
+      const dt = (now - lastProgT) / 1000;
+      if (dt >= 0.2) {
+        const d = received - lastProgB;
+        if (d >= 0) {
+          bytesPerSec = d / dt;
+          lastProgT = now;
+          lastProgB = received;
+        }
+      }
+      if (total > 0 && bytesPerSec != null && bytesPerSec > 500) {
+        etaSec = (total - received) / bytesPerSec;
+      }
+      let paused = false;
+      try { paused = !!item.isPaused(); } catch { /* older electron — ignore */ }
+      getMainWindow()?.webContents.send('download-progress', {
+        filename: displayName,
+        savePath,
+        state,
+        paused,
+        received,
+        total,
+        bytesPerSec: bytesPerSec != null ? Math.round(bytesPerSec) : null,
+        etaSec: etaSec != null && Number.isFinite(etaSec) ? etaSec : null,
+        receivedStr: _navioFormatBytes(received),
+        totalStr: total > 0 ? _navioFormatBytes(total) : '',
+        etaStr: _navioFormatEta(etaSec)
+      });
+    });
+
+    item.once('done', (_, state) => {
+      activeDownloadItemsByPath.delete(savePath);
+      console.log(`[navio] Download ${state}: ${displayName}`);
+      const doneTotal = item.getTotalBytes();
+      getMainWindow()?.webContents.send('download-done', {
+        filename: displayName,
+        savePath,
+        state,
+        totalStr: doneTotal > 0 ? _navioFormatBytes(doneTotal) : '',
+        url: originalUrl || ''
+      });
+      const cfg = loadConfig();
+      if (state === 'completed' && cfg.downloadRevealInFolder === true) {
+        try {
+          if (fs.existsSync(savePath)) {
+            shell.showItemInFolder(savePath);
+          } else {
+            console.warn('[navio] Download completed but file not found:', savePath);
+          }
+        } catch (e) {
+          console.warn('[navio] showItemInFolder:', e.message);
+        }
+      }
+    });
+  }
+
   function handleDownloads(ses) {
     ses.on('will-download', (event, item) => {
+      // Capture the origin URL so we can offer Retry on failed rows.
+      let originalUrl = '';
+      try { originalUrl = item.getURL() || ''; } catch { /* ignore */ }
+
+      let filename = '';
       try {
-        let filename = item.getFilename() || 'download';
-        filename = filename
-          .replace(/[\\/:*?"<>|\x00-\x1f]/g, '_')
-          .replace(/\.{2,}/g, '.')
-          .replace(/^[\s.]+|[\s.]+$/g, '')
-          .slice(0, 200)
-          .trim();
-        if (!filename) filename = 'download';
+        filename = item.getFilename() || 'download';
+      } catch {
+        filename = 'download';
+      }
+      filename = filename
+        .replace(/[\\/:*?"<>|\x00-\x1f]/g, '_')
+        .replace(/\.{2,}/g, '.')
+        .replace(/^[\s.]+|[\s.]+$/g, '')
+        .slice(0, 200)
+        .trim();
+      if (!filename) filename = 'download';
 
-        const cfg = loadConfig();
-        const downloadsDir = app.getPath('downloads');
-        try {
-          fs.mkdirSync(downloadsDir, { recursive: true });
-        } catch (e) {
-          console.warn('[navio] Could not ensure Downloads folder:', e.message);
-        }
+      const cfg = loadConfig();
+      const downloadsDir = app.getPath('downloads');
+      try {
+        fs.mkdirSync(downloadsDir, { recursive: true });
+      } catch (e) {
+        console.warn('[navio] Could not ensure Downloads folder:', e.message);
+      }
 
-        const ext = path.extname(filename);
-        const base = path.basename(filename, ext) || 'download';
-
-        let savePath;
-        if (cfg.downloadAskWhere === true) {
-          const win = getMainWindow();
-          const defaultPath = path.join(downloadsDir, filename);
-          const picked = dialog.showSaveDialogSync(win && !win.isDestroyed() ? win : undefined, {
+      if (cfg.downloadAskWhere === true) {
+        // Async save dialog — never block the UI thread. We pause the item
+        // until the user picks a path so the save location is guaranteed to
+        // take effect before any bytes are written.
+        try { item.pause(); } catch { /* best-effort on older electron */ }
+        const win = getMainWindow();
+        const defaultPath = path.join(downloadsDir, filename);
+        dialog
+          .showSaveDialog(win && !win.isDestroyed() ? win : undefined, {
             title: 'Save file',
             defaultPath,
             buttonLabel: 'Save',
             properties: ['showOverwriteConfirmation']
-          });
-          if (!picked) {
-            item.cancel();
-            return;
-          }
-          savePath = picked;
-        } else {
-          savePath = path.join(downloadsDir, filename);
-          let counter = 1;
-          while (fs.existsSync(savePath) && counter <= 99) {
-            savePath = path.join(downloadsDir, `${base} (${counter})${ext}`);
-            counter++;
-          }
-        }
-
-        try {
-          item.setSavePath(savePath);
-        } catch (e) {
-          console.error('[navio] setSavePath failed:', e.message);
-          item.cancel();
-          return;
-        }
-
-        activeDownloadItemsByPath.set(savePath, item);
-
-        const displayName = path.basename(savePath);
-        console.log(`[navio] Download started: ${displayName} → ${savePath}`);
-
-        let lastProgT = Date.now();
-        let lastProgB = 0;
-
-        const startTotal = item.getTotalBytes();
-        getMainWindow()?.webContents.send('download-started', {
-          filename: displayName,
-          savePath,
-          total: startTotal,
-          totalStr: startTotal > 0 ? _navioFormatBytes(startTotal) : ''
-        });
-
-        item.on('updated', (_, state) => {
-          const received = item.getReceivedBytes();
-          const total = item.getTotalBytes();
-          const now = Date.now();
-          let bytesPerSec = null;
-          let etaSec = null;
-          const dt = (now - lastProgT) / 1000;
-          if (dt >= 0.2) {
-            const d = received - lastProgB;
-            if (d >= 0) {
-              bytesPerSec = d / dt;
-              lastProgT = now;
-              lastProgB = received;
+          })
+          .then((result) => {
+            if (result.canceled || !result.filePath) {
+              try { item.cancel(); } catch { /* already ended */ }
+              return;
             }
-          }
-          if (total > 0 && bytesPerSec != null && bytesPerSec > 500) {
-            etaSec = (total - received) / bytesPerSec;
-          }
-          getMainWindow()?.webContents.send('download-progress', {
-            filename: displayName,
-            savePath,
-            state,
-            received,
-            total,
-            bytesPerSec: bytesPerSec != null ? Math.round(bytesPerSec) : null,
-            etaSec: etaSec != null && Number.isFinite(etaSec) ? etaSec : null,
-            receivedStr: _navioFormatBytes(received),
-            totalStr: total > 0 ? _navioFormatBytes(total) : '',
-            etaStr: _navioFormatEta(etaSec)
-          });
-        });
-
-        item.once('done', (_, state) => {
-          activeDownloadItemsByPath.delete(savePath);
-          console.log(`[navio] Download ${state}: ${displayName}`);
-          const doneTotal = item.getTotalBytes();
-          getMainWindow()?.webContents.send('download-done', {
-            filename: displayName,
-            savePath,
-            state,
-            totalStr: doneTotal > 0 ? _navioFormatBytes(doneTotal) : ''
-          });
-          if (state === 'completed' && cfg.downloadRevealInFolder === true) {
+            const savePath = result.filePath;
             try {
-              if (fs.existsSync(savePath)) {
-                shell.showItemInFolder(savePath);
-              } else {
-                console.warn('[navio] Download completed but file not found:', savePath);
-              }
-            } catch (e) {
-              console.warn('[navio] showItemInFolder:', e.message);
+              item.setSavePath(savePath);
+              try { item.resume(); } catch { /* fine if never paused */ }
+              wireDownloadItem(item, savePath, originalUrl);
+            } catch (err) {
+              console.error('[navio] setSavePath (async) failed:', err.message);
+              try { item.cancel(); } catch { /* ignore */ }
             }
-          }
-        });
-      } catch (err) {
-        console.error('[navio] Download handler error:', err.message, err.stack);
+          })
+          .catch((err) => {
+            console.error('[navio] Save dialog failed:', err.message);
+            try { item.cancel(); } catch { /* ignore */ }
+          });
+        return;
       }
+
+      // Chrome-default path: save silently to Downloads with collision-safe name.
+      const savePath = pickUniqueDownloadPath(downloadsDir, filename);
+      try {
+        item.setSavePath(savePath);
+      } catch (e) {
+        console.error('[navio] setSavePath failed:', e.message);
+        try { item.cancel(); } catch { /* ignore */ }
+        return;
+      }
+      wireDownloadItem(item, savePath, originalUrl);
     });
   }
   handleDownloads(navioSession);
@@ -300,6 +352,55 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
     if (!item) return { ok: false, error: 'not_found' };
     try {
       item.cancel();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle('pause-download', (_, savePath) => {
+    const p = typeof savePath === 'string' ? savePath.trim() : '';
+    if (!p) return { ok: false, error: 'no_path' };
+    const item = activeDownloadItemsByPath.get(p);
+    if (!item) return { ok: false, error: 'not_found' };
+    try {
+      if (item.isPaused()) return { ok: true, paused: true };
+      item.pause();
+      return { ok: true, paused: true };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle('resume-download', (_, savePath) => {
+    const p = typeof savePath === 'string' ? savePath.trim() : '';
+    if (!p) return { ok: false, error: 'no_path' };
+    const item = activeDownloadItemsByPath.get(p);
+    if (!item) return { ok: false, error: 'not_found' };
+    try {
+      if (!item.isPaused()) return { ok: true, paused: false };
+      if (typeof item.canResume === 'function' && !item.canResume()) {
+        return { ok: false, error: 'not_resumable' };
+      }
+      item.resume();
+      return { ok: true, paused: false };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  /**
+   * Retry a failed/cancelled download from the renderer. We use the
+   * original URL captured at will-download time and re-issue the download
+   * on the same session — Electron will emit a fresh will-download event.
+   */
+  ipcMain.handle('retry-download', (_, payload) => {
+    const url = payload && typeof payload.url === 'string' ? payload.url.trim() : '';
+    const incognito = !!(payload && payload.incognito);
+    if (!/^https?:\/\//i.test(url)) return { ok: false, error: 'bad_url' };
+    const targetSes = incognito ? incognitoSession : navioSession;
+    try {
+      targetSes.downloadURL(url);
       return { ok: true };
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
@@ -583,40 +684,92 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
     popupsBlocked: adPopupBlockedCount
   }));
 
-  /** F12 / Ctrl+Shift+I: DevTools for the active page tab (guest webview), not the shell UI. */
+  /**
+   * Window-scoped shortcut registry.
+   *
+   * globalShortcut.register() attaches accelerators at the OS level — they
+   * fire even when Navio is *not* the focused application, which means a
+   * user typing Ctrl+T in VSCode would silently open a new Navio tab and
+   * pull focus away from their editor. That is unacceptable in a shipping
+   * desktop app.
+   *
+   * We keep using globalShortcut because it supports the widest set of
+   * accelerators on Windows/Linux (including Ctrl+Tab / Ctrl+PageDown which
+   * Menu-based accelerators cannot always receive), but we now only hold
+   * the registration while the Navio main window is focused. On blur we
+   * unregister, so other apps see the accelerators normally.
+   */
+  const navioShortcutList = [];
+  let navioShortcutsActive = false;
+
   function openActiveTabDevToolsShortcut() {
     getMainWindow()?.webContents.send('shortcut', 'devtools-active-tab');
   }
-  try {
-    const f12Ok = globalShortcut.register('F12', openActiveTabDevToolsShortcut);
-    if (!f12Ok) {
-      console.debug('[navio] F12 unavailable (often claimed by GPU overlays); Ctrl+Shift+I still opens tab DevTools.');
-    }
-  } catch (e) {
-    console.warn('[navio] globalShortcut register error (F12 → tab DevTools)', e.message);
-  }
-
   function sendShortcut(action) {
     getMainWindow()?.webContents.send('shortcut', action);
   }
-  try {
-    globalShortcut.register('F5', () => sendShortcut('reload'));
-  } catch (e) {
-    console.warn('[navio] globalShortcut register error (F5 → reload)', e.message);
-  }
 
   function regShortcut(accelerator, action) {
+    // Record the binding; actual OS registration happens in _registerAll.
+    navioShortcutList.push({ accelerator, action });
+  }
+
+  function _registerAll() {
+    if (navioShortcutsActive) return;
+    navioShortcutsActive = true;
     try {
-      const ok = globalShortcut.register(accelerator, () => {
-        getMainWindow()?.webContents.send('shortcut', action);
-      });
-      if (!ok) {
-        console.warn(`[navio] globalShortcut register failed: ${accelerator} → ${action}`);
+      const f12Ok = globalShortcut.register('F12', openActiveTabDevToolsShortcut);
+      if (!f12Ok) {
+        console.debug('[navio] F12 unavailable (often claimed by GPU overlays); Ctrl+Shift+I still opens tab DevTools.');
       }
     } catch (e) {
-      console.warn(`[navio] globalShortcut register error: ${accelerator}`, e.message);
+      console.warn('[navio] globalShortcut register error (F12)', e.message);
     }
+    try {
+      globalShortcut.register('F5', () => sendShortcut('reload'));
+    } catch (e) {
+      console.warn('[navio] globalShortcut register error (F5 → reload)', e.message);
+    }
+    navioShortcutList.forEach(({ accelerator, action }) => {
+      try {
+        const ok = globalShortcut.register(accelerator, () => sendShortcut(action));
+        if (!ok) {
+          console.warn(`[navio] globalShortcut register failed: ${accelerator} → ${action}`);
+        }
+      } catch (e) {
+        console.warn(`[navio] globalShortcut register error: ${accelerator}`, e.message);
+      }
+    });
   }
+
+  function _unregisterAll() {
+    if (!navioShortcutsActive) return;
+    navioShortcutsActive = false;
+    try { globalShortcut.unregister('F12'); } catch { /* ignore */ }
+    try { globalShortcut.unregister('F5'); } catch { /* ignore */ }
+    navioShortcutList.forEach(({ accelerator }) => {
+      try { globalShortcut.unregister(accelerator); } catch { /* ignore */ }
+    });
+  }
+
+  // Attach focus/blur listeners once a main window exists. getMainWindow()
+  // may still return null here during cold-start — app.on('browser-window-focus'/'browser-window-blur') handles it generically.
+  app.on('browser-window-focus', (_e, win) => {
+    const main = getMainWindow();
+    if (!main || win !== main) return;
+    _registerAll();
+  });
+  app.on('browser-window-blur', (_e, win) => {
+    const main = getMainWindow();
+    if (!main || win !== main) return;
+    _unregisterAll();
+  });
+  // If the window is already focused at registration time (typical cold
+  // start) prime the bindings immediately so the first Ctrl+T works.
+  setImmediate(() => {
+    const main = getMainWindow();
+    if (main && main.isFocused()) _registerAll();
+  });
 
   regShortcut('CommandOrControl+T', 'new-tab');
   regShortcut('CommandOrControl+Shift+N', 'new-private-tab');

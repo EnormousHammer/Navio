@@ -66,6 +66,22 @@ const INTRO_VIDEO_PATH = path.join(__dirname, '..', 'public', 'intro_video', 'in
 
 let mainWindow = null;
 let store = null;
+// Tracked across the session so Settings → "Install update" knows when there is
+// a downloaded installer ready to apply on quit.
+let navioUpdateState = {
+  status: 'idle', // 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'not-available' | 'error'
+  version: null,
+  downloadPercent: 0,
+  message: '',
+  checkedAt: 0
+};
+function navioEmitUpdateState() {
+  try {
+    if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.send('update-status-changed', { ...navioUpdateState });
+    }
+  } catch { /* ignore */ }
+}
 
 app.on('second-instance', () => {
   if (!mainWindow) return;
@@ -1177,6 +1193,65 @@ ipcMain.handle('save-config', (event, partial) => {
   return true;
 });
 
+// Wires electron-updater listeners exactly once per session. Safe to call
+// multiple times — we mark the module object so we don't stack duplicate
+// handlers (which would fire renderer IPC events N times each).
+function navioEnsureAutoUpdaterWired() {
+  if (!app.isPackaged) return null;
+  let autoUpdater;
+  try {
+    ({ autoUpdater } = require('electron-updater'));
+  } catch (e) {
+    return null;
+  }
+  if (autoUpdater.__navioWired) return autoUpdater;
+  autoUpdater.__navioWired = true;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowPrerelease = false;
+
+  autoUpdater.on('checking-for-update', () => {
+    navioUpdateState = { ...navioUpdateState, status: 'checking', message: 'Checking for updates…', checkedAt: Date.now() };
+    navioEmitUpdateState();
+  });
+  autoUpdater.on('update-available', (info) => {
+    navioUpdateState = {
+      status: 'downloading',
+      version: (info && info.version) || null,
+      downloadPercent: 0,
+      message: `Downloading v${(info && info.version) || '?'}…`,
+      checkedAt: Date.now()
+    };
+    navioEmitUpdateState();
+  });
+  autoUpdater.on('update-not-available', () => {
+    navioUpdateState = { ...navioUpdateState, status: 'not-available', message: 'You are on the latest version.', checkedAt: Date.now() };
+    navioEmitUpdateState();
+  });
+  autoUpdater.on('download-progress', (p) => {
+    const pct = Math.max(0, Math.min(100, Math.round(Number(p && p.percent) || 0)));
+    navioUpdateState = { ...navioUpdateState, status: 'downloading', downloadPercent: pct, message: `Downloading update… ${pct}%` };
+    navioEmitUpdateState();
+  });
+  autoUpdater.on('update-downloaded', (info) => {
+    navioUpdateState = {
+      status: 'ready',
+      version: (info && info.version) || navioUpdateState.version,
+      downloadPercent: 100,
+      message: `Update v${(info && info.version) || '?'} is ready to install.`,
+      checkedAt: Date.now()
+    };
+    navioEmitUpdateState();
+  });
+  autoUpdater.on('error', (err) => {
+    const msg = (err && err.message) ? err.message : String(err || 'update error');
+    navioUpdateState = { ...navioUpdateState, status: 'error', message: msg, checkedAt: Date.now() };
+    navioEmitUpdateState();
+  });
+
+  return autoUpdater;
+}
+
 ipcMain.handle('app-check-for-updates', async () => {
   if (!app.isPackaged) {
     return {
@@ -1184,10 +1259,11 @@ ipcMain.handle('app-check-for-updates', async () => {
       message: 'Updates apply to installed releases. This session is a development run.'
     };
   }
+  const autoUpdater = navioEnsureAutoUpdaterWired();
+  if (!autoUpdater) {
+    return { ok: false, message: 'electron-updater is not available in this build.' };
+  }
   try {
-    const { autoUpdater } = require('electron-updater');
-    autoUpdater.autoDownload = false;
-    autoUpdater.allowPrerelease = false;
     const result = await autoUpdater.checkForUpdates();
     const info = result && result.updateInfo;
     const cur = app.getVersion();
@@ -1195,7 +1271,7 @@ ipcMain.handle('app-check-for-updates', async () => {
       return {
         ok: true,
         message:
-          `Update available: v${info.version} (you have v${cur}). Auto-download is off — install from your release channel when ready.`
+          `Update available: v${info.version} (you have v${cur}). It will download in the background; install it from Settings when ready.`
       };
     }
     return {
@@ -1213,6 +1289,38 @@ ipcMain.handle('app-check-for-updates', async () => {
       };
     }
     return { ok: false, message: msg };
+  }
+});
+
+ipcMain.handle('app-get-update-status', () => {
+  return {
+    ok: true,
+    isPackaged: app.isPackaged,
+    currentVersion: app.getVersion(),
+    state: { ...navioUpdateState }
+  };
+});
+
+ipcMain.handle('app-install-update', () => {
+  if (!app.isPackaged) {
+    return { ok: false, message: 'Updates apply only to installed releases.' };
+  }
+  const autoUpdater = navioEnsureAutoUpdaterWired();
+  if (!autoUpdater) {
+    return { ok: false, message: 'electron-updater is not available in this build.' };
+  }
+  if (navioUpdateState.status !== 'ready') {
+    return { ok: false, message: 'No update has finished downloading yet.' };
+  }
+  try {
+    // isSilent=false, isForceRunAfter=true — most polished UX on Windows/macOS.
+    setImmediate(() => {
+      try { autoUpdater.quitAndInstall(false, true); }
+      catch (e) { console.warn('[navio] quitAndInstall failed:', e && e.message); }
+    });
+    return { ok: true, message: 'Installing update…' };
+  } catch (e) {
+    return { ok: false, message: e && e.message ? e.message : String(e) };
   }
 });
 
@@ -7218,48 +7326,10 @@ ipcMain.handle('import-bookmarks', async (event, browserPath) => {
   }
 });
 
-ipcMain.handle('get-downloads-path', () => app.getPath('downloads'));
-
-ipcMain.handle('open-downloads-folder', () => {
-  try {
-    const p = app.getPath('downloads');
-    shell.openPath(p);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-ipcMain.handle('show-in-folder', (_, filePath) => {
-  try {
-    shell.showItemInFolder(filePath);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-/** Open a file with the OS default application (e.g. completed download). */
-ipcMain.handle('open-file-path', async (_, filePath) => {
-  try {
-    if (!filePath || typeof filePath !== 'string') return { ok: false, error: 'invalid path' };
-    const err = await shell.openPath(filePath);
-    if (err) return { ok: false, error: err };
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-/** file:// URL for a local filesystem path (renderer opens PDFs/images in a tab). */
-ipcMain.handle('navio-path-to-file-url', (_, filePath) => {
-  try {
-    if (!filePath || typeof filePath !== 'string') return { ok: false, error: 'invalid path' };
-    return { ok: true, href: pathToFileURL(filePath).href };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
+// Filesystem / download-folder IPCs moved to electron/file-ipc.js.
+// The set: get-downloads-path, open-downloads-folder, show-in-folder,
+// open-file-path, navio-path-to-file-url.
+require('./file-ipc').registerFileIpc(ipcMain, { app, shell });
 
 // ── Reading List ───────────────────────────────────────────────────────────
 // Entries: [ { url, title, favicon, added, read } ] in <userData>/navio-reading-list.json
@@ -7567,9 +7637,10 @@ app.whenReady().then(async () => {
 
   if (app.isPackaged) {
     try {
-      const { autoUpdater } = require('electron-updater');
-      autoUpdater.autoDownload = false;
-      autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+      const autoUpdater = navioEnsureAutoUpdaterWired();
+      if (autoUpdater) {
+        autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+      }
     } catch (e) {
       console.warn('[navio] electron-updater not available:', e.message);
     }

@@ -2116,6 +2116,40 @@ body.navio-incognito-active .url-bar-container {
   grid-column: 1 / -1;
   grid-row: auto;
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+   New Tab Mode — 'chat' and 'blank' (Settings → General → New tab shows)
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/* Chat-first: keep the shortcut tiles (Live Sports, Movies, etc.) but hide the
+   inbox/news widgets so the AI prompt feels like the main surface.
+   The search input is enlarged and the subtitle hint is softened. */
+body.ntp-chat-mode .ntp-widgets { display: none !important; }
+body.ntp-chat-mode .ntp-hero {
+  /* Push the prompt a bit higher so it sits at comfortable reading height */
+  padding-top: clamp(24px, 6vh, 64px);
+}
+body.ntp-chat-mode .ntp-subtitle {
+  opacity: 0.85;
+}
+body.ntp-chat-mode .ntp-search {
+  max-width: min(760px, calc(100% - 32px));
+}
+body.ntp-chat-mode #ntp-search-input {
+  font-size: 15px;
+}
+body.ntp-chat-mode .ntp-search-send {
+  /* Mirror the 'send' affordance of chat apps */
+  opacity: 1;
+}
+
+/* Blank: hide everything except the dark backdrop. Users land in the omnibox. */
+body.ntp-blank-mode .ntp-hero,
+body.ntp-blank-mode .ntp-shortcuts,
+body.ntp-blank-mode .ntp-widgets,
+body.ntp-blank-mode .ntp-topbar {
+  display: none !important;
+}
 @media (max-width: 700px) {
   .ntp-widgets {
     grid-template-columns: minmax(0, 1fr);

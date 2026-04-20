@@ -20,6 +20,13 @@ const DEFAULT_CONFIG = {
   sidebarWidth: 240,
   assistantWidth: 420,
   startupMode: 'new-tab',
+  /**
+   * What Ctrl+T (and links opened into a new tab without a URL) show:
+   *   'home' — full dashboard: AI search, shortcuts, inbox, news widgets (default).
+   *   'chat' — chat-first: large AI prompt + keep shortcut tiles (Live Sports, Movies, etc.), hide widgets.
+   *   'blank' — empty page; users land straight in the omnibox.
+   */
+  newTabMode: 'home',
   defaultZoom: 1,
   aiIncludePageContext: true,
   aiDataScope: 'excerpt',

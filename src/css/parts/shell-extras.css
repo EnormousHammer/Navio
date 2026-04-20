@@ -1086,6 +1086,15 @@
 .extension-toolbar-btn:hover {
   border-color: var(--border-accent);
 }
+/* Fallback state: no icon available, show initial letter instead. Set via
+ * CSS class from JS to avoid inline style attributes (CSP-friendly). */
+.extension-toolbar-btn.extension-toolbar-btn-fallback {
+  background-image: none;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-transform: uppercase;
+}
 
 .tab-strip-resize {
   display: none;

@@ -860,50 +860,31 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
       const el = document.createElement('div');
       el.className = `live-notification live-toast live-toast-${type}`;
       el.id = `app-toast-${id}`;
-      el.innerHTML = `<span class="live-toast-icon">${icons[type] || '•'}</span><span class="live-toast-msg">${msg}</span><button class="live-notif-x">×</button>`;
-      el.querySelector('.live-notif-x').addEventListener('click', () => el.remove());
+      // Use DOM APIs (textContent) instead of innerHTML so that user-controlled
+      // strings like hostnames, filenames, or error messages cannot break out
+      // of their span and inject script/markup.
+      const iconEl = document.createElement('span');
+      iconEl.className = 'live-toast-icon';
+      iconEl.textContent = icons[type] || '•';
+      const msgEl = document.createElement('span');
+      msgEl.className = 'live-toast-msg';
+      msgEl.textContent = String(msg == null ? '' : msg);
+      const x = document.createElement('button');
+      x.className = 'live-notif-x';
+      x.textContent = '×';
+      x.addEventListener('click', () => el.remove());
+      el.appendChild(iconEl);
+      el.appendChild(msgEl);
+      el.appendChild(x);
       stack.prepend(el);
       setTimeout(() => el.remove(), 5000);
     };
 
-    window.navio.onDownloadStarted(({ filename }) => {
-      _showAppToast(`⬇ Downloading: ${filename}`, 'info');
-    });
-
-    window.navio.onDownloadDone(({ filename, savePath, state }) => {
-      if (state === 'completed') {
-        const stack = document.getElementById('live-notif-stack');
-        if (stack) {
-          const id = Date.now();
-          const el = document.createElement('div');
-          el.className = 'live-notification live-toast live-toast-success';
-          el.id = `app-toast-${id}`;
-          el.innerHTML = `
-            <span class="live-toast-icon">✓</span>
-            <span class="live-toast-msg">Saved: ${filename}</span>
-            <button type="button" class="live-toast-open-btn" title="Open in Navio (PDFs and web files in a new tab)" style="background:rgba(0,216,255,0.12);border:1px solid rgba(0,216,255,0.45);color:#00d8ff;cursor:pointer;font-size:10.5px;padding:2px 8px;border-radius:5px;margin-left:6px;font-family:inherit;flex-shrink:0;">Open</button>
-            <button type="button" class="live-toast-show-btn" title="Show in folder" style="background:none;border:1px solid rgba(0,216,255,0.4);color:#00d8ff;cursor:pointer;font-size:10.5px;padding:2px 8px;border-radius:5px;margin-left:4px;font-family:inherit;flex-shrink:0;">Show</button>
-            <button type="button" class="live-notif-x">×</button>`;
-          el.querySelector('.live-notif-x').addEventListener('click', () => el.remove());
-          el.querySelector('.live-toast-open-btn').addEventListener('click', () => {
-            if (typeof window.__navioOpenDownloadSmart === 'function') {
-              void window.__navioOpenDownloadSmart(savePath);
-            } else {
-              void window.navio.openFilePath?.(savePath);
-            }
-          });
-          el.querySelector('.live-toast-show-btn').addEventListener('click', () => {
-            window.navio.showInFolder(savePath);
-          });
-          stack.prepend(el);
-          setTimeout(() => el.remove(), 10000);
-        } else {
-          _showAppToast(`✓ Saved: ${filename}`, 'success');
-        }
-      } else {
-        _showAppToast(`✗ Download failed: ${filename}`, 'error');
-      }
-    });
+    // Download start/done/progress UI is owned by the Chrome-style download
+    // shelf + toolbar drawer in ui-shell-extras.js. Keeping a second
+    // toast here caused two overlapping UIs at the bottom-right (toast at
+    // z-index 9999 hovering over the shelf at 6500), which made the shelf's
+    // "Show in folder" button effectively unclickable. Removed on purpose.
 
     // ── Certificate warning toasts ────────────────────────────────────────
     window.navio.onCertificateWarning(({ hostname }) => {
@@ -1265,15 +1246,28 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
 
 const App = new NavioApp();
 
-// Module-level toast (used by ReadingListManager and PasswordManager)
+// Module-level toast (used by ReadingListManager and PasswordManager).
+// Uses DOM/textContent — callers often pass hostnames or titles which could
+// otherwise contain HTML.
 function _showAppToast(msg, type = 'info') {
   const stack = document.getElementById('live-notif-stack');
   if (!stack) return;
   const icons = { success: '✓', info: 'ℹ', error: '✗', warning: '⚠' };
   const el = document.createElement('div');
   el.className = `live-notification live-toast live-toast-${type}`;
-  el.innerHTML = `<span class="live-toast-icon">${icons[type] || '•'}</span><span class="live-toast-msg">${msg}</span><button class="live-notif-x">×</button>`;
-  el.querySelector('.live-notif-x').addEventListener('click', () => el.remove());
+  const iconEl = document.createElement('span');
+  iconEl.className = 'live-toast-icon';
+  iconEl.textContent = icons[type] || '•';
+  const msgEl = document.createElement('span');
+  msgEl.className = 'live-toast-msg';
+  msgEl.textContent = String(msg == null ? '' : msg);
+  const x = document.createElement('button');
+  x.className = 'live-notif-x';
+  x.textContent = '×';
+  x.addEventListener('click', () => el.remove());
+  el.appendChild(iconEl);
+  el.appendChild(msgEl);
+  el.appendChild(x);
   stack.prepend(el);
   setTimeout(() => el.remove(), 5000);
 }
@@ -1459,11 +1453,19 @@ const PasswordManager = (() => {
     const msgEl = saveBar.querySelector('.pwd-save-msg');
     if (msgEl) {
       const host = _originLabel(url);
-      if (mode === 'update') {
-        msgEl.innerHTML = `Password changed for <strong id="pwd-save-site">${host}</strong> — replace saved password?`;
-      } else {
-        msgEl.innerHTML = `Save password for <strong id="pwd-save-site">${host}</strong>?`;
-      }
+      msgEl.textContent = '';
+      const prefix = document.createTextNode(
+        mode === 'update' ? 'Password changed for ' : 'Save password for '
+      );
+      const strong = document.createElement('strong');
+      strong.id = 'pwd-save-site';
+      strong.textContent = String(host || '');
+      const suffix = document.createTextNode(
+        mode === 'update' ? ' — replace saved password?' : '?'
+      );
+      msgEl.appendChild(prefix);
+      msgEl.appendChild(strong);
+      msgEl.appendChild(suffix);
     }
     const saveBtn = document.getElementById('pwd-save-btn');
     if (saveBtn) saveBtn.textContent = mode === 'update' ? 'Replace' : 'Save';

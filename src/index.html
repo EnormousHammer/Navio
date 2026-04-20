@@ -168,6 +168,7 @@
       <div id="downloads-drawer" class="downloads-drawer" hidden>
         <div class="downloads-drawer-head">
           <span class="downloads-drawer-title">Downloads</span>
+          <button type="button" class="downloads-drawer-folder-btn" id="btn-downloads-clear-completed" title="Remove finished rows from this list (files are not deleted)">Clear completed</button>
           <button type="button" class="downloads-drawer-folder-btn" id="btn-downloads-open-folder" title="Open Downloads folder">Open Downloads folder</button>
         </div>
         <div id="downloads-drawer-list" class="downloads-drawer-list"></div>
@@ -601,6 +602,15 @@
                   <option value="homepage">Homepage (from Browser settings)</option>
                 </select>
               </div>
+              <div class="setting-row" style="margin-top:12px">
+                <label for="setting-new-tab-mode">New tab shows</label>
+                <select id="setting-new-tab-mode">
+                  <option value="home">Home — dashboard (AI, shortcuts, inbox, news)</option>
+                  <option value="chat">Chat + shortcuts — Ask Navio AI, keep Live Sports / Movies tiles</option>
+                  <option value="blank">Blank — just the address bar</option>
+                </select>
+              </div>
+              <p class="settings-inline-hint">Chat mode keeps all your shortcut tiles but hides inbox and news widgets so the AI prompt is centered like Perplexity / ChatGPT.</p>
               <label class="setting-toggle-row" style="margin-top:12px">
                 <input type="checkbox" id="setting-launch-intro" checked>
                 <span>Play launch intro video on startup</span>
@@ -1119,6 +1129,7 @@
               <p class="settings-inline-hint">Installed builds (Setup or portable from a release) can check for newer versions when a publisher configures an update feed. Development runs from <code>npm start</code> do not receive auto-updates.</p>
               <div class="setting-row setting-row-actions" style="flex-wrap:wrap;gap:8px;align-items:center">
                 <button type="button" class="btn btn-secondary" id="btn-check-updates">Check for updates</button>
+                <button type="button" class="btn btn-primary" id="btn-install-update" style="display:none">Restart &amp; install update</button>
                 <span class="settings-inline-hint" id="settings-update-status" style="margin:0"></span>
               </div>
             </div>

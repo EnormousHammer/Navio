@@ -105,6 +105,13 @@ contextBridge.exposeInMainWorld('navio', {
   workflowDelete: (params) => ipcRenderer.invoke('workflow-delete', params),
   /** Packaged app: ask main to check electron-updater (requires publish URL in shipped build). */
   checkForUpdates: () => ipcRenderer.invoke('app-check-for-updates'),
+  getUpdateStatus: () => ipcRenderer.invoke('app-get-update-status'),
+  installUpdate: () => ipcRenderer.invoke('app-install-update'),
+  onUpdateStatusChanged: (cb) => {
+    const handler = (_e, data) => { try { cb(data); } catch { /* ignore */ } };
+    ipcRenderer.on('update-status-changed', handler);
+    return () => { try { ipcRenderer.removeListener('update-status-changed', handler); } catch { /* ignore */ } };
+  },
 
   // Scheduler (recurring workflows)
   schedulerList: () => ipcRenderer.invoke('scheduler-list'),
@@ -226,6 +233,12 @@ contextBridge.exposeInMainWorld('navio', {
 
   /** Cancel an in-progress download (matches save path from download-started). */
   cancelDownload: (savePath) => ipcRenderer.invoke('cancel-download', savePath),
+  /** Pause an in-progress download (resumable only). */
+  pauseDownload:  (savePath) => ipcRenderer.invoke('pause-download',  savePath),
+  /** Resume a paused download. */
+  resumeDownload: (savePath) => ipcRenderer.invoke('resume-download', savePath),
+  /** Re-issue a download for a failed / cancelled URL (main spawns a fresh DownloadItem). */
+  retryDownload:  (payload)  => ipcRenderer.invoke('retry-download',  payload),
 
   // Reveal a downloaded file in the OS file manager (Explorer / Finder)
   showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),

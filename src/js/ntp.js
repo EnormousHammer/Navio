@@ -58,6 +58,7 @@ const NTP = (() => {
       if (isActive && !_ntpVisible) {
         _ntpVisible = true;
         requestAnimationFrame(() => _applyTickerBottomReserve());
+        _applyNewTabMode();
         _onShow();
       } else if (!isActive) {
         _ntpVisible = false;
@@ -69,6 +70,7 @@ const NTP = (() => {
     if (ntp?.classList.contains('active')) {
       _ntpVisible = true;
       requestAnimationFrame(() => _applyTickerBottomReserve());
+      _applyNewTabMode();
       _onShow();
     }
 
@@ -76,6 +78,51 @@ const NTP = (() => {
     void _hydrateNtpPreferences();
 
     _syncNtpNoEmailLayout();
+  }
+
+  /**
+   * Apply user's New Tab mode (Settings → General):
+   *   'home'  — full dashboard (default)
+   *   'chat'  — chat-first: keep shortcuts, hide widgets, search defaults to AI
+   *   'blank' — hide hero + shortcuts + widgets; just background
+   *
+   * Resilient: reads config async but reapplies every time the NTP shows, so
+   * the user sees the change immediately after saving Settings.
+   */
+  async function _applyNewTabMode() {
+    try {
+      const cfg = await window.navio.getConfig();
+      const mode = String(cfg?.newTabMode || 'home');
+      const body = document.body;
+      if (!body) return;
+      body.classList.toggle('ntp-chat-mode', mode === 'chat');
+      body.classList.toggle('ntp-blank-mode', mode === 'blank');
+
+      const input = document.getElementById('ntp-search-input');
+      if (mode === 'chat') {
+        _mode = 'ai';
+        if (input) {
+          input.placeholder = 'Ask Navio anything…';
+        }
+        document.querySelectorAll('.ntp-mode-tab').forEach((b) => {
+          b.classList.toggle('active', b.dataset.mode === 'ai');
+        });
+      } else {
+        _mode = 'search';
+        if (input) {
+          input.placeholder = 'Search or ask anything…';
+        }
+        document.querySelectorAll('.ntp-mode-tab').forEach((b) => {
+          b.classList.toggle('active', b.dataset.mode === 'search');
+        });
+      }
+    } catch {
+      /* config unavailable → fall back to default home */
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    window.__navioApplyNewTabMode = _applyNewTabMode;
   }
 
   /** When inbox shows the connect prompt (.ntp-email-empty), hide the inbox tile and widen news. */
