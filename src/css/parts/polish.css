@@ -1992,7 +1992,7 @@ html[data-theme="light"] .connectors-hub .connector-card.connected {
    ui-shell-extras.js). Scoped to .new-tab-page so nothing else is affected. */
 .new-tab-page .ntp-title {
   font-size: 26px !important;
-  letter-spacing: 6px !important;
+  letter-spacing: -0.02em !important;
 }
 .new-tab-page .ntp-subtitle {
   font-size: 13.5px;
@@ -2048,5 +2048,500 @@ html[data-theme="light"] .connectors-hub .connector-card.connected {
   }
   .new-tab-page .ntp-shortcut span {
     font-size: 11.5px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   12) COMPREHENSIVE UI POLISH — Tab strip, navbar, settings, form controls
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Tab strip ──────────────────────────────────────────────────────────── */
+
+/* Inactive tab: subtle hover so user can predict what they're about to click */
+body:not(.navio-vertical-tabs) .tab-item:not(.active):hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+}
+
+/* Active tab: slightly elevated surface + sharper active indicator */
+body:not(.navio-vertical-tabs) .tab-item.active {
+  background: var(--bg-active);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 1px 0 rgba(0, 0, 0, 0.22);
+}
+
+/* Active tab indicator: tighter, less neon, more refined */
+.tab-item.active::after {
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent) 0%, #5468ff 100%);
+  opacity: 0.85;
+  border-radius: 2px 2px 0 0;
+}
+
+/* Tab close button: rounder, better hit target, softer danger */
+.tab-close {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  border-radius: 6px;
+  transition: background var(--dur-fast) var(--ease-soft),
+              color var(--dur-fast) var(--ease-soft),
+              opacity var(--dur-fast) var(--ease-soft);
+}
+.tab-close:hover {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+}
+.tab-close:active {
+  background: rgba(239, 68, 68, 0.28);
+}
+
+/* Active tab always shows close on hover (not just any hover) */
+.tab-item.active .tab-close { opacity: 0.6; }
+.tab-item.active .tab-close:hover { opacity: 1; }
+
+/* Tab title: slightly tighter tracking */
+.tab-title {
+  letter-spacing: 0;
+}
+
+/* New tab button: cleaner */
+.tab-strip-new {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 8px;
+  transition: background var(--dur-fast) var(--ease-soft),
+              color var(--dur-fast) var(--ease-soft);
+}
+.tab-strip-new:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+/* Light theme tab adjustments */
+[data-theme="light"] body:not(.navio-vertical-tabs) .tab-item:not(.active):hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+[data-theme="light"] .tab-close:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+
+/* ── Navbar — URL bar & bookmark star ──────────────────────────────────── */
+
+/* Bookmark star button — now SVG, needs proper sizing */
+.url-bookmark-star {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-soft),
+              color var(--dur-fast) var(--ease-soft);
+}
+.url-bookmark-star:hover {
+  background: var(--p-hover);
+  color: var(--text-primary);
+}
+.url-bookmark-star:active {
+  background: var(--p-press);
+}
+/* Bookmarked state */
+.url-bookmark-star.bookmarked {
+  color: var(--accent);
+}
+.url-bookmark-star.bookmarked svg {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+
+/* Zoom label — more visible, consistent */
+.url-zoom-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--p-hover);
+  letter-spacing: -0.01em;
+}
+
+/* Nav-action buttons — consistent radius */
+.nav-actions .nav-btn {
+  border-radius: 8px;
+}
+
+/* Loading bar — slightly more vivid */
+#loading-bar {
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent) 0%, #5468ff 60%, #9f6fff 100%);
+}
+
+/* ── Settings — cleaner form controls ──────────────────────────────────── */
+
+/* Modal header h2 — refined weight */
+.modal-header-text h2 {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+/* Settings section card — tighter, cleaner */
+.settings-section {
+  border-radius: 12px;
+  border: 1px solid var(--p-border);
+  background: var(--p-surface-3);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.settings-section-head {
+  padding: 10px 16px 9px;
+  border-bottom: 1px solid var(--p-border);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.settings-section-head h3 {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
+/* Setting row: tighter padding, better alignment */
+.setting-toggle-row {
+  padding: 10px 16px;
+  gap: 12px;
+  border-radius: 0;
+  border-bottom: 1px solid var(--p-border);
+  transition: background var(--dur-fast) var(--ease-soft);
+}
+.setting-toggle-row:last-child { border-bottom: none; }
+.setting-toggle-row:hover { background: var(--p-hover); }
+
+/* Custom pill toggle replacing native checkbox */
+.setting-toggle-row input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 40px;
+  min-width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  border: 1.5px solid var(--p-border-strong);
+  position: relative;
+  cursor: pointer;
+  transition: background var(--dur-mid) var(--ease-soft),
+              border-color var(--dur-mid) var(--ease-soft);
+  flex-shrink: 0;
+  outline: none;
+}
+.setting-toggle-row input[type="checkbox"]::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  top: 3px;
+  left: 3px;
+  transition: transform var(--dur-mid) var(--ease-soft),
+              background var(--dur-mid) var(--ease-soft);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+.setting-toggle-row input[type="checkbox"]:checked {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: var(--accent);
+}
+.setting-toggle-row input[type="checkbox"]:checked::after {
+  transform: translateX(18px);
+  background: var(--accent);
+}
+.setting-toggle-row input[type="checkbox"]:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Light theme toggle */
+[data-theme="light"] .setting-toggle-row input[type="checkbox"] {
+  background: rgba(0, 0, 0, 0.07);
+  border-color: rgba(30, 41, 80, 0.2);
+}
+[data-theme="light"] .setting-toggle-row input[type="checkbox"]::after {
+  background: var(--text-secondary);
+}
+[data-theme="light"] .setting-toggle-row input[type="checkbox"]:checked {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+/* Settings form inputs — unified focus ring */
+.setting-row input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.setting-row select,
+.setting-row textarea {
+  transition: border-color var(--dur-fast) var(--ease-soft),
+              box-shadow var(--dur-fast) var(--ease-soft);
+}
+.setting-row input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+.setting-row select:focus,
+.setting-row textarea:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+  outline: none;
+}
+
+/* Range input thumb — refined */
+.setting-row-range::-webkit-slider-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-surface);
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  transition: transform var(--dur-fast) var(--ease-pop);
+}
+.setting-row-range::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+/* ── Overlays — tighter close button ───────────────────────────────────── */
+
+.shell-overlay-x {
+  border-radius: 8px;
+  color: var(--text-tertiary);
+  font-size: 16px;
+}
+.shell-overlay-x:hover {
+  color: var(--text-primary);
+  background: var(--p-hover);
+}
+
+/* ── Live notifications — tighter, more refined ────────────────────────── */
+
+.live-notification {
+  border-radius: 12px;
+  border: 1px solid var(--p-border);
+  background: var(--p-surface-2);
+  box-shadow: var(--p-shadow);
+  backdrop-filter: blur(18px) saturate(1.1);
+  -webkit-backdrop-filter: blur(18px) saturate(1.1);
+}
+
+.live-notif-btn {
+  border-radius: 7px;
+  font-size: 12px;
+  padding: 5px 11px;
+  transition: opacity var(--dur-fast) var(--ease-soft),
+              background var(--dur-fast) var(--ease-soft);
+}
+
+/* ── Scrollbars — unified ───────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(30, 41, 80, 0.14);
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(30, 41, 80, 0.26);
+}
+
+/* ── Command palette — refined ──────────────────────────────────────────── */
+.command-palette {
+  border-radius: 14px;
+  border: 1px solid var(--p-border);
+  background: var(--p-surface-1);
+  box-shadow: var(--p-shadow), 0 0 0 1px rgba(255,255,255,0.04);
+  backdrop-filter: blur(28px) saturate(1.12);
+  -webkit-backdrop-filter: blur(28px) saturate(1.12);
+}
+
+.command-palette-input {
+  border-radius: 10px 10px 0 0;
+  border-bottom: 1px solid var(--p-border);
+  font-size: 14px;
+}
+
+.command-palette-item {
+  border-radius: 8px;
+  transition: background var(--dur-fast) var(--ease-soft);
+}
+.command-palette-item.active,
+.command-palette-item:hover {
+  background: var(--p-hover);
+}
+
+/* ── Find bar — more polished ───────────────────────────────────────────── */
+.find-bar {
+  border-radius: 10px;
+  border: 1px solid var(--p-border);
+  background: var(--p-surface-1);
+  box-shadow: var(--p-shadow);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.find-input {
+  border-radius: 7px;
+  background: var(--p-surface-3);
+  border: 1px solid var(--p-border);
+  font-size: 13px;
+}
+.find-input:focus {
+  outline: none;
+  border-color: var(--p-border-strong);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.find-btn {
+  border-radius: 7px;
+  transition: background var(--dur-fast) var(--ease-soft);
+}
+.find-btn:hover { background: var(--p-hover); }
+
+/* ── Inline AI boost (text selection toolbar) — refined ─────────────────── */
+.navio-ai-boost-toolbar {
+  border-radius: 10px;
+  border: 1px solid var(--p-border);
+  background: var(--p-surface-1);
+  box-shadow: var(--p-shadow);
+  backdrop-filter: blur(20px) saturate(1.1);
+  -webkit-backdrop-filter: blur(20px) saturate(1.1);
+}
+
+/* ── Workspace overlay — remove inline-style smell via cascade ──────────── */
+#workspace-overlay {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* ── Reading list panel — refined ──────────────────────────────────────── */
+.reading-list-panel {
+  border-left: 1px solid var(--p-border);
+  background: var(--p-surface-1);
+  backdrop-filter: blur(20px) saturate(1.08);
+  -webkit-backdrop-filter: blur(20px) saturate(1.08);
+}
+
+/* ── Token system bridge — p-surface tokens as bg-* aliases ─────────────── */
+/* Allows components that use --bg-* vars to pick up polished surfaces */
+[data-theme="dark"] .shell-overlay-panel {
+  --bg-elevated: var(--p-surface-3);
+  --border: var(--p-border);
+}
+[data-theme="light"] .shell-overlay-panel {
+  --bg-elevated: var(--p-surface-3);
+  --border: var(--p-border);
+}
+
+/* ── General button refinements ─────────────────────────────────────────── */
+
+/* Standardise icon-btn radius to match nav-btn */
+.icon-btn {
+  border-radius: 8px;
+  transition: background var(--dur-fast) var(--ease-soft),
+              color var(--dur-fast) var(--ease-soft),
+              border-color var(--dur-fast) var(--ease-soft);
+}
+
+/* Primary button — less neon glow, cleaner */
+.btn-primary {
+  box-shadow: none;
+}
+.btn-primary:hover {
+  box-shadow: 0 4px 16px rgba(0, 216, 255, 0.18);
+  transform: translateY(-1px);
+}
+.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+/* Secondary button */
+.btn-secondary {
+  transition: background var(--dur-fast) var(--ease-soft),
+              border-color var(--dur-fast) var(--ease-soft),
+              color var(--dur-fast) var(--ease-soft);
+}
+.btn-secondary:hover {
+  background: var(--p-hover);
+  border-color: var(--p-border-strong);
+  color: var(--text-primary);
+}
+
+/* ── Danger/error color standardisation ─────────────────────────────────── */
+:root {
+  --danger-soft: rgba(239, 68, 68, 0.14);
+  --danger-border: rgba(239, 68, 68, 0.35);
+  --success-soft: rgba(34, 197, 94, 0.12);
+  --success-border: rgba(34, 197, 94, 0.32);
+}
+
+/* ── Reading mode ───────────────────────────────────────────────────────── */
+.reading-mode-toolbar {
+  border-radius: 999px;
+  border: 1px solid var(--p-border);
+  background: var(--p-surface-1);
+  box-shadow: var(--p-shadow);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* ── Download shelf — tighter ───────────────────────────────────────────── */
+.download-shelf {
+  border-radius: 10px;
+  border: 1px solid var(--p-border);
+  background: var(--p-surface-1);
+  box-shadow: var(--p-shadow);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+/* ── Password / site bar — consistent with overlay family ───────────────── */
+#pwd-save-bar {
+  border-bottom: 1px solid var(--p-border);
+  background: var(--p-surface-1);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* ── Reduced motion — honour OS preference ───────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .tab-item,
+  .tab-close,
+  .nav-btn,
+  .icon-btn,
+  .btn,
+  .url-bookmark-star,
+  .setting-toggle-row input[type="checkbox"],
+  .setting-toggle-row input[type="checkbox"]::after {
+    transition: none !important;
+    animation: none !important;
   }
 }

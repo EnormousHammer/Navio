@@ -3254,7 +3254,7 @@ body.navio-incognito-active .url-bar-container {
   gap: 8px;
   padding: 0 18px;
   font-size: 11.5px;
-  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  font-family: 'Cascadia Code', 'Consolas', 'SF Mono', monospace;
   height: 100%;
 }
 .ntp-ticker-item.up  .ti-change {
@@ -3297,7 +3297,7 @@ body.navio-incognito-active .url-bar-container {
   gap: 8px;
   padding: 0 20px;
   font-size: 13px;
-  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  font-family: 'Cascadia Code', 'Consolas', 'SF Mono', monospace;
   height: 100%;
   white-space: nowrap;
 }
@@ -5305,7 +5305,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 .modal-header-text h2 {
   margin: 0;
   font-size: 20px;
-  font-weight: 750;
+  font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.2;
 }
@@ -5449,7 +5449,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 
 .profile-settings-name {
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
   color: var(--text-primary);
 }
 
@@ -5727,7 +5727,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 
 .modal-settings .settings-section > h3 {
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: -0.015em;
   text-transform: none;
   color: var(--text-primary);
@@ -9572,7 +9572,7 @@ button:focus-visible,
   transition: opacity 150ms, transform 100ms;
 }
 .live-notif-btn:hover { opacity: 0.88; }
-.live-notif-btn:active { opacity: 0.95; }
+.live-notif-btn:active { opacity: 0.72; }
 
 .live-notif-btn-open {
   background: var(--bg-surface, #192035);

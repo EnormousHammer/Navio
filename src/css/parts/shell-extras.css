@@ -65,18 +65,19 @@
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
-  font-size: 16px;
-  min-width: 36px;
-  min-height: 36px;
-  padding: 0 8px;
-  line-height: 1;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0;
   border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 .url-bookmark-star:hover {
-  color: var(--accent);
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 .find-in-page-bar {
