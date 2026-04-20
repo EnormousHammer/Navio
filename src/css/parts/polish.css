@@ -2550,17 +2550,8 @@ body:not(.navio-vertical-tabs) .tab-item.active {
    NTP — PREMIUM VISUAL OVERHAUL
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Dim overlay — real element so JS can set opacity directly ──────────── */
-.ntp-dim-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background: #04050e;
-  opacity: 0.10;
-  transition: opacity 0.18s ease;
-}
-/* Kill the old ::after approach */
+/* ── Dim overlay — hidden by default, JS controls bg-layer filter only ─── */
+.ntp-dim-overlay { display: none; }
 .ntp-bg-layer::after { display: none !important; }
 
 /* ── Dim control bar ────────────────────────────────────────────────────── */
