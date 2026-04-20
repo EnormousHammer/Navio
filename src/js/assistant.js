@@ -46,10 +46,20 @@ function navioDetectMailboxIntent(text) {
 function navioDetectGoogleWorkspaceIntent(text) {
   const s = (text || '').trim().toLowerCase();
   if (s.length < 2) return false;
+  // Use intent router when available (richer patterns)
+  if (typeof NavioIntentRouter !== 'undefined') {
+    const r = NavioIntentRouter.classifyIntent(text);
+    if (r.activeIntents.includes('drive') || r.activeIntents.includes('calendar') ||
+        r.activeIntents.includes('gmail_thread') || r.activeIntents.includes('gmail_attach')) {
+      return true;
+    }
+  }
   return (
     /\b(gdrive|google drive|google calendar|google doc|google sheet|google slides|google meet|gcal)\b/.test(s) ||
     /drive\.google\.|docs\.google\.|sheets\.google|slides\.google|calendar\.google/.test(s) ||
-    /\b(my\s+calendar|calendar\s+event|meeting\s+invite|drive\s+folder|file\s+in\s+drive|spreadsheet\s+in\s+drive)\b/.test(s)
+    /\b(my\s+calendar|calendar\s+event|meeting\s+invite|drive\s+folder|file\s+in\s+drive|spreadsheet\s+in\s+drive)\b/.test(s) ||
+    /\b(pickup\s+schedule|schedule\s+(a\s+)?pickup|book\s+(a\s+)?pickup)\b/i.test(s) ||
+    /\b(full\s+thread|full\s+email\s+chain|read\s+(the\s+)?attachment|email\s+attachment)\b/i.test(s)
   );
 }
 
@@ -5973,7 +5983,10 @@ ${pageInfo}${snapText}`;
       }
 
       // ── Google Drive ───────────────────────────────────────────────────
+      // Use intent router when available; fall back to legacy regex
+      const _driveIntentRouter = typeof NavioIntentRouter !== 'undefined' ? NavioIntentRouter.hasDriveIntent(text) : false;
       const driveIntent =
+        _driveIntentRouter ||
         /\b(google\s*drive|gdrive|googledocs|google\s*docs|drive\.google\.com)\b/i.test(text) ||
         /\b(on|in)\s+my\s+drive\b/i.test(text) ||
         /\b(search|find|look\s+for|list|show)\b[\s\S]{0,120}\b(google\s*drive|drive|gdrive)\b/i.test(text) ||
@@ -6066,7 +6079,9 @@ ${pageInfo}${snapText}`;
       }
 
       // ── Google Calendar ────────────────────────────────────────────────
+      const _calIntentRouter = typeof NavioIntentRouter !== 'undefined' ? NavioIntentRouter.hasCalendarIntent(text) : false;
       const calendarIntent =
+        _calIntentRouter ||
         /\b(calendar|meeting|event|schedule|appointment|agenda|busy|free|booked)\b/i.test(text) ||
         (/\b(today|tomorrow|this\s*week|next\s*week|upcoming)\b/i.test(text) &&
           /\b(when|what|am\s+i|do\s+i\s+have|anything)\b/i.test(text));

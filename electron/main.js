@@ -19,7 +19,8 @@ const { registerSyncIpc, startNavioCloudSync } = require('./navio-sync-ipc');
 const { registerProfilesIpc } = require('./navio-profiles-ipc');
 const { registerAgentPlanIpc } = require('./navio-agent-ipc');
 const { NAVIO_TOOLS, toOpenAITools, toAnthropicTools, toGeminiTools } = require('./navio-tools');
-const { getAccessibilityTree, clickByRef, typeByRef, selectByRef, getRefMap, clearRefMap } = require('./a11y-tree');
+const { getAccessibilityTree, clickByRef, typeByRef, selectByRef, getRefMap, clearRefMap, registerPersistentSession, unregisterPersistentSession } = require('./a11y-tree');
+const { snapshotPage, verifyAction, dismissOverlay, waitForIdle } = require('./navio-agent-verify');
 const { startMonitoring, getConsoleMessages, getNetworkRequests, stopMonitoring } = require('./cdp-inspector');
 const { loadWorkflow, saveWorkflow, listWorkflows, deleteWorkflow } = require('./navio-workflows');
 const { getMcpTools, callMcpTool, isMcpTool, initFromConfig: initMcpFromConfig, registerMcpIpc } = require('./navio-mcp');
@@ -2941,6 +2942,29 @@ function navioGmailCollectAttachmentFilenames(payload) {
   return names;
 }
 
+/**
+ * Collect attachment metadata including attachment IDs for use with gmail_get_attachment.
+ */
+function navioGmailCollectAttachmentsWithIds(payload) {
+  const attachments = [];
+  (function walk(p) {
+    if (!p) return;
+    const fn = (p.filename || '').trim();
+    const aid = p.body?.attachmentId;
+    const size = p.body?.size;
+    if (fn && aid) {
+      attachments.push({
+        filename: fn,
+        attachment_id: aid,
+        mime_type: p.mimeType || '',
+        size_bytes: size || 0
+      });
+    }
+    for (const part of p.parts || []) walk(part);
+  })(payload);
+  return attachments;
+}
+
 async function navioGmailGetMessageForTool(token, messageId, maxBodyChars = 32000) {
   const r = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=full`,
@@ -2949,19 +2973,31 @@ async function navioGmailGetMessageForTool(token, messageId, maxBodyChars = 3200
   const d = await r.json();
   if (!r.ok) return { error: d.error?.message || 'Gmail API error' };
   const headers = d.payload?.headers || [];
-  const get = (name) => headers.find((h) => h.name === name)?.value || '';
+  const get = (name) => headers.find((h) => h.name && h.name.toLowerCase() === name.toLowerCase())?.value || '';
   let body = navioGmailExtractPlainBody(d.payload);
+  if (!body.trim()) body = navioGmailExtractHtmlPlainFallback(d.payload);
+  body = navioRepairUtf8Mojibake(body || '');
   if (body.length > maxBodyChars) {
     body = `${body.slice(0, maxBodyChars)}\n\n… [body truncated by Navio — ask for a follow-up if needed]`;
   }
+  const attachments = navioGmailCollectAttachmentsWithIds(d.payload);
+  const threadId = d.threadId || '';
   return {
     id: messageId,
+    thread_id: threadId,
     subject: get('Subject'),
     from: get('From'),
     to: get('To'),
+    cc: get('Cc') || undefined,
+    reply_to: get('Reply-To') || undefined,
     date: get('Date'),
     snippet: d.snippet || '',
-    body
+    body,
+    attachments,
+    label_ids: d.labelIds || [],
+    note: attachments.length > 0
+      ? `This message has ${attachments.length} attachment(s). Use gmail_get_attachment with message_id and attachment_id to read them. Use gmail_get_thread with thread_id to read the full conversation.`
+      : `Use gmail_get_thread with thread_id "${threadId}" to read the full conversation chain.`
   };
 }
 
@@ -3177,8 +3213,27 @@ const toolExecutors = {
 
   async click(wc, args) {
     if (args.ref) {
+      // Phase B: pre-action snapshot for verify-after-action
+      const before = await snapshotPage(wc).catch(() => null);
       const refResult = await clickByRef(wc, args.ref);
-      if (refResult.success) await waitForOptionalNavigationAfterClick(wc, 2000);
+      if (refResult.success) {
+        await waitForOptionalNavigationAfterClick(wc, 2000);
+        // Post-action diff — return change signal to model
+        const verify = before ? await verifyAction(wc, before, { waitForNetworkIdle: false }) : null;
+        if (verify && !verify.changed) {
+          // No change detected — check for overlay and attempt dismiss
+          const dismissResult = await dismissOverlay(wc).catch(() => false);
+          return {
+            ...refResult,
+            changed: false,
+            no_change_warning: 'No DOM change detected after click. ' +
+              (dismissResult ? 'Dismissed an overlay — try clicking again.' : 'Page may not have reacted. Verify with read_page.')
+          };
+        }
+        if (verify) {
+          return { ...refResult, changed: verify.changed, page_change: verify.summary };
+        }
+      }
       return refResult;
     }
     const selector = args.text ? `text=${args.text}` :
@@ -3768,6 +3823,487 @@ const toolExecutors = {
       };
     } catch (e) {
       return { error: 'gmail_create_draft failed: ' + e.message };
+    }
+  },
+
+  // ── Gmail thread + attachment tools ─────────────────────────────────────────
+
+  async gmail_get_thread(_wc, args) {
+    try {
+      const { token, error } = await resolveGmailToolToken(args);
+      if (!token) return { error };
+      const threadId = (args.thread_id || '').trim();
+      if (!threadId) return { error: 'thread_id is required.' };
+      const maxBodyChars = Math.min(Number(args.max_body_chars) > 0 ? Number(args.max_body_chars) : 16000, 60000);
+
+      const r = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(threadId)}?format=full`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const d = await r.json();
+      if (!r.ok) {
+        const msg = d.error?.message || 'Gmail API error';
+        if (/insufficient.*scope/i.test(msg)) return { error: navioGmailScopeErrorMessage('generic') };
+        return { error: msg };
+      }
+
+      const messages = (d.messages || []).map((msg) => {
+        const headers = msg.payload?.headers || [];
+        const get = (name) => headers.find((h) => h.name && h.name.toLowerCase() === name.toLowerCase())?.value || '';
+        let body = navioGmailExtractPlainBody(msg.payload);
+        if (!body.trim()) body = navioGmailExtractHtmlPlainFallback(msg.payload);
+        body = navioRepairUtf8Mojibake(body || '');
+        if (body.length > maxBodyChars) body = `${body.slice(0, maxBodyChars)}\n… [truncated]`;
+        const attachments = navioGmailCollectAttachmentsWithIds(msg.payload);
+        return {
+          id: msg.id,
+          thread_id: msg.threadId,
+          from: get('From'),
+          to: get('To'),
+          cc: get('Cc') || undefined,
+          date: get('Date'),
+          subject: get('Subject'),
+          snippet: msg.snippet || '',
+          body,
+          attachments
+        };
+      });
+
+      const oauthPid = gmailToolOAuthProviderId(args);
+      const acctEmail = gmailConnectedAccountEmail(oauthPid);
+      return {
+        thread_id: threadId,
+        message_count: messages.length,
+        messages,
+        account: acctEmail || undefined,
+        note: `Loaded full thread with ${messages.length} message(s). Attachments list includes attachment_id for use with gmail_get_attachment.`
+      };
+    } catch (e) {
+      return { error: 'gmail_get_thread failed: ' + e.message };
+    }
+  },
+
+  async gmail_get_attachment(_wc, args) {
+    try {
+      const { token, error } = await resolveGmailToolToken(args);
+      if (!token) return { error };
+      const mid = (args.message_id || '').trim();
+      const aid = (args.attachment_id || '').trim();
+      if (!mid) return { error: 'message_id is required.' };
+      if (!aid) return { error: 'attachment_id is required.' };
+
+      const r = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(mid)}/attachments/${encodeURIComponent(aid)}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const d = await r.json();
+      if (!r.ok) return { error: d.error?.message || 'Gmail API error fetching attachment.' };
+
+      const filename = (args.filename || '').toLowerCase();
+      // data is base64url-encoded
+      const rawData = (d.data || '').replace(/-/g, '+').replace(/_/g, '/');
+      const buf = Buffer.from(rawData, 'base64');
+
+      // For text-based formats, decode to string
+      const isText = /\.(txt|csv|json|xml|html|htm|md|log|eml|msg)$/.test(filename);
+      const isPdf = /\.pdf$/.test(filename);
+      const isDoc = /\.(doc|docx|odt|rtf)$/.test(filename);
+
+      if (isText) {
+        const text = buf.toString('utf-8').slice(0, 80000);
+        return { filename: args.filename, content_type: 'text', text, size_bytes: buf.length };
+      }
+
+      if (isPdf) {
+        // Return base64 for PDF — model can describe it; for future PDF extraction hook
+        return {
+          filename: args.filename,
+          content_type: 'pdf',
+          size_bytes: buf.length,
+          base64_preview: rawData.slice(0, 2000),
+          note: 'PDF binary. To read contents, open the attachment URL in the browser or use a PDF extraction tool. The raw text may be extractable via the Drive API if the file is in Drive.'
+        };
+      }
+
+      if (isDoc) {
+        return {
+          filename: args.filename,
+          content_type: 'document',
+          size_bytes: buf.length,
+          note: 'Binary document format. Download and open in Google Docs for text extraction.'
+        };
+      }
+
+      // Spreadsheet / other
+      return {
+        filename: args.filename,
+        content_type: 'binary',
+        size_bytes: buf.length,
+        note: 'Binary attachment. Use gmail_browser_takeover and navigate to Gmail to download, or if this is a spreadsheet, ask the sender to share it in Google Sheets.'
+      };
+    } catch (e) {
+      return { error: 'gmail_get_attachment failed: ' + e.message };
+    }
+  },
+
+  // ── Google Drive tools ───────────────────────────────────────────────────────
+
+  async drive_search(_wc, args) {
+    try {
+      const token = await getValidOAuthToken('google');
+      if (!token) return { error: 'Google Drive requires Google OAuth. Connect Google in Settings → Connected Apps.' };
+
+      const query = (args.query || '').trim();
+      if (!query) return { error: 'query is required.' };
+      const maxResults = Math.min(Math.max(Number(args.max_results) > 0 ? Number(args.max_results) : 15, 1), 50);
+      const fileType = (args.file_type || 'any').toLowerCase();
+      const folderId = (args.folder_id || '').trim();
+
+      const mimeMap = {
+        document: 'application/vnd.google-apps.document',
+        spreadsheet: 'application/vnd.google-apps.spreadsheet',
+        presentation: 'application/vnd.google-apps.presentation',
+        pdf: 'application/pdf',
+        folder: 'application/vnd.google-apps.folder',
+        image: ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+      };
+
+      const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      const words = query.split(/\s+/).filter((w) => w.length > 0).slice(0, 8);
+
+      let qParts = ['trashed=false'];
+      if (words.length === 1) {
+        const t = esc(words[0]);
+        qParts.push(`(name contains '${t}' or fullText contains '${t}')`);
+      } else {
+        const namePart = `name contains '${esc(words[0])}'`;
+        const fullParts = words.map((w) => `fullText contains '${esc(w)}'`).join(' and ');
+        qParts.push(`(${namePart} or (${fullParts}))`);
+      }
+      if (fileType !== 'any' && mimeMap[fileType]) {
+        const mt = mimeMap[fileType];
+        if (Array.isArray(mt)) {
+          qParts.push(`(${mt.map((m) => `mimeType='${m}'`).join(' or ')})`);
+        } else {
+          qParts.push(`mimeType='${mt}'`);
+        }
+      }
+      if (folderId) {
+        qParts.push(`'${esc(folderId)}' in parents`);
+      }
+
+      const qParam = qParts.join(' and ');
+      const fields = 'files(id,name,mimeType,modifiedTime,size,webViewLink,parents,description)';
+      const url = `https://www.googleapis.com/drive/v3/files?pageSize=${maxResults}&fields=${encodeURIComponent(fields)}&orderBy=${encodeURIComponent('modifiedTime desc')}&q=${encodeURIComponent(qParam)}`;
+
+      const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await resp.json();
+      if (!resp.ok) {
+        const msg = data.error?.message || 'Google Drive API error';
+        if (/insufficient.*scope/i.test(msg)) return { error: 'SCOPE_ERROR: Drive read permission missing. Reconnect Google in Settings → Connected Apps.' };
+        return { error: msg };
+      }
+
+      const mimeLabels = {
+        'application/vnd.google-apps.document': 'Google Doc',
+        'application/vnd.google-apps.spreadsheet': 'Google Sheet',
+        'application/vnd.google-apps.presentation': 'Google Slides',
+        'application/vnd.google-apps.folder': 'Folder',
+        'application/pdf': 'PDF'
+      };
+
+      const results = (data.files || []).map((f) => ({
+        id: f.id,
+        name: f.name,
+        type: mimeLabels[f.mimeType] || (f.mimeType || 'file').split('/').pop(),
+        modified: f.modifiedTime,
+        size_bytes: f.size ? Number(f.size) : undefined,
+        url: f.webViewLink || `https://drive.google.com/file/d/${f.id}/view`,
+        description: f.description || undefined
+      }));
+
+      return {
+        results,
+        count: results.length,
+        note: `Found ${results.length} file(s) in Google Drive matching "${query}". Use drive_get_file with the id field to read file contents.`
+      };
+    } catch (e) {
+      return { error: 'drive_search failed: ' + e.message };
+    }
+  },
+
+  async drive_get_file(_wc, args) {
+    try {
+      const token = await getValidOAuthToken('google');
+      if (!token) return { error: 'Google Drive requires Google OAuth. Connect Google in Settings → Connected Apps.' };
+
+      const fileId = (args.file_id || '').trim();
+      if (!fileId) return { error: 'file_id is required.' };
+      const maxChars = Math.min(Number(args.max_chars) > 0 ? Number(args.max_chars) : 40000, 120000);
+
+      // First, get file metadata to determine type
+      const metaResp = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,webViewLink,modifiedTime,size`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const meta = await metaResp.json();
+      if (!metaResp.ok) return { error: meta.error?.message || 'Drive API error fetching file metadata.' };
+
+      const mimeType = meta.mimeType || '';
+      const fileName = meta.name || fileId;
+
+      let exportMime = null;
+      if (mimeType === 'application/vnd.google-apps.document') exportMime = 'text/plain';
+      else if (mimeType === 'application/vnd.google-apps.spreadsheet') exportMime = 'text/csv';
+      else if (mimeType === 'application/vnd.google-apps.presentation') exportMime = 'text/plain';
+      else if (mimeType === 'application/pdf') exportMime = null; // binary, skip text export
+      else if (mimeType.startsWith('text/')) exportMime = null; // direct download
+
+      let text = '';
+      let note = '';
+
+      if (exportMime) {
+        // Google Workspace file: export as text
+        const expResp = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent(exportMime)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!expResp.ok) {
+          const err = await expResp.text();
+          return { error: `Drive export failed: ${err.slice(0, 200)}` };
+        }
+        text = await expResp.text();
+        note = `Exported as ${exportMime}.`;
+      } else if (mimeType.startsWith('text/') || mimeType === 'application/json') {
+        // Plain text / JSON: direct download
+        const dlResp = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!dlResp.ok) return { error: 'Drive download failed.' };
+        text = await dlResp.text();
+        note = 'Direct text download.';
+      } else {
+        return {
+          id: fileId,
+          name: fileName,
+          mime_type: mimeType,
+          url: meta.webViewLink || '',
+          note: `File is binary (${mimeType}). Open the url to view it in Google Drive. Text extraction is only available for Google Docs, Sheets, Slides, and plain text files.`
+        };
+      }
+
+      if (text.length > maxChars) text = `${text.slice(0, maxChars)}\n… [truncated — ${text.length - maxChars} more chars]`;
+
+      return {
+        id: fileId,
+        name: fileName,
+        mime_type: mimeType,
+        modified: meta.modifiedTime,
+        url: meta.webViewLink || '',
+        content: text,
+        chars: text.length,
+        note
+      };
+    } catch (e) {
+      return { error: 'drive_get_file failed: ' + e.message };
+    }
+  },
+
+  async drive_list_folder(_wc, args) {
+    try {
+      const token = await getValidOAuthToken('google');
+      if (!token) return { error: 'Google Drive requires Google OAuth. Connect Google in Settings → Connected Apps.' };
+
+      const folderId = (args.folder_id || 'root').trim();
+      const maxResults = Math.min(Math.max(Number(args.max_results) > 0 ? Number(args.max_results) : 30, 1), 100);
+      const pageToken = (args.page_token || '').trim() || null;
+
+      const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      const qParam = `'${esc(folderId)}' in parents and trashed=false`;
+      const fields = 'files(id,name,mimeType,modifiedTime,size,webViewLink),nextPageToken';
+      const params = new URLSearchParams({
+        pageSize: String(maxResults),
+        fields,
+        orderBy: 'folder,name',
+        q: qParam
+      });
+      if (pageToken) params.set('pageToken', pageToken);
+
+      const resp = await fetch(
+        `https://www.googleapis.com/drive/v3/files?${params}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const data = await resp.json();
+      if (!resp.ok) {
+        const msg = data.error?.message || 'Google Drive API error';
+        return { error: msg };
+      }
+
+      const mimeLabels = {
+        'application/vnd.google-apps.document': 'Google Doc',
+        'application/vnd.google-apps.spreadsheet': 'Google Sheet',
+        'application/vnd.google-apps.presentation': 'Google Slides',
+        'application/vnd.google-apps.folder': 'Folder',
+        'application/pdf': 'PDF'
+      };
+
+      const files = (data.files || []).map((f) => ({
+        id: f.id,
+        name: f.name,
+        type: mimeLabels[f.mimeType] || (f.mimeType || 'file').split('/').pop(),
+        modified: f.modifiedTime,
+        size_bytes: f.size ? Number(f.size) : undefined,
+        url: f.webViewLink || `https://drive.google.com/file/d/${f.id}/view`
+      }));
+
+      return {
+        folder_id: folderId,
+        files,
+        count: files.length,
+        next_page_token: data.nextPageToken || null,
+        note: `Listed ${files.length} item(s) in Drive folder. Use drive_get_file with id to read file contents.${data.nextPageToken ? ' More items available — call again with page_token.' : ''}`
+      };
+    } catch (e) {
+      return { error: 'drive_list_folder failed: ' + e.message };
+    }
+  },
+
+  // ── Google Calendar tools ────────────────────────────────────────────────────
+
+  async calendar_list_events(_wc, args) {
+    try {
+      const token = await getValidOAuthToken('google');
+      if (!token) return { error: 'Google Calendar requires Google OAuth. Connect Google in Settings → Connected Apps.' };
+
+      const calendarId = (args.calendar_id || 'primary').trim();
+      const maxResults = Math.min(Math.max(Number(args.max_results) > 0 ? Number(args.max_results) : 20, 1), 50);
+      const query = (args.query || '').trim();
+
+      const now = new Date();
+      let timeMin = args.time_min ? new Date(args.time_min).toISOString() : now.toISOString();
+      let timeMax = args.time_max
+        ? new Date(args.time_max).toISOString()
+        : new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      // Validate dates
+      if (isNaN(Date.parse(timeMin))) timeMin = now.toISOString();
+      if (isNaN(Date.parse(timeMax))) timeMax = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      const params = new URLSearchParams({
+        maxResults: String(maxResults),
+        singleEvents: 'true',
+        orderBy: 'startTime',
+        timeMin,
+        timeMax
+      });
+      if (query) params.set('q', query);
+
+      const resp = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const data = await resp.json();
+      if (!resp.ok) {
+        const msg = data.error?.message || 'Google Calendar API error';
+        if (/insufficient.*scope/i.test(msg)) return { error: 'SCOPE_ERROR: Calendar read permission missing. Reconnect Google in Settings → Connected Apps.' };
+        return { error: msg };
+      }
+
+      const events = (data.items || []).map((e) => {
+        const start = e.start?.dateTime || e.start?.date || '';
+        const end = e.end?.dateTime || e.end?.date || '';
+        const attendees = (e.attendees || []).map((a) => a.email || a.displayName || '').filter(Boolean);
+        const meetLink = (e.conferenceData?.entryPoints || []).find((ep) => ep.entryPointType === 'video')?.uri || '';
+        return {
+          id: e.id,
+          title: e.summary || '(no title)',
+          start,
+          end,
+          all_day: !e.start?.dateTime,
+          location: e.location || undefined,
+          description: e.description ? e.description.slice(0, 300) : undefined,
+          attendees: attendees.length > 0 ? attendees : undefined,
+          meet_link: meetLink || undefined,
+          organizer: e.organizer?.email || undefined,
+          status: e.status || undefined
+        };
+      });
+
+      return {
+        calendar_id: calendarId,
+        time_range: { from: timeMin, to: timeMax },
+        event_count: events.length,
+        events,
+        note: `Found ${events.length} event(s) between ${timeMin.slice(0, 10)} and ${timeMax.slice(0, 10)}.`
+      };
+    } catch (e) {
+      return { error: 'calendar_list_events failed: ' + e.message };
+    }
+  },
+
+  async calendar_create_event(_wc, args) {
+    try {
+      const token = await getValidOAuthToken('google');
+      if (!token) return { error: 'Google Calendar requires Google OAuth. Connect Google in Settings → Connected Apps.' };
+
+      const title = (args.title || '').trim();
+      if (!title) return { error: 'title is required.' };
+      const start = (args.start || '').trim();
+      if (!start) return { error: 'start is required.' };
+      const end = (args.end || '').trim();
+      if (!end) return { error: 'end is required.' };
+
+      const calendarId = (args.calendar_id || 'primary').trim();
+      const attendeeList = (args.attendees || '').split(',').map((s) => s.trim()).filter(Boolean);
+
+      const eventBody = {
+        summary: title,
+        start: { dateTime: start },
+        end: { dateTime: end },
+        location: args.location || undefined,
+        description: args.description || undefined,
+        attendees: attendeeList.length > 0 ? attendeeList.map((email) => ({ email })) : undefined
+      };
+
+      if (args.add_meet_link) {
+        eventBody.conferenceData = {
+          createRequest: {
+            requestId: `navio-${Date.now()}`,
+            conferenceSolutionKey: { type: 'hangoutsMeet' }
+          }
+        };
+      }
+
+      const params = args.add_meet_link ? '?conferenceDataVersion=1' : '';
+      const resp = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events${params}`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(eventBody)
+        }
+      );
+      const data = await resp.json();
+      if (!resp.ok) {
+        const msg = data.error?.message || 'Google Calendar API error';
+        if (/insufficient.*scope/i.test(msg)) return { error: 'SCOPE_ERROR: Calendar write permission missing. Reconnect Google in Settings → Connected Apps.' };
+        return { error: msg };
+      }
+
+      const meetLink = (data.conferenceData?.entryPoints || []).find((ep) => ep.entryPointType === 'video')?.uri || '';
+      return {
+        success: true,
+        event_id: data.id,
+        title: data.summary,
+        start: data.start?.dateTime || data.start?.date,
+        end: data.end?.dateTime || data.end?.date,
+        url: data.htmlLink || '',
+        meet_link: meetLink || undefined,
+        note: `Event "${title}" created in Google Calendar.${meetLink ? ` Meet link: ${meetLink}` : ''}`
+      };
+    } catch (e) {
+      return { error: 'calendar_create_event failed: ' + e.message };
     }
   }
 };

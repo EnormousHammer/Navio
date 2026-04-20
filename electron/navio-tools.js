@@ -633,6 +633,230 @@ const NAVIO_TOOLS = [
       },
       required: ['to', 'subject', 'body']
     }
+  },
+
+  {
+    name: 'gmail_get_thread',
+    description:
+      'Fetch an entire Gmail email thread (all messages in conversation order) by thread ID. ' +
+      'Returns each message with: from, to, date, subject, body, and attachment filenames. ' +
+      'Use this when you need to read the full back-and-forth of a conversation, not just the latest message. ' +
+      'Get thread_id from gmail_search results (threadId field). ' +
+      'Requires Google OAuth.',
+    parameters: {
+      type: 'object',
+      properties: {
+        thread_id: {
+          type: 'string',
+          description: 'Gmail thread ID (threadId field from gmail_search results).'
+        },
+        max_body_chars: {
+          type: 'number',
+          description: 'Max characters of body per message (default 16000, max 60000).'
+        },
+        ...GMAIL_ACCOUNT_CHOICE
+      },
+      required: ['thread_id']
+    }
+  },
+
+  {
+    name: 'gmail_get_attachment',
+    description:
+      'Download and return the text content of a Gmail email attachment (PDF, DOCX, TXT, CSV, etc.). ' +
+      'Use this to read what is inside an attachment — invoices, POs, reports, contracts. ' +
+      'Get message_id and attachment_id from gmail_get_message (attachments field). ' +
+      'Returns decoded text content for text-based formats; base64 data for binary files. ' +
+      'Requires Google OAuth.',
+    parameters: {
+      type: 'object',
+      properties: {
+        message_id: {
+          type: 'string',
+          description: 'Gmail message ID that contains the attachment.'
+        },
+        attachment_id: {
+          type: 'string',
+          description: 'Gmail attachment ID (from gmail_get_message attachments[].attachment_id).'
+        },
+        filename: {
+          type: 'string',
+          description: 'Filename of the attachment (helps with MIME type detection for display).'
+        },
+        ...GMAIL_ACCOUNT_CHOICE
+      },
+      required: ['message_id', 'attachment_id']
+    }
+  },
+
+  // ── Google Drive tools ──────────────────────────────────────────────────────
+  {
+    name: 'drive_search',
+    description:
+      'Search Google Drive for files and folders by name or content. Returns file names, types, ' +
+      'last modified dates, and direct open links. ' +
+      'Use this to find spreadsheets, docs, PDFs, folders — anything in Google Drive. ' +
+      'Examples: "price list", "invoice 2026", "BOL template", "shipping manifest". ' +
+      'Requires Google OAuth (same connection as Gmail).',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Search query — file name, keywords, or phrase to search for in Drive.'
+        },
+        max_results: {
+          type: 'number',
+          description: 'Max files to return (1–50). Default 15.'
+        },
+        file_type: {
+          type: 'string',
+          enum: ['any', 'document', 'spreadsheet', 'presentation', 'pdf', 'folder', 'image'],
+          description: 'Filter by file type. Default "any".'
+        },
+        folder_id: {
+          type: 'string',
+          description: 'Restrict search to a specific folder by its Drive folder ID.'
+        }
+      },
+      required: ['query']
+    }
+  },
+
+  {
+    name: 'drive_get_file',
+    description:
+      'Read the text content of a Google Drive file (Docs, Sheets, PDFs, plain text). ' +
+      'Returns the document text so you can read what is in it without opening a browser tab. ' +
+      'Use drive_search first to get the file_id. ' +
+      'For Google Docs: returns the full document text. ' +
+      'For Sheets: returns rows as tab-separated text. ' +
+      'For PDFs: returns extracted text. ' +
+      'Requires Google OAuth.',
+    parameters: {
+      type: 'object',
+      properties: {
+        file_id: {
+          type: 'string',
+          description: 'Google Drive file ID (from drive_search results id field, or from the file URL).'
+        },
+        max_chars: {
+          type: 'number',
+          description: 'Max characters to return (default 40000, max 120000).'
+        }
+      },
+      required: ['file_id']
+    }
+  },
+
+  {
+    name: 'drive_list_folder',
+    description:
+      'List all files and subfolders inside a Google Drive folder. ' +
+      'Use to browse what is in a specific folder — returns names, types, sizes, and links. ' +
+      'Get the folder_id from drive_search (search for the folder name) or from the Drive URL. ' +
+      'Requires Google OAuth.',
+    parameters: {
+      type: 'object',
+      properties: {
+        folder_id: {
+          type: 'string',
+          description: 'Google Drive folder ID. Use "root" to list the top-level My Drive folder.'
+        },
+        max_results: {
+          type: 'number',
+          description: 'Max items to return (1–100). Default 30.'
+        },
+        page_token: {
+          type: 'string',
+          description: 'Pagination token from previous drive_list_folder result to fetch next page.'
+        }
+      },
+      required: ['folder_id']
+    }
+  },
+
+  // ── Google Calendar tools ───────────────────────────────────────────────────
+  {
+    name: 'calendar_list_events',
+    description:
+      'List Google Calendar events in a date range. Returns event title, start/end time, location, ' +
+      'description, attendees, and meeting links (Google Meet, Zoom). ' +
+      'Use for: "what do I have today/this week?", "show my meetings for April 21", ' +
+      '"do I have anything with [person]?", "find my flight info". ' +
+      'Requires Google OAuth.',
+    parameters: {
+      type: 'object',
+      properties: {
+        time_min: {
+          type: 'string',
+          description: 'Start of date range (ISO 8601 or natural date like "2026-04-20T00:00:00Z"). Default: now.'
+        },
+        time_max: {
+          type: 'string',
+          description: 'End of date range (ISO 8601). Default: 7 days from now.'
+        },
+        query: {
+          type: 'string',
+          description: 'Optional text search within event titles and descriptions.'
+        },
+        max_results: {
+          type: 'number',
+          description: 'Max events to return (1–50). Default 20.'
+        },
+        calendar_id: {
+          type: 'string',
+          description: 'Calendar ID to query. Default "primary" (main calendar). Use "primary" unless user has multiple calendars.'
+        }
+      }
+    }
+  },
+
+  {
+    name: 'calendar_create_event',
+    description:
+      'Create a new Google Calendar event. Saves to the calendar — confirm with user before calling for real bookings. ' +
+      'Use for: scheduling pickups, meetings, reminders, appointments. ' +
+      'Supports title, start/end time, location, description, attendees, and optional Google Meet link. ' +
+      'Requires Google OAuth.',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: {
+          type: 'string',
+          description: 'Event title / summary.'
+        },
+        start: {
+          type: 'string',
+          description: 'Start date/time in ISO 8601 format (e.g. "2026-04-21T14:00:00-05:00"). Include timezone offset.'
+        },
+        end: {
+          type: 'string',
+          description: 'End date/time in ISO 8601 format. Include timezone offset.'
+        },
+        location: {
+          type: 'string',
+          description: 'Location or address for the event.'
+        },
+        description: {
+          type: 'string',
+          description: 'Event description or notes.'
+        },
+        attendees: {
+          type: 'string',
+          description: 'Comma-separated attendee email addresses.'
+        },
+        add_meet_link: {
+          type: 'boolean',
+          description: 'If true, add a Google Meet video conferencing link. Default false.'
+        },
+        calendar_id: {
+          type: 'string',
+          description: 'Calendar to add event to. Default "primary".'
+        }
+      },
+      required: ['title', 'start', 'end']
+    }
   }
 ];
 
