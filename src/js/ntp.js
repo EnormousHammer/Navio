@@ -37,9 +37,33 @@ const NTP = (() => {
 
   // Brand colours for popular sites — gradient background + hover glow
   const _SHORTCUT_BRANDS = {
-    'google.com':        { bg: 'linear-gradient(145deg,#4285f4 0%,#34a853 100%)',            glow: 'rgba(66,133,244,0.55)'   },
-    'mail.google.com':   { bg: 'linear-gradient(145deg,#ea4335 0%,#fbbc05 100%)',            glow: 'rgba(234,67,53,0.55)'    },
-    'drive.google.com':  { bg: 'linear-gradient(145deg,#1a73e8 0%,#0f9d58 100%)',            glow: 'rgba(26,115,232,0.55)'   },
+    'google.com': {
+      bg: 'linear-gradient(145deg,#ffffff 0%,#f1f3f4 100%)', glow: 'rgba(66,133,244,0.50)',
+      svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <clipPath id="gg"><path d="M37 24.5H25v5.5h6.8C30.5 33.7 27.6 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l4-4C33 8.5 28.7 6.5 24 6.5 13.8 6.5 5.5 14.8 5.5 25S13.8 43.5 24 43.5c10.7 0 17-7.5 17-18 0-1-.1-2-.1-2L37 24.5z"/></clipPath>
+        <rect x="0"  y="0"  width="48" height="24" fill="#4285F4" clip-path="url(#gg)"/>
+        <rect x="0"  y="24" width="24" height="24" fill="#34A853" clip-path="url(#gg)"/>
+        <rect x="24" y="24" width="24" height="24" fill="#FBBC05" clip-path="url(#gg)"/>
+        <rect x="24" y="0"  width="24" height="24" fill="#EA4335" clip-path="url(#gg)"/>
+      </svg>`
+    },
+    'mail.google.com': {
+      bg: 'linear-gradient(145deg,#ffffff 0%,#fce8e6 100%)', glow: 'rgba(234,67,53,0.50)',
+      svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="5" y="13" width="38" height="26" rx="3" fill="white"/>
+        <path d="M5 17 L24 30 L43 17 L43 13 Q43 13 40 13 H8 Q5 13 5 17Z" fill="#EA4335"/>
+        <line x1="5"  y1="39" x2="17" y2="28" stroke="rgba(160,16,16,0.18)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="43" y1="39" x2="31" y2="28" stroke="rgba(160,16,16,0.18)" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>`
+    },
+    'drive.google.com': {
+      bg: 'linear-gradient(145deg,#ffffff 0%,#e8f0fe 100%)', glow: 'rgba(26,115,232,0.50)',
+      svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M24 7 L10 33 L18.5 33 L27 18.5 Z" fill="#34A853"/>
+        <path d="M24 7 L38 33 L29.5 33 L21 18.5 Z" fill="#4285F4"/>
+        <rect x="10" y="33" width="28" height="8" rx="4" fill="#FBBC05"/>
+      </svg>`
+    },
     'docs.google.com':   { bg: 'linear-gradient(145deg,#4285f4 0%,#669df6 100%)',            glow: 'rgba(66,133,244,0.55)'   },
     'sheets.google.com': { bg: 'linear-gradient(145deg,#0f9d58 0%,#137333 100%)',            glow: 'rgba(15,157,88,0.55)'    },
     'slides.google.com': { bg: 'linear-gradient(145deg,#f29900 0%,#ea8000 100%)',            glow: 'rgba(242,153,0,0.55)'    },

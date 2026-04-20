@@ -2688,8 +2688,8 @@ body:not(.navio-vertical-tabs) .tab-item.active {
 
 /* Custom SVG icon — fills the full tile area */
 .shortcut-icon--custom-svg svg {
-  width: 72%;
-  height: 72%;
+  width: 74%;
+  height: 74%;
   display: block;
   overflow: visible;
 }
