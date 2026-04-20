@@ -736,12 +736,23 @@ class AssistantManagerClass {
     }
     this.setReceipt('');
     document.getElementById('navio-continue-pill')?.remove();
+
+    // Check if an AI stream is currently active for this tab before touching DOM
+    const isStreamingTab = !!(this._turnConversationKey && storageKey === this._turnConversationKey);
+
     const h = this._conversationsByTab.get(storageKey) || [];
     if (h.length) {
       this._renderDomFromHistoryKey(storageKey);
     } else if (this.messagesEl) {
       this.messagesEl.innerHTML = '';
       await this._showGreeting();
+    }
+
+    // If the AI is mid-stream for this tab, immediately show the typing indicator so
+    // the user sees activity rather than a blank gap before the next chunk re-creates
+    // the streaming element (the chunk handler detects the detached element via isConnected).
+    if (isStreamingTab) {
+      this.showTypingIndicator();
     }
   }
 
@@ -1766,6 +1777,26 @@ class AssistantManagerClass {
     if (busy) this._busyTabs.add(k);
     else this._busyTabs.delete(k);
     this._updateAssistantBusyChrome();
+    this._syncTabStripBadge(k, busy);
+  }
+
+  /** Add or remove the pulsing AI-busy badge on the tab strip item(s) for the given storage key. */
+  _syncTabStripBadge(storageKey, busy) {
+    if (!storageKey || storageKey === '__profile__' || storageKey === '__guest__') return;
+    try {
+      if (storageKey.startsWith('g:')) {
+        const groupId = storageKey.slice(2);
+        if (typeof TabManager === 'undefined' || !TabManager.tabs) return;
+        for (const tab of TabManager.tabs) {
+          if (tab.groupId !== groupId) continue;
+          const el = document.getElementById(`tabitem-${tab.id}`);
+          el?.classList.toggle('tab-ai-busy', !!busy);
+        }
+      } else {
+        const el = document.getElementById(`tabitem-${storageKey}`);
+        el?.classList.toggle('tab-ai-busy', !!busy);
+      }
+    } catch (_) { /* non-critical */ }
   }
 
   _updateAssistantBusyChrome() {
@@ -1779,6 +1810,56 @@ class AssistantManagerClass {
       stop.disabled = !busy;
     }
     if (send) send.hidden = !!busy;
+  }
+
+  /**
+   * Show a toast notification when an AI turn completes on a background tab.
+   * Clicking the toast switches to that tab so the user can read the response.
+   */
+  _showBackgroundCompletionToast(storageKey) {
+    try {
+      if (typeof TabManager === 'undefined') return;
+      const activeTab = TabManager.getActiveTab();
+      const activeStorageKey = activeTab ? this._storageKeyForTab(activeTab) : null;
+      if (activeStorageKey === storageKey) return; // User is already on this tab
+
+      // Resolve the tab to jump to
+      let targetTabId = null;
+      let tabTitle = 'another tab';
+      if (storageKey && storageKey.startsWith('g:')) {
+        const groupId = storageKey.slice(2);
+        const groupTab = TabManager.tabs.find((t) => t.groupId === groupId);
+        if (groupTab) { targetTabId = groupTab.id; tabTitle = groupTab.customTitle || groupTab.title || tabTitle; }
+      } else if (storageKey && storageKey !== '__profile__' && storageKey !== '__guest__') {
+        const tab = TabManager.tabs.find((t) => String(t.id) === storageKey);
+        if (tab) { targetTabId = tab.id; tabTitle = tab.customTitle || tab.title || tabTitle; }
+      }
+      if (!targetTabId) return;
+
+      const stack = document.getElementById('live-notif-stack');
+      if (!stack) return;
+
+      const el = document.createElement('div');
+      el.className = 'live-notification live-toast live-toast-navio-ai';
+      el.id = `navio-ai-toast-${Date.now()}`;
+      const safeTitle = tabTitle.length > 32 ? tabTitle.slice(0, 30) + '\u2026' : tabTitle;
+      el.innerHTML = `
+        <span class="live-toast-icon navio-ai-toast-icon">&#x2728;</span>
+        <span class="live-toast-msg">Navio finished on <strong>${safeTitle}</strong></span>
+        <button type="button" class="live-toast-jump-btn">View</button>
+        <button type="button" class="live-notif-x">\u00d7</button>`;
+
+      const jumpBtn = el.querySelector('.live-toast-jump-btn');
+      const closeBtn = el.querySelector('.live-notif-x');
+      const _dismiss = () => el.remove();
+      jumpBtn.addEventListener('click', () => {
+        TabManager.switchToTab(targetTabId);
+        _dismiss();
+      });
+      closeBtn.addEventListener('click', _dismiss);
+      stack.prepend(el);
+      setTimeout(_dismiss, 8000);
+    } catch (_) { /* non-critical */ }
   }
 
   async pinActiveTab() {
@@ -3006,6 +3087,8 @@ class AssistantManagerClass {
         { role: 'assistant', content: buffer }
       );
       this._trimHistory();
+      // Notify user if they're on a different tab when this response finishes
+      this._showBackgroundCompletionToast(sk);
       const graphTab = this._tabForTurnContext();
       await window.navio.contextGraph({
         op: 'addTurn',
@@ -3034,8 +3117,15 @@ class AssistantManagerClass {
       if (tid !== sk || !chunkText) return;
       buffer += chunkText;
       resetStallTimer();
-      if (!this._panelShowsTurnDom()) return;
-      if (!streamingMsg) {
+      if (!this._panelShowsTurnDom()) {
+        // User is viewing a different tab — null out the element reference so that
+        // when they switch back (_syncPanelToTab will call showTypingIndicator),
+        // the next chunk correctly re-creates the streaming element with the full buffer.
+        streamingMsg = null;
+        return;
+      }
+      if (!streamingMsg || !streamingMsg.isConnected) {
+        // First chunk OR user returned to this tab (element was detached by _syncPanelToTab)
         this.removeTypingIndicator();
         streamingMsg = document.createElement('div');
         streamingMsg.className = 'message assistant-message';

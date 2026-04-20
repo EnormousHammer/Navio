@@ -1176,6 +1176,9 @@ class TabManagerClass {
       if (tab._discarded) continue;
       if (tab.loading) continue;
       if (this._agentControlledTabId === tab.id) continue;
+      // Don't discard a tab that has an active AI chat turn in progress
+      const _sk = typeof AssistantManager !== 'undefined' ? AssistantManager._storageKeyForTabId?.(String(tab.id)) : null;
+      if (_sk && AssistantManager?._busyTabs?.has(_sk)) continue;
       const u = (tab.url || '').trim();
       if (!u.startsWith('http')) continue;
       if (this.isNavioChatTabUrl(u)) continue;
