@@ -14228,3 +14228,224 @@ button:focus-visible,
   background: rgba(0, 120, 220, 0.08);
   border-color: rgba(0, 120, 220, 0.22);
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   NEW FEATURE STYLES — Ollama badge, Record button, Watch Page, IAI extras
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Inline AI — Ask AI button ──────────────────────────────────────────── */
+.iai-askai-btn {
+  color: var(--text-accent);
+  font-weight: 700;
+}
+.iai-askai-btn:hover {
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
+/* ── Local Model Privacy Badge ──────────────────────────────────────────── */
+.local-model-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px 3px 7px;
+  background: rgba(0, 200, 120, 0.14);
+  border: 1px solid rgba(0, 200, 120, 0.3);
+  border-radius: 999px;
+  color: #00c878;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: default;
+  user-select: none;
+  animation: iaiToolbarIn 0.18s ease;
+}
+.local-model-badge svg {
+  flex-shrink: 0;
+  stroke: #00c878;
+}
+
+/* ── Macro Record Button (active state) ─────────────────────────────────── */
+#btn-record-macro {
+  transition: color 0.14s, background 0.14s;
+}
+#btn-record-macro.recording-active {
+  color: #ff4545;
+  background: rgba(255, 69, 69, 0.12);
+  border-radius: 50%;
+  animation: recordPulse 1.4s ease-in-out infinite;
+}
+@keyframes recordPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 69, 69, 0.4); }
+  50%       { box-shadow: 0 0 0 6px rgba(255, 69, 69, 0); }
+}
+
+/* ── Ollama detect button ───────────────────────────────────────────────── */
+.settings-action-btn {
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  border-radius: 8px;
+  border: 1px solid var(--border-accent);
+  background: var(--accent-glow);
+  color: var(--text-accent);
+  cursor: pointer;
+  transition: background 0.13s, border-color 0.13s;
+  white-space: nowrap;
+}
+.settings-action-btn:hover {
+  background: var(--accent-glow-strong, rgba(0, 216, 255, 0.18));
+  border-color: var(--accent);
+}
+.settings-action-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* ── Watch Page Dialog ──────────────────────────────────────────────────── */
+.watch-page-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  animation: iaiToolbarIn 0.15s ease;
+}
+.watch-page-overlay[hidden] { display: none !important; }
+
+.watch-page-dialog {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg), 0 0 40px rgba(0, 216, 255, 0.08);
+  width: 460px;
+  max-width: calc(100vw - 40px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.watch-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.watch-page-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.watch-page-close {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 6px;
+  transition: color 0.12s, background 0.12s;
+}
+.watch-page-close:hover { color: var(--text-primary); background: var(--bg-hover); }
+
+.watch-page-body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.watch-page-url {
+  font-size: 12px;
+  color: var(--text-secondary);
+  word-break: break-all;
+  margin: 0;
+  background: var(--bg-secondary);
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.watch-page-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.watch-condition-input {
+  font-family: inherit;
+  font-size: 13px;
+  background: var(--bg-input, var(--bg-secondary));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-primary);
+  padding: 10px 12px;
+  resize: vertical;
+  min-height: 72px;
+  transition: border-color 0.14s;
+}
+.watch-condition-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.watch-interval-select {
+  font-family: inherit;
+  font-size: 13px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  padding: 7px 10px;
+  cursor: pointer;
+  width: 160px;
+}
+.watch-page-hint {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  margin: 0;
+  line-height: 1.5;
+}
+.watch-page-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px 16px;
+  border-top: 1px solid var(--border);
+}
+.watch-page-save-btn {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 20px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.13s;
+}
+.watch-page-save-btn:hover { opacity: 0.88; }
+.watch-page-save-btn:disabled { opacity: 0.5; cursor: default; }
+.watch-page-cancel-btn {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 8px 16px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.watch-page-cancel-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* ── Ollama detect row (flex layout) ────────────────────────────────────── */
+#ollama-detect-row {
+  align-items: center;
+}

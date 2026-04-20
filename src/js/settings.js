@@ -13,6 +13,7 @@ const PROVIDER_KEY_LINKS = {
   openai: { label: 'Get an OpenAI API key', href: 'https://platform.openai.com/api-keys' },
   anthropic: { label: 'Get an Anthropic API key', href: 'https://console.anthropic.com/settings/keys' },
   google: { label: 'Get a Google AI Studio key', href: 'https://aistudio.google.com/apikey' },
+  ollama: null,
   custom: null
 };
 
@@ -120,8 +121,18 @@ class SettingsManagerClass {
     });
 
     this.elements.provider.addEventListener('change', () => {
-      this.elements.endpointRow.style.display =
-        this.elements.provider.value === 'custom' ? 'block' : 'none';
+      const prov = this.elements.provider.value;
+      this.elements.endpointRow.style.display = prov === 'custom' ? 'block' : 'none';
+      const ollamaRow = document.getElementById('ollama-detect-row');
+      if (ollamaRow) ollamaRow.style.display = prov === 'ollama' ? 'flex' : 'none';
+      // Ollama needs no API key
+      const apiKeyRow = this.elements.apiKey?.closest('.setting-row');
+      if (apiKeyRow) apiKeyRow.style.opacity = prov === 'ollama' ? '0.4' : '';
+      if (prov === 'ollama') {
+        this.elements.apiKey.placeholder = 'No API key required for Ollama';
+      } else {
+        this.elements.apiKey.placeholder = 'Enter your API key…';
+      }
       this.updateModelOptions();
       this.updateProviderHint();
     });
@@ -132,9 +143,39 @@ class SettingsManagerClass {
 
     document.getElementById('btn-model-back-presets')?.addEventListener('click', () => {
       const provider = this.elements.provider.value;
-      const defaults = { openai: 'gpt-5.4', anthropic: 'claude-opus-4-5', google: 'gemini-2.0-flash', custom: '__custom__' };
+      const defaults = { openai: 'gpt-5.4', anthropic: 'claude-opus-4-5', google: 'gemini-2.0-flash', ollama: 'llama3.2', custom: '__custom__' };
       this.elements.model.value = defaults[provider] || 'gpt-5.4';
       this._syncModelCustomUI();
+    });
+
+    document.getElementById('btn-ollama-detect')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-ollama-detect');
+      const hint = document.getElementById('ollama-detect-hint');
+      if (btn) { btn.disabled = true; btn.textContent = 'Detecting…'; }
+      if (hint) hint.textContent = '';
+      try {
+        const result = await window.navio.ollamaDetect();
+        if (result && result.ok && result.models && result.models.length) {
+          // Rebuild the Ollama optgroup with detected models
+          const optgroup = this.elements.model.querySelector('optgroup[data-provider="ollama"]');
+          if (optgroup) {
+            optgroup.innerHTML = result.models
+              .map(m => `<option value="${_escAttr(m)}">${_esc(m)}</option>`)
+              .join('') + '<option value="__custom__">Enter model name…</option>';
+          }
+          if (this.elements.provider.value === 'ollama') {
+            this.elements.model.value = result.models[0];
+            this._syncModelCustomUI();
+          }
+          if (hint) hint.textContent = `Found ${result.models.length} model${result.models.length === 1 ? '' : 's'}: ${result.models.slice(0,3).join(', ')}${result.models.length > 3 ? '…' : ''}`;
+        } else {
+          if (hint) hint.textContent = result?.error || 'Ollama not found. Make sure it is running (ollama serve).';
+        }
+      } catch (e) {
+        if (hint) hint.textContent = 'Error: ' + (e.message || String(e));
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Detect Ollama models'; }
+      }
     });
 
     this.elements.toggleKey.addEventListener('click', () => {
@@ -408,6 +449,12 @@ class SettingsManagerClass {
   updateProviderHint() {
     const el = this.elements.providerHint;
     const prov = this.elements.provider.value;
+    if (prov === 'ollama') {
+      el.innerHTML = '🔒 <strong>100% local</strong> — no data leaves your device. Requires <a href="#" data-external-href="https://ollama.com">Ollama</a> running locally (<code>ollama serve</code>). Use the Detect button to populate installed models.';
+      const a = el.querySelector('a');
+      if (a) a.addEventListener('click', (e) => { e.preventDefault(); if (typeof TabManager !== 'undefined') TabManager.createTab('https://ollama.com'); });
+      return;
+    }
     const link = PROVIDER_KEY_LINKS[prov];
     if (!link) {
       el.innerHTML =
@@ -536,6 +583,14 @@ class SettingsManagerClass {
       this.elements.modelCustomRow.style.display = '';
     }
     this.elements.endpoint.value = this.config.customEndpoint || '';
+    // Show/hide Ollama detect row based on current provider
+    const ollamaRow = document.getElementById('ollama-detect-row');
+    if (ollamaRow) ollamaRow.style.display = (this.config.aiProvider === 'ollama') ? 'flex' : 'none';
+    if (this.config.aiProvider === 'ollama') {
+      this.elements.apiKey.placeholder = 'No API key required for Ollama';
+      const apiKeyRow = this.elements.apiKey?.closest('.setting-row');
+      if (apiKeyRow) apiKeyRow.style.opacity = '0.4';
+    }
     if (this.elements.aiPlannerModel) {
       let planner = this.config.aiPlannerModel || 'gpt-5.4-mini';
       if (LEGACY_OPENAI_GPT4.has(planner)) planner = 'gpt-5.4-mini';
@@ -673,7 +728,7 @@ class SettingsManagerClass {
     });
 
     // If current selection belongs to a now-hidden optgroup, reset to provider default
-    const defaults = { openai: 'gpt-5.4', anthropic: 'claude-opus-4-5', google: 'gemini-2.0-flash', custom: '__custom__' };
+    const defaults = { openai: 'gpt-5.4', anthropic: 'claude-opus-4-5', google: 'gemini-2.0-flash', ollama: 'llama3.2', custom: '__custom__' };
     const currentOption = modelSelect.options[modelSelect.selectedIndex];
     const currentGroupProvider = currentOption?.closest('optgroup')?.getAttribute('data-provider');
 
@@ -1381,6 +1436,7 @@ class SettingsManagerClass {
     };
 
     await window.navio.saveConfig(newConfig);
+    document.dispatchEvent(new CustomEvent('navio-config-saved', { detail: newConfig }));
 
     if (syncPhraseInput.length >= 4 && window.navio.syncSavePassphrase) {
       const pr = await window.navio.syncSavePassphrase({ passphrase: syncPhraseInput });

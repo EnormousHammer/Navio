@@ -1560,17 +1560,21 @@ const InlineAI = (() => {
   let _lastAction = '';
 
   const LABELS = {
-    explain:   'Explanation',
-    summarize: 'Summary',
-    rewrite:   'Rewrite',
-    translate: 'Translation',
+    explain:    'Explanation',
+    define:     'Definition',
+    summarize:  'Summary',
+    rewrite:    'Rewrite',
+    translate:  'Translation',
+    'fact-check': 'Fact-check',
   };
 
   const PROMPTS = {
-    explain:   t => `Explain this text clearly and concisely in 2-4 sentences:\n\n"${t}"`,
-    summarize: t => `Summarize this in 1-3 sentences:\n\n"${t}"`,
-    rewrite:   t => `Rewrite this to be clearer and more professional:\n\n"${t}"`,
-    translate: t => `Translate this to English (if it is already English, improve the phrasing):\n\n"${t}"`,
+    explain:      t => `Explain this text clearly and concisely in 2-4 sentences:\n\n"${t}"`,
+    define:       t => `Define this term or phrase in 1-3 sentences. If it is a proper noun or concept, include key context:\n\n"${t}"`,
+    summarize:    t => `Summarize this in 1-3 sentences:\n\n"${t}"`,
+    rewrite:      t => `Rewrite this to be clearer and more professional:\n\n"${t}"`,
+    translate:    t => `Translate this to English (if it is already English, improve the phrasing):\n\n"${t}"`,
+    'fact-check': t => `Fact-check this claim. State clearly if it is TRUE, FALSE, MISLEADING, or UNVERIFIABLE, then explain why in 2-4 sentences:\n\n"${t}"`,
   };
 
   function _cancelStream() {
@@ -1716,6 +1720,21 @@ const InlineAI = (() => {
     if (action === 'copy') {
       navigator.clipboard.writeText(_text).catch(() => {});
       hide();
+    } else if (action === 'ask-ai') {
+      // Send selected text to the main assistant panel as a query
+      const query = _text;
+      hide();
+      if (typeof AssistantManager !== 'undefined' && query) {
+        AssistantManager.open();
+        setTimeout(() => {
+          const inp = document.getElementById('assistant-input');
+          if (inp) {
+            inp.value = query;
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          AssistantManager.sendMessage();
+        }, 80);
+      }
     } else if (action) {
       _runAction(action);
     }
@@ -1760,3 +1779,107 @@ const InlineAI = (() => {
 
   return { show, hide };
 })();
+
+// ── Watch Page ─────────────────────────────────────────────────────────────
+// Lets users set a natural-language watch condition for the current page.
+// Navio will check the page on a schedule and notify when the condition is met.
+
+const PageWatcher = (() => {
+  const _overlay = () => document.getElementById('watch-page-overlay');
+  let _currentUrl = '';
+  let _currentTitle = '';
+
+  function open(url, title) {
+    const overlay = _overlay();
+    if (!overlay) return;
+    _currentUrl = url || '';
+    _currentTitle = title || url || '';
+    const lbl = document.getElementById('watch-page-url-label');
+    if (lbl) lbl.textContent = _currentTitle.length > 80 ? _currentTitle.slice(0, 77) + '…' : _currentTitle;
+    const input = document.getElementById('watch-condition-input');
+    if (input) input.value = '';
+    overlay.hidden = false;
+    setTimeout(() => { if (input) input.focus(); }, 60);
+  }
+
+  function close() {
+    const overlay = _overlay();
+    if (overlay) overlay.hidden = true;
+  }
+
+  document.getElementById('btn-watch-page')?.addEventListener('click', () => {
+    // Get current tab URL from the active webview
+    let url = '';
+    let title = '';
+    try {
+      const activeWv = document.querySelector('.tab-content:not([hidden]) webview');
+      if (activeWv) {
+        url = activeWv.getURL?.() || '';
+        title = activeWv.getTitle?.() || url;
+      }
+    } catch { /* ignore */ }
+    if (!url || url === 'about:blank') {
+      return;
+    }
+    open(url, title);
+  });
+
+  document.getElementById('btn-watch-page-close')?.addEventListener('click', close);
+  document.getElementById('btn-watch-page-cancel')?.addEventListener('click', close);
+  document.getElementById('watch-page-overlay')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) close();
+  });
+
+  document.getElementById('btn-watch-page-save')?.addEventListener('click', async () => {
+    const condition = (document.getElementById('watch-condition-input')?.value || '').trim();
+    const interval = document.getElementById('watch-interval-select')?.value || 'daily';
+    if (!condition) {
+      const input = document.getElementById('watch-condition-input');
+      if (input) { input.focus(); input.style.borderColor = 'var(--text-danger)'; setTimeout(() => { input.style.borderColor = ''; }, 1500); }
+      return;
+    }
+    const btn = document.getElementById('btn-watch-page-save');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    try {
+      // Use the scheduler to add a recurring watch workflow
+      const prompt = `Check the page at ${_currentUrl} and determine if the following condition is met: "${condition}". If the condition IS met, start your reply with [WATCH-TRIGGERED] and describe what changed. If it is NOT met, start with [WATCH-PENDING] and briefly confirm what you observed.`;
+      await window.navio.schedulerAdd({
+        workflowName: `Watch: ${(_currentTitle || _currentUrl).slice(0, 50)}`,
+        prompt,
+        interval,
+        meta: { watchUrl: _currentUrl, watchCondition: condition, watchTitle: _currentTitle }
+      });
+      close();
+      if (typeof NavioToast !== 'undefined') {
+        NavioToast.show(`Watching "${_currentTitle.slice(0, 40) || _currentUrl}"`, 'success');
+      }
+    } catch (e) {
+      if (btn) btn.textContent = 'Error — try again';
+      console.error('[navio] page-watch save error:', e);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Start watching'; }
+    }
+  });
+
+  return { open, close };
+})();
+
+// ── Local Model Privacy Badge ──────────────────────────────────────────────
+// Shows a "Local" badge in the navbar when Ollama is the active provider.
+
+(async () => {
+  try {
+    const cfg = await window.navio.getConfig();
+    const badge = document.getElementById('local-model-badge');
+    if (badge) badge.hidden = cfg.aiProvider !== 'ollama';
+  } catch { /* ignore */ }
+})();
+
+// Keep badge in sync after settings save
+document.addEventListener('navio-config-saved', async () => {
+  try {
+    const cfg = await window.navio.getConfig();
+    const badge = document.getElementById('local-model-badge');
+    if (badge) badge.hidden = cfg.aiProvider !== 'ollama';
+  } catch { /* ignore */ }
+});

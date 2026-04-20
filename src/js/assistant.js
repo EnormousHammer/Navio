@@ -370,6 +370,11 @@ class AssistantManagerClass {
     document.getElementById('btn-send-message')?.addEventListener('click', () => this.sendMessage());
     document.getElementById('btn-assistant-stop')?.addEventListener('click', () => this.stopGeneration());
 
+    // ── Macro record button ────────────────────────────────────────────────
+    document.getElementById('btn-record-macro')?.addEventListener('click', () => this._toggleRecording());
+    this._workflowRecording = false;
+    this._recordedSteps = [];
+
     this.inputEl?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -5851,6 +5856,49 @@ ${pageInfo}${snapText}`;
     this._clearAttachmentQueue();
     void this._persistAssistantHistoryNow();
     this._showGreeting();
+  }
+
+  // ── Macro Recording ──────────────────────────────────────────────────────
+
+  _toggleRecording() {
+    const btn = document.getElementById('btn-record-macro');
+    if (!this._workflowRecording) {
+      // Start recording
+      this._workflowRecording = true;
+      this._recordedSteps = [];
+      if (btn) {
+        btn.classList.add('recording-active');
+        btn.setAttribute('aria-pressed', 'true');
+        btn.title = 'Recording… click to stop and save workflow';
+      }
+      this.addMessage('assistant', '🔴 **Recording started.** Perform your task — every agent step will be captured. Click the record button again when done to save it as a replayable workflow.', 'info');
+    } else {
+      // Stop recording
+      this._workflowRecording = false;
+      const steps = (this._recordedSteps || []).slice();
+      this._recordedSteps = [];
+      if (btn) {
+        btn.classList.remove('recording-active');
+        btn.setAttribute('aria-pressed', 'false');
+        btn.title = 'Record: capture your next agent task as a replayable workflow';
+      }
+      if (!steps.length) {
+        this.addMessage('assistant', 'Recording stopped — no agent steps were captured. Run a task while recording is active.', 'info');
+        return;
+      }
+      const name = window.prompt(`Name this workflow (${steps.length} step${steps.length === 1 ? '' : 's'} recorded):`);
+      if (!name?.trim()) {
+        this.addMessage('assistant', `Recording discarded (${steps.length} step${steps.length === 1 ? '' : 's'}).`, 'info');
+        return;
+      }
+      window.navio.workflowSave({ name: name.trim(), steps }).then((result) => {
+        if (result?.ok) {
+          this.addMessage('assistant', `✅ Workflow **"${name.trim()}"** saved with ${steps.length} step${steps.length === 1 ? '' : 's'}. You can replay it anytime by asking: *"Run the ${name.trim()} workflow"*.`, '');
+        } else {
+          this.addMessage('assistant', `Could not save workflow: ${result?.error || 'unknown error'}`, 'error');
+        }
+      }).catch((e) => this.addMessage('assistant', `Save failed: ${e.message}`, 'error'));
+    }
   }
 
   // ── Connector Context Injection ─────────────────────────────────────────

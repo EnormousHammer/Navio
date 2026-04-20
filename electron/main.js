@@ -1500,6 +1500,21 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
       geminiBody.generationConfig = { maxOutputTokens: 16384 };
     }
     body = JSON.stringify(geminiBody);
+  } else if (provider === 'ollama') {
+    // Ollama exposes an OpenAI-compatible API on localhost — no key required.
+    messages = normalizeMessagesForOpenAI(messages);
+    url = 'http://localhost:11434/v1/chat/completions';
+    headers = { 'Content-Type': 'application/json' };
+    const bodyObj = {
+      model: model || 'llama3.2',
+      messages,
+      stream: !!useStream
+    };
+    if (fetchOpts.tools && !ntpBrief) {
+      bodyObj.tools = toOpenAITools(fetchOpts.tools);
+      bodyObj.tool_choice = 'auto';
+    }
+    body = JSON.stringify(bodyObj);
   } else {
     return { error: `Unknown provider: ${provider}` };
   }
@@ -1577,7 +1592,7 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
  * correct provider format so the next API call includes the tool invocation.
  */
 function appendAssistantToolCalls(messages, result, provider) {
-  if (provider === 'openai' || provider === 'custom') {
+  if (provider === 'openai' || provider === 'custom' || provider === 'ollama') {
     return [...messages, result.rawAssistantMessage];
   } else if (provider === 'anthropic') {
     return [...messages, { role: 'assistant', content: result.rawAssistantMessage.content }];
@@ -1609,7 +1624,7 @@ function appendToolResult(messages, toolCall, result, provider) {
       note:
         'Full-page screenshots from the TOP of the page downward (tile 1 = header/top). Plan from the first tiles before mid-page content. Use for layout, nav, and where to start.'
     });
-    if (provider === 'openai' || provider === 'custom') {
+    if (provider === 'openai' || provider === 'custom' || provider === 'ollama') {
       const content = [{ type: 'text', text: textPart }];
       for (const im of result.images) {
         content.push({
@@ -1648,7 +1663,7 @@ function appendToolResult(messages, toolCall, result, provider) {
     const dataUri = `data:${result.mimeType};base64,${result.image}`;
     const textPart = JSON.stringify({ success: true, note: 'Screenshot captured. Analyze the image to understand the page layout and identify click targets by xy coordinates.' });
 
-    if (provider === 'openai' || provider === 'custom') {
+    if (provider === 'openai' || provider === 'custom' || provider === 'ollama') {
       return [...messages, {
         role: 'tool',
         tool_call_id: toolCall.id,
@@ -1681,7 +1696,7 @@ function appendToolResult(messages, toolCall, result, provider) {
   }
 
   const resultStr = JSON.stringify(result).slice(0, 50000);
-  if (provider === 'openai' || provider === 'custom') {
+  if (provider === 'openai' || provider === 'custom' || provider === 'ollama') {
     return [...messages, { role: 'tool', tool_call_id: toolCall.id, content: resultStr }];
   } else if (provider === 'anthropic') {
     return [...messages, {
@@ -1761,7 +1776,7 @@ function appendAutoScreenshotMessages(messages, screenshotResult, provider) {
       tileCount: screenshotResult.images.length,
       note: introMulti
     });
-    if (provider === 'openai' || provider === 'custom') {
+    if (provider === 'openai' || provider === 'custom' || provider === 'ollama') {
       const content = [{ type: 'text', text: textPart }];
       for (const im of screenshotResult.images) {
         content.push({
@@ -1792,7 +1807,7 @@ function appendAutoScreenshotMessages(messages, screenshotResult, provider) {
 
   if (screenshotResult && screenshotResult.image && screenshotResult.mimeType) {
     const dataUri = `data:${screenshotResult.mimeType};base64,${screenshotResult.image}`;
-    if (provider === 'openai' || provider === 'custom') {
+    if (provider === 'openai' || provider === 'custom' || provider === 'ollama') {
       return [...messages, {
         role: 'system',
         content: [
@@ -2256,7 +2271,7 @@ ipcMain.handle('ai-request', async (event, payload) => {
     return { error: 'AI is turned off (kill switch). Enable it in Settings → AI.' };
   }
   const apiKey = secureConfig.getApiKey(app.getPath('userData'));
-  if (!apiKey) {
+  if (!apiKey && cfg.aiProvider !== 'ollama') {
     return { error: 'No API key configured. Add one in Settings → AI.' };
   }
 
@@ -2347,7 +2362,7 @@ ipcMain.handle('ai-request-stream', async (event, { messages, tabId: streamTabId
     return { ok: false };
   }
   const apiKey = secureConfig.getApiKey(app.getPath('userData'));
-  if (!apiKey) {
+  if (!apiKey && cfg.aiProvider !== 'ollama') {
     releaseAiAbortController(sender, tid);
     sender.send('ai-stream-error', { tabId: tid, message: 'No API key configured.' });
     return { ok: false };
@@ -2555,7 +2570,7 @@ ipcMain.handle('ai-request-with-tools', async (event, { messages, webContentsId,
     return { error: 'AI is turned off (kill switch). Enable it in Settings → AI.' };
   }
   const apiKey = secureConfig.getApiKey(app.getPath('userData'));
-  if (!apiKey) {
+  if (!apiKey && cfg.aiProvider !== 'ollama') {
     return { error: 'No API key configured. Add one in Settings → AI.' };
   }
 
@@ -2710,6 +2725,24 @@ ipcMain.handle('deep-research', async (event, { query }) => {
     } catch {
       /* ignore */
     }
+  }
+});
+
+// ── Ollama local model detection ─────────────────────────────────────────────
+ipcMain.handle('ollama-detect', async () => {
+  try {
+    const resp = await fetch('http://localhost:11434/api/tags', {
+      signal: AbortSignal.timeout(4000)
+    });
+    if (!resp.ok) return { ok: false, error: `Ollama HTTP ${resp.status}` };
+    const json = await resp.json();
+    const models = (json.models || [])
+      .map((m) => m.name || m.model || '')
+      .filter(Boolean)
+      .sort();
+    return { ok: true, models };
+  } catch (e) {
+    return { ok: false, error: e.message || 'Could not reach Ollama' };
   }
 });
 

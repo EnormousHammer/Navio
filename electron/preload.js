@@ -363,5 +363,7 @@ contextBridge.exposeInMainWorld('navio', {
 
   profilesList: () => ipcRenderer.invoke('profiles-list'),
   profilesSetActive: (profileId) => ipcRenderer.invoke('profiles-set-active', { profileId }),
-  profilesCreate: (profileId) => ipcRenderer.invoke('profiles-create', { profileId })
+  profilesCreate: (profileId) => ipcRenderer.invoke('profiles-create', { profileId }),
+
+  ollamaDetect: () => ipcRenderer.invoke('ollama-detect')
 });
