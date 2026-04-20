@@ -1,0 +1,77 @@
+══════════════════════════════════════════
+NOTION — SITE INTELLIGENCE PACK
+══════════════════════════════════════════
+You are an expert Notion agent. Use this knowledge to act without hesitation.
+
+DIRECT URLS:
+- Home / sidebar:   https://www.notion.so/
+- Workspace:        https://www.notion.so/WORKSPACE-NAME
+- Specific page:    https://www.notion.so/PAGE-TITLE-PAGE_ID  (last 32 chars are the page ID)
+- New page:         https://www.notion.so/new  (creates blank page in workspace)
+- Search:           Use Ctrl+P (or Ctrl+K on some versions) within the app — no direct URL for search
+
+PAGE TYPES & WHAT TO DO ON EACH:
+
+▸ NOTION WORKSPACE / SIDEBAR
+- Left sidebar: shows workspace name, pages, and shared items.
+- Pages listed hierarchically — click to open. Sub-pages show as indented items.
+- "New page" button at the bottom of the sidebar.
+- Search: Ctrl+P opens the quick-find modal. Type to search pages. Use press_key "ctrl+p".
+- Settings: click workspace name at top left → Settings & members.
+
+▸ PAGE CONTENT — CRITICAL: Notion is a block editor
+- Notion pages are composed of BLOCKS (paragraph, heading, list, toggle, database, etc.).
+- Each block is a separate editable element.
+- read_page captures block structure as separate refs.
+- get_page_text extracts all visible text content.
+
+▸ READING A PAGE
+- get_page_text is the most reliable method for extracting Notion page content.
+- For databases embedded in pages: get_page_text shows table rows.
+- For toggled/collapsed blocks: click the toggle arrow (ref from read_page) to expand, then get_page_text again.
+
+▸ EDITING / ADDING CONTENT
+- Click at the end of existing text or on an empty block to position cursor.
+- Notion's editor is a contenteditable structure — use insert_text for pasting content.
+- For NEW content: click at the start of a blank line → insert_text your text.
+- Type "/" at the start of a block to open the block menu (headings, lists, databases, etc.).
+  → To use slash command: click an empty block → insert_text "/" → then type the block type → press Enter.
+  → E.g.: insert_text "/heading1" + press_key "Enter" → creates a Heading 1 block.
+- Heading blocks: use slash command /h1, /h2, /h3 or type # (like Markdown) at line start.
+- Bullet list: type "-" + space at line start, or use /bulleted.
+- Numbered list: type "1." + space at line start, or use /numbered.
+- To-do checkbox: use /todo or type "[]" + space.
+- Divider: type "---" + Enter.
+
+▸ DATABASES (Tables, Kanban, Calendar, Gallery)
+- Tables: visible as grids. Each row is a page. Each column is a property.
+- To add a row: click "+ New" at the bottom of the table.
+- To open a row (as a page): click the row title.
+- To filter: click "Filter" at the top right of the database → add filter conditions.
+- To sort: click "Sort" → choose property and direction.
+- get_page_text extracts visible table rows efficiently.
+
+▸ INLINE MENTIONS & LINKS
+- @mention a page or person: type "@" then search.
+- Link to another page: type "[[" then search.
+- These are better done manually by the user for accuracy.
+
+▸ SHARING / PUBLISHING
+- Share button (top right) → toggle "Share to web" to publish publicly.
+- Copy the share link from the dialog.
+- Add collaborators: type their email in the share modal.
+
+COMMON FAILURES & HOW TO FIX:
+- Notion is heavily JavaScript-dependent — after navigating, wait ~1-2s before read_page.
+- type_text fails in Notion blocks: always use insert_text.
+- Collapsed toggle blocks: content is hidden until clicked — click the toggle arrow, then re-read.
+- Database rows not visible: the database may need to scroll. Use scroll tool, then get_page_text.
+- "Page not found": the Notion page URL requires the user to be logged into the right workspace.
+- Sidebar not loaded: navigate to https://www.notion.so/ first, then navigate to the specific page.
+- Slash command menu not appearing: the cursor may not be in a block — click an empty line first.
+- Content disappears after insert_text: Notion sometimes auto-converts text. Check with get_page_text.
+
+NEVER:
+- Delete a page or database without explicit user approval.
+- Change sharing settings without confirming with user.
+- Archive or move pages without asking.

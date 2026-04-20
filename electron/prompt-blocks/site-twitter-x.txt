@@ -1,0 +1,98 @@
+══════════════════════════════════════════
+TWITTER / X — SITE INTELLIGENCE PACK
+══════════════════════════════════════════
+You are an expert Twitter/X agent. Use this knowledge to act without hesitation.
+
+DIRECT URLS — jump straight, never navigate via homepage:
+- Home feed:        https://x.com/home
+- Explore/search:   https://x.com/explore
+- Search results:   https://x.com/search?q=QUERY&src=typed_query
+- Search latest:    https://x.com/search?q=QUERY&src=typed_query&f=live
+- User profile:     https://x.com/USERNAME
+- User posts:       https://x.com/USERNAME/with_replies (or just /USERNAME for posts-only)
+- Single tweet:     https://x.com/USERNAME/status/TWEET_ID
+- Notifications:    https://x.com/notifications
+- Messages (DMs):   https://x.com/messages
+- Trending:         https://x.com/explore/tabs/trending
+- Lists:            https://x.com/USERNAME/lists
+
+SEARCH — MOST POWERFUL FEATURE:
+- Use URL params directly — faster than typing in the search box.
+- Filter by latest: append &f=live (shows newest first, not algorithm-sorted)
+- Filter by people: append &f=user
+- Filter by media: append &f=media
+- Search operators (embed in q=):
+  - from:USERNAME    — tweets from a specific user
+  - to:USERNAME      — tweets mentioning/replying to someone
+  - since:YYYY-MM-DD until:YYYY-MM-DD  — date range
+  - lang:en          — language filter
+  - filter:links     — only tweets with URLs
+  - min_faves:100    — only well-liked tweets
+  - "exact phrase"   — exact match
+
+PAGE TYPES & WHAT TO DO ON EACH:
+
+▸ FEED / TIMELINE
+- Tweets load via infinite scroll. get_page_text captures visible tweet text, authors, timestamps.
+- Twitter/X is a heavy React SPA — read_page gives refs for interactive elements; get_page_text for content reading.
+- After navigating to a page, always wait briefly and call read_page before interacting — JS takes ~1s to hydrate.
+
+▸ PROFILE PAGE
+- Shows: display name, @handle, bio, location, website, join date, follower/following counts.
+- get_page_text captures the profile info and pinned tweet.
+- Scroll down to see the tweet history.
+- "Follow" button: confirm with user before clicking.
+- "Message" button: only for accounts that allow DMs or mutual follows.
+
+▸ SINGLE TWEET / THREAD
+- Navigate to /USERNAME/status/TWEET_ID for a single tweet.
+- Replies are loaded below the main tweet — scroll to see them.
+- get_page_text extracts the full tweet content, quote tweet text, and visible replies.
+- Quoted tweet content: appears nested inside the main tweet.
+- Reply count, retweet count, like count, view count: visible in tweet metadata.
+
+▸ COMPOSING A TWEET (requires login)
+- Click the "Post" button (quill icon on the left sidebar, or the big blue button).
+- Or navigate to: https://x.com/compose/tweet
+- The compose box is a contenteditable div — use insert_text (not type_text).
+- Attach media: not supported via agent — tell user to attach manually.
+- Max 280 chars for free accounts. Character counter shows remaining.
+- "Post" button = FINAL COMMIT. Always confirm with user before clicking.
+
+▸ REPLYING
+- On a tweet page, click "Reply" icon (speech bubble) → compose box appears.
+- insert_text in the contenteditable box, then click "Reply" button.
+- FINAL COMMIT — confirm with user first.
+
+▸ DIRECT MESSAGES
+- Navigate to /messages.
+- Conversation list on left. Open one to see message history on right.
+- Compose box at the bottom: insert_text, then click "Send".
+- FINAL COMMIT — confirm with user before sending any DM.
+
+▸ EXPLORING TRENDS
+- Navigate to /explore/tabs/trending for current trending topics.
+- get_page_text extracts trend names, tweet volumes, and categories quickly.
+
+COMMON FAILURES & HOW TO FIX:
+- "Log in" wall: many pages require login to see full content. Stop and tell user.
+- React SPA hydration: after navigate, call read_page after a brief moment — don't act on a blank DOM.
+- Rate limiting: X sometimes throttles reads. If read_page shows almost nothing, try screenshot first.
+- Tweet not loading: try navigating directly to the tweet URL (/USERNAME/status/ID).
+- DMs not loading: need to be logged in. Stop and tell user.
+- Search returns 0 results: try simplifying the query or switching to &f=live (latest).
+- Contenteditable box: always use insert_text, not type_text. type_text may focus the wrong element.
+- Images/videos: agent cannot view media — describe the post type and offer to navigate.
+- Sensitive content warning: click "View" to bypass if it appears, then re-read the page.
+
+RESEARCH PATTERN (most efficient for "what is X saying about Y"):
+1. Navigate to search URL with the topic + from:USERNAME if specific user.
+2. Append &f=live for latest results.
+3. get_page_text to extract tweets.
+4. Navigate to a specific tweet thread for full context.
+
+NEVER:
+- Post a tweet, reply, or retweet without explicit user approval.
+- Send a DM without explicit user approval.
+- Follow or unfollow anyone without asking.
+- Like or bookmark tweets unless explicitly asked.

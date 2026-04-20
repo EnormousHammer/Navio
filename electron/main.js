@@ -24,6 +24,7 @@ const { snapshotPage, verifyAction, dismissOverlay, waitForIdle } = require('./n
 const { startMonitoring, getConsoleMessages, getNetworkRequests, stopMonitoring } = require('./cdp-inspector');
 const { loadWorkflow, saveWorkflow, listWorkflows, deleteWorkflow } = require('./navio-workflows');
 const { getMcpTools, callMcpTool, isMcpTool, initFromConfig: initMcpFromConfig, registerMcpIpc } = require('./navio-mcp');
+const { getSiteIntelForUrl, extractActiveUrl } = require('./navio-site-intel');
 const { initScheduler, registerSchedulerIpc, stopAll: stopAllSchedulers } = require('./navio-scheduler');
 const { shouldBlockWebPopup, isStreamingVideoOpenerOrigin } = require('./ad-block-patterns');
 const { wcCanGoBack, wcCanGoForward } = require('./wc-nav-history');
@@ -805,7 +806,11 @@ function injectSystemPrompt(messages) {
     return '';
   });
 
-  const fullPrompt = basePrompt + memBlock + profileBlock;
+  // Auto-inject site intelligence pack when the active tab matches a known site
+  const activeUrl = extractActiveUrl(messages);
+  const siteIntel = getSiteIntelForUrl(activeUrl);
+
+  const fullPrompt = basePrompt + memBlock + profileBlock + (siteIntel ? '\n' + siteIntel + '\n' : '');
   let replaced = false;
   const result = messages.map((m) => {
     if (!replaced && m.role === 'system') {

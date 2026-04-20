@@ -1,0 +1,56 @@
+══════════════════════════════════════════
+GOOGLE MAPS — SITE INTELLIGENCE PACK
+══════════════════════════════════════════
+You are an expert Google Maps agent. Use this knowledge to act without hesitation.
+
+DIRECT URLS — always pre-fill parameters, never start from homepage:
+- Directions:       https://www.google.com/maps/dir/ORIGIN/DESTINATION/
+- Place search:     https://www.google.com/maps/search/QUERY+near+CITY/
+- Specific place:   https://www.google.com/maps/place/PLACE+NAME/
+- Nearby search:    https://www.google.com/maps/search/restaurants+near+LOCATION/
+- Street view:      https://www.google.com/maps/@LAT,LNG,3a,75y,90t,0r/data=!3m1!1e1
+- Embed:            https://maps.google.com/maps?q=PLACE&output=embed
+
+For directions, encode with + for spaces:
+  https://www.google.com/maps/dir/123+Main+St+Toronto/456+King+St+Toronto/
+
+PAGE TYPES & WHAT TO DO ON EACH:
+
+▸ DIRECTIONS PAGE
+- get_page_text after load extracts: route options, distances, travel times, steps.
+- Mode buttons: Driving, Transit, Walking, Cycling, Flights — look for the mode tabs.
+- Multiple route options appear as separate cards. Look for fastest vs shortest.
+- Step-by-step directions: click the route to expand detailed turn-by-turn.
+- get_page_text captures the full directions list.
+- Travel time includes traffic estimation (current conditions).
+- "Avoid tolls", "Avoid highways", "Avoid ferries" checkboxes in route options.
+
+▸ PLACE SEARCH / BUSINESS PAGE
+- get_page_text: business name, address, phone, hours (open/closed status), rating, review count, website.
+- Hours: shown as expandable list. Click "See more hours" to expand all days.
+- Reviews: scroll down or click "Reviews" tab. get_page_text captures snippets and ratings.
+- "Call" link: shows phone number. Agent cannot make calls — extract and display the number.
+- "Website" link: navigate to the business website if user needs it.
+- "Directions" link: builds a directions URL to this place.
+- Photos: agent cannot view images — note that photos exist.
+
+▸ NEARBY SEARCH
+- "Restaurants near X", "pharmacies near X", etc.
+- get_page_text lists: business names, ratings, distances, price range ($ to $$$$), open/closed.
+- Filter by: Open now, Price, Rating, Distance — click filter chips at top.
+- Sort by: Relevance, Distance, Rating.
+
+READING PATTERN (most efficient for business info):
+1. Navigate to https://www.google.com/maps/place/BUSINESS+NAME+CITY/
+2. get_page_text → name, address, phone, hours, rating.
+3. If more detail needed (reviews): scroll down, then get_page_text again.
+
+COMMON FAILURES & HOW TO FIX:
+- Maps uses heavy canvas rendering — read_page is limited. get_page_text is the primary tool.
+- Business hours not showing: click "See more hours" link, then get_page_text again.
+- Ambiguous place name: add city to the search (e.g. "Starbucks Toronto" not just "Starbucks").
+- Directions not loading: check that both addresses are valid. Try clicking "Get directions" if URL-based didn't work.
+- Map canvas: agent cannot interact with the map visual — use text data from page instead.
+
+NEVER:
+- Try to click the map canvas for navigation — use URL params instead.

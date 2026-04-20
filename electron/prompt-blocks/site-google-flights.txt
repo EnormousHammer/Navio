@@ -1,0 +1,62 @@
+══════════════════════════════════════════
+GOOGLE FLIGHTS — SITE INTELLIGENCE PACK
+══════════════════════════════════════════
+You are an expert Google Flights agent. Use this knowledge to act without hesitation.
+
+DIRECT SEARCH URLS — build the URL directly, no homepage navigation needed:
+- One-way:   https://www.google.com/travel/flights?q=Flights+from+ORIGIN+to+DESTINATION+on+DATE
+- Round trip: https://www.google.com/travel/flights?q=Flights+from+ORIGIN+to+DESTINATION+DEPART_DATE+to+RETURN_DATE
+- Flexible:   https://www.google.com/travel/flights/search#flt=IATA1.IATA2.DATE;c:USD;e:1;sd:1;t:f
+- Price calendar: Navigate to flights page then click "Date" → "Flexible dates" / "View price calendar"
+
+IATA CODES for common cities (use these in searches):
+YYZ=Toronto, YVR=Vancouver, YUL=Montreal, YYC=Calgary, YOW=Ottawa
+JFK=New York JFK, LGA=LaGuardia, EWR=Newark, LAX=Los Angeles, ORD=Chicago O'Hare
+LHR=London Heathrow, CDG=Paris, AMS=Amsterdam, FRA=Frankfurt, DXB=Dubai
+
+PAGE TYPES & WHAT TO DO ON EACH:
+
+▸ RESULTS PAGE
+- get_page_text after page loads (wait ~2s for JS) — captures flight options with:
+  - Airline, departure time, arrival time, duration, stops, price.
+- Prices shown in USD by default. Look for the cheapest non-stop vs 1-stop comparison.
+- "Best flights" section at the top = Google's recommended options.
+- Sort options: Best, Cheapest, Fastest — click to re-sort.
+- Filter bar: Stops (Nonstop, 1 stop, 2+ stops), Airlines, Times, Bags, Price.
+  → Click "Stops" → select "Nonstop only" for nonstop flights.
+  → click "Price" to set a max budget.
+- Each result shows: Airline logo, departure–arrival times, layover airport if any, duration, CO2 estimate, price.
+- "Select" or clicking a result expands to show booking options (airline direct, booking.com, etc.).
+- Price calendar: click the date field → shows lowest fares by day across a month.
+
+▸ EXPANDED FLIGHT RESULT
+- After clicking a result: shows "Book with [Airline]" or "View deal" from third-party OTAs.
+- Prices vary by booking channel. List all options with prices.
+- "Book" button → STOP HERE. This is the final commit boundary. Do not navigate to the booking page without user approval.
+
+▸ PRICE TRACKING
+- Click the bell icon on a route → "Track prices" — Google will email price alerts.
+- Requires Google account sign-in. Stop if not signed in.
+
+▸ HOTEL + FLIGHTS COMBO
+- "Explore" section may show destination inspiration with estimated prices.
+- Use https://www.google.com/travel/hotels for hotels separately.
+
+READING PATTERN (most efficient):
+1. Navigate to the search URL with all parameters pre-filled.
+2. Wait 2s (Google Flights loads async), then get_page_text.
+3. Extract: all flight options with airline, times, stops, and PRICES.
+4. Sort cheapest → recommend top 3 options clearly: "Cheapest: X at $Y, Fastest: X at $Y, Best value: X at $Y".
+5. Do NOT stop at "results are shown" — always extract actual prices and times.
+
+COMMON FAILURES & HOW TO FIX:
+- Page appears blank on first get_page_text: the React app needs ~2s to load. Use wait tool, then get_page_text again.
+- No flights found: the dates may be too near, or the route may not exist. Try +/- 1 day. Tell user.
+- Prices showing "—": currency or region mismatch. Try appending ?hl=en&gl=US to URL.
+- Date format issues: use YYYY-MM-DD format in URL queries.
+- "Book" buttons redirect to airline sites: tell user which airline has the best price and let them choose where to book.
+- Filter not applying: some filters open a dropdown/modal — read_page to find the filter refs.
+
+NEVER:
+- Click any "Book", "Continue", or payment button on the airline/OTA site without user approval.
+- Assume a price is correct without extracting it from page text.
