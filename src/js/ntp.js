@@ -2180,8 +2180,10 @@ const NTP = (() => {
 
   function _applyDim(value) {
     const clamped = Math.max(0, Math.min(80, Number(value)));
-    const overlay = document.getElementById('ntp-dim-overlay');
-    if (overlay) overlay.style.opacity = String(clamped / 100);
+    // brightness: 0 dim = 1.0 (full), 80 dim = 0.20 (very dark)
+    const brightness = ((100 - clamped) / 100).toFixed(2);
+    const bgLayer = document.querySelector('.ntp-bg-layer');
+    if (bgLayer) bgLayer.style.filter = `brightness(${brightness})`;
     const slider = document.getElementById('ntp-dim-slider');
     if (slider) slider.style.setProperty('--slider-pct', (clamped / 80 * 100).toFixed(1) + '%');
   }
