@@ -277,7 +277,8 @@ function truncName(name) {
  *  1. ScrollIntoViewIfNeeded via CDP (avoids JS-triggered scroll interception)
  *  2. getBoxModel → compute viewport center (cx, cy)
  *  3. elementFromPoint occlusion check — bail with occluded_by if covered
- *  4. dispatchMouseEvent mouseOver → mousePressed → mouseReleased
+ *  4. dispatchMouseEvent mouseMoved → mousePressed → mouseReleased
+ *     (Chromium rejects legacy type "mouseOver" — it is not a valid CDP value.)
  *
  * Fallback: if CDP path fails (e.g. off-screen, zero box), retries with
  * Runtime.callFunctionOn element.click() so existing flows don't regress.
@@ -330,9 +331,8 @@ async function clickByRef(wc, refId) {
         void top; // occlusion signal reserved for Phase B verify loop
       } catch { /* ignore occlusion check failures */ }
 
-      // Step 4: trusted mouse events
+      // Step 4: trusted mouse events (CDP allows mouseMoved / mousePressed / mouseReleased / mouseWheel only)
       const mouseParams = { x: cx, y: cy, button: 'left', clickCount: 1, buttons: 1 };
-      await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseOver', x: cx, y: cy });
       await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: cx, y: cy });
       await wc.debugger.sendCommand('Input.dispatchMouseEvent', { ...mouseParams, type: 'mousePressed' });
       await wc.debugger.sendCommand('Input.dispatchMouseEvent', { ...mouseParams, type: 'mouseReleased' });

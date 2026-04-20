@@ -1497,8 +1497,8 @@ html[data-theme="light"] .assistant-panel {
   background: rgba(10, 12, 18, 0.94);
   border-left-color: rgba(255, 255, 255, 0.09);
   box-shadow: -18px 0 56px rgba(0, 0, 0, 0.42);
-  backdrop-filter: blur(20px) saturate(1.06);
-  -webkit-backdrop-filter: blur(20px) saturate(1.06);
+  backdrop-filter: blur(14px) saturate(1.06);
+  -webkit-backdrop-filter: blur(14px) saturate(1.06);
 }
 
 html[data-theme="light"] .assistant-panel::before {
@@ -1595,8 +1595,8 @@ html[data-theme="dark"] .assistant-panel {
   background: rgba(10, 12, 18, 0.92);
   border-left-color: rgba(255, 255, 255, 0.08);
   box-shadow: -18px 0 52px rgba(0, 0, 0, 0.48);
-  backdrop-filter: blur(20px) saturate(1.06);
-  -webkit-backdrop-filter: blur(20px) saturate(1.06);
+  backdrop-filter: blur(14px) saturate(1.06);
+  -webkit-backdrop-filter: blur(14px) saturate(1.06);
 }
 
 /* Agent “Working” card + tools — readable glass (fixes light-theme #f5f6fa slab) */
@@ -1604,7 +1604,7 @@ html[data-theme="dark"] .assistant-panel {
   background: rgba(0, 0, 0, 0.32);
   border-color: rgba(255, 255, 255, 0.1);
   border-radius: 12px;
-  color: rgba(226, 232, 248, 0.78);
+  color: rgba(238, 242, 252, 0.94);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
 }
 
@@ -1614,7 +1614,7 @@ html[data-theme="dark"] .assistant-panel {
 }
 
 .assistant-panel .navio-agent-activity .naa-sub {
-  color: rgba(226, 232, 248, 0.5);
+  color: rgba(226, 232, 248, 0.82);
 }
 
 .assistant-panel .navio-agent-activity .naa-header-icon {
@@ -1623,7 +1623,7 @@ html[data-theme="dark"] .assistant-panel {
 }
 
 .assistant-panel .navio-agent-activity .naa-header-icon svg {
-  color: rgba(226, 232, 248, 0.65);
+  color: rgba(226, 232, 248, 0.9);
 }
 
 .assistant-panel .navio-agent-activity .naa-step {
@@ -1645,11 +1645,11 @@ html[data-theme="dark"] .assistant-panel {
 }
 
 .assistant-panel .navio-agent-activity .naa-tool {
-  color: rgba(226, 232, 248, 0.48);
+  color: rgba(226, 232, 248, 0.92);
 }
 
 .assistant-panel .navio-agent-activity .naa-step--thinking .naa-tool {
-  color: rgba(125, 211, 252, 0.95);
+  color: rgba(125, 211, 252, 1);
 }
 
 .assistant-panel .navio-plan-card {
@@ -1663,7 +1663,7 @@ html[data-theme="dark"] .assistant-panel {
 
 .assistant-panel .navio-plan-card .npc-steps,
 .assistant-panel .navio-plan-card .npc-meta {
-  color: rgba(226, 232, 248, 0.72);
+  color: rgba(226, 232, 248, 0.88);
 }
 
 .assistant-panel .assistant-message .message-content.typing-indicator {
@@ -1672,7 +1672,7 @@ html[data-theme="dark"] .assistant-panel {
 }
 
 .assistant-panel .typing-indicator-label {
-  color: rgba(226, 232, 248, 0.55);
+  color: rgba(226, 232, 248, 0.82);
 }
 
 /* Send / Stop — one family (flat glass, no mismatched 3D vs outline) */

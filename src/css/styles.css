@@ -3904,7 +3904,9 @@ button.ntp-ticker-sport--stream:focus-visible {
   transition: width 350ms cubic-bezier(0.32, 0.72, 0, 1);
   /* Above guest <webview> / reading list (1200) / modal shells (2000); below NTP ticker (9999) & workspace/palette/prelude (10030+). Panel is a direct <body> child so it isn’t trapped under #app. */
   z-index: 5000;
-  backdrop-filter: blur(28px) saturate(1.12);
+  /* Softer blur keeps sidecar type sharper than heavy glass (still reads “premium”). */
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
   padding-bottom: var(--ntp-ticker-reserve, 0px);
   box-sizing: border-box;
 }
@@ -4017,10 +4019,10 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   align-items: center;
   gap: 6px;
   margin-top: 1px;
-  font-size: 10px;
-  color: var(--text-secondary);
+  font-size: 11px;
+  color: #a8b4cc;
   font-weight: 600;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   font-variant-numeric: tabular-nums;
 }
@@ -4054,12 +4056,13 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   padding: 8px var(--ap-pad-x);
   background: var(--bg-deep);
   border-bottom: 1px solid var(--border);
-  font-size: 10.5px;
-  color: var(--text-secondary);
+  font-size: 12px;
+  color: #b4bfd6;
   flex-shrink: 0;
   letter-spacing: 0.01em;
-  line-height: 1.4;
-  backdrop-filter: blur(10px);
+  line-height: 1.45;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   min-height: 2.25rem;
 }
 
@@ -4134,8 +4137,8 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-deep);
-  font-size: 10.5px;
-  color: var(--text-secondary);
+  font-size: 11.5px;
+  color: #b4bfd6;
   flex-shrink: 0;
 }
 .assistant-agent-log > summary {
@@ -4158,9 +4161,9 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   flex-direction: column;
   gap: 4px;
 }
-.aal-line { font-family: ui-monospace, monospace; font-size: 10.5px; line-height: 1.35; }
+.aal-line { font-family: ui-monospace, monospace; font-size: 11.5px; line-height: 1.45; }
 .aal-line.aal-err { color: #f56565; }
-.aal-muted { opacity: 0.7; font-style: italic; }
+.aal-muted { opacity: 0.88; font-style: italic; color: #9aa6bf; }
 .aal-time { color: var(--text-tertiary); margin-right: 4px; }
 .aal-act { color: var(--accent); font-weight: 600; }
 
@@ -4300,8 +4303,8 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 .message-content {
   padding: 10px 12px;
   border-radius: 12px;
-  font-size: 12.5px;
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.55;
   word-wrap: break-word;
   user-select: text !important;
   -webkit-user-select: text !important;
@@ -4318,12 +4321,14 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 
 /* Assistant: editorial surface — flat card, almost full bleed */
 .assistant-message .message-content {
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-primary);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.06);
+  color: #eef2fa;
+  border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 4px 14px 14px 14px;
   backdrop-filter: none;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  font-size: 13.5px;
+  line-height: 1.58;
 }
 
 .message-content.streaming-content {
@@ -4441,6 +4446,12 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 .message-content h3 { font-size: 12.5px; color: var(--text-primary); }
 .message-content h4 { font-size: 11.5px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .04em; }
 .message-content h5 { font-size: 11px; color: var(--text-muted); }
+.assistant-panel .assistant-message .message-content h4 {
+  color: #b4bfd6;
+}
+.assistant-panel .assistant-message .message-content h5 {
+  color: #9aa6bf;
+}
 .message-content h2:first-child,
 .message-content h3:first-child { margin-top: 0; }
 
@@ -4459,6 +4470,9 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   color: var(--text-secondary);
   font-style: italic;
+}
+.assistant-panel .assistant-message .message-content blockquote {
+  color: #c5d0e8;
 }
 
 .message-content ul,
@@ -4500,9 +4514,10 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   color: #7dd3fc;
 }
 .assistant-message .message-content code {
-  color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.1);
+  color: #d8e0f4;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.14);
+  font-size: 12px;
 }
 
 .message-content pre {
@@ -8116,7 +8131,7 @@ body.onboarding-active #app {
   -webkit-appearance: none;
   margin: 0;
   font: inherit;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.02em;
   padding: 5px 10px;
@@ -8994,11 +9009,11 @@ button.navio-followup-chip:active {
   color: var(--text-primary);
 }
 .navio-agent-activity .naa-sub {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--text-tertiary);
+  color: #9aa6bf;
 }
 .navio-agent-activity .naa-steps {
   display: flex;
@@ -11275,7 +11290,7 @@ button:focus-visible,
   background: rgba(0, 0, 0, 0.32);
   border-color: rgba(255, 255, 255, 0.1);
   box-shadow: none;
-  color: rgba(226, 232, 248, 0.78);
+  color: rgba(238, 242, 252, 0.94);
 }
 
 /* ── Light mode settings modal ──────────────────────────────────────────── */
@@ -13661,7 +13676,7 @@ button:focus-visible,
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
   transition: border-color var(--duration) var(--ease), background var(--duration) var(--ease), color var(--duration) var(--ease);
   font-family: var(--font-sans);

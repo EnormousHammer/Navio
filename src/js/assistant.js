@@ -736,8 +736,16 @@ class AssistantManagerClass {
   async _syncPanelToTab(tabId) {
     const k = String(tabId || '');
     if (!k) return;
-    this._panelDisplayTabId = k;
     const storageKey = this._storageKeyForTabId(k);
+    const turn = this._turnConversationKey;
+    // Comet-style: an in-flight tool/stream run is tied to `turn` (the tab that started it).
+    // Switching the *browser* to another tab must not wipe the sidebar or silence progress —
+    // main-process tools still target the agent-controlled webview.
+    if (turn && this._busyTabs.has(String(turn)) && storageKey !== String(turn)) {
+      return;
+    }
+
+    this._panelDisplayTabId = k;
     this._ensureConversationEntry(storageKey);
     try {
       this._clearAttachmentQueue();
@@ -748,12 +756,13 @@ class AssistantManagerClass {
     document.getElementById('navio-continue-pill')?.remove();
 
     // Check if an AI stream is currently active for this tab before touching DOM
-    const isStreamingTab = !!(this._turnConversationKey && storageKey === this._turnConversationKey);
+    const isStreamingTab = !!(turn && storageKey === turn);
 
     const h = this._conversationsByTab.get(storageKey) || [];
-    if (h.length) {
+    // Replaying history destroys the live "Working" card and streaming bubble — skip while this tab's turn is active.
+    if (h.length && !isStreamingTab) {
       this._renderDomFromHistoryKey(storageKey);
-    } else if (this.messagesEl) {
+    } else if (this.messagesEl && !isStreamingTab) {
       this.messagesEl.innerHTML = '';
       await this._showGreeting();
     }
