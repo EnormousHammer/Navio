@@ -2557,7 +2557,7 @@ body:not(.navio-vertical-tabs) .tab-item.active {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(4, 5, 14, 0.04) 0%, rgba(4, 5, 14, 0.14) 100%);
+  background: rgba(4, 5, 14, 0.10);
 }
 
 /* ── Brand: force vertical stack, orb centred above title ──────────────── */
