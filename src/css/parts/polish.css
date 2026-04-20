@@ -726,25 +726,10 @@
   box-sizing: border-box;
 }
 
-/* Quiet the photo: readable scrim, no competing color */
-.new-tab-page .ntp-bg-layer::before {
-  display: block !important;
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  background:
-    linear-gradient(180deg, rgba(7, 9, 14, 0.72) 0%, rgba(7, 9, 14, 0.82) 38%, rgba(6, 8, 13, 0.92) 100%);
-}
+/* Background overlays removed — brightness controlled entirely by the dim slider */
+.new-tab-page .ntp-bg-layer::before,
 .new-tab-page .ntp-bg-layer::after {
-  display: block !important;
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  background: radial-gradient(ellipse 85% 70% at 50% 35%, transparent 0%, rgba(5, 7, 12, 0.55) 100%);
+  display: none !important;
 }
 
 .new-tab-page .ntp-topbar {
@@ -2550,9 +2535,8 @@ body:not(.navio-vertical-tabs) .tab-item.active {
    NTP — PREMIUM VISUAL OVERHAUL
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Dim overlay — hidden by default, JS controls bg-layer filter only ─── */
+/* ── Dim overlay — hidden; brightness controlled by JS filter on bg-layer ─ */
 .ntp-dim-overlay { display: none; }
-.ntp-bg-layer::after { display: none !important; }
 
 /* ── Dim control bar ────────────────────────────────────────────────────── */
 .ntp-dim-bar {
