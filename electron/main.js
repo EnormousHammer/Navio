@@ -404,6 +404,63 @@ try {
   NAVIO_SYSTEM_PROMPT_LEGACY = NAVIO_SYSTEM_PROMPT;
 }
 
+// ── Conditional prompt blocks (loaded once, injected on demand) ───────────────
+const PROMPT_BLOCKS = {};
+const PROMPT_BLOCKS_DIR = path.join(__dirname, 'prompt-blocks');
+for (const [key, file] of [
+  ['shipping', 'shipping.txt'],
+  ['gmail', 'gmail.txt'],
+  ['connector-setup', 'connector-setup.txt'],
+]) {
+  try {
+    PROMPT_BLOCKS[key] = fs.readFileSync(path.join(PROMPT_BLOCKS_DIR, file), 'utf8');
+  } catch (e) {
+    console.warn(`[Navio] Could not load prompt block "${key}":`, e.message);
+    PROMPT_BLOCKS[key] = '';
+  }
+}
+
+/**
+ * Given the current messages array, decide which specialty blocks to inject.
+ * Returns an object { shipping, gmail, 'connector-setup' } with boolean values.
+ */
+function _detectPromptBlocks(messages) {
+  let activeUrl = '';
+  let userText = '';
+
+  for (const m of messages) {
+    if (!m) continue;
+    const content = typeof m.content === 'string' ? m.content : '';
+    if (m.role === 'system') {
+      const match = content.match(/\[Active tab[^\]]*\]\s*[:\-–]?\s*(https?:\/\/[^\s\]]+)/i);
+      if (match) activeUrl = match[1].toLowerCase();
+    }
+    if (m.role === 'user') {
+      userText = content.toLowerCase();
+    }
+  }
+
+  const SHIPPING_URL =
+    /purolator|fedex|ups\.com|dhl\.com|tql\.com|freightquote|coyote|echo\.|ufreightcom|xpo\.com|saia\.com|estes-express|rdfs\.com|daytonfreight|rlcarriers|forwarding|broker/i;
+  const SHIPPING_WORDS =
+    /\b(ship|freight|ltl|ftl|carrier|tracking|parcel|courier|pallet|waybill|bill of lading|pickup\s*request|get\s*a\s*quote|shipping\s*(quote|rate|cost)|fedex|purolator|ups|dhl|tql|broker)\b/i;
+
+  const GMAIL_URL = /mail\.google\.com/i;
+  const GMAIL_WORDS =
+    /\b(email|inbox|gmail|unread|draft|reply|compose|send\s+(an?\s+)?email|check\s+(my\s+)?mail|messages?\s+from|bounce|ndr|delivery\s+failure)\b/i;
+
+  const CONNECTOR_URL =
+    /console\.cloud\.google\.com|portal\.azure\.com|github\.com\/settings\/(applications|apps|developer)|dropbox\.com\/developers|api\.slack\.com|developers\.notion\.com|app\.slack\.com\/apps/i;
+  const CONNECTOR_WORDS =
+    /\b(oauth|client\s*id|client\s*secret|redirect\s*(uri|url)|api\s*key|connect\s+(google|gmail|drive|dropbox|slack|notion|github|microsoft|outlook|azure)|set\s*up\s+(the\s+)?(connector|integration|oauth|google|gmail)|google\s*cloud\s*console|developer\s*console|credential)\b/i;
+
+  return {
+    shipping: SHIPPING_URL.test(activeUrl) || SHIPPING_WORDS.test(userText),
+    gmail: GMAIL_URL.test(activeUrl) || GMAIL_WORDS.test(userText),
+    'connector-setup': CONNECTOR_URL.test(activeUrl) || CONNECTOR_WORDS.test(userText),
+  };
+}
+
 // ── Markdown → HTML converter (used for Google Docs rich-text paste) ─────────
 // Converts simple markdown (headings, bold, italic, bullets, hr) to HTML so that
 // when pasted into Google Docs via Ctrl+V the content arrives with real formatting.
@@ -719,7 +776,18 @@ function injectSystemPrompt(messages) {
   const memBlock = buildMemoryBlock();
   const profileBlock = buildProfileBlock();
   const cfg = loadConfig();
-  const basePrompt = cfg.aiUseToolCalling !== false ? NAVIO_SYSTEM_PROMPT : NAVIO_SYSTEM_PROMPT_LEGACY;
+  let basePrompt = cfg.aiUseToolCalling !== false ? NAVIO_SYSTEM_PROMPT : NAVIO_SYSTEM_PROMPT_LEGACY;
+
+  // Resolve conditional prompt blocks — replace {{BLOCK:x}} with block content
+  // when the request context matches, or remove the placeholder when it doesn't.
+  const activeBlocks = _detectPromptBlocks(messages);
+  basePrompt = basePrompt.replace(/\{\{BLOCK:([a-z-]+)\}\}/g, (_match, key) => {
+    if (activeBlocks[key] && PROMPT_BLOCKS[key]) {
+      return '\n' + PROMPT_BLOCKS[key] + '\n';
+    }
+    return '';
+  });
+
   const fullPrompt = basePrompt + memBlock + profileBlock;
   let replaced = false;
   const result = messages.map((m) => {
@@ -1835,6 +1903,37 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
 
     for (const tc of result.toolCalls) {
       console.log(`[navio] tool-loop step ${step}: ${tc.name}(${JSON.stringify(tc.arguments).slice(0, 120)})`);
+
+      // Web search via Perplexity (model-callable, works mid-reasoning)
+      if (tc.name === 'web_search') {
+        const query = (tc.arguments && tc.arguments.query) || '';
+        let toolResult;
+        try {
+          const connMap = loadConnectorKeys();
+          const encKey = connMap['perplexity'];
+          const perplexityKey = encKey ? decryptConnectorKey(encKey) : null;
+          if (!perplexityKey) {
+            toolResult = { error: 'Perplexity API key not connected. Add it in Settings → Connectors → Perplexity.' };
+          } else {
+            const searchRes = await queryPerplexity(perplexityKey, query);
+            if (searchRes.error) {
+              toolResult = { error: searchRes.error };
+            } else {
+              toolResult = {
+                answer: searchRes.answer || '',
+                citations: searchRes.citations || [],
+                model: searchRes.model || 'sonar'
+              };
+            }
+          }
+        } catch (e) {
+          toolResult = { error: `Web search failed: ${e.message}` };
+        }
+        currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
+        toolLog.push({ tool: tc.name, args: tc.arguments, result: sanitizeToolResultForLog(tc.name, toolResult) });
+        tp({ step, tool: tc.name, result: toolResult });
+        continue;
+      }
 
       // Email safety: block clicking send buttons on mail hosts
       if (tc.name === 'click') {

@@ -177,6 +177,24 @@ const NAVIO_TOOLS = [
     }
   },
   {
+    name: 'web_search',
+    description:
+      'Search the web for real-time information using Perplexity AI. Returns a synthesized answer with source URLs. ' +
+      'Use for: current events, prices, facts not available on the active page, general knowledge questions, comparisons, research. ' +
+      'Do NOT use when the answer is already on the active page — read_page or get_page_text is faster. ' +
+      'Requires a Perplexity API key in Settings → Connectors.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Specific search query. Include context, year, and qualifiers for better results.'
+        }
+      },
+      required: ['query']
+    }
+  },
+  {
     name: 'scroll',
     description:
       'Scroll up or down. Uses the window first, then the focused element’s scrollable parents, then the largest scrollable region — needed for Gmail/Docs-style nested panes where window.scrollBy does nothing.',

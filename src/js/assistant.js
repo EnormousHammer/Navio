@@ -1375,7 +1375,7 @@ class AssistantManagerClass {
         const wc = tab.webview.getWebContentsId();
         const content = await window.navio.extractPageContent(wc);
         if (content && !content.error) {
-          const body = (content.text || '').slice(0, 15000);
+          const body = (content.text || '').slice(0, 30000);
           const g = TabManager.getTabGroupLabel?.(tab);
           const gline = g ? `\nTab group: ${g}` : '';
           contextMessages.push({
@@ -1411,6 +1411,28 @@ class AssistantManagerClass {
     const inferred = this._inferReferencedTabsFromMessage(text);
     const ex = excludeTabIds || new Set();
     const toFetch = inferred.filter((t) => !ex.has(t.id));
+
+    // Relational intent: user is comparing or referencing info across tabs without naming them.
+    // Auto-inject body of up to 3 other open real tabs so the model doesn't need to switch_tab.
+    const relationalIntent =
+      /\b(for the|from the|on the|using the|based on|vs\.?|versus|compare|compared to|cross.?ref|against|match(ing)?|related to|link(ed)? to|the (other|second|another) tab|both tabs?|all (open )?tabs?|the (po|so|order|invoice|quote|document|form|sheet|file|page) (in|on|from) the (other|other tab|tab))\b/i.test(text) ||
+      /\bwhat (comments?|notes?|fields?|info|information|data|details?|values?|text)\s+(should|do|can|to)\s+(i\s+)?(put|add|write|enter|fill|use|type)\b/i.test(text);
+
+    if (relationalIntent && typeof TabManager !== 'undefined') {
+      const activeId = TabManager.getActiveTab?.()?.id;
+      const browserCtxId = TabManager.getBrowserContextTab?.()?.id;
+      const knownIds = new Set([...(ex || []), ...(toFetch.map((t) => t.id))]);
+      if (activeId) knownIds.add(activeId);
+      if (browserCtxId) knownIds.add(browserCtxId);
+      const otherTabs = TabManager.tabs
+        .filter((t) => t.webview && t.url && !t.url.startsWith('about:') && !knownIds.has(t.id))
+        .slice(0, 3);
+      if (otherTabs.length) {
+        const otherCtx = await this._fetchTabContextForTabs(otherTabs, 'Related open tab');
+        return [...(await this._fetchTabContextForTabs(toFetch, 'Matched tab from your message')), ...otherCtx];
+      }
+    }
+
     if (!toFetch.length) return [];
     return this._fetchTabContextForTabs(toFetch, 'Matched tab from your message');
   }
@@ -1696,19 +1718,23 @@ class AssistantManagerClass {
 
     if (scope === 'excerpt') {
       const heads = page.headings?.map((h) => `${h.level}: ${h.text}`).join('\n') || '';
-      const body = (page.text || '').slice(0, 15000);
-      this.setReceipt(`Scope: excerpt — title + headings + ${body.length} chars of body.`);
+      const rawBody = page.text || '';
+      const body = rawBody.slice(0, 40000);
+      const truncated = rawBody.length > 40000;
+      this.setReceipt(`Scope: excerpt — title + headings + ${body.length} chars of body${truncated ? ' (truncated)' : ''}.`);
       return {
         role: 'system',
-        content: `[Current page context — excerpt]\nTitle: ${page.title}\nURL: ${page.url}\nDescription: ${page.description || 'N/A'}\nHeadings:\n${heads}\n\nBody (truncated):\n${body}`
+        content: `[Current page context — excerpt]\nTitle: ${page.title}\nURL: ${page.url}\nDescription: ${page.description || 'N/A'}\nHeadings:\n${heads}\n\nBody${truncated ? ' (truncated — ask me to read a specific section for more)' : ''}:\n${body}`
       };
     }
 
-    const body = (page.text || '').slice(0, 14000);
-    this.setReceipt(`Scope: extended — large extract (${body.length} chars).`);
+    const rawBody = page.text || '';
+    const body = rawBody.slice(0, 60000);
+    const truncated = rawBody.length > 60000;
+    this.setReceipt(`Scope: extended — large extract (${body.length} chars${truncated ? ', truncated' : ''}).`);
     return {
       role: 'system',
-      content: `[Current page context — extended]\nTitle: ${page.title}\nURL: ${page.url}\n\n${body}`
+      content: `[Current page context — extended]\nTitle: ${page.title}\nURL: ${page.url}\n\n${body}${truncated ? '\n\n[Content truncated — ask me to read a specific section for more]' : ''}`
     };
   }
 
@@ -1808,10 +1834,12 @@ class AssistantManagerClass {
     this.showTypingIndicator();
     this._updateAssistantBusyChrome();
 
-    // ── Tool-calling mode (new agentic path) ────────────────────────────────
-    if (config.aiUseToolCalling && !isQuickAction) {
+    // ── Tool-calling mode (single agentic path) ─────────────────────────────
+    // All requests go through _processWithTools when tool calling is enabled.
+    // The legacy XML action path is kept only as a fallback when explicitly disabled.
+    if (config.aiUseToolCalling !== false) {
     try {
-      await this._processWithTools(text, config, historyUserLabel || this._historyLabelForAttachments(text));
+      await this._processWithTools(text, config, historyUserLabel || this._historyLabelForAttachments(text), null, { isQuickAction });
     } catch (err) {
       this.removeTypingIndicator();
       this._turnStartedAt = null;
@@ -1819,7 +1847,7 @@ class AssistantManagerClass {
     }
       return;
     }
-    // ── Legacy <navio-actions> path ──────────────────────────────────────────
+    // ── Legacy <navio-actions> path (only when aiUseToolCalling explicitly false) ──
 
     const messages = [{ role: 'system', content: this.systemPrompt }];
     const mailBackendPreferred = await this._gmailApiMailBackendPreferred(text, config);
@@ -2290,15 +2318,22 @@ class AssistantManagerClass {
    * Tool-calling path: builds context messages, sets up navigate/progress
    * listeners, calls the main-process agentic loop, and displays results.
    */
-  async _processWithTools(text, config, historyUserLabel, guestWv = null) {
+  async _processWithTools(text, config, historyUserLabel, guestWv = null, opts = {}) {
+    const isQuickAction = !!(opts && opts.isQuickAction);
     this._guestChatWebview = guestWv || null;
     try {
     const tk = String(this._turnConversationKey || '__default__');
     if (this.inputEl && typeof this.inputEl.blur === 'function') this.inputEl.blur();
 
-    // Build context messages (same as legacy path but without page snapshot —
-    // the model will call read_page itself via tools)
+    // ── Agent Router — detect domain and add focused context ────────────────
+    const agentDomain = this._detectAgentDomain(text, typeof TabManager !== 'undefined' ? TabManager.getActiveTab()?.url || '' : '');
+
+    // Build context messages
     const messages = [{ role: 'system', content: this.systemPrompt }];
+    // Inject domain-specific focus hint so the model behaves like a specialist
+    if (agentDomain && agentDomain !== 'general') {
+      messages.push({ role: 'system', content: this._agentDomainFocusHint(agentDomain) });
+    }
     const mailBackendPreferred = await this._gmailApiMailBackendPreferred(text, config);
     const activeUrl = typeof TabManager !== 'undefined' ? TabManager.getActiveTab()?.url || '' : '';
 
@@ -2370,22 +2405,24 @@ class AssistantManagerClass {
       if (titles) messages.push({ role: 'system', content: `[Pinned tabs in workspace]\n${titles}` });
     }
 
-    const mentionMsgs = await this._resolveAtMentions(text);
-    const atTabIds = this._tabIdsFromAtMentions(text);
-    const implicitTabMsgs = await this._resolveImplicitTabContext(text, atTabIds);
-    const tabCtxN = mentionMsgs.length + implicitTabMsgs.length;
-    if (tabCtxN) {
-      messages.push({
-        role: 'system',
-        content: `[Multi-tab context — ${tabCtxN} tab(s)${mentionMsgs.length ? ' (@mention and/or wording match)' : ''}]`
-      });
-      messages.push(...mentionMsgs, ...implicitTabMsgs);
-    }
+    if (!isQuickAction) {
+      const mentionMsgs = await this._resolveAtMentions(text);
+      const atTabIds = this._tabIdsFromAtMentions(text);
+      const implicitTabMsgs = await this._resolveImplicitTabContext(text, atTabIds);
+      const tabCtxN = mentionMsgs.length + implicitTabMsgs.length;
+      if (tabCtxN) {
+        messages.push({
+          role: 'system',
+          content: `[Multi-tab context — ${tabCtxN} tab(s)${mentionMsgs.length ? ' (@mention and/or wording match)' : ''}]`
+        });
+        messages.push(...mentionMsgs, ...implicitTabMsgs);
+      }
 
-    // Connector context
-    if (typeof ConnectorsManager !== 'undefined') {
-      const connectorCtx = await this._buildConnectorContext(text, this._connectorOptsFromConfig(config));
-      if (connectorCtx) messages.push({ role: 'system', content: connectorCtx });
+      // Connector context (Perplexity, Gmail, Drive, etc.)
+      if (typeof ConnectorsManager !== 'undefined') {
+        const connectorCtx = await this._buildConnectorContext(text, this._connectorOptsFromConfig(config));
+        if (connectorCtx) messages.push({ role: 'system', content: connectorCtx });
+      }
     }
 
     messages.push({
@@ -2634,6 +2671,8 @@ class AssistantManagerClass {
       if (tool === 'gmail_search' && result && !result.error) {
         void this._ingestGmailSearchToolResults(result);
       }
+      // Update the typing indicator label in real-time (Comet-style)
+      this._updateTypingLabel(tool);
       const label = this._toolProgressLabel(tool, result);
       this._appendActivityStep(tool, label);
     });
@@ -2761,11 +2800,16 @@ class AssistantManagerClass {
     } else if (response.content) {
       if (guestWv) this._guestDeliver(guestWv, { type: 'assistant', content: response.content });
       else {
-        const cite =
-          this._pendingConnectorCitations && this._pendingConnectorCitations.length
-            ? { citations: this._pendingConnectorCitations }
-            : null;
-        const meta = cite ? { ...cite } : {};
+        // Collect citations from web_search tool calls in this run
+        const toolSearchCitations = (response.toolLog || [])
+          .filter((t) => t.tool === 'web_search' && Array.isArray(t.result?.citations) && t.result.citations.length)
+          .flatMap((t) => t.result.citations)
+          .filter((u) => typeof u === 'string' && u.startsWith('http'))
+          .slice(0, 12);
+        const connectorCites = (this._pendingConnectorCitations || []).filter((u) => typeof u === 'string');
+        const allCitations = [...new Set([...toolSearchCitations, ...connectorCites])];
+        const meta = {};
+        if (allCitations.length) meta.citations = allCitations;
         if (toolTurnMs != null) meta.durationMs = toolTurnMs;
         this.addMessage('assistant', response.content, '', meta);
         this._pendingConnectorCitations = null;
@@ -2813,9 +2857,23 @@ class AssistantManagerClass {
     const step = document.createElement('div');
     const isThink = tool === 'thinking';
     step.className = isThink ? 'naa-step naa-step--thinking' : 'naa-step';
-    const toolShown = isThink ? 'Thinking' : this._escapeHtml(String(tool));
+    // Human-readable tool badges (Comet-style)
+    const TOOL_BADGES = {
+      thinking: 'Thinking', navigate: 'Browse', read_page: 'Read', get_page_text: 'Extract',
+      click: 'Click', type_text: 'Type', scroll: 'Scroll', screenshot: 'Screenshot',
+      press_key: 'Key', insert_text: 'Paste', wait: 'Wait', go_back: 'Back', go_forward: 'Forward',
+      open_tab: 'New tab', close_tab: 'Close tab', switch_tab: 'Switch tab', list_tabs: 'Tabs',
+      read_console: 'Console', read_network: 'Network', propose_plan: 'Plan',
+      list_workflows: 'Workflows', run_workflow: 'Run workflow',
+      gmail_search: 'Gmail', gmail_get_message: 'Gmail', gmail_list_drafts: 'Drafts',
+      gmail_create_draft: 'Draft', gmail_create_reply_draft: 'Reply draft',
+      gmail_update_draft: 'Update draft', gmail_delete_draft: 'Delete draft',
+      gmail_send_draft: 'Send', web_search: 'Web search'
+    };
+    const toolShown = TOOL_BADGES[tool] || this._escapeHtml(String(tool));
+    const toolClass = tool === 'web_search' ? 'naa-tool naa-tool--search' : 'naa-tool';
     const n = stepsEl.children.length + 1;
-    step.innerHTML = `<span class="naa-step-index" aria-hidden="true">${n}</span><span class="naa-tool">${toolShown}</span><span class="naa-label">${this._escapeHtml(String(label))}</span>`;
+    step.innerHTML = `<span class="naa-step-index" aria-hidden="true">${n}</span><span class="${toolClass}">${toolShown}</span><span class="naa-label">${this._escapeHtml(String(label))}</span>`;
     stepsEl.appendChild(step);
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
   }
@@ -2854,6 +2912,11 @@ class AssistantManagerClass {
       case 'gmail_get_message': return `Gmail: opened message`;
       case 'gmail_list_drafts': return `Gmail: ${result?.count ?? result?.drafts?.length ?? 0} draft(s)`;
       case 'gmail_create_draft': return `Gmail: new draft`;
+      case 'web_search': {
+        if (result?.error) return `Search failed: ${result.error}`;
+        const cites = Array.isArray(result?.citations) ? result.citations.length : 0;
+        return `Web search${cites ? ` (${cites} sources)` : ''}`;
+      }
       default: return tool;
     }
   }
@@ -2912,21 +2975,31 @@ class AssistantManagerClass {
 
       if (streamingMsg) {
         const contentEl = streamingMsg.querySelector('.message-content');
+        const { clean: cleanBuffer, chips: streamChips } = this._extractFollowUpChips(buffer);
         if (contentEl) {
           contentEl.classList.remove('streaming-content');
-          contentEl.innerHTML = this.formatMessage(buffer, true);
+          contentEl.innerHTML = this.formatMessage(cleanBuffer, true);
           await this._wireActions(contentEl);
-          this._checkAndShowActionFormatWarning(buffer, streamingMsg);
+          this._checkAndShowActionFormatWarning(cleanBuffer, streamingMsg);
         }
         this._attachCopyButtonToMessage(streamingMsg, contentEl);
         if (elapsed != null) this._appendMessageDurationRow(streamingMsg, elapsed);
         if (this._pendingConnectorCitations && this._pendingConnectorCitations.length) {
           this._appendCitationChips(streamingMsg, this._pendingConnectorCitations);
         } else {
-          const fromText = this._extractUrlsForCitationChipsFromAssistantText(buffer);
+          const fromText = this._extractUrlsForCitationChipsFromAssistantText(cleanBuffer);
           if (fromText && fromText.length) this._appendCitationChips(streamingMsg, fromText);
         }
         this._pendingConnectorCitations = null;
+        if (streamChips && streamChips.length) {
+          this._appendFollowUpChips(streamingMsg, streamChips, (chip) => {
+            if (this.inputEl) {
+              this.inputEl.value = chip;
+              this.inputEl.focus();
+              this.inputEl.dispatchEvent(new Event('input'));
+            }
+          });
+        }
       }
       this._currentHistory().push(
         { role: 'user', content: userHistory },
@@ -2973,7 +3046,9 @@ class AssistantManagerClass {
         this.messagesEl.appendChild(streamingMsg);
       }
       const contentEl = streamingMsg.querySelector('.message-content');
-      contentEl.innerHTML = this.formatMessage(buffer);
+      // Strip [FOLLOWUP] block from live stream so it doesn't flash as raw text
+      const { clean: liveClean } = this._extractFollowUpChips(buffer);
+      contentEl.innerHTML = this.formatMessage(liveClean);
       this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
     });
 
@@ -3243,6 +3318,7 @@ class AssistantManagerClass {
 
     msgEl.appendChild(this._messageRoleStrip(role, type));
 
+    let followUpChips = [];
     if (type === 'error') {
       const clean = content.replace(/^\*\*Error:\*\*\s*/i, '').replace(/^\*\*Connection error:\*\*\s*/i, '');
       contentEl.innerHTML = `
@@ -3254,7 +3330,13 @@ class AssistantManagerClass {
         </div>
         <div class="msg-error-body">${this.formatMessage(clean)}</div>`;
     } else {
-      contentEl.innerHTML = this.formatMessage(content, role === 'assistant');
+      let renderContent = content;
+      if (role === 'assistant' && typeof content === 'string') {
+        const extracted = this._extractFollowUpChips(content);
+        renderContent = extracted.clean;
+        followUpChips = extracted.chips;
+      }
+      contentEl.innerHTML = this.formatMessage(renderContent, role === 'assistant');
       if (role === 'assistant') this._wireActions(contentEl); // async — fire-and-forget is fine here
     }
 
@@ -3291,6 +3373,15 @@ class AssistantManagerClass {
     }
     if (role === 'assistant' && citeUrls && citeUrls.length) {
       this._appendCitationChips(msgEl, citeUrls);
+    }
+    if (role === 'assistant' && followUpChips && followUpChips.length) {
+      this._appendFollowUpChips(msgEl, followUpChips, (chip) => {
+        if (this.inputEl) {
+          this.inputEl.value = chip;
+          this.inputEl.focus();
+          this.inputEl.dispatchEvent(new Event('input'));
+        }
+      });
     }
     this.messagesEl.appendChild(msgEl);
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
@@ -3475,6 +3566,99 @@ class AssistantManagerClass {
         authEmail: authEmail || undefined
       });
     }
+  }
+
+  /**
+   * Detect the domain of the current request — used for agent routing.
+   * Returns: 'mail' | 'research' | 'browser' | 'shipping' | 'docs' | 'general'
+   */
+  _detectAgentDomain(text, activeUrl) {
+    const t = (text || '').toLowerCase();
+    const url = (activeUrl || '').toLowerCase();
+
+    // Mail domain
+    if (
+      /mail\.google\.com|outlook\.(com|office)|webmail/i.test(url) ||
+      navioDetectMailboxIntent(text)
+    ) return 'mail';
+
+    // Shipping / freight domain
+    if (
+      /purolator\.com|fedex\.com|ups\.com|dhl\.com|tql\.com|freightquote|ltl|truckload|shipment|shipper/i.test(url) ||
+      /\b(purolator|fedex|ups|dhl|ltl|ftl|freight|carrier|pallet|shipment|tracking\s+number|waybill)\b/i.test(t)
+    ) return 'shipping';
+
+    // Research / web search domain
+    if (
+      /\b(research|find|search|look\s+up|what\s+is|who\s+is|how\s+(to|do|does)|compare|price|cost|news|latest|review|best|top)\b/i.test(t) &&
+      !/\b(click|navigate|fill|type|scroll|form|button)\b/i.test(t)
+    ) return 'research';
+
+    // Docs / productivity domain
+    if (
+      /docs\.google\.com|sheets\.google\.com|drive\.google\.com|notion\.so|confluence|document/i.test(url) ||
+      /\b(google\s+doc|spreadsheet|presentation|notion|document|report)\b/i.test(t)
+    ) return 'docs';
+
+    // Browser automation domain
+    if (
+      /\b(click|navigate|go\s+to|open|fill|type|scroll|submit|press|buy|book|sign\s+in|log\s+in)\b/i.test(t)
+    ) return 'browser';
+
+    return 'general';
+  }
+
+  _agentDomainFocusHint(domain) {
+    const hints = {
+      mail: '[Agent: Mail] You are in Mail mode. Use gmail_search, gmail_get_message, gmail_create_reply_draft, gmail_create_draft as primary tools. Prefer the Gmail API over navigating to mail.google.com.',
+      research: '[Agent: Research] You are in Research mode. Use web_search as your primary tool for facts, comparisons, news, and general knowledge. Synthesize answers with citations. Lead with the answer on line 1.',
+      browser: '[Agent: Browser] You are in Browser mode. Use navigate, read_page, click, type_text, scroll, screenshot in sequence. Always read_page after every navigation or click.',
+      shipping: '[Agent: Shipping] You are in Shipping mode — a shipping desk specialist. Use read_page with filter="all" first. Set mode (parcel vs LTL/FTL) before typing addresses. Never mix origin and destination.',
+      docs: '[Agent: Docs] You are in Docs mode. Use get_page_text for reading, insert_text for writing into Google Docs/Sheets (canvas editors). Never use type_text in Google Docs.',
+      general: ''
+    };
+    return hints[domain] || '';
+  }
+
+  /**
+   * Strip [FOLLOWUP]{...}[/FOLLOWUP] from content and return chips separately.
+   * Returns { clean: string, chips: string[] }.
+   */
+  _extractFollowUpChips(text) {
+    if (!text || typeof text !== 'string') return { clean: text || '', chips: [] };
+    const re = /\[FOLLOWUP\]\s*(\{[\s\S]*?\})\s*\[\/FOLLOWUP\]/g;
+    const chips = [];
+    const clean = text.replace(re, (_, json) => {
+      try {
+        const parsed = JSON.parse(json);
+        if (Array.isArray(parsed.chips)) {
+          parsed.chips.forEach((c) => {
+            if (typeof c === 'string' && c.trim()) chips.push(c.trim());
+          });
+        }
+      } catch {
+        /* malformed JSON, ignore */
+      }
+      return '';
+    }).replace(/\n{3,}/g, '\n\n').trim();
+    return { clean, chips: chips.slice(0, 4) };
+  }
+
+  _appendFollowUpChips(msgEl, chips, onChipClick) {
+    if (!msgEl || !chips || !chips.length) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'navio-followup-chips';
+    chips.forEach((chip) => {
+      const btn = document.createElement('button');
+      btn.className = 'navio-followup-chip';
+      btn.type = 'button';
+      btn.textContent = chip;
+      btn.addEventListener('click', () => {
+        if (typeof onChipClick === 'function') onChipClick(chip);
+      });
+      wrap.appendChild(btn);
+    });
+    msgEl.appendChild(wrap);
   }
 
   formatMessage(text, parseActions = false) {
@@ -5267,12 +5451,41 @@ ${pageInfo}${snapText}`;
         <span class="msg-role-label">Assistant</span>
       </div>
       <div class="message-content typing-indicator">
-        <span class="typing-indicator-label">Thinking</span>
+        <span class="typing-indicator-label" id="typing-indicator-label">Thinking</span>
         <span class="typing-dots"><span></span><span></span><span></span></span>
       </div>
     `;
     this.messagesEl.appendChild(indicator);
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+  }
+
+  /** Update the "Thinking" label in real-time with the current tool name — Comet style. */
+  _updateTypingLabel(tool) {
+    const labelEl = document.getElementById('typing-indicator-label');
+    if (!labelEl) return;
+    const labels = {
+      navigate: 'Browsing',
+      read_page: 'Reading page',
+      get_page_text: 'Reading page',
+      click: 'Clicking',
+      type_text: 'Typing',
+      scroll: 'Scrolling',
+      screenshot: 'Capturing screenshot',
+      open_tab: 'Opening tab',
+      switch_tab: 'Switching tab',
+      list_tabs: 'Checking tabs',
+      web_search: 'Searching the web',
+      gmail_search: 'Searching Gmail',
+      gmail_get_message: 'Reading email',
+      gmail_list_drafts: 'Checking drafts',
+      gmail_create_draft: 'Drafting email',
+      gmail_create_reply_draft: 'Drafting reply',
+      read_console: 'Reading console',
+      read_network: 'Checking network',
+      propose_plan: 'Planning',
+      wait: 'Waiting'
+    };
+    labelEl.textContent = labels[tool] || 'Working';
   }
 
   removeTypingIndicator() {
@@ -5392,7 +5605,12 @@ ${pageInfo}${snapText}`;
       if (webMode !== 'never' && has('perplexity')) {
         const webSearchIntentAuto =
           /\b(search|look up|find out|latest|news|current|today|recent|on the web|from the web|web results|online|lookup|cite|verify|fact\s*check|browse\s+online|perplexity)\b/i.test(text) ||
-          /\bwhat\s+(is|are|was|were)\s+the\s+(latest|news|weather|price|stock|rate|situation|meaning|definition)\b/i.test(text);
+          /\bwhat\s+(is|are|was|were)\s+the\s+(latest|news|weather|price|stock|rate|situation|meaning|definition)\b/i.test(text) ||
+          // General knowledge questions not likely answered from the active page
+          /^(what|who|where|when|why|how)\s+(is|are|was|were|do|does|did|can|could|should|would)\b/i.test(text.trim()) ||
+          /\b(how\s+(much|many|long|far|old|often)|what\s+does|who\s+is|where\s+is|what\s+year|what\s+time|what\s+are\s+the\s+(best|top|most))\b/i.test(text) ||
+          /\b(price|cost|rate|stock|weather|definition|meaning|explain|difference\s+between|compare|vs\.?|versus|pros\s+and\s+cons|review|rating|recommend)\b/i.test(text) ||
+          /\b(how\s+to|best\s+way\s+to|steps\s+to|guide\s+(to|for)|tutorial)\b/i.test(text);
         const webSearchIntent =
           webMode === 'always' || (webMode === 'auto' && webSearchIntentAuto);
         if (webSearchIntent) {
