@@ -1293,6 +1293,162 @@
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
     }
 
+    /* ══════════════════════════════════════════════════════════════════
+       INLINE THINKING CARD — tool steps shown in the chat thread
+       ══════════════════════════════════════════════════════════════════ */
+    .ct-thinking {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 14px 10px 12px;
+      border-radius: 14px;
+      background: rgba(34, 211, 238, 0.05);
+      border: 1px solid rgba(34, 211, 238, 0.18);
+      font-size: 12.5px;
+      color: var(--muted);
+      animation: msg-slide-in 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+      cursor: default;
+      max-width: 820px;
+      width: 100%;
+      margin: 0 auto;
+      box-sizing: border-box;
+    }
+    .ct-thinking.ct-done {
+      background: rgba(255, 255, 255, 0.025);
+      border-color: rgba(255, 255, 255, 0.07);
+      cursor: pointer;
+    }
+    .ct-thinking-icon {
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 1px;
+    }
+    .ct-thinking:not(.ct-done) .ct-thinking-icon {
+      border: 1.5px solid rgba(34, 211, 238, 0.4);
+      background: rgba(34, 211, 238, 0.08);
+    }
+    .ct-thinking.ct-done .ct-thinking-icon {
+      background: rgba(74, 222, 128, 0.12);
+      border: 1.5px solid rgba(74, 222, 128, 0.35);
+    }
+    /* spinning ring while active */
+    .ct-spin {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      border: 2px solid rgba(34, 211, 238, 0.25);
+      border-top-color: var(--cyan);
+      animation: ct-spin-anim 0.75s linear infinite;
+    }
+    @keyframes ct-spin-anim { to { transform: rotate(360deg); } }
+    /* checkmark when done */
+    .ct-check { color: var(--green-400); width: 13px; height: 13px; }
+    .ct-thinking-body { flex: 1; min-width: 0; }
+    .ct-thinking-label {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-3);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .ct-thinking.ct-done .ct-thinking-label { color: var(--dim); font-weight: 500; }
+    .ct-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin-top: 8px;
+      overflow: hidden;
+      transition: max-height 0.2s ease, opacity 0.2s ease;
+      max-height: 400px;
+      opacity: 1;
+    }
+    .ct-thinking.ct-done.ct-collapsed .ct-steps { max-height: 0; opacity: 0; margin-top: 0; }
+    .ct-step {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      line-height: 1.4;
+    }
+    .ct-step-tool {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--cyan);
+      flex-shrink: 0;
+      opacity: 0.85;
+    }
+    .ct-step-label { color: var(--muted); font-size: 12px; }
+    .ct-toggle-hint {
+      font-size: 10px;
+      color: var(--dim);
+      margin-left: auto;
+      flex-shrink: 0;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .ct-thinking.ct-done:hover .ct-toggle-hint { opacity: 1; }
+
+    /* ══════════════════════════════════════════════════════════════════
+       FOLLOW-UP CHIPS — one-click send suggestions in the chat thread
+       ══════════════════════════════════════════════════════════════════ */
+    .ct-followup-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      max-width: 820px;
+      width: 100%;
+      margin-left: auto;
+      margin-right: auto;
+      box-sizing: border-box;
+    }
+    button.ct-followup-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 13px 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(125, 211, 252, 0.18);
+      background: rgba(125, 211, 252, 0.05);
+      color: #7dd3fc;
+      font-size: 12px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      white-space: nowrap;
+      max-width: 280px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    button.ct-followup-chip::before {
+      content: '';
+      flex-shrink: 0;
+      width: 12px; height: 12px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237dd3fc' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 2L11 13'/%3E%3Cpath d='M22 2L15 22l-4-9-9-4 20-7z'/%3E%3C/svg%3E");
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: center;
+      opacity: 0.65;
+      transition: opacity 0.15s;
+    }
+    button.ct-followup-chip:hover {
+      background: rgba(125, 211, 252, 0.12);
+      border-color: rgba(125, 211, 252, 0.4);
+      color: #bae6fd;
+    }
+    button.ct-followup-chip:hover::before { opacity: 1; }
+    button.ct-followup-chip:active { background: rgba(125, 211, 252, 0.2); }
+
     @media (max-width: 760px) {
       .app { grid-template-columns: 0 1fr; }
       body:not(.sidebar-collapsed) .app { grid-template-columns: var(--sidebar-w) 1fr; }
@@ -1864,6 +2020,7 @@
     streamBubble = null;
     streamBody = null;
     streamBuffer = '';
+    resetInlineThinking();
     if (s && s.messages.length) {
       s.messages.forEach(m => {
         appendMessage(
@@ -1902,8 +2059,17 @@
     bubble.innerHTML = '<div class="role">' + (isUser ? 'You' : 'Navio') + '</div><div class="body"></div>';
 
     const body = bubble.querySelector('.body');
+    // Extract follow-up chips from assistant messages before rendering
+    let renderText = text || '';
+    let followChips = [];
+    if (!isUser && !opts.streaming) {
+      const extracted = extractFollowUpChips(renderText);
+      renderText = extracted.clean;
+      followChips = extracted.chips;
+    }
+
     if (isUser) {
-      body.textContent = text || '';
+      body.textContent = renderText;
       if (Array.isArray(opts.files) && opts.files.length) {
         const filesEl = document.createElement('div');
         filesEl.className = 'msg-files';
@@ -1919,7 +2085,7 @@
         bubble.appendChild(filesEl);
       }
     } else {
-      body.innerHTML = renderMarkdown(text || '');
+      body.innerHTML = renderMarkdown(renderText);
       wireCodeCopyButtons(body);
     }
 
@@ -1929,7 +2095,12 @@
 
     // Hover action bar
     if (!opts.streaming) {
-      row.appendChild(buildMsgActions(role, text || '', row, bubble));
+      row.appendChild(buildMsgActions(role, renderText, row, bubble));
+    }
+
+    // Follow-up suggestion chips (assistant only, after the action bar)
+    if (followChips.length) {
+      appendFollowUpChips(row, followChips);
     }
 
     messagesEl.appendChild(row);
@@ -2071,15 +2242,120 @@
     messagesEl.appendChild(row);
     updateLayoutMode();
   }
+  // ── FOLLOWUP chip extraction (mirrors assistant.js logic) ────────────
+  function extractFollowUpChips(text) {
+    if (!text) return { clean: '', chips: [] };
+    const re = /\[FOLLOWUP\]\s*(\{[\s\S]*?\})\s*\[\/FOLLOWUP\]/g;
+    const chips = [];
+    const clean = text.replace(re, function (_, json) {
+      try {
+        const parsed = JSON.parse(json);
+        const arr = Array.isArray(parsed) ? parsed
+                  : Array.isArray(parsed.chips) ? parsed.chips : [];
+        arr.forEach(function (c) { if (typeof c === 'string' && c.trim()) chips.push(c.trim()); });
+      } catch { /* ignore malformed JSON */ }
+      return '';
+    });
+    // Also strip any partial [FOLLOWUP] that may appear at end of live stream
+    const trimmed = clean.replace(/\[FOLLOWUP\][\s\S]*$/, '').trim();
+    return { clean: trimmed, chips: chips.slice(0, 4) };
+  }
+
+  function appendFollowUpChips(parentEl, chips) {
+    if (!chips || !chips.length) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'ct-followup-chips';
+    chips.forEach(function (chip) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ct-followup-chip';
+      btn.textContent = chip;
+      btn.addEventListener('click', function () {
+        if (busy) return;
+        send(chip);
+      });
+      wrap.appendChild(btn);
+    });
+    parentEl.appendChild(wrap);
+  }
+
+  // ── Inline thinking card (tool steps shown in the chat thread) ────────
+  let ctThinkingEl = null;
+  let ctThinkingStepsEl = null;
+  let ctThinkingLabelEl = null;
+  let ctThinkingCount = 0;
+
+  function createInlineThinking() {
+    ctThinkingCount = 0;
+    const el = document.createElement('div');
+    el.className = 'ct-thinking';
+    el.innerHTML =
+      '<div class="ct-thinking-icon"><div class="ct-spin"></div></div>' +
+      '<div class="ct-thinking-body">' +
+        '<div class="ct-thinking-label">Working…<span class="ct-toggle-hint">click to expand</span></div>' +
+        '<div class="ct-steps"></div>' +
+      '</div>';
+    ctThinkingEl = el;
+    ctThinkingStepsEl = el.querySelector('.ct-steps');
+    ctThinkingLabelEl = el.querySelector('.ct-thinking-label');
+    messagesEl.appendChild(el);
+    updateLayoutMode();
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function addInlineStep(tool, label) {
+    if (!ctThinkingEl) return;
+    ctThinkingCount++;
+    const step = document.createElement('div');
+    step.className = 'ct-step';
+    step.innerHTML = '<span class="ct-step-tool">' + esc(tool) + '</span><span class="ct-step-label">' + esc(label) + '</span>';
+    ctThinkingStepsEl.appendChild(step);
+    // Update live label to show last activity
+    if (ctThinkingLabelEl) {
+      ctThinkingLabelEl.firstChild.textContent = label || 'Working…';
+    }
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function finalizeInlineThinking(stepsCount) {
+    if (!ctThinkingEl) return;
+    const count = stepsCount || ctThinkingCount;
+    ctThinkingEl.classList.add('ct-done', 'ct-collapsed');
+    // Swap spinner for checkmark
+    const iconEl = ctThinkingEl.querySelector('.ct-thinking-icon');
+    if (iconEl) {
+      iconEl.innerHTML = '<svg class="ct-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    }
+    if (ctThinkingLabelEl) {
+      ctThinkingLabelEl.firstChild.textContent = 'Done · ' + count + ' step' + (count !== 1 ? 's' : '');
+    }
+    // Toggle collapse on click
+    ctThinkingEl.addEventListener('click', function () {
+      ctThinkingEl.classList.toggle('ct-collapsed');
+    });
+    ctThinkingEl = null;
+    ctThinkingStepsEl = null;
+    ctThinkingLabelEl = null;
+  }
+
+  function resetInlineThinking() {
+    ctThinkingEl = null;
+    ctThinkingStepsEl = null;
+    ctThinkingLabelEl = null;
+    ctThinkingCount = 0;
+  }
+
   function finalizeStream(text) {
     if (streamBubble && streamBody) {
-      const finalText = (text && text.length) ? text : streamBuffer;
+      const rawText = (text && text.length) ? text : streamBuffer;
+      const { clean: finalText, chips } = extractFollowUpChips(rawText || '');
       streamBody.innerHTML = renderMarkdown(finalText || '');
       wireCodeCopyButtons(streamBody);
       streamBubble.classList.remove('streaming');
       if (streamRow) {
         streamRow.classList.remove('streaming-row');
         streamRow.appendChild(buildMsgActions('assistant', finalText || '', streamRow, streamBubble));
+        if (chips.length) appendFollowUpChips(streamRow, chips);
       }
     }
     streamBubble = null;
@@ -2092,7 +2368,11 @@
     finalizeStream('');
     appendMessage('assistant', text || '', { error: !!isError });
   }
-  function resetAgentPanel() { agentStepsEl.innerHTML = ''; drawerStatus.textContent = ''; }
+  function resetAgentPanel() {
+    agentStepsEl.innerHTML = '';
+    drawerStatus.textContent = '';
+    resetInlineThinking();
+  }
 
   // ── Host → Guest (preserved IPC contract) ─────────────────────────
   window.__navioGuestHost = {
@@ -2106,20 +2386,23 @@
           agentStepIndex = 0;
           drawerStatus.textContent = 'Working…';
           btnActivity.classList.add('visible');
+          createInlineThinking();
           break;
         case 'toolStep': {
           agentStepIndex += 1;
-          const row = document.createElement('div');
-          row.className = 'step-row';
-          row.innerHTML = '<div class="t">' + esc(msg.tool) + '</div><div class="l">' + esc(msg.label) + '</div>';
-          agentStepsEl.appendChild(row);
+          // Keep drawer data for the Activity button (don't auto-open)
+          const stepRow = document.createElement('div');
+          stepRow.className = 'step-row';
+          stepRow.innerHTML = '<div class="t">' + esc(msg.tool) + '</div><div class="l">' + esc(msg.label) + '</div>';
+          agentStepsEl.appendChild(stepRow);
           agentStepsEl.scrollTop = agentStepsEl.scrollHeight;
-          btnActivity.classList.add('visible');
-          if (agentStepIndex === 1) openDrawer();
+          // Show inline in the chat thread
+          addInlineStep(msg.tool, msg.label);
           break;
         }
         case 'activityDone':
           drawerStatus.textContent = msg.stepsCount ? 'Done · ' + msg.stepsCount + ' steps' : 'Done';
+          finalizeInlineThinking(msg.stepsCount);
           break;
         case 'plan': {
           const card = document.createElement('div');
@@ -2154,22 +2437,28 @@
           ensureStreamBubble();
           if (streamBody) {
             streamBuffer += (msg.text || '');
-            streamBody.innerHTML = renderMarkdown(streamBuffer);
+            // Hide partial [FOLLOWUP] blocks from live render — they'll be extracted on finalize
+            const liveText = streamBuffer.replace(/\[FOLLOWUP\][\s\S]*$/, '');
+            streamBody.innerHTML = renderMarkdown(liveText);
             wireCodeCopyButtons(streamBody);
           }
           messagesEl.scrollTop = messagesEl.scrollHeight;
           break;
-        case 'streamFinalize':
+        case 'streamFinalize': {
+          const { clean: sfClean } = extractFollowUpChips(msg.content || '');
           finalizeStream(msg.content || '');
           setBusy(false);
-          recordMessage('assistant', msg.content || '');
+          recordMessage('assistant', sfClean || msg.content || '');
           break;
-        case 'assistant':
+        }
+        case 'assistant': {
           document.getElementById('research-wait')?.remove();
           setBusy(false);
+          const { clean: aClean } = extractFollowUpChips(msg.content || '');
           addAssistantBubble(msg.content, !!msg.error);
-          if (!msg.error) recordMessage('assistant', msg.content || '');
+          if (!msg.error) recordMessage('assistant', aClean || msg.content || '');
           break;
+        }
         case 'researchStart': {
           setBusy(true);
           const rRow = document.createElement('div');
