@@ -3086,8 +3086,8 @@ class AssistantManagerClass {
           this._appendFollowUpChips(streamingMsg, streamChips, (chip) => {
             if (this.inputEl) {
               this.inputEl.value = chip;
-              this.inputEl.focus();
               this.inputEl.dispatchEvent(new Event('input'));
+              this.sendMessage();
             }
           });
         }
@@ -3478,8 +3478,8 @@ class AssistantManagerClass {
       this._appendFollowUpChips(msgEl, followUpChips, (chip) => {
         if (this.inputEl) {
           this.inputEl.value = chip;
-          this.inputEl.focus();
           this.inputEl.dispatchEvent(new Event('input'));
+          this.sendMessage();
         }
       });
     }

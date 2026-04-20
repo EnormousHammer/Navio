@@ -179,6 +179,7 @@
     .sb-list {
       flex: 1;
       overflow-y: auto;
+      overflow-x: hidden;
       padding: 6px 12px 16px;
     }
     .sb-group { margin-bottom: 12px; }
@@ -204,6 +205,9 @@
       color: var(--text-2);
       transition: background 0.15s, border-color 0.15s;
       min-height: 44px;
+      width: 100%;
+      box-sizing: border-box;
+      overflow: hidden;
     }
     .sb-item:hover { background: #2d2d2d; border-color: #444; }
     .sb-item.active {
@@ -428,25 +432,27 @@
     .welcome-cards {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 16px;
+      gap: 12px;
       max-width: 576px;
-      margin: 0 auto 32px;
+      margin: 0 auto 24px;
     }
     @media (max-width: 620px) { .welcome-cards { grid-template-columns: 1fr; } }
     .welcome-card {
-      padding: 16px;
+      padding: 14px;
       border-radius: 12px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       text-align: left;
       cursor: pointer;
       font-family: inherit;
       color: var(--text);
-      transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+      transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
     }
     .welcome-card:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: rgba(34, 211, 238, 0.06);
+      border-color: rgba(34, 211, 238, 0.28);
       transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(34, 211, 238, 0.08);
     }
     .welcome-card-head {
       display: flex;
@@ -502,7 +508,7 @@
     #messages {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 12px;
       padding: 8px 0 24px;
     }
     body.state-chat #messages {
@@ -512,12 +518,17 @@
       width: 100%;
     }
 
+    @keyframes msg-slide-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
     /* ── Message row wrapper (avatar + bubble + actions) ── */
     .msg-row {
       display: flex;
       flex-direction: column;
       width: 100%;
       max-width: 100%;
+      animation: msg-slide-in 0.22s cubic-bezier(0.22, 1, 0.36, 1);
     }
     .msg-row .msg-top {
       display: flex;
@@ -624,8 +635,9 @@
       font-size: 10px;
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      color: var(--muted);
-      margin-bottom: 6px;
+      color: var(--dim);
+      margin-bottom: 5px;
+      opacity: 0.7;
     }
     .msg .body { font-size: 14.5px; line-height: 1.6; }
     .msg-row.user     { align-items: flex-end; }
