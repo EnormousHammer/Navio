@@ -1038,7 +1038,13 @@ function bindNavioGuestWindowOpenOnce(guestContents) {
       // Popups from streaming sites are often ads or helpers; opening in the foreground steals focus
       // from the player — user must click again. Open in background so the stream tab stays active.
       const background = isStreamingVideoOpenerOrigin(openerOrigin);
-      mw.webContents.send('open-url-in-new-tab', { url: openUrl, incognito, background });
+      mw.webContents.send('open-url-in-new-tab', {
+        url: openUrl,
+        incognito,
+        background,
+        /** Renderer registers this guest for download-shell auto-close (Chrome-style). */
+        guestWindowOpen: true
+      });
     } catch {
       /* ignore */
     }

@@ -252,6 +252,8 @@ class TabManagerClass {
       favicon: null,
       loading: false,
       webview: null,
+      /** Tab created from guest window.open (main); may auto-close when navigation is a file download. */
+      guestWindowOpen: !!opts.guestWindowOpen,
       pinned: false,
       incognito,
       /** Other tab id when this tab shares a split view (Chrome-style side-by-side). */
@@ -519,6 +521,15 @@ class TabManagerClass {
       // Apply split / full layout for all webviews; do not force this pane to full width
       // or partner panes stay the wrong size until the next resize.
       this._syncWebviewSizes();
+      if (tab.guestWindowOpen && typeof window.navio?.registerGuestDownloadShell === 'function') {
+        try {
+          if (typeof wv.getWebContentsId === 'function') {
+            window.navio.registerGuestDownloadShell(wv.getWebContentsId());
+          }
+        } catch {
+          /* ignore */
+        }
+      }
       if (wv._pendingUrl) {
         const url = wv._pendingUrl;
         wv._pendingUrl = null;
@@ -696,6 +707,19 @@ class TabManagerClass {
     });
 
     wv.addEventListener('did-finish-load', async () => {
+      if (tab.guestWindowOpen && typeof window.navio?.unregisterGuestDownloadShell === 'function') {
+        if (tab._guestShellUnregisterTimer) clearTimeout(tab._guestShellUnregisterTimer);
+        tab._guestShellUnregisterTimer = setTimeout(() => {
+          tab._guestShellUnregisterTimer = null;
+          try {
+            if (typeof wv.getWebContentsId === 'function') {
+              window.navio.unregisterGuestDownloadShell(wv.getWebContentsId());
+            }
+          } catch {
+            /* ignore */
+          }
+        }, 400);
+      }
       // Safety net: if the guest is blank but our model still has a real URL (and
       // this tab has session history), resync — avoids a blank webview with NTP
       // hidden after some back/forward paths that omit a clean did-navigate.
@@ -1290,6 +1314,19 @@ class TabManagerClass {
 
     // Cancel any pending passive-memory timer so it doesn't fire on a dead tab
     if (tab._memTimer) { clearTimeout(tab._memTimer); tab._memTimer = null; }
+    if (tab._guestShellUnregisterTimer) {
+      clearTimeout(tab._guestShellUnregisterTimer);
+      tab._guestShellUnregisterTimer = null;
+    }
+    if (tab.guestWindowOpen && typeof window.navio?.unregisterGuestDownloadShell === 'function' && tab.webview) {
+      try {
+        if (typeof tab.webview.getWebContentsId === 'function') {
+          window.navio.unregisterGuestDownloadShell(tab.webview.getWebContentsId());
+        }
+      } catch {
+        /* ignore */
+      }
+    }
 
     let closedWasInSplit = false;
     if (tab.splitPartnerId) {

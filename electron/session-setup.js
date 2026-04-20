@@ -106,6 +106,12 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   /** Active Electron download items by final save path (for cancel from renderer). */
   const activeDownloadItemsByPath = new Map();
 
+  /**
+   * Guest <webview> ids (from window.open routed to a new tab) that should auto-close
+   * when the navigation turns into a download, so the user stays on the opener tab.
+   */
+  const guestDownloadShellWebContentsIds = new Set();
+
   const userData = () => app.getPath('userData');
   const navioSession = session.fromPartition(NAVIO_PARTITION_MAIN);
   const incognitoSession = session.fromPartition(NAVIO_PARTITION_INCOGNITO);
@@ -265,8 +271,38 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
     });
   }
 
+  ipcMain.handle('navio-register-guest-download-shell', (_, { webContentsId }) => {
+    const id = Number(webContentsId);
+    if (!Number.isFinite(id)) return { ok: false, error: 'bad_id' };
+    guestDownloadShellWebContentsIds.add(id);
+    return { ok: true };
+  });
+  ipcMain.handle('navio-unregister-guest-download-shell', (_, { webContentsId }) => {
+    const id = Number(webContentsId);
+    if (!Number.isFinite(id)) return { ok: false, error: 'bad_id' };
+    guestDownloadShellWebContentsIds.delete(id);
+    return { ok: true };
+  });
+
   function handleDownloads(ses) {
-    ses.on('will-download', (event, item) => {
+    ses.on('will-download', (event, item, webContents) => {
+      let guestWcId = null;
+      try {
+        if (webContents && typeof webContents.getType === 'function' && webContents.getType() === 'webview') {
+          guestWcId = webContents.id;
+        }
+      } catch {
+        /* ignore */
+      }
+      if (guestWcId != null && guestDownloadShellWebContentsIds.has(guestWcId)) {
+        guestDownloadShellWebContentsIds.delete(guestWcId);
+        try {
+          getMainWindow()?.webContents.send('navio-close-download-shell-tab', { webContentsId: guestWcId });
+        } catch {
+          /* ignore */
+        }
+      }
+
       // Capture the origin URL so we can offer Retry on failed rows.
       let originalUrl = '';
       try { originalUrl = item.getURL() || ''; } catch { /* ignore */ }

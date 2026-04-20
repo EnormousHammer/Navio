@@ -836,7 +836,9 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
       // Streaming sites: open in background so junk/ad tabs do not steal focus from the player.
       const tabOpts = {
         incognito: !!opts.incognito,
-        switchTo: opts.background !== true
+        switchTo: opts.background !== true,
+        /** Only set from main for guest window.open — used to auto-close download-only tabs. */
+        guestWindowOpen: !!opts.guestWindowOpen
       };
       if (!u) {
         TabManager.createTab(null, tabOpts);
@@ -850,6 +852,27 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
       }
       TabManager.createTab(resolved, tabOpts);
     });
+
+    if (typeof window.navio.onCloseDownloadShellTab === 'function') {
+      window.navio.onCloseDownloadShellTab((data) => {
+        if (typeof TabManager === 'undefined') return;
+        const webContentsId = data && data.webContentsId;
+        const id = Number(webContentsId);
+        if (!Number.isFinite(id)) return;
+        const tab = TabManager.tabs.find((t) => {
+          try {
+            return (
+              t.webview &&
+              typeof t.webview.getWebContentsId === 'function' &&
+              t.webview.getWebContentsId() === id
+            );
+          } catch {
+            return false;
+          }
+        });
+        if (tab) TabManager.closeTab(tab.id);
+      });
+    }
 
     // ── Download toasts ───────────────────────────────────────────────────
     const _showAppToast = (msg, type = 'info') => {

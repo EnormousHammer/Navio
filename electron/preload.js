@@ -152,12 +152,27 @@ contextBridge.exposeInMainWorld('navio', {
       else {
         callback(payload && payload.url, {
           incognito: !!(payload && payload.incognito),
-          background: !!(payload && payload.background)
+          background: !!(payload && payload.background),
+          guestWindowOpen: !!(payload && payload.guestWindowOpen)
         });
       }
     };
     ipcRenderer.on('open-url-in-new-tab', handler);
     return () => ipcRenderer.removeListener('open-url-in-new-tab', handler);
+  },
+
+  /**
+   * Guest `window.open` tabs that exist only to hit a download URL should close when
+   * `will-download` fires (Chrome behavior). Register on dom-ready; main clears on first real load.
+   */
+  registerGuestDownloadShell: (webContentsId) =>
+    ipcRenderer.invoke('navio-register-guest-download-shell', { webContentsId }),
+  unregisterGuestDownloadShell: (webContentsId) =>
+    ipcRenderer.invoke('navio-unregister-guest-download-shell', { webContentsId }),
+  onCloseDownloadShellTab: (callback) => {
+    const h = (_, data) => callback(data || {});
+    ipcRenderer.on('navio-close-download-shell-tab', h);
+    return () => ipcRenderer.removeListener('navio-close-download-shell-tab', h);
   },
 
   clearBrowsingData: () => ipcRenderer.invoke('clear-browsing-data'),
