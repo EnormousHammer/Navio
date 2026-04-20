@@ -1265,6 +1265,7 @@ const NTP = (() => {
           `).join('');
           // Click email row (not the draft button) → open in Gmail
           emailList.querySelectorAll('.ntp-email-item[data-msgid]').forEach(el => {
+            const msgData = messages.find(m => m.id === el.dataset.msgid) || { id: el.dataset.msgid };
             el.addEventListener('click', (e) => {
               if (e.target.closest('.ntp-email-draft-btn')) return; // handled separately
               const id = el.dataset.msgid;
@@ -1274,6 +1275,7 @@ const NTP = (() => {
               if (typeof TabManager !== 'undefined') TabManager.createTab(url);
               else window.open(url, '_blank');
             });
+            _attachGmailCtxMenu(el, msgData);
           });
           // Draft reply button for Gmail OAuth emails
           emailList.querySelectorAll('.ntp-email-draft-btn[data-msgid]').forEach(btn => {
@@ -1422,12 +1424,164 @@ const NTP = (() => {
         });
       });
 
+      // Right-click context menus for IMAP emails
+      emailList.querySelectorAll('.ntp-email-item[data-uid]').forEach(el => {
+        _attachImapCtxMenu(el, parseInt(el.dataset.uid), el.dataset.svc);
+      });
+
     } catch (e) {
       emailList.innerHTML = `<p class="ntp-widget-empty">Error: ${_esc(e.message)}</p>`;
     } finally {
       _syncNtpNoEmailLayout();
     }
   }
+
+  // ── Email right-click context menu ───────────────────────────────────────
+
+  function _buildEmailCtxMenu(items) {
+    // Remove any existing menu
+    document.getElementById('navio-email-ctx')?.remove();
+    const menu = document.createElement('div');
+    menu.id = 'navio-email-ctx';
+    menu.className = 'navio-email-ctx';
+    items.forEach(item => {
+      if (item === 'sep') {
+        const sep = document.createElement('div');
+        sep.className = 'navio-email-ctx-sep';
+        menu.appendChild(sep);
+        return;
+      }
+      const btn = document.createElement('button');
+      btn.className = 'navio-email-ctx-item' + (item.danger ? ' danger' : '');
+      btn.innerHTML = `<span class="ctx-icon">${item.icon}</span><span>${item.label}</span>`;
+      btn.addEventListener('click', (e) => { e.stopPropagation(); item.action(); _closeEmailCtxMenu(); });
+      menu.appendChild(btn);
+    });
+    document.body.appendChild(menu);
+    return menu;
+  }
+
+  function _closeEmailCtxMenu() {
+    document.getElementById('navio-email-ctx')?.remove();
+  }
+
+  function _positionEmailCtxMenu(menu, e) {
+    const mw = 200, mh = menu.offsetHeight || 180;
+    let x = e.clientX, y = e.clientY;
+    if (x + mw > window.innerWidth)  x = window.innerWidth  - mw - 6;
+    if (y + mh > window.innerHeight) y = window.innerHeight - mh - 6;
+    menu.style.left = x + 'px';
+    menu.style.top  = y + 'px';
+  }
+
+  function _attachGmailCtxMenu(el, msg) {
+    el.addEventListener('contextmenu', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const isUnread = el.classList.contains('unread');
+      const menu = _buildEmailCtxMenu([
+        {
+          icon: '↗',
+          label: 'Open in Gmail',
+          action: () => {
+            const url = msg.id
+              ? `https://mail.google.com/mail/u/0/#inbox/${msg.id}`
+              : 'https://mail.google.com/mail/u/0/#inbox';
+            if (typeof TabManager !== 'undefined') TabManager.createTab(url);
+            else window.open(url, '_blank');
+          }
+        },
+        isUnread ? {
+          icon: '✓',
+          label: 'Mark as read',
+          action: async () => {
+            const r = await window.navio.gmailModifyMessage(msg.id, [], ['UNREAD']);
+            if (r?.ok) { el.classList.remove('unread'); }
+          }
+        } : {
+          icon: '○',
+          label: 'Mark as unread',
+          action: async () => {
+            const r = await window.navio.gmailModifyMessage(msg.id, ['UNREAD'], []);
+            if (r?.ok) { el.classList.add('unread'); }
+          }
+        },
+        {
+          icon: '★',
+          label: 'Star',
+          action: async () => { await window.navio.gmailModifyMessage(msg.id, ['STARRED'], []); }
+        },
+        {
+          icon: '⬇',
+          label: 'Archive',
+          action: async () => {
+            const r = await window.navio.gmailModifyMessage(msg.id, [], ['INBOX']);
+            if (r?.ok) { el.style.transition = 'opacity 0.3s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 320); }
+          }
+        },
+        'sep',
+        {
+          icon: '✉',
+          label: 'Draft reply',
+          action: () => {
+            const draftBtn = el.querySelector('.ntp-email-draft-btn');
+            if (draftBtn) draftBtn.click();
+          }
+        },
+        'sep',
+        {
+          icon: '🗑',
+          label: 'Move to Trash',
+          danger: true,
+          action: async () => {
+            const r = await window.navio.gmailTrashMessage(msg.id);
+            if (r?.ok) { el.style.transition = 'opacity 0.3s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 320); }
+          }
+        }
+      ]);
+      _positionEmailCtxMenu(menu, e);
+    });
+  }
+
+  function _attachImapCtxMenu(el, uid, svcId) {
+    el.addEventListener('contextmenu', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const menu = _buildEmailCtxMenu([
+        {
+          icon: '✓',
+          label: 'Mark as read',
+          action: async () => {
+            const r = await window.navio.imapMarkRead(svcId, uid);
+            if (r?.ok) { el.style.transition = 'opacity 0.3s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 320); }
+          }
+        },
+        {
+          icon: '✉',
+          label: 'Draft reply',
+          action: () => {
+            const draftBtn = el.querySelector('.ntp-email-draft-btn');
+            if (draftBtn) draftBtn.click();
+          }
+        },
+        'sep',
+        {
+          icon: '🗑',
+          label: 'Delete',
+          danger: true,
+          action: async () => {
+            const r = await window.navio.imapTrashMessage(svcId, uid);
+            if (r?.ok) { el.style.transition = 'opacity 0.3s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 320); }
+          }
+        }
+      ]);
+      _positionEmailCtxMenu(menu, e);
+    });
+  }
+
+  // Close ctx menu on any outside click or Escape
+  document.addEventListener('click', _closeEmailCtxMenu, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') _closeEmailCtxMenu(); });
 
   // ── AI draft for a single email (via IMAP, no tab needed) ────────────────
 

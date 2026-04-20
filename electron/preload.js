@@ -208,6 +208,10 @@ contextBridge.exposeInMainWorld('navio', {
   imapSearch: (serviceId, query, limit) => ipcRenderer.invoke('imap-search', { serviceId, query, limit }),
   imapCreateDraft: (serviceId, opts) => ipcRenderer.invoke('imap-create-draft', { serviceId, ...opts }),
   imapGetEmailBody:     (serviceId, uid) => ipcRenderer.invoke('imap-get-email-body', { serviceId, uid }),
+  imapMarkRead:         (serviceId, uid) => ipcRenderer.invoke('imap-mark-read', { serviceId, uid }),
+  imapTrashMessage:     (serviceId, uid) => ipcRenderer.invoke('imap-trash-message', { serviceId, uid }),
+  gmailModifyMessage:   (id, addLabelIds, removeLabelIds, serviceId) => ipcRenderer.invoke('gmail-modify-message', { id, addLabelIds, removeLabelIds, serviceId }),
+  gmailTrashMessage:    (id, serviceId) => ipcRenderer.invoke('gmail-trash-message', { id, serviceId }),
   gmailGetMessageBody: (idOrOpts) =>
     ipcRenderer.invoke(
       'gmail-get-message-body',

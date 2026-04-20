@@ -7228,6 +7228,43 @@ ipcMain.handle('imap-get-email-body', async (event, { serviceId, uid }) => {
   }
 });
 
+// ── IMAP: mark message as read ────────────────────────────────────────────────
+ipcMain.handle('imap-mark-read', async (event, { serviceId, uid }) => {
+  try {
+    const client = await imapGetClient(serviceId);
+    const cfg = IMAP_SERVICE_CONFIG[serviceId];
+    const lock = await client.getMailboxLock(cfg.inboxFolder);
+    try {
+      await client.messageFlagsAdd([uid], ['\\Seen'], { uid: true });
+      return { ok: true };
+    } finally {
+      lock.release();
+      await client.logout();
+    }
+  } catch (e) { return { error: e.message }; }
+});
+
+// ── IMAP: delete (move to Trash) ──────────────────────────────────────────────
+ipcMain.handle('imap-trash-message', async (event, { serviceId, uid }) => {
+  try {
+    const client = await imapGetClient(serviceId);
+    const cfg = IMAP_SERVICE_CONFIG[serviceId];
+    const trashFolder = cfg.trashFolder || 'Trash';
+    const lock = await client.getMailboxLock(cfg.inboxFolder);
+    try {
+      await client.messageMove([uid], trashFolder, { uid: true });
+      return { ok: true };
+    } catch {
+      // Fallback: just flag as deleted
+      await client.messageFlagsAdd([uid], ['\\Deleted'], { uid: true });
+      return { ok: true };
+    } finally {
+      lock.release();
+      await client.logout();
+    }
+  } catch (e) { return { error: e.message }; }
+});
+
 // ── NTP: Stock market data (fetched from main process — no CORS) ──────────
 // query1.finance.yahoo.com/v8/finance/chart works without crumb or cookies.
 ipcMain.handle('ntp-stocks', async () => {
@@ -7396,6 +7433,42 @@ ipcMain.handle('ntp-gmail-inbox', async () => {
   } catch (e) {
     return { error: e.message };
   }
+});
+
+// ── Gmail: modify message labels (mark read, archive, star/unstar) ───────────
+ipcMain.handle('gmail-modify-message', async (_, { id, addLabelIds = [], removeLabelIds = [], serviceId }) => {
+  try {
+    const oauthPid = (serviceId === 'gmail_2' || serviceId === 'google_2') ? 'google_2' : 'google';
+    const token = await getValidOAuthToken(oauthPid);
+    if (!token) return { error: 'not_signed_in' };
+    const r = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}/modify`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addLabelIds, removeLabelIds })
+      }
+    );
+    const d = await r.json();
+    if (!r.ok) return { error: d.error?.message || 'Gmail API error' };
+    return { ok: true, labelIds: d.labelIds || [] };
+  } catch (e) { return { error: e.message }; }
+});
+
+// ── Gmail: move message to Trash ──────────────────────────────────────────────
+ipcMain.handle('gmail-trash-message', async (_, { id, serviceId }) => {
+  try {
+    const oauthPid = (serviceId === 'gmail_2' || serviceId === 'google_2') ? 'google_2' : 'google';
+    const token = await getValidOAuthToken(oauthPid);
+    if (!token) return { error: 'not_signed_in' };
+    const r = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}/trash`,
+      { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
+    );
+    const d = await r.json();
+    if (!r.ok) return { error: d.error?.message || 'Gmail API error' };
+    return { ok: true };
+  } catch (e) { return { error: e.message }; }
 });
 
 // ── Gmail message full body (for AI draft reply) ─────────────────────────────
