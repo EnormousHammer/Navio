@@ -2547,70 +2547,97 @@ body:not(.navio-vertical-tabs) .tab-item.active {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NTP — PREMIUM VISUAL UPGRADE
-   Principles: more depth · less clutter · better hierarchy · breathe
+   NTP — PREMIUM VISUAL OVERHAUL
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Background: richer overlay so text pops against the wallpaper ─────── */
+/* ── Background: deep cinematic vignette ───────────────────────────────── */
 .ntp-bg-layer::after {
   display: block !important;
   content: '';
   position: absolute;
   inset: 0;
   pointer-events: none;
-  /* Vignette edges + subtle top-to-bottom darkening */
   background:
-    radial-gradient(ellipse 85% 55% at 50% 18%, transparent 15%, rgba(4, 5, 13, 0.62) 100%),
-    linear-gradient(180deg, rgba(6, 8, 18, 0.28) 0%, rgba(6, 8, 18, 0.52) 100%);
+    radial-gradient(ellipse 90% 60% at 50% 10%, transparent 10%, rgba(3, 4, 12, 0.70) 100%),
+    linear-gradient(180deg, rgba(4, 5, 14, 0.35) 0%, rgba(4, 5, 14, 0.65) 100%);
 }
 
-/* ── Brand: stack orb + title vertically, centred, more drama ──────────── */
+/* ── Brand: force vertical stack, orb centred above title ──────────────── */
 .ntp-brand {
-  flex-direction: column;
+  flex-direction: column !important;
+  align-items: center !important;
   text-align: center;
-  gap: 14px;
-  margin-bottom: 14px;
+  gap: 18px;
+  margin-bottom: 18px;
 }
 
-/* Enlarge the orb — it's the centrepiece */
+/* Large, dramatic orb */
 .ntp-orb {
-  width: 72px;
-  height: 72px;
+  width: 90px;
+  height: 90px;
 }
 .orb-core {
-  width: 62px;
-  height: 62px;
+  width: 78px;
+  height: 78px;
+  box-shadow:
+    0 0 28px rgba(0, 212, 255, 0.85),
+    0 0 70px rgba(0, 212, 255, 0.45),
+    0 0 140px rgba(124, 58, 237, 0.40);
 }
-.orb-ring-1 { width: 88px;  height: 88px;  }
-.orb-ring-2 { width: 110px; height: 110px; }
-.orb-ring-3 { width: 130px; height: 130px; }
+@keyframes ntp-orb-breathe {
+  0%, 100% {
+    box-shadow: 0 0 28px rgba(0,212,255,0.85), 0 0 70px rgba(0,212,255,0.45), 0 0 140px rgba(124,58,237,0.40);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(0,212,255,1.0), 0 0 100px rgba(0,212,255,0.65), 0 0 200px rgba(124,58,237,0.55);
+  }
+}
+.orb-ring-1 { width: 108px; height: 108px; border-color: rgba(0,216,255,0.30); }
+.orb-ring-2 { width: 134px; height: 134px; border-color: rgba(84,104,255,0.18); }
+.orb-ring-3 { width: 158px; height: 158px; border-color: rgba(159,111,255,0.10); }
 
-/* Bigger, more dramatic title */
+/* Big, bold title */
 .ntp-title {
-  font-size: 28px !important;
-  letter-spacing: 11px !important;
+  font-size: 44px !important;
+  letter-spacing: 16px !important;
 }
 
-/* Hide the subtitle — the search placeholder handles onboarding copy */
+/* Remove subtitle entirely */
 .ntp-subtitle { display: none !important; }
 
-/* Give the hero a little more top breathing room */
+/* Hero: generous vertical breathing room */
 .ntp-hero {
-  padding-top: clamp(10px, 2.5vh, 24px);
+  padding-top: clamp(20px, 4.5vh, 48px) !important;
+  padding-bottom: 6px;
 }
 
-/* ── Shortcuts: hide label/hint/controls until the section is hovered ──── */
-.ntp-shortcuts-title > span:first-child {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  opacity: 0;
-  transition: opacity 0.22s ease;
+/* Search bar: wider and taller */
+.ntp-search {
+  padding: 13px 22px !important;
+  max-width: min(720px, 100%) !important;
 }
-.ntp-shortcuts-hint {
-  opacity: 0;
-  transition: opacity 0.22s ease;
+.ntp-search input {
+  font-size: 16.5px !important;
 }
+
+/* Model selector: polished pill */
+.ntp-model-btn {
+  border-radius: 999px;
+  font-size: 11.5px;
+  padding: 5px 13px 5px 10px;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  transition: background 0.18s, border-color 0.18s, box-shadow 0.18s;
+}
+.ntp-model-btn:hover {
+  background: rgba(0, 216, 255, 0.10);
+  border-color: rgba(0, 216, 255, 0.30);
+  box-shadow: 0 0 14px rgba(0, 216, 255, 0.14);
+}
+
+/* ── Shortcuts header: invisible until you hover ────────────────────────── */
+.ntp-shortcuts-title > span:first-child,
+.ntp-shortcuts-hint,
 .ntp-shortcuts-actions {
   opacity: 0;
   transition: opacity 0.22s ease;
@@ -2620,45 +2647,69 @@ body:not(.navio-vertical-tabs) .tab-item.active {
 .ntp-shortcuts:hover .ntp-shortcuts-actions {
   opacity: 1;
 }
-/* Keep controls visible when editor is open */
-.ntp-shortcuts-head.editing .ntp-shortcuts-actions {
-  opacity: 1 !important;
-}
+.ntp-shortcuts-head.editing .ntp-shortcuts-actions { opacity: 1 !important; }
 
-/* ── Shortcut icons: slightly larger, more tactile ─────────────────────── */
+/* ── Shortcut icon tiles — premium app-icon style ───────────────────────── */
 .shortcut-icon {
-  width: 50px;
-  height: 50px;
-  border-radius: 14px;
+  width: 64px !important;
+  height: 64px !important;
+  border-radius: 16px !important;
+  padding: 0 !important;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(22, 30, 52, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+  transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1),
+              box-shadow 0.22s ease,
+              border-color 0.22s ease !important;
 }
 
-/* Shortcut labels: a touch brighter and larger */
+/* Favicon inside a plain (glass) tile */
+.shortcut-icon img {
+  width: 54%;
+  height: 54%;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+/* Branded tile — favicon fills more of the space */
+.shortcut-icon--branded {
+  border: none !important;
+}
+.shortcut-icon--branded img {
+  width: 52%;
+  height: 52%;
+  border-radius: 2px;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+}
+
+/* Hover: lift + brand glow */
+.ntp-shortcut:hover .shortcut-icon {
+  transform: translateY(-4px) scale(1.07) !important;
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.55),
+    0 0 22px var(--shortcut-glow, rgba(0, 216, 255, 0.22)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+}
+
+/* Shortcut label: brighter, slightly larger */
 .ntp-shortcut span {
-  font-size: 11.5px;
-  color: rgba(226, 232, 248, 0.62);
+  font-size: 12px !important;
+  font-weight: 500;
+  color: rgba(226, 232, 248, 0.78) !important;
+  margin-top: 2px;
 }
 
-/* ── Clock: more impact ─────────────────────────────────────────────────── */
+/* ── Clock: larger, more impact ─────────────────────────────────────────── */
 .ntp-clock {
-  font-size: clamp(28px, 3.2vw, 44px);
+  font-size: clamp(32px, 3.8vw, 52px) !important;
 }
 
-/* ── Widgets: tighter gap between header icon and title ─────────────────── */
-.ntp-widget-header {
-  letter-spacing: 0.9px;
-}
-
-/* ── Model selector button: slightly more polished ─────────────────────── */
-.ntp-model-btn {
-  border-radius: 999px;
-  font-size: 11.5px;
-  padding: 5px 13px 5px 10px;
-  background: rgba(255, 255, 255, 0.055);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
-}
-.ntp-model-btn:hover {
-  background: rgba(0, 216, 255, 0.1);
-  border-color: rgba(0, 216, 255, 0.3);
-  box-shadow: 0 0 12px rgba(0, 216, 255, 0.12);
-}
+/* ── Widget headers: refined spacing ────────────────────────────────────── */
+.ntp-widget-header { letter-spacing: 0.9px; }

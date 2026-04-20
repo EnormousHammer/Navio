@@ -35,6 +35,39 @@ const NTP = (() => {
   let _shortcutEditorBound = false;
   let _shortcutDndBound = false;
 
+  // Brand colours for popular sites — gradient background + hover glow
+  const _SHORTCUT_BRANDS = {
+    'google.com':        { bg: 'linear-gradient(145deg,#4285f4 0%,#34a853 100%)',            glow: 'rgba(66,133,244,0.55)'   },
+    'mail.google.com':   { bg: 'linear-gradient(145deg,#ea4335 0%,#fbbc05 100%)',            glow: 'rgba(234,67,53,0.55)'    },
+    'drive.google.com':  { bg: 'linear-gradient(145deg,#1a73e8 0%,#0f9d58 100%)',            glow: 'rgba(26,115,232,0.55)'   },
+    'docs.google.com':   { bg: 'linear-gradient(145deg,#4285f4 0%,#669df6 100%)',            glow: 'rgba(66,133,244,0.55)'   },
+    'sheets.google.com': { bg: 'linear-gradient(145deg,#0f9d58 0%,#137333 100%)',            glow: 'rgba(15,157,88,0.55)'    },
+    'slides.google.com': { bg: 'linear-gradient(145deg,#f29900 0%,#ea8000 100%)',            glow: 'rgba(242,153,0,0.55)'    },
+    'youtube.com':       { bg: 'linear-gradient(145deg,#ff0000 0%,#aa0000 100%)',            glow: 'rgba(255,0,0,0.55)'      },
+    'reddit.com':        { bg: 'linear-gradient(145deg,#ff4500 0%,#cc3700 100%)',            glow: 'rgba(255,69,0,0.55)'     },
+    'twitter.com':       { bg: 'linear-gradient(145deg,#1da1f2 0%,#0d7bbf 100%)',            glow: 'rgba(29,161,242,0.55)'   },
+    'x.com':             { bg: 'linear-gradient(145deg,#111111 0%,#333333 100%)',            glow: 'rgba(220,220,220,0.22)'  },
+    'github.com':        { bg: 'linear-gradient(145deg,#24292e 0%,#444d56 100%)',            glow: 'rgba(210,210,210,0.20)'  },
+    'netflix.com':       { bg: 'linear-gradient(145deg,#e50914 0%,#8c0000 100%)',            glow: 'rgba(229,9,20,0.55)'     },
+    'spotify.com':       { bg: 'linear-gradient(145deg,#1db954 0%,#158a3e 100%)',            glow: 'rgba(29,185,84,0.55)'    },
+    'linkedin.com':      { bg: 'linear-gradient(145deg,#0077b5 0%,#00497a 100%)',            glow: 'rgba(0,119,181,0.55)'    },
+    'instagram.com':     { bg: 'linear-gradient(145deg,#833ab4 0%,#e1306c 55%,#fcb045 100%)', glow: 'rgba(131,58,180,0.55)' },
+    'facebook.com':      { bg: 'linear-gradient(145deg,#1877f2 0%,#0d5db8 100%)',            glow: 'rgba(24,119,242,0.55)'   },
+    'amazon.com':        { bg: 'linear-gradient(145deg,#ff9900 0%,#c97500 100%)',            glow: 'rgba(255,153,0,0.55)'    },
+    'twitch.tv':         { bg: 'linear-gradient(145deg,#9146ff 0%,#5f2ea6 100%)',            glow: 'rgba(145,70,255,0.55)'   },
+    'discord.com':       { bg: 'linear-gradient(145deg,#5865f2 0%,#3a45c4 100%)',            glow: 'rgba(88,101,242,0.55)'   },
+    'notion.so':         { bg: 'linear-gradient(145deg,#f7f6f3 0%,#e0deda 100%)',            glow: 'rgba(0,0,0,0.18)'        },
+    'figma.com':         { bg: 'linear-gradient(145deg,#0acf83 0%,#1abcfe 50%,#ff7262 100%)', glow: 'rgba(10,207,131,0.55)' },
+    'canva.com':         { bg: 'linear-gradient(145deg,#00c4cc 0%,#7d2ae8 100%)',            glow: 'rgba(0,196,204,0.55)'    },
+    'slack.com':         { bg: 'linear-gradient(145deg,#4a154b 0%,#7c3085 100%)',            glow: 'rgba(122,48,133,0.55)'   },
+    'microsoft.com':     { bg: 'linear-gradient(145deg,#00a4ef 0%,#7fba00 50%,#f25022 100%)', glow: 'rgba(0,164,239,0.50)'  },
+    'office.com':        { bg: 'linear-gradient(145deg,#d83b01 0%,#ea4300 100%)',            glow: 'rgba(216,59,1,0.55)'     },
+    'outlook.live.com':  { bg: 'linear-gradient(145deg,#0078d4 0%,#004e8c 100%)',            glow: 'rgba(0,120,212,0.55)'    },
+    'onedrive.live.com': { bg: 'linear-gradient(145deg,#0078d4 0%,#50abf1 100%)',            glow: 'rgba(0,120,212,0.55)'    },
+    'web.stremio.com':   { bg: 'linear-gradient(145deg,#7a5af8 0%,#5c35d4 100%)',            glow: 'rgba(122,90,248,0.55)'   },
+    'stremio.com':       { bg: 'linear-gradient(145deg,#7a5af8 0%,#5c35d4 100%)',            glow: 'rgba(122,90,248,0.55)'   },
+  };
+
   // ── Init ──────────────────────────────────────────────────────────────────
 
   /** Bottom ticker removed — keep reserve at 0 so webviews / NTP use full height. */
@@ -805,14 +838,25 @@ const NTP = (() => {
       btn.draggable = !editing;
       btn.title = editing ? '' : `${_esc(item.title)} — drag to reorder`;
       let favicon = '';
+      let brandBg = '';
+      let brandGlow = '';
       try {
         const u = new URL(item.url);
-        favicon = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(u.hostname)}&sz=128`;
+        favicon = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(u.hostname)}&sz=256`;
+        const host = u.hostname.replace(/^www\./, '');
+        const brand = _SHORTCUT_BRANDS[host] || _SHORTCUT_BRANDS[u.hostname];
+        if (brand) { brandBg = brand.bg; brandGlow = brand.glow; }
       } catch {
         favicon = '';
       }
+      const iconClass = brandBg ? 'shortcut-icon shortcut-icon--branded' : 'shortcut-icon';
+      const iconStyle = brandBg
+        ? `style="background:${brandBg};--shortcut-glow:${brandGlow}"`
+        : `style="--shortcut-glow:rgba(0,216,255,0.35)"`;
       btn.innerHTML = `
-        <div class="shortcut-icon"><img src="${favicon}" alt="${_esc(item.title)}" loading="lazy"></div>
+        <div class="${iconClass}" ${iconStyle}>
+          <img src="${favicon}" alt="${_esc(item.title)}" loading="lazy">
+        </div>
         <span>${_esc(item.title)}</span>
       `;
       btn.addEventListener('click', () => _handleShortcutClick(item.url));
