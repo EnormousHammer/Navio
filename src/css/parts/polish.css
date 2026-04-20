@@ -2550,14 +2550,79 @@ body:not(.navio-vertical-tabs) .tab-item.active {
    NTP — PREMIUM VISUAL OVERHAUL
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Background: deep cinematic vignette ───────────────────────────────── */
+/* ── Background: dim overlay driven by CSS variable ────────────────────── */
 .ntp-bg-layer::after {
   display: block !important;
   content: '';
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: rgba(4, 5, 14, 0.10);
+  background: #04050e;
+  opacity: var(--ntp-bg-dim, 0.10);
+  transition: opacity 0.2s ease;
+}
+
+/* ── Dim control bar ────────────────────────────────────────────────────── */
+.ntp-dim-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 0 16px;
+  position: relative;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.ntp-dim-bar:hover,
+.new-tab-page:hover .ntp-dim-bar {
+  opacity: 1;
+}
+.ntp-dim-icon {
+  color: rgba(226, 232, 248, 0.45);
+  flex-shrink: 0;
+}
+.ntp-dim-icon--dark {
+  color: rgba(226, 232, 248, 0.28);
+}
+
+/* Slider track + thumb */
+.ntp-dim-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: clamp(120px, 18vw, 220px);
+  height: 3px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.15);
+  outline: none;
+  cursor: pointer;
+  accent-color: rgba(255, 255, 255, 0.55);
+}
+.ntp-dim-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.80);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.40);
+  cursor: pointer;
+  transition: transform 0.15s, background 0.15s;
+}
+.ntp-dim-slider::-webkit-slider-thumb:hover {
+  background: #fff;
+  transform: scale(1.25);
+}
+.ntp-dim-slider::-webkit-slider-runnable-track {
+  border-radius: 99px;
+  background: linear-gradient(
+    to right,
+    rgba(255,255,255,0.45) 0%,
+    rgba(255,255,255,0.45) var(--slider-pct, 12.5%),
+    rgba(255,255,255,0.12) var(--slider-pct, 12.5%),
+    rgba(255,255,255,0.12) 100%
+  );
 }
 
 /* ── Brand: force vertical stack, orb centred above title ──────────────── */

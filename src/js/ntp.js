@@ -130,6 +130,7 @@ const NTP = (() => {
     _bindNtpVoiceMode();
     _bindNtpModelSelector();
     _bindNtpChatPanel();
+    _bindDimSlider();
 
     _applyTickerBottomReserve();
 
@@ -2173,6 +2174,53 @@ const NTP = (() => {
       dropdown.hidden = !dropdown.hidden;
     });
     document.addEventListener('click', () => { dropdown.hidden = true; });
+  }
+
+  // ── Background dim slider ─────────────────────────────────────────────────
+
+  function _applyDim(value) {
+    const opacity = Math.max(0, Math.min(80, value)) / 100;
+    const bgLayer = document.querySelector('.ntp-bg-layer');
+    if (bgLayer) bgLayer.style.setProperty('--ntp-bg-dim', String(opacity));
+    // Update filled-track visual via CSS custom property on the slider itself
+    const slider = document.getElementById('ntp-dim-slider');
+    if (slider) {
+      const pct = (value / 80 * 100).toFixed(1) + '%';
+      slider.style.setProperty('--slider-pct', pct);
+    }
+  }
+
+  function _bindDimSlider() {
+    const slider = document.getElementById('ntp-dim-slider');
+    if (!slider) return;
+
+    // Load saved value
+    (async () => {
+      try {
+        const cfg = await window.navio.getConfig();
+        const saved = typeof cfg.ntpBgDim === 'number' ? cfg.ntpBgDim : 10;
+        slider.value = String(saved);
+        _applyDim(saved);
+      } catch {
+        _applyDim(10);
+      }
+    })();
+
+    // Live update as user drags
+    slider.addEventListener('input', () => {
+      _applyDim(Number(slider.value));
+    });
+
+    // Persist on release
+    slider.addEventListener('change', async () => {
+      const val = Number(slider.value);
+      _applyDim(val);
+      try {
+        const cfg = await window.navio.getConfig();
+        cfg.ntpBgDim = val;
+        await window.navio.saveConfig(cfg);
+      } catch { /* ignore */ }
+    });
   }
 
   return { init };
