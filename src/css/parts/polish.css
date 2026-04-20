@@ -2686,6 +2686,14 @@ body:not(.navio-vertical-tabs) .tab-item.active {
   filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
 }
 
+/* Custom SVG icon — fills the full tile area */
+.shortcut-icon--custom-svg svg {
+  width: 72%;
+  height: 72%;
+  display: block;
+  overflow: visible;
+}
+
 /* Hover: lift + brand glow */
 .ntp-shortcut:hover .shortcut-icon {
   transform: translateY(-4px) scale(1.07) !important;

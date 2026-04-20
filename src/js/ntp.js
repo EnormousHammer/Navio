@@ -66,6 +66,20 @@ const NTP = (() => {
     'onedrive.live.com': { bg: 'linear-gradient(145deg,#0078d4 0%,#50abf1 100%)',            glow: 'rgba(0,120,212,0.55)'    },
     'web.stremio.com':   { bg: 'linear-gradient(145deg,#7a5af8 0%,#5c35d4 100%)',            glow: 'rgba(122,90,248,0.55)'   },
     'stremio.com':       { bg: 'linear-gradient(145deg,#7a5af8 0%,#5c35d4 100%)',            glow: 'rgba(122,90,248,0.55)'   },
+    'predicta-bet.vercel.app': {
+      bg:   'linear-gradient(145deg,#0f4c2a 0%,#1a7a40 55%,#0d3d22 100%)',
+      glow: 'rgba(26,180,80,0.60)',
+      svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="24" cy="24" r="18" stroke="rgba(255,255,255,0.80)" stroke-width="2" fill="rgba(255,255,255,0.06)"/>
+        <path d="M6.5 24 Q24 12 41.5 24" stroke="rgba(255,255,255,0.70)" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <path d="M6.5 24 Q24 36 41.5 24" stroke="rgba(255,255,255,0.70)" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <line x1="24" y1="6" x2="24" y2="42" stroke="rgba(255,255,255,0.55)" stroke-width="1.8" stroke-linecap="round"/>
+        <circle cx="37" cy="11" r="6.5" fill="#ff3b30"/>
+        <circle cx="37" cy="11" r="6.5" fill="url(#lg)" opacity="0.4"/>
+        <circle cx="37" cy="11" r="3.2" fill="rgba(255,255,255,0.92)"/>
+        <defs><radialGradient id="lg" cx="40%" cy="35%"><stop offset="0%" stop-color="white" stop-opacity="0.6"/><stop offset="100%" stop-color="transparent"/></radialGradient></defs>
+      </svg>`
+    },
   };
 
   // ── Init ──────────────────────────────────────────────────────────────────
@@ -840,23 +854,29 @@ const NTP = (() => {
       let favicon = '';
       let brandBg = '';
       let brandGlow = '';
+      let brandSvg = '';
       try {
         const u = new URL(item.url);
         favicon = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(u.hostname)}&sz=256`;
         const host = u.hostname.replace(/^www\./, '');
         const brand = _SHORTCUT_BRANDS[host] || _SHORTCUT_BRANDS[u.hostname];
-        if (brand) { brandBg = brand.bg; brandGlow = brand.glow; }
+        if (brand) { brandBg = brand.bg; brandGlow = brand.glow; brandSvg = brand.svg || ''; }
       } catch {
         favicon = '';
       }
-      const iconClass = brandBg ? 'shortcut-icon shortcut-icon--branded' : 'shortcut-icon';
-      const iconStyle = brandBg
+      const hasBrand  = !!brandBg;
+      const hasCustom = hasBrand && !!brandSvg;
+      const iconClass = hasBrand
+        ? `shortcut-icon shortcut-icon--branded${hasCustom ? ' shortcut-icon--custom-svg' : ''}`
+        : 'shortcut-icon';
+      const iconStyle = hasBrand
         ? `style="background:${brandBg};--shortcut-glow:${brandGlow}"`
         : `style="--shortcut-glow:rgba(0,216,255,0.35)"`;
+      const iconContent = hasCustom
+        ? brandSvg
+        : `<img src="${favicon}" alt="${_esc(item.title)}" loading="lazy">`;
       btn.innerHTML = `
-        <div class="${iconClass}" ${iconStyle}>
-          <img src="${favicon}" alt="${_esc(item.title)}" loading="lazy">
-        </div>
+        <div class="${iconClass}" ${iconStyle}>${iconContent}</div>
         <span>${_esc(item.title)}</span>
       `;
       btn.addEventListener('click', () => _handleShortcutClick(item.url));
