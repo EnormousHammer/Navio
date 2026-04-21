@@ -77,6 +77,12 @@ contextBridge.exposeInMainWorld('navio', {
     return () => ipcRenderer.removeListener('tool-propose-plan', handler);
   },
   toolProposePlanAck: (result) => ipcRenderer.send('tool-propose-plan-ack', result),
+  onToolGmailSendConfirm: (callback) => {
+    const handler = (_, data) => callback(data);
+    ipcRenderer.on('tool-gmail-send-confirm', handler);
+    return () => ipcRenderer.removeListener('tool-gmail-send-confirm', handler);
+  },
+  toolGmailSendConfirmAck: (result) => ipcRenderer.send('tool-gmail-send-confirm-ack', result),
   onAiStreamChunk: (callback) => {
     const handler = (_, payload) => callback(payload);
     ipcRenderer.on('ai-stream-chunk', handler);

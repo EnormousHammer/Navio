@@ -166,6 +166,8 @@ const NAVIO_ASSISTANT_TEXT_MAX_CHARS = 180000;
 const NAVIO_ASSISTANT_MAX_ATTACHMENTS = 8;
 /** Silence after speech before we treat the utterance as finished (Whisper VAD + Web Speech debounce). ~2.8s allows natural mid-sentence pauses. */
 const NAVIO_VOICE_END_SILENCE_MS = 2800;
+/** After OpenAI TTS (or speech) ends in voice conversation, reopen the mic after this delay. */
+const NAVIO_VOICE_CONV_AFTER_TTS_MS = 200;
 /** Non-text files: send as base64 for models that accept inline bytes (Gemini, etc.). */
 const NAVIO_ASSISTANT_INLINE_MAX_BYTES = 4 * 1024 * 1024;
 /** Unknown extensions: try UTF-8 decode when under this size (code, configs, odd MIME). */
@@ -2049,14 +2051,14 @@ class AssistantManagerClass {
             this._currentAudio = null;
             if (btn) btn.classList.remove('tts-speaking');
             this._setTTSBarVisible(false);
-            if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), 450);
+            if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
           });
           audio.addEventListener('error', () => {
             if (mySession !== this._ttsSessionId) return;
             this._currentAudio = null;
             if (btn) btn.classList.remove('tts-speaking', 'tts-loading');
             this._setTTSBarVisible(false);
-            if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), 450);
+            if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
           });
           await audio.play();
           return;
@@ -2108,13 +2110,13 @@ class AssistantManagerClass {
       if (mySession !== this._ttsSessionId) return;
       if (btn) btn.classList.remove('tts-speaking');
       this._setTTSBarVisible(false);
-      if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), 450);
+      if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
     };
     utt.onerror = () => {
       if (mySession !== this._ttsSessionId) return;
       if (btn) btn.classList.remove('tts-speaking', 'tts-loading');
       this._setTTSBarVisible(false);
-      if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), 450);
+      if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
     };
     window.speechSynthesis.speak(utt);
   }
@@ -3291,6 +3293,16 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       }
       return;
     }
+    if (payload.action === 'gmailSendConfirmAck') {
+      try {
+        const oid = payload.operationId;
+        if (payload.approved) window.navio.toolGmailSendConfirmAck({ approved: true, operationId: oid });
+        else window.navio.toolGmailSendConfirmAck({ cancelled: true, operationId: oid });
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
     if (payload.action === 'deepResearch') {
       const topic = (payload.topic || payload.text || '').trim();
       if (topic) void this._guestDeepResearch(guestWv, topic);
@@ -3931,6 +3943,42 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       });
     });
 
+    const unGmailSendConfirm = window.navio.onToolGmailSendConfirm?.((payload) => {
+      if (payload && payload.tabId != null && String(payload.tabId) !== tk) return;
+      const { draftId, operationId } = payload || {};
+      const did = String(draftId || '').trim() || '(unknown draft)';
+      this._appendActivityStep('gmail_send_draft', 'Waiting for send confirmation…');
+      if (guestWv) {
+        this._guestDeliver(guestWv, {
+          type: 'gmailSendConfirm',
+          draftId: did,
+          operationId
+        });
+        return;
+      }
+      const card = document.createElement('div');
+      card.className = 'navio-plan-card navio-gmail-send-confirm';
+      card.innerHTML =
+        `<div class="npc-title">Send this email now?</div>` +
+        `<div class="npc-meta">Draft ID: <code class="navio-send-draft-id">${this._escapeHtml(did)}</code></div>` +
+        `<div class="npc-meta npc-risks">This uses Gmail’s API to dispatch the message from your account (not the browser Send button).</div>` +
+        `<div class="npc-actions">` +
+        `<button class="npc-btn npc-approve" type="button">Confirm send</button>` +
+        `<button class="npc-btn npc-cancel" type="button">Cancel</button>` +
+        `</div>`;
+      this.messagesEl.appendChild(card);
+      this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+
+      card.querySelector('.npc-approve').addEventListener('click', () => {
+        card.querySelector('.npc-actions').innerHTML = '<span class="npc-approved">Confirmed — sending…</span>';
+        window.navio.toolGmailSendConfirmAck({ approved: true, operationId });
+      });
+      card.querySelector('.npc-cancel')?.addEventListener('click', () => {
+        card.querySelector('.npc-actions').innerHTML = '<span class="npc-cancelled">Send cancelled</span>';
+        window.navio.toolGmailSendConfirmAck({ cancelled: true, operationId });
+      });
+    });
+
     // Set up progress handler
     const unProgress = window.navio.onToolProgress((payload) => {
       if (payload && payload.tabId != null && String(payload.tabId) !== tk) return;
@@ -3999,6 +4047,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     unListTabs();
     if (unReasoning) unReasoning();
     if (unProposePlan) unProposePlan();
+    if (unGmailSendConfirm) unGmailSendConfirm();
     unProgress();
     this.removeTypingIndicator();
 

@@ -546,7 +546,7 @@ const NAVIO_TOOLS = [
     name: 'gmail_send_draft',
     description:
       'Send an existing Gmail draft by its draft ID. Works for drafts created by **gmail_create_draft** or **gmail_create_reply_draft**. ' +
-      'This actually sends the email — only call this when the user explicitly confirms they want to send.',
+      'This actually sends the email — only call when the user explicitly confirms in chat. Navio will still show an in-app **Confirm send** dialog before the API runs.',
     parameters: {
       type: 'object',
       properties: {

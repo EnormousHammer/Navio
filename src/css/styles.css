@@ -10290,6 +10290,10 @@ button.navio-followup-chip:active {
   font-size: 12px;
   font-weight: 600;
 }
+.navio-plan-card .navio-send-draft-id {
+  font-size: 12px;
+  word-break: break-all;
+}
 
 /* ── Save as Workflow button ── */
 .navio-save-workflow-btn {

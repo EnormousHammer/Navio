@@ -2680,6 +2680,31 @@
           updateLayoutMode();
           break;
         }
+        case 'gmailSendConfirm': {
+          const card = document.createElement('div');
+          card.className = 'plan-card';
+          const did = esc(msg.draftId || '');
+          const oid = msg.operationId;
+          card.innerHTML =
+            '<h3>Send this email now?</h3>' +
+            '<div class="meta">Draft ID: <code style="word-break:break-all;font-size:12px">' + did + '</code></div>' +
+            '<div class="meta" style="margin-top:8px">Uses Gmail’s API to dispatch from your account (not the browser Send button).</div>' +
+            '<div class="plan-actions">' +
+            '<button type="button" class="btn btn-primary" data-gmail-send="yes">Confirm send</button>' +
+            '<button type="button" class="btn" data-gmail-send="no">Cancel</button></div>';
+          card.querySelector('[data-gmail-send="yes"]').addEventListener('click', function () {
+            post({ action: 'gmailSendConfirmAck', approved: true, operationId: oid });
+            card.querySelector('.plan-actions').innerHTML = '<span style="color:var(--cyan);font-size:12px">Confirmed — sending…</span>';
+          });
+          card.querySelector('[data-gmail-send="no"]').addEventListener('click', function () {
+            post({ action: 'gmailSendConfirmAck', approved: false, operationId: oid });
+            card.querySelector('.plan-actions').innerHTML = '<span style="color:var(--muted);font-size:12px">Send cancelled</span>';
+          });
+          messagesEl.appendChild(card);
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+          updateLayoutMode();
+          break;
+        }
         case 'streamDelta':
           ensureStreamBubble();
           if (streamBody) {

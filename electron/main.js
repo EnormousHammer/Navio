@@ -359,10 +359,9 @@ function listWorkflowsMergedForIpc() {
 }
 
 // ── Email write-action protection ─────────────────────────────────────────────
-// The AI is allowed to READ emails via the connector API (read-only scope tokens)
-// but it must NEVER compose, send, reply to, forward, or delete emails —
-// even when the user has an email tab open. This blocklist is enforced at the
-// IPC level so it holds regardless of system-prompt instructions or auto-execute mode.
+// The AI may create/update/delete drafts and send **via Gmail API** (gmail_send_draft) when tools allow; send always waits for an in-app confirmation IPC.
+// What is blocked here is **automating the provider’s Send button in the web UI** (Gmail/Outlook/etc.):
+// mis-clicks can dispatch irreversible mail. This guard is enforced at the IPC layer regardless of prompts.
 const EMAIL_PROTECTED_DOMAINS = [
   'mail.google.com',
   'outlook.live.com',
@@ -2218,6 +2217,47 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
         continue;
       }
 
+      // Gmail API send: always pause for an in-app confirmation (separate from chat wording).
+      if (tc.name === 'gmail_send_draft') {
+        const draftId = String((tc.arguments && tc.arguments.draft_id) || '').trim();
+        let toolResult;
+        if (!draftId) {
+          toolResult = await toolExecutors.gmail_send_draft(activeWc, tc.arguments);
+        } else {
+          const sendOpId = crypto.randomUUID();
+          sender.send('tool-gmail-send-confirm', {
+            draftId,
+            tabId,
+            operationId: sendOpId
+          });
+          const confirmResult = await waitForRendererAck(
+            sender,
+            'tool-gmail-send-confirm-ack',
+            300000,
+            sendOpId
+          );
+          const confirmed =
+            confirmResult.approved === true &&
+            confirmResult.cancelled !== true &&
+            !confirmResult.error;
+          if (!confirmed) {
+            toolResult = {
+              error: confirmResult.error
+                ? `Send cancelled: ${confirmResult.error}`
+                : 'Send cancelled — the user declined the in-app confirmation.',
+              cancelled: true
+            };
+          } else {
+            toolResult = await toolExecutors.gmail_send_draft(activeWc, tc.arguments);
+          }
+        }
+        recordGmailMutationForDeferredNav(tc.name, toolResult);
+        currentMessages = appendToolResult(currentMessages, tc, toolResult, provider);
+        toolLog.push({ tool: tc.name, args: tc.arguments, result: sanitizeToolResultForLog(tc.name, toolResult) });
+        tp({ step, tool: tc.name, result: sanitizeToolResultForLog(tc.name, toolResult) });
+        continue;
+      }
+
       // All other tools: execute directly against the active webContents
       const executor = toolExecutors[tc.name];
       if (!executor) {
@@ -2799,7 +2839,8 @@ ipcMain.handle('navio-tts', async (event, { text, voice, model }) => {
     const apiKey = secureConfig.getApiKey(app.getPath('userData'));
     if (!apiKey) return { ok: false, error: 'No API key configured. Add your OpenAI key in Settings.' };
 
-    const ttsModel = model || 'tts-1-hd';
+    // tts-1 is much lower-latency than tts-1-hd; quality is still strong for assistant read-aloud.
+    const ttsModel = model || 'tts-1';
     const ttsVoice = voice || cfg.ttsVoice || 'nova';
     const inputText = String(text || '').slice(0, 4096).trim();
     if (!inputText) return { ok: false, error: 'Empty text' };
@@ -2808,7 +2849,13 @@ ipcMain.handle('navio-tts', async (event, { text, voice, model }) => {
     const resp = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: ttsModel, input: inputText, voice: ttsVoice, response_format: 'mp3' }),
+      body: JSON.stringify({
+        model: ttsModel,
+        input: inputText,
+        voice: ttsVoice,
+        response_format: 'mp3',
+        speed: 1.08
+      }),
       signal: AbortSignal.timeout(45000)
     });
 
