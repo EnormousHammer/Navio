@@ -855,6 +855,14 @@ body:not(.navio-vertical-tabs) .tab-item.active {
 body:not(.navio-vertical-tabs) .tab-strip-list .tab-group-header + .tab-item {
   margin-left: 0;
 }
+/* First tab in group: square left corner to flush against the chip */
+body:not(.navio-vertical-tabs) .tab-item.in-group.group-first {
+  border-top-left-radius: 0;
+}
+/* Last tab in group: right-side accent border to visually close the group block */
+body:not(.navio-vertical-tabs) .tab-item.in-group.group-last {
+  border-right: 2px solid color-mix(in srgb, var(--tg-color, #60a5fa) 55%, transparent);
+}
 
 .tab-item.tab-pinned {
   max-width: 44px;

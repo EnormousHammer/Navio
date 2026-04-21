@@ -1950,15 +1950,44 @@ class AssistantManagerClass {
   _openTabsAwarenessBlock(allTabs) {
     if (!allTabs.length || typeof TabManager === 'undefined') return '';
     const activeId = TabManager.activeTabId;
-    return allTabs
-      .map((t) => {
+
+    // Bucket tabs by group, preserving strip order
+    const byGroup = new Map();
+    const ungrouped = [];
+    for (const t of allTabs) {
+      const gid = t.groupId && TabManager.groups?.[t.groupId] ? t.groupId : null;
+      if (gid) {
+        if (!byGroup.has(gid)) byGroup.set(gid, []);
+        byGroup.get(gid).push(t);
+      } else {
+        ungrouped.push(t);
+      }
+    }
+
+    const lines = [];
+
+    // Groups first — each as a labeled block so the AI clearly sees them as units
+    for (const [gid, tabs] of byGroup) {
+      const name = TabManager.getTabGroupLabel?.(tabs[0]) || gid;
+      lines.push(`[Tab group "${name}" · group_id=${gid} · ${tabs.length} tab${tabs.length !== 1 ? 's' : ''} — use switch_tab between any member]`);
+      for (const t of tabs) {
         const title = TabManager.getTabDisplayTitle(t) || t.url;
-        const g = TabManager.getTabGroupLabel?.(t);
-        const gpart = g ? ` [group: ${g}]` : '';
         const act = t.id === activeId ? ' [active]' : '';
-        return `- tab_id=${t.id}${act} — ${title} — ${t.url}${gpart}`;
-      })
-      .join('\n');
+        lines.push(`  tab_id=${t.id}${act} — ${title} — ${t.url}`);
+      }
+    }
+
+    // Ungrouped tabs
+    if (ungrouped.length) {
+      if (byGroup.size > 0) lines.push('[Ungrouped tabs]');
+      for (const t of ungrouped) {
+        const title = TabManager.getTabDisplayTitle(t) || t.url;
+        const act = t.id === activeId ? ' [active]' : '';
+        lines.push(`  tab_id=${t.id}${act} — ${title} — ${t.url}`);
+      }
+    }
+
+    return lines.join('\n');
   }
 
   // ── @tab mention picker ───────────────────────────────────────────────
@@ -2125,6 +2154,28 @@ class AssistantManagerClass {
       }
     }
     return contextMessages;
+  }
+
+  /**
+   * When the browsing-context tab is in a group, fetch and return page content for every
+   * OTHER member of that group. This means the AI always has full context for the whole
+   * group without the user needing to @mention each tab individually.
+   */
+  async _fetchGroupSiblingContext() {
+    if (typeof TabManager === 'undefined') return [];
+    const ctxTab = typeof TabManager.getBrowserContextTab === 'function'
+      ? (TabManager.getBrowserContextTab() || TabManager.getActiveTab())
+      : TabManager.getActiveTab();
+    if (!ctxTab?.groupId) return [];
+    const siblings = TabManager.tabs.filter(t =>
+      t.groupId === ctxTab.groupId &&
+      t.id !== ctxTab.id &&
+      t.webview &&
+      t.url &&
+      !t.url.startsWith('about:')
+    );
+    if (!siblings.length) return [];
+    return this._fetchTabContextForTabs(siblings, 'Tab group member');
   }
 
   // Resolve @[Tab Title] references → fetch page content for each → build system messages
@@ -2743,6 +2794,28 @@ END WITH A SPOKEN SUMMARY:
             `[Open tabs (${allTabs.length}) — use tab_id with switch_tab / close_tab]\n${tabList}`
         });
       }
+
+      // When the browsing-context tab is in a group, spell out the group explicitly
+      const ctxTab = typeof TabManager.getBrowserContextTab === 'function'
+        ? (TabManager.getBrowserContextTab() || TabManager.getActiveTab())
+        : TabManager.getActiveTab();
+      if (ctxTab?.groupId && TabManager.groups?.[ctxTab.groupId]) {
+        const gid = ctxTab.groupId;
+        const groupName = TabManager.getTabGroupLabel?.(ctxTab) || gid;
+        const members = TabManager.tabs.filter(t => t.groupId === gid);
+        const memberLines = members.map(t => {
+          const title = TabManager.getTabDisplayTitle(t);
+          const cur = t.id === ctxTab.id ? ' [current]' : '';
+          return `  tab_id=${t.id}${cur} — ${title} — ${t.url}`;
+        }).join('\n');
+        messages.push({
+          role: 'system',
+          content:
+            `[Active tab group: "${groupName}" · group_id=${gid} · ${members.length} tab${members.length !== 1 ? 's' : ''}]\n` +
+            `All tabs in this group share conversation memory. Use switch_tab to move between them without losing context.\n` +
+            memberLines
+        });
+      }
     }
 
     if (!isQuickAction && config.assistantTabDigest && typeof TabManager !== 'undefined') {
@@ -2766,13 +2839,17 @@ END WITH A SPOKEN SUMMARY:
     const mentionMsgs = await this._resolveAtMentions(text);
     const atTabIds = this._tabIdsFromAtMentions(text);
     const implicitTabMsgs = await this._resolveImplicitTabContext(text, atTabIds);
-    const tabCtxN = mentionMsgs.length + implicitTabMsgs.length;
+
+    // When the active tab is in a group, auto-inject the other group members' content
+    const groupSiblingMsgs = await this._fetchGroupSiblingContext();
+
+    const tabCtxN = mentionMsgs.length + implicitTabMsgs.length + groupSiblingMsgs.length;
     if (tabCtxN) {
       messages.push({
         role: 'system',
-        content: `[Multi-tab context — ${tabCtxN} tab(s)${mentionMsgs.length ? ' (@mention and/or wording match)' : ''}]`
+        content: `[Multi-tab context — ${tabCtxN} tab(s)${mentionMsgs.length ? ' (@mention and/or wording match)' : ''}${groupSiblingMsgs.length ? ` · ${groupSiblingMsgs.length} from your tab group` : ''}]`
       });
-      messages.push(...mentionMsgs, ...implicitTabMsgs);
+      messages.push(...mentionMsgs, ...implicitTabMsgs, ...groupSiblingMsgs);
     }
 
     // Inject connected service context when the query seems to target them

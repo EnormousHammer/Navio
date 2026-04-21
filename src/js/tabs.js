@@ -2089,6 +2089,20 @@ class TabManagerClass {
     }
 
     if (this._tabListTrail) this.tabListEl.appendChild(this._tabListTrail);
+
+    // Mark the first and last tab of each group so CSS can style the edges
+    this.tabListEl.querySelectorAll('.tab-item').forEach(el => el.classList.remove('group-first', 'group-last'));
+    for (const gid of usedGroupIds) {
+      const members = [...this.tabListEl.querySelectorAll('.tab-item.in-group')].filter(el => {
+        const t = this.tabs.find(t => String(t.id) === el.id.replace('tabitem-', ''));
+        return t?.groupId === gid;
+      });
+      if (members.length) {
+        members[0].classList.add('group-first');
+        members[members.length - 1].classList.add('group-last');
+      }
+    }
+
     this._applyAgentControlledTabClasses();
     this._emitTabsChanged('tab-structure');
   }
