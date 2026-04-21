@@ -795,37 +795,33 @@ const NTP = (() => {
       return null;
     }
 
+    // ── Use actual connected-account emails for all Google URLs ──────────────
+    // Never open u/0 and u/1 blindly — the browser's Gmail session order may
+    // not match Navio's OAuth slot order. A non-connector account (e.g. a
+    // personal Gmail the user happened to open in the browser) could be at u/0
+    // while the real connected work account is at u/1 or u/2.
+    const pri = oauthSt.google?.email  || '';
+    const sec = oauthSt.google_2?.email || '';
+
     if (host === 'mail.google.com' || host.endsWith('.mail.google.com')) {
-      return ['https://mail.google.com/mail/u/0/', 'https://mail.google.com/mail/u/1/'];
+      const urls = [];
+      if (pri) urls.push(`https://mail.google.com/mail/u/0/?authuser=${encodeURIComponent(pri)}`);
+      if (sec) urls.push(`https://mail.google.com/mail/u/0/?authuser=${encodeURIComponent(sec)}`);
+      return urls.length >= 2 ? urls : null;
     }
     if (host === 'drive.google.com' || host.endsWith('.drive.google.com')) {
-      return ['https://drive.google.com/drive/u/0/', 'https://drive.google.com/drive/u/1/'];
+      const urls = [];
+      if (pri) urls.push(`https://drive.google.com/drive/u/0/?authuser=${encodeURIComponent(pri)}`);
+      if (sec) urls.push(`https://drive.google.com/drive/u/0/?authuser=${encodeURIComponent(sec)}`);
+      return urls.length >= 2 ? urls : null;
     }
-    if (hostNoWww === 'youtube.com') {
+    if (hostNoWww === 'youtube.com' || hostNoWww === 'google.com') {
       let o;
-      try {
-        o = new URL(raw);
-      } catch {
-        return null;
-      }
-      const u0 = new URL(o.href);
-      u0.searchParams.set('authuser', '0');
-      const u1 = new URL(o.href);
-      u1.searchParams.set('authuser', '1');
-      return [u0.href, u1.href];
-    }
-    if (hostNoWww === 'google.com') {
-      let o;
-      try {
-        o = new URL(raw);
-      } catch {
-        return null;
-      }
-      const u0 = new URL(o.href);
-      u0.searchParams.set('authuser', '0');
-      const u1 = new URL(o.href);
-      u1.searchParams.set('authuser', '1');
-      return [u0.href, u1.href];
+      try { o = new URL(raw); } catch { return null; }
+      const urls = [];
+      if (pri) { const u = new URL(o.href); u.searchParams.set('authuser', pri); urls.push(u.href); }
+      if (sec) { const u = new URL(o.href); u.searchParams.set('authuser', sec); urls.push(u.href); }
+      return urls.length >= 2 ? urls : null;
     }
     return null;
   }
@@ -1222,9 +1218,13 @@ const NTP = (() => {
 
       // ── Check OAuth Google connection first ───────────────────────────────
       let googleAlreadyConnected = false;
+      // Keep oauthSt in wider scope so click/context handlers can use the
+      // connected account's email instead of hardcoded u/0 (which may be
+      // a non-connector account the user is just signed into in the browser).
+      let _ntpOauthSt = {};
       try {
-        const oauthSt = await window.navio.oauthStatus();
-        googleAlreadyConnected = !!(oauthSt?.google?.connected);
+        _ntpOauthSt = (await window.navio.oauthStatus()) || {};
+        googleAlreadyConnected = !!(_ntpOauthSt?.google?.connected);
       } catch {}
 
       if (googleAlreadyConnected) {
@@ -1264,18 +1264,21 @@ const NTP = (() => {
             </div>
           `).join('');
           // Click email row (not the draft button) → open in Gmail
+          // Use the real connected account email so we land in the right inbox.
+          const _ntpPriEmail = _ntpOauthSt.google?.email || '';
           emailList.querySelectorAll('.ntp-email-item[data-msgid]').forEach(el => {
             const msgData = messages.find(m => m.id === el.dataset.msgid) || { id: el.dataset.msgid };
             el.addEventListener('click', (e) => {
               if (e.target.closest('.ntp-email-draft-btn')) return; // handled separately
               const id = el.dataset.msgid;
-              const url = id
-                ? `https://mail.google.com/mail/u/0/#inbox/${id}`
-                : 'https://mail.google.com/mail/u/0/#inbox';
+              const base = _ntpPriEmail
+                ? `https://mail.google.com/mail/u/0/?authuser=${encodeURIComponent(_ntpPriEmail)}`
+                : 'https://mail.google.com/mail/u/0/';
+              const url = id ? `${base}#inbox/${id}` : base;
               if (typeof TabManager !== 'undefined') TabManager.createTab(url);
               else window.open(url, '_blank');
             });
-            _attachGmailCtxMenu(el, msgData);
+            _attachGmailCtxMenu(el, msgData, _ntpPriEmail);
           });
           // Draft reply button for Gmail OAuth emails
           emailList.querySelectorAll('.ntp-email-draft-btn[data-msgid]').forEach(btn => {
@@ -1474,7 +1477,7 @@ const NTP = (() => {
     menu.style.top  = y + 'px';
   }
 
-  function _attachGmailCtxMenu(el, msg) {
+  function _attachGmailCtxMenu(el, msg, authEmail) {
     el.addEventListener('contextmenu', async (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -1484,9 +1487,13 @@ const NTP = (() => {
           icon: '↗',
           label: 'Open in Gmail',
           action: () => {
-            const url = msg.id
-              ? `https://mail.google.com/mail/u/0/#inbox/${msg.id}`
-              : 'https://mail.google.com/mail/u/0/#inbox';
+            // Use the connected account's email — not raw u/0 which may show
+            // a non-connector account the user happens to be signed into.
+            const _ae = authEmail || '';
+            const base = _ae
+              ? `https://mail.google.com/mail/u/0/?authuser=${encodeURIComponent(_ae)}`
+              : 'https://mail.google.com/mail/u/0/';
+            const url = msg.id ? `${base}#inbox/${msg.id}` : base;
             if (typeof TabManager !== 'undefined') TabManager.createTab(url);
             else window.open(url, '_blank');
           }
