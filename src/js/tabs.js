@@ -39,9 +39,11 @@ class TabManagerClass {
     this._ensureTabListTrail();
 
     this.tabListEl.addEventListener('wheel', (e) => {
-      if (e.deltaY !== 0) {
+      // Convert vertical scroll to horizontal so a regular mouse wheel pans the tab strip.
+      // Also handle deltaX so touchpad horizontal swipes scroll natively.
+      if (e.deltaX !== 0 || e.deltaY !== 0) {
         e.preventDefault();
-        this.tabListEl.scrollLeft += e.deltaY;
+        this.tabListEl.scrollLeft += e.deltaX || e.deltaY;
       }
     }, { passive: false });
 
@@ -1259,6 +1261,15 @@ class TabManagerClass {
       }
     }
 
+    // Ensure the newly active tab chip is always visible in the tab strip
+    // (covers keyboard navigation, Ctrl+Tab, etc. where no click happens).
+    requestAnimationFrame(() => {
+      const activeEl = document.getElementById(`tabitem-${id}`);
+      if (activeEl) {
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      }
+    });
+
     if (typeof AssistantManager !== 'undefined' && typeof AssistantManager.onActiveTabChanged === 'function') {
       if (prevId && prevId !== id) {
         AssistantManager.onActiveTabChanged(prevId, id);
@@ -1817,7 +1828,13 @@ class TabManagerClass {
     titleEl.title = 'Double-click to rename';
 
     const faviconEl = el.querySelector('.tab-favicon');
-    if (tab.favicon) {
+    el.classList.toggle('loading', tab.loading);
+    // Check loading first: if loading, show spinner (CSS ::after on .loading .tab-favicon).
+    // Only then show favicon or globe fallback — avoids the race where a favicon is appended
+    // and then immediately cleared when loading fires after a favicon-update event.
+    if (tab.loading) {
+      faviconEl.innerHTML = '';
+    } else if (tab.favicon) {
       // setAttribute safely quotes the URL — a crafted favicon URL containing
       // a double-quote can no longer break out and inject attributes like
       // onerror=… the way ${tab.favicon} in a raw template string could.
@@ -1826,12 +1843,7 @@ class TabManagerClass {
       img.alt = '';
       img.setAttribute('src', String(tab.favicon));
       faviconEl.appendChild(img);
-    }
-
-    el.classList.toggle('loading', tab.loading);
-    if (tab.loading) {
-      faviconEl.innerHTML = '';
-    } else if (!tab.favicon) {
+    } else {
       faviconEl.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>`;
     }
 
