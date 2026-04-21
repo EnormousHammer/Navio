@@ -378,6 +378,7 @@ class AssistantManagerClass {
     document.getElementById('btn-tts-stop')?.addEventListener('click', () => this._stopTTSFromBar());
     this._voiceConvActive = false;
     this._voiceConvRec = null;
+    this._ttsSessionId = 0;
     this._bindVoiceConversation();
 
     // ── Macro record button ────────────────────────────────────────────────
@@ -1784,8 +1785,10 @@ class AssistantManagerClass {
     const plain = this._stripMarkdown(text);
     if (!plain) return;
 
-    // Stop any current speech
+    // Stop any current speech and claim this session — any prior in-flight _speakText
+    // will see a mismatched session ID after its awaits and bail without playing.
     this._stopSpeaking();
+    const mySession = ++this._ttsSessionId;
 
     // Get voice preference (default: 'nova' = female)
     let voicePref = 'nova';
@@ -1794,10 +1797,17 @@ class AssistantManagerClass {
       voicePref = cfg.ttsVoice || 'nova';
     } catch { /* ignore */ }
 
+    // Bail if a newer _speakText call started while we were waiting for config
+    if (mySession !== this._ttsSessionId) return;
+
     // Try OpenAI TTS first (much more human-sounding)
     if (window.navio && window.navio.navioTTS) {
       try {
         const result = await window.navio.navioTTS({ text: plain.slice(0, 4000), voice: voicePref });
+
+        // Bail if superseded while waiting for TTS IPC
+        if (mySession !== this._ttsSessionId) return;
+
         if (result && result.ok && result.audio) {
           // Audio ready — transition from loading → speaking, show stop bar
           if (btn) { btn.classList.remove('tts-loading'); btn.classList.add('tts-speaking'); }
@@ -1807,12 +1817,14 @@ class AssistantManagerClass {
           audio.volume = 1.0;
           this._currentAudio = audio;
           audio.addEventListener('ended', () => {
+            if (mySession !== this._ttsSessionId) return;
             this._currentAudio = null;
             if (btn) btn.classList.remove('tts-speaking');
             this._setTTSBarVisible(false);
             if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), 450);
           });
           audio.addEventListener('error', () => {
+            if (mySession !== this._ttsSessionId) return;
             this._currentAudio = null;
             if (btn) btn.classList.remove('tts-speaking', 'tts-loading');
             this._setTTSBarVisible(false);
@@ -1823,6 +1835,9 @@ class AssistantManagerClass {
         }
       } catch { /* fall through to Web Speech API */ }
     }
+
+    // Bail again if superseded before reaching Web Speech fallback
+    if (mySession !== this._ttsSessionId) return;
 
     // Fallback: Web Speech API with best available voice (near-instant, skip loading state)
     if (btn) { btn.classList.remove('tts-loading'); btn.classList.add('tts-speaking'); }
@@ -1862,11 +1877,13 @@ class AssistantManagerClass {
     utt.volume = 1.0;
     this._setTTSBarVisible(true, 'Reading aloud…');
     utt.onend = () => {
+      if (mySession !== this._ttsSessionId) return;
       if (btn) btn.classList.remove('tts-speaking');
       this._setTTSBarVisible(false);
       if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), 450);
     };
     utt.onerror = () => {
+      if (mySession !== this._ttsSessionId) return;
       if (btn) btn.classList.remove('tts-speaking', 'tts-loading');
       this._setTTSBarVisible(false);
       if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), 450);
@@ -1900,8 +1917,10 @@ class AssistantManagerClass {
     }
   }
 
-  /** Stop any in-progress speech. */
+  /** Stop any in-progress speech and cancel any pending _speakText IPC calls. */
   _stopSpeaking() {
+    // Increment session so any in-flight _speakText awaits abort themselves
+    this._ttsSessionId = (this._ttsSessionId || 0) + 1;
     if (this._currentAudio) {
       try { this._currentAudio.pause(); this._currentAudio.currentTime = 0; } catch { /* ignore */ }
       this._currentAudio = null;
@@ -4388,7 +4407,9 @@ END WITH A SPOKEN SUMMARY:
         ttsBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`;
         msgEl.appendChild(ttsBtn);
 
-        // Auto-speak if enabled in config, or always in voice conversation mode
+        // Auto-speak if enabled in config, or always in voice conversation mode.
+        // .catch() must NOT call _speakText — it would race against .then() and
+        // cause two simultaneous audio streams.
         const _voiceConvNow = this._voiceConvActive;
         void window.navio.getConfig().then(cfg => {
           if ((cfg && cfg.ttsEnabled) || _voiceConvNow) {
@@ -4396,6 +4417,8 @@ END WITH A SPOKEN SUMMARY:
             this._speakText(plainText);
           }
         }).catch(() => {
+          // getConfig failed — if in voice conv, still speak (no double-fire risk here
+          // because .then() was not called when the promise rejects)
           if (_voiceConvNow) {
             this._voiceConvSetState('speaking');
             this._speakText(plainText);
