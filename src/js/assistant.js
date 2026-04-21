@@ -5191,69 +5191,97 @@ class AssistantManagerClass {
           } catch { /* ignore */ }
         }
 
-        // ── Build the navigation URL ──
-        // Prefer the pre-built URL baked into the chip (already has correct authuser).
-        // Rebuild only when the stored URL is missing or stale (no authuser param).
-        let openUrl = (chip.dataset.url || '').trim();
-        const storedHasAuth = openUrl && (openUrl.includes('authuser=') || !isNonPrimary);
-        if (msgId && !storedHasAuth) {
-          openUrl = this._gmailWebInboxUrl(msgId, uSlot, authEmail);
-        } else if (msgId && authEmail && !openUrl.includes('authuser=')) {
-          // Refresh with auth email so Gmail routes to the right account
-          openUrl = this._gmailWebInboxUrl(msgId, uSlot, authEmail);
-        }
-
-        if (!openUrl) return;
-
-        // ── Navigate: two-step to avoid HTTP-redirect stripping the #inbox/ID hash ──
-        // Problem: ?authuser=email#inbox/ID → server 302 redirect drops the hash fragment.
-        // Solution: load Gmail at the correct account FIRST (no hash), then navigate to the
-        // message via JS once the page has settled.
-        const _navigateGmailToMsg = (wv, mid) => {
+        // ── Helper: navigate an already-loaded Gmail webview to a specific message ──
+        // Works by setting the hash in-page — no server round-trip, no redirect.
+        const _navGmailMsgInPage = (wv, mid) => {
           if (!wv || !mid) return;
           try {
             wv.executeJavaScript(
-              `(function(){var b=window.location.href.split('#')[0];window.location.replace(b+'#inbox/${mid}');})()`
+              `(function(){` +
+              `var p=window.location.pathname;` +
+              `window.location.replace(p+'#inbox/${mid}');` +
+              `})()`
             ).catch(() => {});
           } catch { /* ignore */ }
         };
 
-        // Base URL for the correct account — no hash (avoids redirect stripping it)
-        const gmailBaseUrl = authEmail
-          ? `https://mail.google.com/mail/u/0/?authuser=${encodeURIComponent(authEmail)}`
-          : `https://mail.google.com/mail/u/${uSlot}/`;
+        // ── Helper: read the signed-in account email from a Gmail webview ──
+        const _getGmailAccountEmail = async (wv) => {
+          try {
+            return await wv.executeJavaScript(
+              `(function(){` +
+              // Most Gmail versions expose the account email via data-email on the avatar
+              `var e=document.querySelector('[data-email]');` +
+              `if(e)return e.getAttribute('data-email');` +
+              // Fallback: aria-label on the Google Account button (contains email in parens)
+              `var a=document.querySelector('[aria-label*="Google Account"]');` +
+              `if(a){var m=a.getAttribute('aria-label').match(/[\\w.+%-]+@[\\w.-]+\\.[a-z]{2,}/i);if(m)return m[0];}` +
+              `return '';` +
+              `})()`
+            );
+          } catch { return ''; }
+        };
 
         if (typeof TabManager !== 'undefined') {
-          // Try to reuse an existing Gmail tab already showing the right account
-          const gmailOrigin = 'https://mail.google.com';
-          const existingGmailTab = TabManager.tabs.find(t => {
-            if (!t.url || !t.url.startsWith(gmailOrigin)) return false;
-            const slotMatch = t.url.match(/\/mail\/u\/(\d+)\//);
-            if (!slotMatch) return false;
-            // Prefer slot match; also accept any Gmail tab when authEmail is set
-            return parseInt(slotMatch[1], 10) === uSlot;
-          });
-
-          if (existingGmailTab && existingGmailTab.webview) {
-            TabManager.switchToTab(existingGmailTab.id);
-            if (msgId) {
-              // Already on the right Gmail session — navigate in-page to the message
-              _navigateGmailToMsg(existingGmailTab.webview, msgId);
-            } else {
-              existingGmailTab.webview.loadURL(gmailBaseUrl);
+          // ── Step 1: scan ALL open Gmail tabs to find one already showing authEmail ──
+          // This is more reliable than matching by slot number, which doesn't correlate
+          // with the browser's Gmail session order.
+          if (authEmail && msgId) {
+            const gmailTabs = TabManager.tabs.filter(t =>
+              t.webview && t.url && t.url.includes('mail.google.com/mail/u/')
+            );
+            for (const t of gmailTabs) {
+              const tabEmail = await _getGmailAccountEmail(t.webview);
+              if (tabEmail && tabEmail.toLowerCase() === authEmail.toLowerCase()) {
+                // Found the right account's tab — switch and navigate in-page
+                TabManager.switchToTab(t.id);
+                _navGmailMsgInPage(t.webview, msgId);
+                return;
+              }
             }
-            return;
           }
 
-          // Open a new tab; after Gmail loads at the correct account, navigate to the message
-          const newTab = TabManager.createTab(gmailBaseUrl);
-          if (msgId && newTab && newTab.webview) {
-            newTab.webview.addEventListener('did-stop-loading', () => {
-              _navigateGmailToMsg(newTab.webview, msgId);
-            }, { once: true });
+          // ── Step 2: open a new tab using Google AccountChooser ──
+          // AccountChooser actively selects the right account even if it isn't the
+          // default browser Gmail session — unlike ?authuser= which silently falls
+          // back to the primary account when the target isn't signed in yet.
+          let navUrl;
+          if (authEmail) {
+            // AccountChooser: if signed in → goes straight to Gmail; if not → prompts login
+            const continueAfterAuth = encodeURIComponent('https://mail.google.com/mail/');
+            navUrl = `https://accounts.google.com/AccountChooser?Email=${encodeURIComponent(authEmail)}&continue=${continueAfterAuth}`;
+          } else {
+            navUrl = `https://mail.google.com/mail/u/${uSlot}/`;
           }
+
+          const newTab = TabManager.createTab(navUrl);
+          if (!msgId || !newTab || !newTab.webview) return;
+
+          // ── Step 3: wait until we land on mail.google.com/mail/u/N/ (not accounts.google.com) ──
+          // did-stop-loading fires on EVERY redirect, so we must ignore the
+          // intermediate accounts.google.com stops and only act once Gmail itself has loaded.
+          let _msgNavDone = false;
+          const _onStop = () => {
+            if (_msgNavDone) return;
+            const currentUrl = newTab.webview?.getURL?.() || '';
+            if (!currentUrl.includes('mail.google.com/mail/u/')) return; // still redirecting
+            _msgNavDone = true;
+            newTab.webview.removeEventListener('did-stop-loading', _onStop);
+            clearTimeout(_navTimeout);
+            // Short settle delay: Gmail's SPA needs ~1 s to register the hash navigation
+            setTimeout(() => _navGmailMsgInPage(newTab.webview, msgId), 1200);
+          };
+          newTab.webview.addEventListener('did-stop-loading', _onStop);
+          // Safety: clean up listener after 45 s (in case of login flow or slow network)
+          const _navTimeout = setTimeout(() => {
+            newTab.webview?.removeEventListener('did-stop-loading', _onStop);
+          }, 45000);
         } else {
-          window.open(openUrl, '_blank');
+          // Fallback for non-Electron environments
+          const fallbackUrl = authEmail
+            ? `https://mail.google.com/mail/u/0/?authuser=${encodeURIComponent(authEmail)}#inbox/${msgId}`
+            : `https://mail.google.com/mail/u/${uSlot}/#inbox/${msgId}`;
+          window.open(fallbackUrl, '_blank');
         }
       });
       chip.addEventListener('keydown', (e) => {
