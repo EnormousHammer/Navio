@@ -830,11 +830,24 @@ body:not(.navio-vertical-tabs) .tab-item.active {
 }
 
 /* ── Tab Groups ──────────────────────────────────────────────────────── */
-/* Chrome-style: group color bar at the bottom of each grouped tab */
+/* Chrome-style: colored top bar + background tint on grouped tabs */
 .tab-item.in-group {
-  box-shadow: inset 0 -3px 0 var(--tg-color, transparent);
+  box-shadow: inset 0 3px 0 var(--tg-color, transparent);
+  background: color-mix(in srgb, var(--tg-color, #60a5fa) 13%, transparent);
 }
-/* No dot in title — the group chip + bottom bar are the indicators */
+.tab-item.in-group:hover {
+  background: color-mix(in srgb, var(--tg-color, #60a5fa) 20%, transparent);
+}
+.tab-item.in-group.active {
+  background: color-mix(in srgb, var(--tg-color, #60a5fa) 22%, var(--bg-tab-active, #1e2a3a));
+}
+/* Highlight entire group when a tab is dragged over any member */
+.tab-item.in-group.tab-drag-over {
+  background: color-mix(in srgb, var(--tg-color, #60a5fa) 32%, transparent) !important;
+  outline: 2px solid color-mix(in srgb, var(--tg-color, #60a5fa) 80%, transparent);
+  outline-offset: -2px;
+}
+/* No dot in title — the group chip + top bar + tint are the indicators */
 .tab-item.in-group .tab-title::before {
   display: none;
 }
@@ -1081,8 +1094,9 @@ body.navio-vertical-tabs .tab-group-header:hover {
 
 /* Ghost that carries the group-color bar (for grouped tabs) */
 .tab-drag-ghost.in-group {
-  box-shadow: inset 0 -3px 0 var(--tg-color, transparent),
+  box-shadow: inset 0 3px 0 var(--tg-color, transparent),
               0 8px 24px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.1);
+  background: color-mix(in srgb, var(--tg-color, #60a5fa) 18%, var(--bg-elevated, #1e2436));
 }
 
 /* Source tab while drag is active — fade it out */
@@ -12155,9 +12169,19 @@ button:focus-visible,
 [data-theme="light"] .tab-item.tab-split-pair-right.active {
   box-shadow: inset 0 -3px 0 rgba(26, 115, 232, 0.78);
 }
-/* Light theme in-group bottom bar */
+/* Light theme in-group top bar + tint */
 [data-theme="light"] .tab-item.in-group {
-  box-shadow: inset 0 -3px 0 var(--tg-color, transparent);
+  box-shadow: inset 0 3px 0 var(--tg-color, transparent);
+  background: color-mix(in srgb, var(--tg-color, #1a73e8) 10%, transparent);
+}
+[data-theme="light"] .tab-item.in-group:hover {
+  background: color-mix(in srgb, var(--tg-color, #1a73e8) 17%, transparent);
+}
+[data-theme="light"] .tab-item.in-group.active {
+  background: color-mix(in srgb, var(--tg-color, #1a73e8) 18%, #fff);
+}
+[data-theme="light"] .tab-item.in-group.tab-drag-over {
+  background: color-mix(in srgb, var(--tg-color, #1a73e8) 28%, transparent) !important;
 }
 
 /* ── Light mode message bubbles ─────────────────────────────────────────── */

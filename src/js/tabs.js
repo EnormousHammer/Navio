@@ -2001,6 +2001,46 @@ class TabManagerClass {
   }
 
   /**
+   * Drag-drop variant of addTabToGroup: joins the group AND physically moves
+   * the tab (and its split partner) to sit at the end of the group in the strip.
+   */
+  _dropTabIntoGroup(tabId, groupId) {
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab || !this.groups[groupId]) return;
+
+    const partnerId = tab.splitPartnerId || null;
+
+    // Helper: physically move a tab to the end of the group block and assign groupId
+    const moveAndJoin = (tid) => {
+      const idx = this.tabs.findIndex(t => t.id === tid);
+      if (idx < 0) return;
+      const [moved] = this.tabs.splice(idx, 1);
+      // Clear any old group
+      if (moved.groupId && moved.groupId !== groupId) {
+        if (typeof AssistantManager !== 'undefined' && AssistantManager.onTabLeftGroup) {
+          AssistantManager.onTabLeftGroup(tid, moved.groupId);
+        }
+      }
+      moved.groupId = groupId;
+      // Insert after the last member of the target group (recalculate after splice)
+      const lastIdx = this.tabs.reduce((last, t, i) => t.groupId === groupId ? i : last, -1);
+      this.tabs.splice(lastIdx >= 0 ? lastIdx + 1 : this.tabs.length, 0, moved);
+      if (typeof AssistantManager !== 'undefined' && AssistantManager.onTabJoinedGroup) {
+        AssistantManager.onTabJoinedGroup(tid, groupId);
+      }
+    };
+
+    moveAndJoin(tabId);
+    if (partnerId) {
+      const partner = this.tabs.find(t => t.id === partnerId);
+      if (partner && partner.groupId !== groupId) moveAndJoin(partnerId);
+    }
+
+    this._reRenderTabList();
+    this._emitTabsChanged('tab-reorder');
+  }
+
+  /**
    * @param {boolean} [skipAssistantHooks] When true (e.g. internal regroup), assistant memory is unchanged —
    *        used so moving a tab between groups does not fork/split threads.
    */
@@ -2079,6 +2119,17 @@ class TabManagerClass {
       this._startDrag('group', group.id, el, e);
     });
     return el;
+  }
+
+  /** Highlight all elements (header chip + tab items) belonging to a group for drop feedback. */
+  _highlightGroupDrop(groupId) {
+    const header = this.tabListEl.querySelector(`.tab-group-header[data-group-id="${groupId}"]`);
+    if (header) header.classList.add('tab-drag-over');
+    for (const tabEl of this.tabListEl.querySelectorAll('.tab-item.in-group')) {
+      const tid = tabEl.id.replace('tabitem-', '');
+      const t   = this.tabs.find(tt => tt.id === tid);
+      if (t?.groupId === groupId) tabEl.classList.add('tab-drag-over');
+    }
   }
 
   _appendTabItem(tab) {
@@ -2499,15 +2550,35 @@ class TabManagerClass {
     this.tabListEl.querySelectorAll('.tab-drag-over').forEach(el => el.classList.remove('tab-drag-over'));
     ds.insertInGroupId = null;
 
-    // Check if hovering over a group header (tab-drag only — not group-drag)
+    // Check if hovering over a group header OR any tab already in a group
+    // (tab-drag only — not group-drag)
     if (ds.type === 'tab') {
+      const draggedTab = this.tabs.find(t => t.id === ds.id);
+
+      // 1. Check group header chips
       for (const header of this.tabListEl.querySelectorAll('.tab-group-header')) {
         const hr = header.getBoundingClientRect();
         if (x >= hr.left && x <= hr.right && y >= hr.top && y <= hr.bottom) {
           const hoverGroupId = header.dataset.groupId;
-          const draggedTab   = this.tabs.find(t => t.id === ds.id);
           if (hoverGroupId && hoverGroupId !== draggedTab?.groupId) {
-            header.classList.add('tab-drag-over');
+            this._highlightGroupDrop(hoverGroupId);
+            ds.insertInGroupId    = hoverGroupId;
+            ds.insertBeforeTabId  = null;
+            indicator.style.display = 'none';
+            return;
+          }
+        }
+      }
+
+      // 2. Check tabs that are already in a group — drop on any member = join
+      for (const tabEl of this.tabListEl.querySelectorAll('.tab-item.in-group')) {
+        const tr = tabEl.getBoundingClientRect();
+        if (x >= tr.left && x <= tr.right && y >= tr.top && y <= tr.bottom) {
+          const hoveredTabId = tabEl.id.replace('tabitem-', '');
+          const hoveredTab   = this.tabs.find(t => t.id === hoveredTabId);
+          const hoverGroupId = hoveredTab?.groupId;
+          if (hoverGroupId && hoverGroupId !== draggedTab?.groupId) {
+            this._highlightGroupDrop(hoverGroupId);
             ds.insertInGroupId    = hoverGroupId;
             ds.insertBeforeTabId  = null;
             indicator.style.display = 'none';
@@ -2593,8 +2664,8 @@ class TabManagerClass {
 
     if (ds.isDragging) {
       if (ds.insertInGroupId && ds.type === 'tab') {
-        // Dropped on a group header → join group
-        this.addTabToGroup(ds.id, ds.insertInGroupId);
+        // Dropped on a group header or grouped tab → join group AND move adjacent to it
+        this._dropTabIntoGroup(ds.id, ds.insertInGroupId);
       } else if (ds.type === 'tab') {
         this._moveTabToIndex(ds.id, ds.insertBeforeTabId);
       } else if (ds.type === 'group') {
