@@ -4808,6 +4808,279 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   opacity: 1;
 }
 
+/* ── TTS active / stop bar ───────────────────────────────────────────────── */
+.tts-active-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px 7px 14px;
+  background: rgba(125, 211, 252, 0.07);
+  border-top: 1px solid rgba(125, 211, 252, 0.15);
+  border-bottom: 1px solid rgba(125, 211, 252, 0.08);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  pointer-events: none;
+}
+.tts-active-bar.tts-bar-show {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.tts-active-icon {
+  display: flex;
+  align-items: center;
+  color: var(--accent, #7dd3fc);
+  flex-shrink: 0;
+  animation: tts-pulse 1s ease-in-out infinite;
+}
+.tts-active-label {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent, #7dd3fc);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tts-stop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px 4px 8px;
+  background: rgba(125, 211, 252, 0.1);
+  border: 1px solid rgba(125, 211, 252, 0.3);
+  border-radius: 999px;
+  color: var(--accent, #7dd3fc);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.13s ease, border-color 0.13s ease, color 0.13s ease;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.tts-stop-btn:hover {
+  background: rgba(125, 211, 252, 0.18);
+  border-color: rgba(125, 211, 252, 0.5);
+  color: #fff;
+}
+.tts-stop-btn:active {
+  background: rgba(125, 211, 252, 0.25);
+}
+[data-theme="light"] .tts-active-bar {
+  background: rgba(0, 120, 220, 0.05);
+  border-top-color: rgba(0, 120, 220, 0.15);
+  border-bottom-color: rgba(0, 120, 220, 0.08);
+}
+[data-theme="light"] .tts-active-label,
+[data-theme="light"] .tts-active-icon { color: #0078dc; }
+[data-theme="light"] .tts-stop-btn {
+  background: rgba(0, 120, 220, 0.08);
+  border-color: rgba(0, 120, 220, 0.25);
+  color: #0078dc;
+}
+[data-theme="light"] .tts-stop-btn:hover {
+  background: rgba(0, 120, 220, 0.15);
+  border-color: rgba(0, 120, 220, 0.45);
+  color: #005aa3;
+}
+
+/* ── Voice Conversation HUD ──────────────────────────────────────────────── */
+.voice-conv-hud {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  background: rgba(139, 92, 246, 0.07);
+  border-top: 1px solid rgba(139, 92, 246, 0.18);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+}
+.voice-conv-hud.vch-show {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* Animated ring wrapping the state icon */
+.vch-ring-wrap {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+.vch-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(139, 92, 246, 0.45);
+  transition: border-color 0.3s ease;
+}
+.vch-state-icon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(139, 92, 246, 0.9);
+  transition: color 0.3s ease;
+}
+
+/* Listening: pulsing glow ring */
+.voice-conv-hud[data-vc-state="listening"] .vch-ring {
+  border-color: rgba(139, 92, 246, 0.7);
+  animation: vch-listen 0.9s ease-in-out infinite alternate;
+}
+.voice-conv-hud[data-vc-state="listening"] .vch-state-icon { color: rgba(139, 92, 246, 1); }
+
+/* Thinking: spinning ring */
+.voice-conv-hud[data-vc-state="thinking"] .vch-ring {
+  border-color: rgba(251, 191, 36, 0.6);
+  border-top-color: transparent;
+  animation: vch-spin 0.9s linear infinite;
+}
+.voice-conv-hud[data-vc-state="thinking"] .vch-state-icon { color: rgba(251, 191, 36, 0.9); }
+
+/* Summarizing: same as speaking */
+.voice-conv-hud[data-vc-state="summarizing"] .vch-ring {
+  border-color: rgba(125, 211, 252, 0.65);
+  animation: vch-speak 0.65s ease-in-out infinite alternate;
+}
+.voice-conv-hud[data-vc-state="summarizing"] .vch-state-icon { color: rgba(125, 211, 252, 1); }
+.voice-conv-hud[data-vc-state="summarizing"] .vch-state-label { color: rgba(125, 211, 252, 0.9); }
+
+/* Speaking: gentle pulse in blue */
+.voice-conv-hud[data-vc-state="speaking"] .vch-ring {
+  border-color: rgba(125, 211, 252, 0.65);
+  animation: vch-speak 0.65s ease-in-out infinite alternate;
+}
+.voice-conv-hud[data-vc-state="speaking"] .vch-state-icon { color: rgba(125, 211, 252, 1); }
+
+@keyframes vch-listen {
+  0%   { transform: scale(0.88); box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.45); }
+  100% { transform: scale(1.12); box-shadow: 0 0 0 10px rgba(139, 92, 246, 0); }
+}
+@keyframes vch-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes vch-speak {
+  0%   { transform: scale(0.92); opacity: 0.6; }
+  100% { transform: scale(1.08); opacity: 1; }
+}
+
+/* Info block */
+.vch-info {
+  flex: 1;
+  min-width: 0;
+}
+.vch-state-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(139, 92, 246, 0.9);
+  transition: color 0.3s ease;
+}
+.voice-conv-hud[data-vc-state="thinking"] .vch-state-label { color: rgba(251, 191, 36, 0.9); }
+.voice-conv-hud[data-vc-state="speaking"] .vch-state-label { color: rgba(125, 211, 252, 0.9); }
+.vch-transcript {
+  font-size: 11.5px;
+  color: var(--text-muted, #64748b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+  min-height: 15px;
+  font-style: italic;
+  transition: color 0.15s ease;
+}
+/* Interrupt flash — briefly shown when user speech is detected mid-task */
+.vch-transcript:not(:empty) {
+  animation: none;
+}
+.voice-conv-hud[data-vc-state="listening"] .vch-transcript {
+  color: rgba(139, 92, 246, 0.7);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* End button */
+.vch-end-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px 5px 10px;
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.28);
+  border-radius: 999px;
+  color: rgba(139, 92, 246, 0.9);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.13s, border-color 0.13s, color 0.13s;
+}
+.vch-end-btn:hover {
+  background: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.5);
+  color: #fff;
+}
+
+/* Voice conv button active state */
+#btn-voice-conv.voice-conv-on {
+  color: rgba(139, 92, 246, 0.9) !important;
+  background: rgba(139, 92, 246, 0.12) !important;
+  border-color: rgba(139, 92, 246, 0.3) !important;
+}
+
+/* Light theme */
+[data-theme="light"] .voice-conv-hud {
+  background: rgba(109, 40, 217, 0.04);
+  border-top-color: rgba(109, 40, 217, 0.14);
+}
+[data-theme="light"] .vch-state-label,
+[data-theme="light"] .vch-state-icon { color: #7c3aed; }
+[data-theme="light"] .vch-end-btn {
+  background: rgba(109, 40, 217, 0.07);
+  border-color: rgba(109, 40, 217, 0.22);
+  color: #7c3aed;
+}
+[data-theme="light"] .vch-end-btn:hover {
+  background: rgba(109, 40, 217, 0.14);
+  color: #5b21b6;
+}
+[data-theme="light"] #btn-voice-conv.voice-conv-on {
+  color: #7c3aed !important;
+  background: rgba(109, 40, 217, 0.08) !important;
+}
+
+/* ── TTS button states ───────────────────────────────────────────────────── */
+@keyframes tts-pulse {
+  0%, 100% { opacity: 0.45; transform: scale(0.92); }
+  50%       { opacity: 1;    transform: scale(1);    }
+}
+@keyframes tts-wave {
+  0%, 100% { transform: scaleY(0.6); }
+  50%       { transform: scaleY(1.15); }
+}
+.assistant-tts-btn.tts-loading {
+  opacity: 1 !important;
+  color: var(--accent, #7dd3fc) !important;
+  border-color: rgba(125, 211, 252, 0.4) !important;
+  background: rgba(125, 211, 252, 0.07) !important;
+  animation: tts-pulse 0.9s ease-in-out infinite;
+}
+.assistant-tts-btn.tts-speaking {
+  opacity: 1 !important;
+  color: var(--accent, #7dd3fc) !important;
+  border-color: rgba(125, 211, 252, 0.5) !important;
+  background: rgba(125, 211, 252, 0.1) !important;
+}
+.assistant-tts-btn.tts-speaking svg {
+  animation: tts-wave 0.7s ease-in-out infinite alternate;
+}
+
 .message-content {
   padding: 10px 12px;
   border-radius: 12px;
@@ -8941,6 +9214,79 @@ a.navio-citation-chip:hover {
 a.navio-citation-chip:hover::after {
   opacity: 0.7;
 }
+
+/* ── Source citation hover preview tooltip ───────────────────────────────── */
+.navio-source-tip {
+  position: fixed;
+  z-index: 99999;
+  width: 280px;
+  background: var(--bg-elevated, #1a1f2e);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 12px 14px 10px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  pointer-events: auto;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-5px) scale(0.97);
+  transition: opacity 0.13s ease, transform 0.13s ease, visibility 0s linear 0.13s;
+}
+.navio-source-tip.nst-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+  transition: opacity 0.13s ease, transform 0.13s ease, visibility 0s linear 0s;
+}
+.nst-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.nst-favicon {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+.nst-host {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #e2e8f0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.nst-url {
+  font-size: 11px;
+  color: var(--text-muted, #64748b);
+  word-break: break-all;
+  line-height: 1.5;
+  margin-bottom: 9px;
+}
+.nst-cta {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--accent, #7dd3fc);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+.nst-cta span { font-size: 13px; }
+
+[data-theme="light"] .navio-source-tip {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.1);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.04);
+}
+[data-theme="light"] .nst-host { color: #1e293b; }
+[data-theme="light"] .nst-url { color: #94a3b8; }
+[data-theme="light"] .nst-cta { border-top-color: rgba(0, 0, 0, 0.07); }
 
 /* ── Follow-up suggestion chips (Comet-style) ──────────────────────────── */
 .navio-followup-chips {

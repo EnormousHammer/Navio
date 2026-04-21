@@ -2729,6 +2729,63 @@ ipcMain.handle('deep-research', async (event, { query }) => {
 });
 
 // ── Ollama local model detection ─────────────────────────────────────────────
+// ── OpenAI Speech-to-Text (Whisper / gpt-4o-transcribe) ──────────────────
+ipcMain.handle('navio-stt', async (event, { audio, mimeType, language }) => {
+  try {
+    const cfg = loadConfig();
+    const provider = cfg.aiProvider || 'openai';
+    if (provider !== 'openai' && provider !== 'custom') {
+      return { ok: false, error: 'STT requires an OpenAI API key (current provider: ' + provider + ')' };
+    }
+    const apiKey = secureConfig.getApiKey(app.getPath('userData'));
+    if (!apiKey) return { ok: false, error: 'No API key configured.' };
+    if (!audio) return { ok: false, error: 'No audio data received.' };
+
+    const audioBuffer = Buffer.from(audio, 'base64');
+    const mime = mimeType || 'audio/webm';
+    // Map MIME to file extension the API accepts
+    const ext = mime.includes('mp4') ? 'mp4' : mime.includes('ogg') ? 'ogg' : mime.includes('wav') ? 'wav' : 'webm';
+
+    // Build multipart/form-data body manually — fully reliable across Node versions
+    const boundary = `----NavioSTT${Date.now()}`;
+    const CRLF = '\r\n';
+    const sttModel = 'gpt-4o-mini-transcribe'; // fast, accurate, 99-language support
+    const lang = language || 'en';
+
+    const parts = [
+      Buffer.from(`--${boundary}${CRLF}Content-Disposition: form-data; name="file"; filename="audio.${ext}"${CRLF}Content-Type: ${mime}${CRLF}${CRLF}`),
+      audioBuffer,
+      Buffer.from(`${CRLF}--${boundary}${CRLF}Content-Disposition: form-data; name="model"${CRLF}${CRLF}${sttModel}${CRLF}`),
+      Buffer.from(`--${boundary}${CRLF}Content-Disposition: form-data; name="language"${CRLF}${CRLF}${lang}${CRLF}`),
+      Buffer.from(`--${boundary}${CRLF}Content-Disposition: form-data; name="response_format"${CRLF}${CRLF}json${CRLF}`),
+      Buffer.from(`--${boundary}--${CRLF}`),
+    ];
+    const body = Buffer.concat(parts);
+
+    const endpoint = (cfg.customEndpoint || 'https://api.openai.com').replace(/\/v1.*$/, '') + '/v1/audio/transcriptions';
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': String(body.length),
+      },
+      body,
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      return { ok: false, error: `STT API ${resp.status}: ${errText.slice(0, 300)}` };
+    }
+
+    const data = await resp.json();
+    return { ok: true, text: (data.text || '').trim() };
+  } catch (e) {
+    return { ok: false, error: e.message || 'STT request failed' };
+  }
+});
+
 // ── OpenAI Text-to-Speech ─────────────────────────────────────────────────
 ipcMain.handle('navio-tts', async (event, { text, voice, model }) => {
   try {

@@ -136,6 +136,7 @@ contextBridge.exposeInMainWorld('navio', {
   ledgerExport: () => ipcRenderer.invoke('ledger-export'),
 
   navioTTS: (params) => ipcRenderer.invoke('navio-tts', params),
+  navioSTT: (params) => ipcRenderer.invoke('navio-stt', params),
 
   getMemoryInfo: () => ipcRenderer.invoke('get-memory-info'),
   openDevtoolsActive: (webContentsId) => ipcRenderer.invoke('open-devtools-active', webContentsId),

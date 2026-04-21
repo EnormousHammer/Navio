@@ -375,6 +375,10 @@ class AssistantManagerClass {
     document.getElementById('btn-clear-chat')?.addEventListener('click', () => this.clearChat());
     document.getElementById('btn-send-message')?.addEventListener('click', () => this.sendMessage());
     document.getElementById('btn-assistant-stop')?.addEventListener('click', () => this.stopGeneration());
+    document.getElementById('btn-tts-stop')?.addEventListener('click', () => this._stopTTSFromBar());
+    this._voiceConvActive = false;
+    this._voiceConvRec = null;
+    this._bindVoiceConversation();
 
     // ── Macro record button ────────────────────────────────────────────────
     document.getElementById('btn-record-macro')?.addEventListener('click', () => this._toggleRecording());
@@ -462,18 +466,21 @@ class AssistantManagerClass {
       const btn = e.target.closest('.assistant-tts-btn');
       if (!btn) return;
       const text = btn.dataset.tts || '';
-      if (btn.classList.contains('tts-speaking')) {
-        this._stopSpeaking();
-        btn.classList.remove('tts-speaking');
+      if (btn.classList.contains('tts-speaking') || btn.classList.contains('tts-loading')) {
+        this._stopTTSFromBar();
+        btn.classList.remove('tts-speaking', 'tts-loading');
       } else {
-        this.messagesEl.querySelectorAll('.assistant-tts-btn.tts-speaking').forEach(b => b.classList.remove('tts-speaking'));
-        btn.classList.add('tts-speaking');
+        // Stop any other in-progress TTS and clear their states
+        this.messagesEl.querySelectorAll('.assistant-tts-btn.tts-speaking, .assistant-tts-btn.tts-loading')
+          .forEach(b => b.classList.remove('tts-speaking', 'tts-loading'));
+        // Immediate feedback — loading state before API call
+        btn.classList.add('tts-loading');
+        this._setTTSBarVisible(true, 'Preparing audio…');
         try {
-          await this._speakText(text);
-        } finally {
-          // Reset after audio ends — for Audio elements, handled by ended event
-          // For Web Speech API, reset after a brief delay
-          setTimeout(() => btn.classList.remove('tts-speaking'), 300);
+          await this._speakText(text, btn);
+        } catch {
+          btn.classList.remove('tts-loading', 'tts-speaking');
+          this._setTTSBarVisible(false);
         }
       }
     });
@@ -1203,92 +1210,576 @@ class AssistantManagerClass {
   }
 
   // ── Voice Mode (Web Speech API) ──────────────────────────────────────────
+  /**
+   * Record microphone audio, detect end-of-speech via silence detection,
+   * then transcribe via OpenAI gpt-4o-mini-transcribe (Whisper-class accuracy).
+   *
+   * @param {function} onTranscript  - Called with final transcript string (may be '')
+   * @param {function} [onUpdate]    - Called with { state: 'recording'|'processing', level: number }
+   * @returns {function}             - Call to abort / stop recording early
+   */
+  _whisperListen(onTranscript, onUpdate) {
+    let aborted = false;
+    let stream = null;
+    let mediaRecorder = null;
+    let audioCtx = null;
+    let rafId = null;
+    const chunks = [];
+
+    const cleanup = () => {
+      if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+      if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+      if (audioCtx) { try { audioCtx.close(); } catch { /* ignore */ } audioCtx = null; }
+    };
+
+    const stop = () => {
+      aborted = true;
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        try { mediaRecorder.stop(); } catch { /* ignore */ }
+      } else {
+        cleanup();
+      }
+    };
+
+    (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        if (aborted) { stream.getTracks().forEach(t => t.stop()); return; }
+
+        // ── Audio analysis for voice activity detection ──────────────────
+        audioCtx = new AudioContext();
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 1024;
+        analyser.smoothingTimeConstant = 0.2;
+        source.connect(analyser);
+        const pcmBuf = new Uint8Array(analyser.frequencyBinCount);
+
+        // ── MediaRecorder — prefer opus/webm (best quality in Chromium) ──
+        const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/ogg']
+          .find(t => MediaRecorder.isTypeSupported(t)) || '';
+        mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+        mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+        mediaRecorder.start(80); // 80 ms chunks
+
+        // ── VAD — timestamp-based silence detection ──────────────────────
+        let hasSpoken = false;
+        let silenceStart = null;
+        const SPEECH_THRESHOLD = 10;  // RMS units (0-100) to classify as speech
+        const SILENCE_THRESHOLD = 6;  // RMS below this for sustained silence
+        const SILENCE_NEEDED_MS = 1400; // 1.4 s of silence after speech → submit
+        const MAX_RECORD_MS = 90_000;   // 90 s safety cap
+        const recordStart = Date.now();
+
+        const vadLoop = () => {
+          if (aborted) return;
+          analyser.getByteTimeDomainData(pcmBuf);
+          let sum = 0;
+          for (let i = 0; i < pcmBuf.length; i++) {
+            const v = (pcmBuf[i] - 128) / 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / pcmBuf.length) * 100;
+          onUpdate?.({ state: 'recording', level: rms });
+
+          if (rms > SPEECH_THRESHOLD) {
+            hasSpoken = true;
+            silenceStart = null;
+          } else if (hasSpoken && rms < SILENCE_THRESHOLD) {
+            if (!silenceStart) silenceStart = Date.now();
+            else if (Date.now() - silenceStart >= SILENCE_NEEDED_MS) {
+              stop(); // silence detected after speech → transcribe
+              return;
+            }
+          }
+
+          if (Date.now() - recordStart > MAX_RECORD_MS) { stop(); return; }
+          rafId = requestAnimationFrame(vadLoop);
+        };
+        rafId = requestAnimationFrame(vadLoop);
+
+        // ── On recording stop: encode + send to Whisper ──────────────────
+        mediaRecorder.onstop = async () => {
+          cleanup();
+          if (chunks.length === 0 || !hasSpoken) { onTranscript(''); return; }
+
+          onUpdate?.({ state: 'processing', level: 0 });
+
+          try {
+            const blob = new Blob(chunks, { type: mime ? mime.split(';')[0] : 'audio/webm' });
+            const arrayBuf = await blob.arrayBuffer();
+
+            // Chunked base64 encode — avoids stack overflow on large buffers
+            const uint8 = new Uint8Array(arrayBuf);
+            const CHUNK = 8192;
+            let bin = '';
+            for (let i = 0; i < uint8.length; i += CHUNK) {
+              bin += String.fromCharCode(...uint8.subarray(i, Math.min(i + CHUNK, uint8.length)));
+            }
+            const b64 = btoa(bin);
+
+            if (!window.navio?.navioSTT) { onTranscript(''); return; }
+            const result = await window.navio.navioSTT({
+              audio: b64,
+              mimeType: mime ? mime.split(';')[0] : 'audio/webm',
+              language: 'en',
+            });
+            onTranscript(result?.ok ? (result.text || '') : '');
+          } catch {
+            onTranscript('');
+          }
+        };
+      } catch {
+        // Mic access denied or device error
+        cleanup();
+        onTranscript('');
+      }
+    })();
+
+    return stop;
+  }
+
   _bindVoiceMode() {
     const btn = document.getElementById('btn-voice-mode');
     const hint = document.getElementById('voice-hint');
     if (!btn) return;
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      btn.style.display = 'none';
-      return;
-    }
+    const HINT_DEFAULT = 'Enter to send \u00b7 Shift+Enter for new line \u00b7 Paste or attach files';
+    let active = false;
+    let stopFn = null;
 
-    let recognition = null;
-    let listening = false;
-
-    const startListening = () => {
-      if (listening) return;
-      recognition = new SpeechRecognition();
-      recognition.lang = 'en-US';
-      recognition.interimResults = true;
-      recognition.maxAlternatives = 1;
-
-      recognition.onstart = () => {
-        listening = true;
-        btn.classList.add('listening');
-        if (hint) hint.textContent = 'Listening... click mic to stop';
-      };
-
-      recognition.onresult = (e) => {
-        const transcript = Array.from(e.results)
-          .map(r => r[0].transcript)
-          .join('');
-        this.inputEl.value = transcript;
-        this.inputEl.style.height = 'auto';
-        this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + 'px';
-        if (e.results[e.results.length - 1].isFinal) {
-          stopListening();
-          if (transcript.trim()) this.sendMessage();
-        }
-      };
-
-      recognition.onerror = (e) => {
-        stopListening();
-        if (e.error !== 'no-speech') {
-          if (hint) hint.textContent = `Voice error: ${e.error}`;
-          setTimeout(() => { if (hint) hint.textContent = 'Enter to send \u00b7 Shift+Enter for new line \u00b7 Paste or attach files'; }, 2500);
-        }
-      };
-
-      recognition.onend = () => stopListening();
-      recognition.start();
+    const resetUI = () => {
+      active = false;
+      stopFn = null;
+      btn.classList.remove('listening');
+      if (hint) hint.textContent = HINT_DEFAULT;
     };
 
-    const stopListening = () => {
-      listening = false;
-      btn.classList.remove('listening');
-      if (hint) hint.textContent = 'Enter to send \u00b7 Shift+Enter for new line \u00b7 Paste or attach files';
-      if (recognition) { try { recognition.stop(); } catch {} recognition = null; }
+    const onGotTranscript = (text) => {
+      resetUI();
+      if (!text.trim()) return;
+      if (this.inputEl) {
+        this.inputEl.value = text.trim();
+        this.inputEl.style.height = 'auto';
+        this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + 'px';
+      }
+      this.sendMessage();
+    };
+
+    // ── Whisper path ──────────────────────────────────────────────────────
+    const startWhisper = () => {
+      active = true;
+      btn.classList.add('listening');
+      if (hint) hint.textContent = 'Listening… speak, then pause to send';
+      stopFn = this._whisperListen(onGotTranscript, ({ state }) => {
+        if (state === 'processing' && hint) hint.textContent = 'Transcribing…';
+      });
+    };
+
+    // ── Web Speech API fallback ──────────────────────────────────────────
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const startBrowserSTT = () => {
+      if (!SpeechRecognition) return;
+      active = true;
+      const rec = new SpeechRecognition();
+      rec.lang = 'en-US';
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+      stopFn = () => { try { rec.stop(); } catch { /* ignore */ } };
+      rec.onstart = () => {
+        btn.classList.add('listening');
+        if (hint) hint.textContent = 'Listening… click mic to stop';
+      };
+      rec.onresult = (e) => {
+        const t = Array.from(e.results).map(r => r[0].transcript).join('');
+        if (this.inputEl) {
+          this.inputEl.value = t;
+          this.inputEl.style.height = 'auto';
+          this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + 'px';
+        }
+        if (e.results[e.results.length - 1].isFinal) {
+          if (stopFn) try { rec.stop(); } catch { /* ignore */ }
+          onGotTranscript(t);
+        }
+      };
+      rec.onerror = (e) => {
+        resetUI();
+        if (e.error !== 'no-speech') {
+          if (hint) hint.textContent = `Voice error: ${e.error}`;
+          setTimeout(() => { if (hint) hint.textContent = HINT_DEFAULT; }, 2500);
+        }
+      };
+      rec.onend = () => { if (active) resetUI(); };
+      rec.start();
     };
 
     btn.addEventListener('click', () => {
-      if (listening) stopListening();
-      else startListening();
+      if (active) {
+        if (stopFn) try { stopFn(); } catch { /* ignore */ }
+        resetUI();
+        return;
+      }
+      // Prefer Whisper; fall back to browser STT if unavailable
+      if (window.navio?.navioSTT) startWhisper();
+      else if (SpeechRecognition) startBrowserSTT();
     });
+  }
+
+  // ── Voice Conversation Mode ───────────────────────────────────────────────
+
+  _bindVoiceConversation() {
+    document.getElementById('btn-voice-conv')?.addEventListener('click', () => {
+      if (this._voiceConvActive) this._stopVoiceConversation();
+      else this._startVoiceConversation();
+    });
+    document.getElementById('btn-voice-conv-end')?.addEventListener('click', () => {
+      this._stopVoiceConversation();
+    });
+  }
+
+  _startVoiceConversation() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      if (typeof _showAppToast === 'function') {
+        _showAppToast('Voice conversation requires microphone access.', 'warning');
+      }
+      return;
+    }
+    this._voiceConvActive = true;
+    this._vcInterruptActive = false;
+    document.getElementById('btn-voice-conv')?.classList.add('voice-conv-on');
+    const hud = document.getElementById('voice-conv-hud');
+    if (hud) {
+      hud.hidden = false;
+      requestAnimationFrame(() => hud.classList.add('vch-show'));
+    }
+    this._stopSpeaking();
+    this._voiceConvListen();
+  }
+
+  _stopVoiceConversation() {
+    this._voiceConvActive = false;
+    this._stopVoiceConvInterruptListener();
+    if (this._voiceConvRec) {
+      try { this._voiceConvRec.stop(); } catch { /* ignore */ }
+      this._voiceConvRec = null;
+    }
+    this._stopSpeaking();
+    document.getElementById('btn-voice-conv')?.classList.remove('voice-conv-on');
+    const hud = document.getElementById('voice-conv-hud');
+    if (hud) {
+      hud.classList.remove('vch-show');
+      setTimeout(() => { hud.hidden = true; }, 220);
+    }
+  }
+
+  // ── Interrupt listener — stays active during thinking/speaking so the user can speak at any time ──
+
+  /**
+   * Opens a lightweight parallel mic stream that watches for sustained speech.
+   * When detected during thinking/speaking states, immediately stops the AI and starts listening.
+   * Called automatically by _voiceConvSetState when entering non-listening states.
+   */
+  _startVoiceConvInterruptListener() {
+    if (this._vcInterruptActive || !this._voiceConvActive) return;
+    this._vcInterruptActive = true;
+
+    navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      .then(stream => {
+        if (!this._vcInterruptActive || !this._voiceConvActive) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
+        this._vcInterruptStream = stream;
+        const audioCtx = new AudioContext();
+        this._vcInterruptAudioCtx = audioCtx;
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.25;
+        audioCtx.createMediaStreamSource(stream).connect(analyser);
+        const buf = new Uint8Array(analyser.frequencyBinCount);
+
+        // Higher threshold than Whisper VAD — avoids triggering on TTS bleed-through or light noise
+        const INTERRUPT_THRESHOLD = 15;
+        const INTERRUPT_CONFIRM_MS = 260; // ms of sustained speech before firing
+        let speechStart = null;
+
+        const loop = () => {
+          if (!this._vcInterruptActive || !this._voiceConvActive) {
+            try { audioCtx.close(); } catch { /* ignore */ }
+            stream.getTracks().forEach(t => t.stop());
+            return;
+          }
+          // Only watch during non-listening states
+          const vcState = document.getElementById('voice-conv-hud')?.dataset.vcState;
+          if (vcState === 'listening') {
+            speechStart = null;
+            this._vcInterruptRaf = requestAnimationFrame(loop);
+            return;
+          }
+
+          analyser.getByteTimeDomainData(buf);
+          let sum = 0;
+          for (let i = 0; i < buf.length; i++) {
+            const v = (buf[i] - 128) / 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / buf.length) * 100;
+
+          if (rms > INTERRUPT_THRESHOLD) {
+            if (!speechStart) speechStart = Date.now();
+            else if (Date.now() - speechStart >= INTERRUPT_CONFIRM_MS) {
+              // Confirmed interrupt — hand off to _handleVoiceConvInterrupt
+              this._handleVoiceConvInterrupt();
+              return; // stop loop; interrupt handler takes over
+            }
+          } else {
+            speechStart = null;
+          }
+          this._vcInterruptRaf = requestAnimationFrame(loop);
+        };
+        this._vcInterruptRaf = requestAnimationFrame(loop);
+      })
+      .catch(() => { this._vcInterruptActive = false; });
+  }
+
+  _stopVoiceConvInterruptListener() {
+    this._vcInterruptActive = false;
+    if (this._vcInterruptRaf) { cancelAnimationFrame(this._vcInterruptRaf); this._vcInterruptRaf = null; }
+    if (this._vcInterruptStream) {
+      this._vcInterruptStream.getTracks().forEach(t => t.stop());
+      this._vcInterruptStream = null;
+    }
+    if (this._vcInterruptAudioCtx) {
+      try { this._vcInterruptAudioCtx.close(); } catch { /* ignore */ }
+      this._vcInterruptAudioCtx = null;
+    }
+  }
+
+  /**
+   * Fires when the user speaks during thinking/speaking states.
+   * Kills current AI work + TTS immediately, then starts fresh listening.
+   * The user is still speaking when this fires, so Whisper captures their full command.
+   */
+  _handleVoiceConvInterrupt() {
+    if (!this._voiceConvActive) return;
+
+    // Stop interrupt listener first (prevents re-triggering)
+    this._stopVoiceConvInterruptListener();
+
+    // Cancel any in-flight AI generation
+    try { this.stopGeneration?.(); } catch { /* ignore */ }
+
+    // Cancel any in-progress TTS
+    this._stopSpeaking();
+
+    // Cancel any active Whisper session (shouldn't be active, but be safe)
+    if (this._voiceConvRec) {
+      try { this._voiceConvRec.stop(); } catch { /* ignore */ }
+      this._voiceConvRec = null;
+    }
+
+    // Visual feedback — brief "interrupted" flash before switching to listening
+    const transcriptEl = document.getElementById('vch-transcript');
+    if (transcriptEl) transcriptEl.textContent = '✋ Interrupted';
+    this._voiceConvSetState('listening');
+
+    // Clear the transcript flash after a moment and let Whisper replace it
+    setTimeout(() => {
+      if (transcriptEl && transcriptEl.textContent === '✋ Interrupted') {
+        transcriptEl.textContent = '';
+      }
+    }, 600);
+
+    // Start Whisper — user is mid-sentence right now, this captures from here onward
+    const stopFn = this._whisperListen(
+      (text) => {
+        this._voiceConvRec = null;
+        if (!this._voiceConvActive) return;
+        if (transcriptEl) transcriptEl.textContent = '';
+        if (text.trim()) {
+          this._voiceConvSetState('thinking');
+          if (this.inputEl) {
+            this.inputEl.value = text.trim();
+            this.inputEl.dispatchEvent(new Event('input'));
+          }
+          this.sendMessage();
+        } else {
+          if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), 350);
+        }
+      },
+      ({ state, level }) => {
+        if (!this._voiceConvActive) return;
+        if (state === 'recording' && transcriptEl) {
+          const filled = Math.min(Math.round((level || 0) / 7), 8);
+          transcriptEl.textContent = '▮'.repeat(filled) + '▯'.repeat(8 - filled);
+        } else if (state === 'processing' && transcriptEl) {
+          transcriptEl.textContent = 'Transcribing…';
+        }
+      }
+    );
+    this._voiceConvRec = { stop: stopFn };
+  }
+
+  /** Update the HUD ring + label to reflect current conversation state. */
+  _voiceConvSetState(state) {
+    const hud = document.getElementById('voice-conv-hud');
+    const lbl = document.getElementById('vch-state-label');
+    const icon = document.getElementById('vch-state-icon');
+    if (!hud) return;
+    hud.dataset.vcState = state;
+
+    const labels = {
+      listening:   'Listening…',
+      thinking:    'Thinking…',
+      speaking:    'Speaking…',
+      summarizing: 'Wrapping up…',
+    };
+    if (lbl) lbl.textContent = labels[state] || state;
+
+    // Swap icon per state
+    const icons = {
+      listening:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>`,
+      thinking:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>`,
+      speaking:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`,
+      summarizing: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`,
+    };
+    if (icon && icons[state]) icon.innerHTML = icons[state];
+
+    // Start interrupt listener when AI is busy; stop it when we're listening (Whisper handles it)
+    if (state === 'thinking' || state === 'speaking' || state === 'summarizing') {
+      this._startVoiceConvInterruptListener();
+    } else {
+      this._stopVoiceConvInterruptListener();
+    }
+  }
+
+  /** Start a single mic capture cycle in voice conversation mode using Whisper. */
+  _voiceConvListen() {
+    if (!this._voiceConvActive) return;
+    this._voiceConvSetState('listening');
+    const transcriptEl = document.getElementById('vch-transcript');
+    if (transcriptEl) transcriptEl.textContent = '';
+
+    // Use Whisper (gpt-4o-mini-transcribe) for near-perfect accuracy.
+    // Falls back to Web Speech API if navioSTT is unavailable.
+    if (window.navio?.navioSTT) {
+      const stopFn = this._whisperListen(
+        (text) => {
+          this._voiceConvRec = null;
+          if (!this._voiceConvActive) return;
+          if (transcriptEl) transcriptEl.textContent = '';
+          if (text.trim()) {
+            this._voiceConvSetState('thinking');
+            if (this.inputEl) {
+              this.inputEl.value = text.trim();
+              this.inputEl.dispatchEvent(new Event('input'));
+            }
+            this.sendMessage();
+          } else {
+            // Nothing heard — loop back to listening
+            if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), 350);
+          }
+        },
+        ({ state, level }) => {
+          if (!this._voiceConvActive) return;
+          if (state === 'recording' && transcriptEl) {
+            // Live audio level bars — 8 segments
+            const filled = Math.min(Math.round((level || 0) / 7), 8);
+            transcriptEl.textContent = '▮'.repeat(filled) + '▯'.repeat(8 - filled);
+          } else if (state === 'processing' && transcriptEl) {
+            transcriptEl.textContent = 'Transcribing…';
+          }
+        }
+      );
+      this._voiceConvRec = { stop: stopFn };
+    } else {
+      // Fallback: Web Speech API
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) { this._stopVoiceConversation(); return; }
+      const rec = new SpeechRecognition();
+      rec.lang = 'en-US';
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+      this._voiceConvRec = { stop: () => { try { rec.stop(); } catch { /* ignore */ } } };
+      rec.onresult = (e) => {
+        const text = Array.from(e.results).map(r => r[0].transcript).join('');
+        if (transcriptEl) transcriptEl.textContent = text;
+        if (e.results[e.results.length - 1].isFinal) {
+          this._voiceConvRec = null;
+          if (transcriptEl) transcriptEl.textContent = '';
+          if (text.trim()) {
+            this._voiceConvSetState('thinking');
+            if (this.inputEl) {
+              this.inputEl.value = text.trim();
+              this.inputEl.dispatchEvent(new Event('input'));
+            }
+            this.sendMessage();
+          } else if (this._voiceConvActive) {
+            setTimeout(() => this._voiceConvListen(), 350);
+          }
+        }
+      };
+      rec.onerror = (e) => {
+        this._voiceConvRec = null;
+        if (e.error !== 'aborted' && this._voiceConvActive) {
+          setTimeout(() => this._voiceConvListen(), 500);
+        }
+      };
+      rec.onend = () => {
+        if (this._voiceConvActive && !this._voiceConvRec) {
+          const s = document.getElementById('voice-conv-hud')?.dataset.vcState;
+          if (s === 'listening') setTimeout(() => this._voiceConvListen(), 300);
+        }
+      };
+      try { rec.start(); } catch { this._voiceConvRec = null; }
+    }
   }
 
   // ── Text-to-speech ───────────────────────────────────────────────────────
 
-  /** Strip markdown to plain text for TTS. */
+  /** Strip markdown to clean spoken text for TTS. */
   _stripMarkdown(text) {
     return String(text)
+      // Remove fenced code blocks entirely (don't read code aloud)
       .replace(/```[\s\S]*?```/g, '')
-      .replace(/`[^`]+`/g, '')
+      // Remove inline code ticks
+      .replace(/`[^`]+`/g, (m) => m.slice(1, -1))
+      // Remove bold/italic markers, keep content
+      .replace(/\*\*\*(.*?)\*\*\*/g, '$1')
       .replace(/\*\*(.*?)\*\*/g, '$1')
       .replace(/\*(.*?)\*/g, '$1')
-      .replace(/#{1,6}\s/g, '')
+      .replace(/_{2}(.*?)_{2}/g, '$1')
+      .replace(/_(.*?)_/g, '$1')
+      // Remove headings (keep text)
+      .replace(/^#{1,6}\s+/gm, '')
+      // Remove markdown links, keep label
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      // Remove bare URLs (they sound terrible spoken)
+      .replace(/https?:\/\/\S+/g, '')
+      // Remove HTML tags
       .replace(/<[^>]+>/g, '')
+      // Remove FOLLOWUP chips
       .replace(/\[FOLLOWUP\][\s\S]*?\[\/FOLLOWUP\]/gi, '')
+      // Convert bullet/numbered list markers to natural pauses
+      .replace(/^\s*[-*+]\s+/gm, '')
+      .replace(/^\s*\d+[.)]\s+/gm, '')
+      // Remove horizontal rules
+      .replace(/^[-*_]{3,}\s*$/gm, '')
+      // Collapse multiple blank lines
+      .replace(/\n{3,}/g, '\n\n')
+      // Clean up leading/trailing whitespace per line
+      .split('\n').map(l => l.trim()).join(' ')
+      .replace(/\s{2,}/g, ' ')
       .trim();
   }
 
   /**
    * Speak text using OpenAI TTS (nova = female, onyx = male) with Web Speech API as fallback.
    * Prefers the configured voice gender preference.
+   * @param {string} text - Text to speak
+   * @param {HTMLElement|null} btn - TTS button element for state management (loading → speaking → done)
    */
-  async _speakText(text) {
+  async _speakText(text, btn = null) {
     if (!text) return;
     const plain = this._stripMarkdown(text);
     if (!plain) return;
@@ -1308,20 +1799,37 @@ class AssistantManagerClass {
       try {
         const result = await window.navio.navioTTS({ text: plain.slice(0, 4000), voice: voicePref });
         if (result && result.ok && result.audio) {
+          // Audio ready — transition from loading → speaking, show stop bar
+          if (btn) { btn.classList.remove('tts-loading'); btn.classList.add('tts-speaking'); }
+          this._setTTSBarVisible(true, 'Reading aloud…');
           const dataUrl = `data:${result.mimeType || 'audio/mpeg'};base64,${result.audio}`;
           const audio = new Audio(dataUrl);
           audio.volume = 1.0;
           this._currentAudio = audio;
-          audio.addEventListener('ended', () => { this._currentAudio = null; });
-          audio.addEventListener('error', () => { this._currentAudio = null; });
+          audio.addEventListener('ended', () => {
+            this._currentAudio = null;
+            if (btn) btn.classList.remove('tts-speaking');
+            this._setTTSBarVisible(false);
+            if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), 450);
+          });
+          audio.addEventListener('error', () => {
+            this._currentAudio = null;
+            if (btn) btn.classList.remove('tts-speaking', 'tts-loading');
+            this._setTTSBarVisible(false);
+            if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), 450);
+          });
           await audio.play();
           return;
         }
       } catch { /* fall through to Web Speech API */ }
     }
 
-    // Fallback: Web Speech API with best available voice
-    if (!window.speechSynthesis) return;
+    // Fallback: Web Speech API with best available voice (near-instant, skip loading state)
+    if (btn) { btn.classList.remove('tts-loading'); btn.classList.add('tts-speaking'); }
+    if (!window.speechSynthesis) {
+      if (btn) btn.classList.remove('tts-speaking');
+      return;
+    }
     window.speechSynthesis.cancel();
     const utt = new SpeechSynthesisUtterance(plain);
 
@@ -1352,7 +1860,44 @@ class AssistantManagerClass {
     utt.rate = 0.92;    // Slightly slower for soothing feel
     utt.pitch = isFemalePref ? 1.05 : 0.9;
     utt.volume = 1.0;
+    this._setTTSBarVisible(true, 'Reading aloud…');
+    utt.onend = () => {
+      if (btn) btn.classList.remove('tts-speaking');
+      this._setTTSBarVisible(false);
+      if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), 450);
+    };
+    utt.onerror = () => {
+      if (btn) btn.classList.remove('tts-speaking', 'tts-loading');
+      this._setTTSBarVisible(false);
+      if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), 450);
+    };
     window.speechSynthesis.speak(utt);
+  }
+
+  /** Show / hide the persistent TTS active bar above the input area. */
+  _setTTSBarVisible(visible, label = 'Reading aloud…') {
+    if (this._voiceConvActive) return; // voice conv HUD handles state display
+    const bar = document.getElementById('tts-active-bar');
+    if (!bar) return;
+    const lbl = bar.querySelector('.tts-active-label');
+    if (lbl) lbl.textContent = label;
+    bar.hidden = !visible;
+    if (visible) {
+      // Trigger entrance animation
+      requestAnimationFrame(() => bar.classList.add('tts-bar-show'));
+    } else {
+      bar.classList.remove('tts-bar-show');
+    }
+  }
+
+  /** Called by the Stop button in the TTS active bar. */
+  _stopTTSFromBar() {
+    this._stopSpeaking();
+    // Clear any active button states in the messages list
+    if (this.messagesEl) {
+      this.messagesEl.querySelectorAll('.assistant-tts-btn.tts-speaking, .assistant-tts-btn.tts-loading')
+        .forEach(b => b.classList.remove('tts-speaking', 'tts-loading'));
+    }
   }
 
   /** Stop any in-progress speech. */
@@ -1362,6 +1907,7 @@ class AssistantManagerClass {
       this._currentAudio = null;
     }
     if (window.speechSynthesis) window.speechSynthesis.cancel();
+    this._setTTSBarVisible(false);
   }
 
   /**
@@ -1779,6 +2325,7 @@ class AssistantManagerClass {
     }
 
     this._autoFollowCount = 0; // reset agent loop on new user message
+    if (this._voiceConvActive) this._voiceConvSetState('thinking');
     this.inputEl.value = '';
     this.inputEl.style.height = 'auto';
 
@@ -2111,6 +2658,33 @@ class AssistantManagerClass {
     // ── Legacy <navio-actions> path (only when aiUseToolCalling explicitly false) ──
 
     const messages = [{ role: 'system', content: this.systemPrompt }];
+
+    // ── Voice conversation mode override ────────────────────────────────────
+    if (this._voiceConvActive) {
+      messages.push({
+        role: 'system',
+        content: `[VOICE CONVERSATION MODE — ACTIVE]
+The user is talking to you hands-free. Your reply will be read aloud by text-to-speech. These rules override all other formatting rules:
+
+RESPONSE STYLE:
+- Write as if talking, not typing. Natural spoken sentences. No markdown — no asterisks, bullets, dashes, headers, or code fences. They will be spoken literally and sound wrong.
+- Contractions are good: "I'll", "I've", "I'm now", "let me", "here's what I found".
+- Keep each spoken response to 2–4 sentences. Expand only if they asked for depth.
+- Do NOT append the [FOLLOWUP] chips block — it is not useful in audio.
+
+NARRATE YOUR WORK (this is the most important rule):
+- As you execute multi-step tasks, speak brief progress updates between tool calls.
+  Examples: "Opening the page now." · "Found it, filling in the address." · "Done with step 1, moving on to the quote form."
+- Before starting a distinct new phase of a task, tell the user what you're about to do and ask if they want you to continue.
+  Example: "I've logged in and the cart is ready. Should I go ahead and get the shipping quote now?"
+- This is not permission-seeking between micro-steps — it's a natural pause at logical checkpoints (e.g. between login and checkout, between search and booking, between filling and submitting).
+
+END WITH A SPOKEN SUMMARY:
+- When a task completes, give a 2–3 sentence spoken summary of what was done.
+  Example: "All done. I found four flights, the cheapest was Air Canada for 189 dollars on April 12th, and I've got that page open for you. Want me to check another route as well?"`
+      });
+    }
+
     const mailBackendPreferred = await this._gmailApiMailBackendPreferred(text, config);
     const activeUrl = typeof TabManager !== 'undefined' ? TabManager.getActiveTab()?.url || '' : '';
 
@@ -3318,6 +3892,14 @@ class AssistantManagerClass {
         tabId: graphTab?.id,
         url: graphTab?.url || ''
       });
+      // Voice conversation: auto-speak the streamed response and loop back to listening
+      if (this._voiceConvActive && buffer && !streamCancelled) {
+        const plainForVoice = this._stripMarkdown(buffer).slice(0, 4000);
+        if (plainForVoice) {
+          this._voiceConvSetState('speaking');
+          this._speakText(plainForVoice);
+        }
+      }
     };
 
     // Stall detector: if no new chunk arrives within 25 s, force-finalize.
@@ -3458,6 +4040,51 @@ class AssistantManagerClass {
     label.textContent = 'Sources';
     const row = document.createElement('div');
     row.className = 'navio-msg-citations-row';
+
+    // Shared singleton tooltip for all citation chips
+    let tip = document.getElementById('navio-source-tip');
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.id = 'navio-source-tip';
+      tip.className = 'navio-source-tip';
+      document.body.appendChild(tip);
+      tip.onmouseenter = () => clearTimeout(tip._hideTimer);
+      tip.onmouseleave = () => {
+        tip._hideTimer = setTimeout(() => tip.classList.remove('nst-visible'), 120);
+      };
+    }
+
+    const _showSourceTip = (chip, raw, host) => {
+      clearTimeout(tip._hideTimer);
+      const displayUrl = raw.length > 72 ? raw.slice(0, 69) + '…' : raw;
+      tip.innerHTML = `
+        <div class="nst-header">
+          <img class="nst-favicon" src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32"
+               onerror="this.style.display='none'" width="16" height="16" alt="" loading="lazy">
+          <span class="nst-host">${this._escapeHtml(host)}</span>
+        </div>
+        <div class="nst-url">${this._escapeHtml(displayUrl)}</div>
+        <div class="nst-cta">Open source <span>↗</span></div>
+      `;
+      // Position: attempt above first, flip below if not enough space
+      tip.style.visibility = 'hidden';
+      tip.style.left = '-9999px';
+      tip.classList.add('nst-visible');
+      requestAnimationFrame(() => {
+        const r = chip.getBoundingClientRect();
+        const tipW = tip.offsetWidth;
+        const tipH = tip.offsetHeight;
+        let top = r.top - tipH - 8;
+        let left = r.left;
+        if (top < 8) top = r.bottom + 8;
+        if (left + tipW > window.innerWidth - 8) left = window.innerWidth - tipW - 8;
+        if (left < 8) left = 8;
+        tip.style.top = top + 'px';
+        tip.style.left = left + 'px';
+        tip.style.visibility = '';
+      });
+    };
+
     let idx = 0;
     urls.slice(0, 8).forEach((u) => {
       const raw = String(u).trim();
@@ -3468,7 +4095,6 @@ class AssistantManagerClass {
       a.href = raw;
       a.target = '_blank';
       a.rel = 'noopener noreferrer';
-      a.title = raw;
       let host = 'Source';
       try {
         host = new URL(raw).hostname.replace(/^www\./i, '');
@@ -3476,6 +4102,10 @@ class AssistantManagerClass {
         /* keep label */
       }
       a.innerHTML = `<span class="ncc-idx">${idx}</span><span class="ncc-host">${this._escapeHtml(host)}</span>`;
+      a.addEventListener('mouseenter', () => _showSourceTip(a, raw, host));
+      a.addEventListener('mouseleave', () => {
+        tip._hideTimer = setTimeout(() => tip.classList.remove('nst-visible'), 150);
+      });
       row.appendChild(a);
     });
     wrap.appendChild(label);
@@ -3681,10 +4311,19 @@ class AssistantManagerClass {
         ttsBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`;
         msgEl.appendChild(ttsBtn);
 
-        // Auto-speak if enabled in config
+        // Auto-speak if enabled in config, or always in voice conversation mode
+        const _voiceConvNow = this._voiceConvActive;
         void window.navio.getConfig().then(cfg => {
-          if (cfg && cfg.ttsEnabled) this._speakText(plainText);
-        }).catch(() => {});
+          if ((cfg && cfg.ttsEnabled) || _voiceConvNow) {
+            if (_voiceConvNow) this._voiceConvSetState('speaking');
+            this._speakText(plainText);
+          }
+        }).catch(() => {
+          if (_voiceConvNow) {
+            this._voiceConvSetState('speaking');
+            this._speakText(plainText);
+          }
+        });
       }
     }
 
