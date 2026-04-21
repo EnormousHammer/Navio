@@ -135,6 +135,8 @@ contextBridge.exposeInMainWorld('navio', {
   proactiveTick: (payload) => ipcRenderer.invoke('proactive-tick', payload),
   ledgerExport: () => ipcRenderer.invoke('ledger-export'),
 
+  navioTTS: (params) => ipcRenderer.invoke('navio-tts', params),
+
   getMemoryInfo: () => ipcRenderer.invoke('get-memory-info'),
   openDevtoolsActive: (webContentsId) => ipcRenderer.invoke('open-devtools-active', webContentsId),
 

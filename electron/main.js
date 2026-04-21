@@ -2729,6 +2729,44 @@ ipcMain.handle('deep-research', async (event, { query }) => {
 });
 
 // ── Ollama local model detection ─────────────────────────────────────────────
+// ── OpenAI Text-to-Speech ─────────────────────────────────────────────────
+ipcMain.handle('navio-tts', async (event, { text, voice, model }) => {
+  try {
+    const cfg = loadConfig();
+    const provider = cfg.aiProvider || 'openai';
+    // TTS only works with OpenAI-compatible providers
+    if (provider !== 'openai' && provider !== 'custom') {
+      return { ok: false, error: 'TTS requires an OpenAI API key (current provider: ' + provider + ')' };
+    }
+    const apiKey = secureConfig.getApiKey(app.getPath('userData'));
+    if (!apiKey) return { ok: false, error: 'No API key configured. Add your OpenAI key in Settings.' };
+
+    const ttsModel = model || 'tts-1-hd';
+    const ttsVoice = voice || cfg.ttsVoice || 'nova';
+    const inputText = String(text || '').slice(0, 4096).trim();
+    if (!inputText) return { ok: false, error: 'Empty text' };
+
+    const endpoint = (cfg.customEndpoint || 'https://api.openai.com').replace(/\/v1.*$/, '') + '/v1/audio/speech';
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: ttsModel, input: inputText, voice: ttsVoice, response_format: 'mp3' }),
+      signal: AbortSignal.timeout(45000)
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      return { ok: false, error: `TTS API ${resp.status}: ${errText.slice(0, 200)}` };
+    }
+
+    const buf = await resp.arrayBuffer();
+    const base64 = Buffer.from(buf).toString('base64');
+    return { ok: true, audio: base64, mimeType: 'audio/mpeg', voice: ttsVoice };
+  } catch (e) {
+    return { ok: false, error: e.message || 'TTS request failed' };
+  }
+});
+
 ipcMain.handle('ollama-detect', async () => {
   try {
     const resp = await fetch('http://localhost:11434/api/tags', {

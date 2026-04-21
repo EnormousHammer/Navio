@@ -452,7 +452,7 @@ class AssistantManagerClass {
   /** Delegate TTS button clicks from any assistant bubble. */
   _bindTTSDelegate() {
     if (!this.messagesEl) return;
-    this.messagesEl.addEventListener('click', (e) => {
+    this.messagesEl.addEventListener('click', async (e) => {
       const btn = e.target.closest('.assistant-tts-btn');
       if (!btn) return;
       const text = btn.dataset.tts || '';
@@ -462,10 +462,13 @@ class AssistantManagerClass {
       } else {
         this.messagesEl.querySelectorAll('.assistant-tts-btn.tts-speaking').forEach(b => b.classList.remove('tts-speaking'));
         btn.classList.add('tts-speaking');
-        this._speakText(text);
-        // Reset icon when speech ends
-        const utt = new SpeechSynthesisUtterance('');
-        window.speechSynthesis.addEventListener('end', () => btn.classList.remove('tts-speaking'), { once: true });
+        try {
+          await this._speakText(text);
+        } finally {
+          // Reset after audio ends — for Audio elements, handled by ended event
+          // For Web Speech API, reset after a brief delay
+          setTimeout(() => btn.classList.remove('tts-speaking'), 300);
+        }
       }
     });
   }
@@ -1247,13 +1250,9 @@ class AssistantManagerClass {
 
   // ── Text-to-speech ───────────────────────────────────────────────────────
 
-  /**
-   * Speak `text` aloud using the Web Speech API SpeechSynthesis.
-   * Strips markdown before speaking.
-   */
-  _speakText(text) {
-    if (!window.speechSynthesis || !text) return;
-    const plain = String(text)
+  /** Strip markdown to plain text for TTS. */
+  _stripMarkdown(text) {
+    return String(text)
       .replace(/```[\s\S]*?```/g, '')
       .replace(/`[^`]+`/g, '')
       .replace(/\*\*(.*?)\*\*/g, '$1')
@@ -1261,14 +1260,87 @@ class AssistantManagerClass {
       .replace(/#{1,6}\s/g, '')
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
       .replace(/<[^>]+>/g, '')
+      .replace(/\[FOLLOWUP\][\s\S]*?\[\/FOLLOWUP\]/gi, '')
       .trim();
+  }
+
+  /**
+   * Speak text using OpenAI TTS (nova = female, onyx = male) with Web Speech API as fallback.
+   * Prefers the configured voice gender preference.
+   */
+  async _speakText(text) {
+    if (!text) return;
+    const plain = this._stripMarkdown(text);
     if (!plain) return;
+
+    // Stop any current speech
+    this._stopSpeaking();
+
+    // Get voice preference (default: 'nova' = female)
+    let voicePref = 'nova';
+    try {
+      const cfg = await window.navio.getConfig();
+      voicePref = cfg.ttsVoice || 'nova';
+    } catch { /* ignore */ }
+
+    // Try OpenAI TTS first (much more human-sounding)
+    if (window.navio && window.navio.navioTTS) {
+      try {
+        const result = await window.navio.navioTTS({ text: plain.slice(0, 4000), voice: voicePref });
+        if (result && result.ok && result.audio) {
+          const dataUrl = `data:${result.mimeType || 'audio/mpeg'};base64,${result.audio}`;
+          const audio = new Audio(dataUrl);
+          audio.volume = 1.0;
+          this._currentAudio = audio;
+          audio.addEventListener('ended', () => { this._currentAudio = null; });
+          audio.addEventListener('error', () => { this._currentAudio = null; });
+          await audio.play();
+          return;
+        }
+      } catch { /* fall through to Web Speech API */ }
+    }
+
+    // Fallback: Web Speech API with best available voice
+    if (!window.speechSynthesis) return;
     window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(new SpeechSynthesisUtterance(plain));
+    const utt = new SpeechSynthesisUtterance(plain);
+
+    // Select the most natural-sounding available voice
+    const voices = window.speechSynthesis.getVoices();
+    const isFemalePref = voicePref === 'nova' || voicePref === 'shimmer' || voicePref === 'alloy';
+
+    // Priority order: online Neural → online → any matching gender/language
+    const scoreVoice = (v) => {
+      let score = 0;
+      if (/en[-_]US/i.test(v.lang)) score += 10;
+      else if (/en/i.test(v.lang)) score += 5;
+      if (/online|neural|natural/i.test(v.name)) score += 8;
+      if (/premium|enhanced/i.test(v.name)) score += 4;
+      const isFemale = /ava|emma|aria|nova|shimmer|zira|samantha|victoria|karen|moira|siri|google uk english female|female/i.test(v.name);
+      const isMale = /andrew|ryan|echo|onyx|guy|luca|daniel|rishi|aaron|male/i.test(v.name);
+      if (isFemalePref && isFemale) score += 6;
+      if (!isFemalePref && isMale) score += 6;
+      return score;
+    };
+
+    if (voices.length > 0) {
+      const sorted = voices.slice().sort((a, b) => scoreVoice(b) - scoreVoice(a));
+      const best = sorted[0];
+      if (best) utt.voice = best;
+    }
+
+    utt.rate = 0.92;    // Slightly slower for soothing feel
+    utt.pitch = isFemalePref ? 1.05 : 0.9;
+    utt.volume = 1.0;
+    window.speechSynthesis.speak(utt);
   }
 
   /** Stop any in-progress speech. */
   _stopSpeaking() {
+    if (this._currentAudio) {
+      try { this._currentAudio.pause(); this._currentAudio.currentTime = 0; } catch { /* ignore */ }
+      this._currentAudio = null;
+    }
     if (window.speechSynthesis) window.speechSynthesis.cancel();
   }
 
@@ -3551,7 +3623,7 @@ class AssistantManagerClass {
       msgEl.appendChild(copyBtn);
 
       // TTS speaker button (only on assistant messages, not errors)
-      if (role === 'assistant' && window.speechSynthesis) {
+      if (role === 'assistant') {
         const plainText = (contentEl.innerText || contentEl.textContent || content || '').slice(0, 4000);
         const ttsBtn = document.createElement('button');
         ttsBtn.className = 'msg-copy-btn assistant-tts-btn';

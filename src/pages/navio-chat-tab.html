@@ -635,27 +635,31 @@
       font-size: 10px;
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      color: var(--dim);
+      color: var(--muted);
       margin-bottom: 5px;
-      opacity: 0.7;
+      font-weight: 600;
     }
-    .msg .body { font-size: 14.5px; line-height: 1.6; }
+    .msg .body { font-size: 14.5px; line-height: 1.6; color: var(--text); }
     .msg-row.user     { align-items: flex-end; }
     .msg-row.assistant{ align-items: flex-start; }
     .msg.user {
       border-radius: 22px 22px 6px 22px;
-      background: rgba(255, 255, 255, 0.07);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+      background: rgba(255, 255, 255, 0.10);
+      border: 1px solid rgba(255, 255, 255, 0.13);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+      color: var(--text);
     }
-    .msg.user .body { white-space: pre-wrap; }
+    .msg.user .body { white-space: pre-wrap; color: var(--text); }
     .msg.assistant {
       border-radius: 22px 22px 22px 6px;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.07);
-      box-shadow: 0 2px 16px rgba(0, 0, 0, 0.24);
+      background: rgba(255, 255, 255, 0.055);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 2px 16px rgba(0, 0, 0, 0.28);
+      color: var(--text);
     }
-    .msg.assistant.error { border-color: rgba(239, 68, 68, 0.35); color: #fecaca; }
+    .msg.assistant .body { color: var(--text); }
+    .msg.assistant.error { border-color: rgba(239, 68, 68, 0.45); color: #fecaca; }
+    .msg.assistant.error .body { color: #fecaca; }
     .msg.assistant.streaming { border-color: rgba(34, 211, 238, 0.28); }
 
     /* ══════════════════════════════════════════════════════════════════
@@ -683,7 +687,7 @@
     .msg .body h4 { font-size: 14.5px; color: var(--text); }
     .msg .body h5 { font-size: 13px; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.06em; }
     .msg .body strong { color: #ffffff; font-weight: 700; }
-    .msg .body em     { color: var(--text); }
+    .msg .body em     { color: var(--text-2); }
     .msg .body a {
       color: var(--cyan);
       text-decoration: none;
@@ -698,8 +702,9 @@
       padding-left: 22px;
     }
     .msg .body li {
-      margin: 3px 0;
-      line-height: 1.55;
+      margin: 4px 0;
+      line-height: 1.6;
+      color: var(--text);
     }
     .msg .body li::marker { color: var(--cyan); }
 
@@ -1397,13 +1402,13 @@
     .ct-thinking-label {
       font-size: 12.5px;
       font-weight: 600;
-      color: var(--text-3);
+      color: var(--text-2);
       display: flex;
       align-items: center;
       gap: 6px;
       flex-wrap: wrap;
     }
-    .ct-thinking.ct-done .ct-thinking-label { color: var(--dim); font-weight: 500; }
+    .ct-thinking.ct-done .ct-thinking-label { color: var(--muted); font-weight: 500; }
     .ct-steps {
       display: flex;
       flex-direction: column;
@@ -1430,7 +1435,7 @@
       flex-shrink: 0;
       opacity: 0.85;
     }
-    .ct-step-label { color: var(--muted); font-size: 12px; }
+    .ct-step-label { color: var(--text-3); font-size: 12px; }
     .ct-toggle-hint {
       font-size: 10px;
       color: var(--dim);
@@ -1461,18 +1466,18 @@
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 6px 13px 6px 10px;
+      padding: 7px 14px 7px 11px;
       border-radius: 999px;
-      border: 1px solid rgba(125, 211, 252, 0.18);
-      background: rgba(125, 211, 252, 0.05);
-      color: #7dd3fc;
-      font-size: 12px;
+      border: 1px solid rgba(125, 211, 252, 0.28);
+      background: rgba(125, 211, 252, 0.08);
+      color: #93d9fd;
+      font-size: 12.5px;
       font-weight: 500;
       font-family: inherit;
       cursor: pointer;
       transition: background 0.15s, border-color 0.15s, color 0.15s;
       white-space: nowrap;
-      max-width: 280px;
+      max-width: 300px;
       overflow: hidden;
       text-overflow: ellipsis;
     }
@@ -1488,13 +1493,89 @@
       transition: opacity 0.15s;
     }
     button.ct-followup-chip:hover {
-      background: rgba(125, 211, 252, 0.12);
-      border-color: rgba(125, 211, 252, 0.4);
+      background: rgba(125, 211, 252, 0.16);
+      border-color: rgba(125, 211, 252, 0.5);
       color: #bae6fd;
     }
     button.ct-followup-chip:hover::before { opacity: 1; }
     button.ct-followup-chip:active { background: rgba(125, 211, 252, 0.2); }
 
+    /* ── Status word highlighting in assistant messages ── */
+    .msg.assistant .body strong:first-child {
+      display: inline-block;
+      margin-bottom: 2px;
+    }
+    /* Blocked status — highlight in amber */
+    .msg.assistant .body p:first-child strong:first-child {
+      padding: 1px 8px;
+      border-radius: 6px;
+      font-size: 13px;
+      letter-spacing: 0.01em;
+    }
+    /* Ensure paragraph text in assistant messages is fully visible */
+    .msg.assistant .body p { color: var(--text); }
+    .msg.assistant .body ul,
+    .msg.assistant .body ol { color: var(--text); }
+    /* Better blockquote visibility */
+    .msg .body blockquote {
+      color: var(--text-2);
+    }
+    /* Improve table cell text */
+    .msg .body td { color: var(--text-2); }
+    /* Voice selector pills — shown in topbar when TTS is available */
+    .tts-voice-selector {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 6px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-2);
+    }
+    .tts-voice-btn {
+      padding: 3px 9px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .tts-voice-btn:hover { color: var(--text-2); background: rgba(255,255,255,0.06); }
+    .tts-voice-btn.active {
+      background: rgba(34, 211, 238, 0.12);
+      border-color: rgba(34, 211, 238, 0.3);
+      color: var(--cyan);
+    }
+    /* Speak button on assistant messages */
+    .msg-speak-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--border-3);
+      background: rgba(15, 23, 42, 0.55);
+      color: var(--text-3);
+      font-size: 11px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .msg-speak-btn:hover {
+      background: rgba(34, 211, 238, 0.12);
+      border-color: var(--cyan-border);
+      color: var(--cyan);
+    }
+    .msg-speak-btn.speaking {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+    }
+    .msg-speak-btn svg { width: 12px; height: 12px; }
     @media (max-width: 760px) {
       .app { grid-template-columns: 0 1fr; }
       body:not(.sidebar-collapsed) .app { grid-template-columns: var(--sidebar-w) 1fr; }
@@ -1556,6 +1637,11 @@
           <span class="tb-brand-text">Navio AI</span>
         </div>
         <div class="tb-spacer"></div>
+        <!-- Voice selector -->
+        <div class="tts-voice-selector" id="tts-voice-selector" title="AI voice gender">
+          <button type="button" class="tts-voice-btn active" id="tts-voice-female" title="Female voice (Nova)">♀ Nova</button>
+          <button type="button" class="tts-voice-btn" id="tts-voice-male" title="Male voice (Onyx)">♂ Onyx</button>
+        </div>
         <button type="button" class="tb-btn" id="btn-activity" title="Agent activity">Activity</button>
         <div class="tb-kebab-wrap">
           <button type="button" class="tb-icon-btn" id="btn-kebab" title="Chat options" aria-label="Chat options" aria-haspopup="menu" aria-expanded="false">
@@ -2162,6 +2248,89 @@
     return { row, bubble, body };
   }
 
+  // ── TTS (Text-to-Speech) — OpenAI TTS preferred, Web Speech API fallback ──
+  let _currentTTSAudio = null;
+  let _ttsVoicePref = 'nova'; // 'nova' = female, 'onyx' = male
+
+  // Load voice preference from config
+  (function loadTTSPref() {
+    if (api && api.getConfig) {
+      api.getConfig().then(function(cfg) {
+        if (cfg && cfg.ttsVoice) _ttsVoicePref = cfg.ttsVoice;
+      }).catch(function() {});
+    }
+  })();
+
+  function stripMarkdownForTTS(text) {
+    return String(text || '')
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/`[^`]+`/g, '')
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/#{1,6}\s/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/<[^>]+>/g, '')
+      .replace(/\[FOLLOWUP\][\s\S]*?\[\/FOLLOWUP\]/gi, '')
+      .trim();
+  }
+
+  function stopTTS() {
+    if (_currentTTSAudio) {
+      try { _currentTTSAudio.pause(); _currentTTSAudio.currentTime = 0; } catch(e) {}
+      _currentTTSAudio = null;
+    }
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+  }
+
+  async function speakText(text, onDone) {
+    stopTTS();
+    const plain = stripMarkdownForTTS(text).slice(0, 4000);
+    if (!plain) { if (onDone) onDone(); return; }
+
+    // Try OpenAI TTS (human-quality voices)
+    if (api && api.navioTTS) {
+      try {
+        const result = await api.navioTTS({ text: plain, voice: _ttsVoicePref });
+        if (result && result.ok && result.audio) {
+          const dataUrl = 'data:' + (result.mimeType || 'audio/mpeg') + ';base64,' + result.audio;
+          const audio = new Audio(dataUrl);
+          audio.volume = 1.0;
+          _currentTTSAudio = audio;
+          audio.addEventListener('ended', function() { _currentTTSAudio = null; if (onDone) onDone(); });
+          audio.addEventListener('error', function() { _currentTTSAudio = null; if (onDone) onDone(); });
+          await audio.play();
+          return;
+        }
+      } catch(e) { /* fall through to Web Speech API */ }
+    }
+
+    // Fallback: Web Speech API
+    if (!window.speechSynthesis) { if (onDone) onDone(); return; }
+    const utt = new SpeechSynthesisUtterance(plain);
+    const isFemalePref = _ttsVoicePref === 'nova' || _ttsVoicePref === 'shimmer' || _ttsVoicePref === 'alloy';
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      const score = function(v) {
+        let s = 0;
+        if (/en[-_]US/i.test(v.lang)) s += 10; else if (/en/i.test(v.lang)) s += 5;
+        if (/online|neural|natural/i.test(v.name)) s += 8;
+        if (/premium|enhanced/i.test(v.name)) s += 4;
+        const female = /ava|emma|aria|nova|shimmer|zira|samantha|victoria|siri|female/i.test(v.name);
+        const male = /andrew|ryan|echo|onyx|guy|daniel|male/i.test(v.name);
+        if (isFemalePref && female) s += 6;
+        if (!isFemalePref && male) s += 6;
+        return s;
+      };
+      const best = voices.slice().sort(function(a,b){ return score(b)-score(a); })[0];
+      if (best) utt.voice = best;
+    }
+    utt.rate = 0.92;
+    utt.pitch = isFemalePref ? 1.05 : 0.90;
+    utt.volume = 1.0;
+    utt.addEventListener('end', function() { if (onDone) onDone(); });
+    window.speechSynthesis.speak(utt);
+  }
+
   function buildMsgActions(role, text, row, bubble) {
     const isUser = role === 'user';
     const bar = document.createElement('div');
@@ -2243,6 +2412,29 @@
           send(userText);
         }
       }));
+
+      // Speak button — reads the assistant message aloud
+      const speakBtn = document.createElement('button');
+      speakBtn.type = 'button';
+      speakBtn.className = 'msg-act-btn';
+      speakBtn.title = 'Read aloud';
+      speakBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg><span>Speak</span>';
+      speakBtn.addEventListener('click', function () {
+        if (speakBtn.classList.contains('speaking')) {
+          stopTTS();
+          speakBtn.classList.remove('speaking');
+          speakBtn.querySelector('span').textContent = 'Speak';
+        } else {
+          const msgText = bubble.querySelector('.body').innerText || '';
+          speakBtn.classList.add('speaking');
+          speakBtn.querySelector('span').textContent = 'Stop';
+          speakText(msgText, function() {
+            speakBtn.classList.remove('speaking');
+            speakBtn.querySelector('span').textContent = 'Speak';
+          });
+        }
+      });
+      bar.appendChild(speakBtn);
     }
 
     return bar;
@@ -3157,6 +3349,29 @@
     });
 
     sbClearAll.addEventListener('click', clearAllSessions);
+
+    // Voice selector (female = nova, male = onyx)
+    const voiceFemaleBtn = document.getElementById('tts-voice-female');
+    const voiceMaleBtn = document.getElementById('tts-voice-male');
+    if (voiceFemaleBtn && voiceMaleBtn) {
+      function setVoicePref(voice) {
+        _ttsVoicePref = voice;
+        voiceFemaleBtn.classList.toggle('active', voice === 'nova' || voice === 'shimmer');
+        voiceMaleBtn.classList.toggle('active', voice === 'onyx' || voice === 'echo');
+        // Persist to config
+        if (api && api.saveConfig) {
+          api.saveConfig({ ttsVoice: voice }).catch(function(){});
+        }
+      }
+      voiceFemaleBtn.addEventListener('click', function() { setVoicePref('nova'); });
+      voiceMaleBtn.addEventListener('click', function() { setVoicePref('onyx'); });
+      // Set initial state from config
+      if (api && api.getConfig) {
+        api.getConfig().then(function(cfg) {
+          if (cfg && cfg.ttsVoice) setVoicePref(cfg.ttsVoice);
+        }).catch(function(){});
+      }
+    }
   }
 
   function toggleKebab(forceState) {

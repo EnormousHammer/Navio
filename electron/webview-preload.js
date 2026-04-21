@@ -24,7 +24,9 @@ try {
     try {
       contextBridge.exposeInMainWorld('navioChatTab', {
         getConfig: () => ipcRenderer.invoke('get-config'),
-        postToHost: (payload) => ipcRenderer.sendToHost('navio-chat-host', payload)
+        saveConfig: (partial) => ipcRenderer.invoke('save-config', partial),
+        postToHost: (payload) => ipcRenderer.sendToHost('navio-chat-host', payload),
+        navioTTS: (params) => ipcRenderer.invoke('navio-tts', params)
       });
     } catch (e) {
       console.error('[navio] navioChatTab preload bridge failed:', e && e.message ? e.message : e);
