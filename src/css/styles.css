@@ -828,20 +828,17 @@ body:not(.navio-vertical-tabs) .tab-item.active {
 }
 
 /* ── Tab Groups ──────────────────────────────────────────────────────── */
+/* Chrome-style: group color bar at the bottom of each grouped tab */
 .tab-item.in-group {
-  border-top: 3px solid var(--tg-color, transparent);
-  padding-top: 1px;
+  box-shadow: inset 0 -3px 0 var(--tg-color, transparent);
 }
+/* No dot in title — the group chip + bottom bar are the indicators */
 .tab-item.in-group .tab-title::before {
-  content: '';
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--tg-color, transparent);
-  margin-right: 5px;
-  flex-shrink: 0;
-  vertical-align: middle;
+  display: none;
+}
+/* Tabs immediately after a group chip get no negative overlap margin */
+body:not(.navio-vertical-tabs) .tab-strip-list .tab-group-header + .tab-item {
+  margin-left: 0;
 }
 
 .tab-item.tab-pinned {
@@ -860,52 +857,50 @@ body:not(.navio-vertical-tabs) .tab-item.active {
 }
 
 .tab-item.tab-in-split {
-  box-shadow: inset 0 -2px 0 rgba(0, 216, 255, 0.45);
+  box-shadow: inset 0 -3px 0 rgba(0, 216, 255, 0.45);
 }
 
-/* Linked split pair: visually “fused” like Chrome’s split tabs */
+/* Split pair: side-by-side tabs with flat inner corners + shared cyan bottom bar */
 body:not(.navio-vertical-tabs) .tab-item.tab-split-pair-left {
-  margin-right: -8px;
-  padding-right: 12px;
+  margin-right: 0;
+  padding-right: 8px;
   border-top-right-radius: 3px;
-  border-bottom-right-radius: 0;
   z-index: 1;
-  box-shadow:
-    inset 0 -2px 0 rgba(0, 216, 255, 0.45),
-    4px 0 0 -1px var(--bg-deep, #101014);
+  box-shadow: inset 0 -3px 0 rgba(0, 216, 255, 0.5);
+  border-right: 1.5px solid rgba(0, 216, 255, 0.35);
 }
-body:not(.navio-vertical-tabs) .tab-item.tab-split-pair-left:hover,
-body:not(.navio-vertical-tabs) .tab-item.tab-split-pair-left.active {
+body:not(.navio-vertical-tabs) .tab-item.tab-split-pair-left:hover {
   z-index: 3;
 }
 body:not(.navio-vertical-tabs) .tab-item.tab-split-pair-right {
   margin-left: 0;
-  padding-left: 10px;
+  padding-left: 8px;
   border-top-left-radius: 3px;
-  border-bottom-left-radius: 0;
   z-index: 1;
-  box-shadow: inset 0 -2px 0 rgba(0, 216, 255, 0.45);
+  box-shadow: inset 0 -3px 0 rgba(0, 216, 255, 0.5);
 }
-body:not(.navio-vertical-tabs) .tab-item.tab-split-pair-right:hover,
-body:not(.navio-vertical-tabs) .tab-item.tab-split-pair-right.active {
+body:not(.navio-vertical-tabs) .tab-item.tab-split-pair-right:hover {
   z-index: 3;
 }
 body:not(.navio-vertical-tabs) .tab-item.tab-split-pair-left.active,
 body:not(.navio-vertical-tabs) .tab-item.tab-split-pair-right.active {
-  box-shadow:
-    inset 0 -2px 0 rgba(0, 216, 255, 0.55),
-    0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 -3px 0 rgba(0, 216, 255, 0.78);
+}
+body:not(.navio-vertical-tabs) .tab-item.tab-split-pair-left.active {
+  border-right-color: rgba(0, 216, 255, 0.55);
 }
 
+/* Vertical sidebar split pair: stacked with a connecting line */
 body.navio-vertical-tabs .tab-item.tab-split-pair-left {
-  margin-bottom: -4px;
+  margin-bottom: 0;
   border-radius: 8px 8px 3px 3px;
-  box-shadow: inset 0 -2px 0 rgba(0, 216, 255, 0.45);
+  box-shadow: inset 0 -3px 0 rgba(0, 216, 255, 0.5);
+  border-bottom: 1.5px solid rgba(0, 216, 255, 0.35);
 }
 body.navio-vertical-tabs .tab-item.tab-split-pair-right {
   margin-top: 0;
   border-radius: 3px 3px 8px 8px;
-  box-shadow: inset 0 -2px 0 rgba(0, 216, 255, 0.45);
+  box-shadow: inset 0 -3px 0 rgba(0, 216, 255, 0.5);
 }
 
 /* Background tab unloaded to save memory (see tabDiscardIdleMinutes) */
@@ -928,31 +923,95 @@ body.navio-incognito-active .url-bar-container {
   border-radius: 3px;
 }
 
-/* ── Tab Group Header Row ────────────────────────────────────────────── */
+/* ── Tab Group Header ────────────────────────────────────────────────── */
+/* Shared base */
 .tab-group-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px 4px 8px;
+  gap: 5px;
   cursor: pointer;
-  border-radius: 999px;
-  transition: background 0.12s, box-shadow 0.12s;
   user-select: none;
   flex-shrink: 0;
-  margin: 4px 4px 2px 2px;
   -webkit-app-region: no-drag;
-  border: 1px solid color-mix(in srgb, var(--tg-color, #888) 28%, transparent);
-  background: color-mix(in srgb, var(--tg-color, #64748b) 12%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--tg-color, #fff) 18%, transparent);
-}
-.tab-group-header:hover {
-  background: color-mix(in srgb, var(--tg-color, #64748b) 20%, transparent);
+  transition: filter 0.12s ease, opacity 0.12s ease;
 }
 
+/* ── Horizontal mode: Chrome-style solid colored chip ── */
+body:not(.navio-vertical-tabs) .tab-group-header {
+  height: 34px;
+  padding: 0 8px 0 10px;
+  border-radius: 8px 8px 0 0;
+  background: var(--tg-color, #60a5fa);
+  border: none;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
+  margin: 0 1px 0 4px;
+  align-self: flex-end;
+}
+body:not(.navio-vertical-tabs) .tab-group-header:hover {
+  filter: brightness(1.12);
+}
+body:not(.navio-vertical-tabs) .tab-group-header.collapsed {
+  border-radius: 8px 8px 0 0;
+  opacity: 0.92;
+}
+/* Dot is not used in horizontal (chip background IS the color) */
+body:not(.navio-vertical-tabs) .tgh-dot {
+  display: none;
+}
+body:not(.navio-vertical-tabs) .tgh-name {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  color: white;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.28);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100px;
+}
+body:not(.navio-vertical-tabs) .tgh-count {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.85);
+  background: rgba(0,0,0,0.22);
+  padding: 1px 5px;
+  border-radius: 8px;
+  min-width: 16px;
+  text-align: center;
+}
+/* Hide count when expanded (count re-appears when collapsed to show hidden tab count) */
+body:not(.navio-vertical-tabs) .tab-group-header:not(.collapsed) .tgh-count {
+  display: none;
+}
+body:not(.navio-vertical-tabs) .tgh-chevron {
+  color: rgba(255,255,255,0.85);
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+body:not(.navio-vertical-tabs) .tab-group-header.collapsed .tgh-chevron {
+  transform: rotate(-90deg);
+}
+
+/* ── Vertical sidebar mode: keep the pill look ── */
+body.navio-vertical-tabs .tab-group-header {
+  padding: 4px 10px 4px 8px;
+  border-radius: 6px;
+  margin: 4px 4px 2px 2px;
+  border: 1px solid color-mix(in srgb, var(--tg-color, #888) 28%, transparent);
+  background: color-mix(in srgb, var(--tg-color, #64748b) 12%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--tg-color, #fff) 12%, transparent);
+  transition: background 0.12s;
+}
+body.navio-vertical-tabs .tab-group-header:hover {
+  background: color-mix(in srgb, var(--tg-color, #64748b) 20%, transparent);
+}
 .tgh-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  background: var(--tg-color);
   flex-shrink: 0;
 }
 .tgh-name {
@@ -11514,14 +11573,23 @@ button:focus-visible,
 [data-theme="light"] .tab-title { color: var(--text-secondary); }
 [data-theme="light"] .tab-item.active .tab-title { color: var(--text-primary); }
 
-[data-theme="light"] .tab-item.tab-in-split,
+[data-theme="light"] .tab-item.tab-in-split {
+  box-shadow: inset 0 -3px 0 rgba(26, 115, 232, 0.45);
+}
 [data-theme="light"] .tab-item.tab-split-pair-left,
 [data-theme="light"] .tab-item.tab-split-pair-right {
-  box-shadow: inset 0 -2px 0 rgba(26, 115, 232, 0.52);
+  box-shadow: inset 0 -3px 0 rgba(26, 115, 232, 0.52);
+}
+[data-theme="light"] .tab-item.tab-split-pair-left {
+  border-right-color: rgba(26, 115, 232, 0.35);
 }
 [data-theme="light"] .tab-item.tab-split-pair-left.active,
 [data-theme="light"] .tab-item.tab-split-pair-right.active {
-  box-shadow: inset 0 -2px 0 rgba(26, 115, 232, 0.72), 0 1px 0 rgba(15, 23, 42, 0.05);
+  box-shadow: inset 0 -3px 0 rgba(26, 115, 232, 0.78);
+}
+/* Light theme in-group bottom bar */
+[data-theme="light"] .tab-item.in-group {
+  box-shadow: inset 0 -3px 0 var(--tg-color, transparent);
 }
 
 /* ── Light mode message bubbles ─────────────────────────────────────────── */

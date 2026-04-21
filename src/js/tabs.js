@@ -1980,27 +1980,24 @@ class TabManagerClass {
     // Remove all existing tab items and group headers from the strip
     this.tabListEl.querySelectorAll('.tab-item, .tab-group-header').forEach(el => el.remove());
 
-    // Separate tabs: ungrouped first, then groups
-    const ungrouped = this.tabs.filter(t => !t.groupId);
-    const byGroup = {};
-    this.tabs.forEach(t => {
-      if (t.groupId) {
-        if (!byGroup[t.groupId]) byGroup[t.groupId] = [];
-        byGroup[t.groupId].push(t);
+    // Render tabs in their actual order, inserting a group chip when a new group starts.
+    // This preserves the user's tab order rather than reordering (ungrouped-first).
+    const renderedGroups = new Set();
+    for (const tab of this.tabs) {
+      const gid = tab.groupId || null;
+      if (gid && !renderedGroups.has(gid)) {
+        const group = this.groups[gid];
+        if (group) {
+          const groupTabCount = this.tabs.filter(t => t.groupId === gid).length;
+          const header = this._buildGroupHeader(group, groupTabCount, group.collapsed || false);
+          this._appendNodeToTabList(header);
+          renderedGroups.add(gid);
+        }
       }
-    });
-
-    // Render ungrouped tabs
-    ungrouped.forEach(t => this._appendTabItem(t));
-
-    // Render grouped tabs with a header row per group
-    for (const [groupId, groupTabs] of Object.entries(byGroup)) {
-      const group = this.groups[groupId];
-      if (!group) continue;
-      const collapsed = group.collapsed || false;
-      const header = this._buildGroupHeader(group, groupTabs.length, collapsed);
-      this._appendNodeToTabList(header);
-      if (!collapsed) groupTabs.forEach(t => this._appendTabItem(t));
+      const group = gid ? this.groups[gid] : null;
+      if (!group || !group.collapsed) {
+        this._appendTabItem(tab);
+      }
     }
 
     if (this._tabListTrail) this.tabListEl.appendChild(this._tabListTrail);
@@ -2013,10 +2010,12 @@ class TabManagerClass {
     el.className = `tab-group-header${collapsed ? ' collapsed' : ''}`;
     el.dataset.groupId = group.id;
     el.style.setProperty('--tg-color', group.color);
+    // Horizontal: chip background IS the color, so no separate dot needed.
+    // Vertical: dot is shown via CSS (.tgh-dot) which is only visible in sidebar mode.
     el.innerHTML = `
-      <span class="tgh-dot" style="background:${group.color}"></span>
+      <span class="tgh-dot"></span>
       <span class="tgh-name">${this.escapeHtml(group.name)}</span>
-      <span class="tgh-count">${tabCount}</span>
+      <span class="tgh-count">${collapsed ? tabCount : ''}</span>
       <svg class="tgh-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
     `;
     el.addEventListener('click', () => {
