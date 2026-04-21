@@ -13858,8 +13858,18 @@ button:focus-visible,
   color: var(--text-primary);
   overflow-y: auto;
   flex: 1;
-  white-space: pre-wrap;
+  white-space: normal;
   word-break: break-word;
+}
+/* Inline AI card uses the same markdown classes as assistant bubbles */
+.iai-card-body > .message-content {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.iai-card-body .iai-inline-followup {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
 }
 /* Loading spinner shown while body is empty */
 .iai-card-body:empty::after {

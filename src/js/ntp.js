@@ -1967,7 +1967,10 @@ const NTP = (() => {
 
   /** Minimal markdown → HTML for chat bubbles (bold, italic, code, newlines) */
   function _ntpMd(text) {
-    return _ntpEsc(text)
+    let t = String(text);
+    t = t.replace(/\[FOLLOWUP\][\s\S]*?\[\/FOLLOWUP\]/gi, '');
+    t = t.replace(/\[FOLLOWUP\][\s\S]*/gi, '');
+    return _ntpEsc(t)
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
       .replace(/`([^`]+)`/g, '<code>$1</code>')

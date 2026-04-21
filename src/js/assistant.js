@@ -4984,19 +4984,23 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (!text || typeof text !== 'string') return { clean: text || '', chips: [] };
     const re = /\[FOLLOWUP\]\s*(\{[\s\S]*?\})\s*\[\/FOLLOWUP\]/g;
     const chips = [];
-    const clean = text.replace(re, (_, json) => {
-      try {
-        const parsed = JSON.parse(json);
-        if (Array.isArray(parsed.chips)) {
-          parsed.chips.forEach((c) => {
-            if (typeof c === 'string' && c.trim()) chips.push(c.trim());
-          });
+    const clean = text
+      .replace(re, (_, json) => {
+        try {
+          const parsed = JSON.parse(json);
+          if (Array.isArray(parsed.chips)) {
+            parsed.chips.forEach((c) => {
+              if (typeof c === 'string' && c.trim()) chips.push(c.trim());
+            });
+          }
+        } catch {
+          /* malformed JSON, ignore */
         }
-      } catch {
-        /* malformed JSON, ignore */
-      }
-      return '';
-    }).replace(/\n{3,}/g, '\n\n').trim();
+        return '';
+      })
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/\[FOLLOWUP\][\s\S]*/gi, '')
+      .trim();
     return { clean, chips: chips.slice(0, 4) };
   }
 

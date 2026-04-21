@@ -1589,6 +1589,67 @@ const InlineAI = (() => {
     'fact-check': t => `Fact-check this claim. State clearly if it is TRUE, FALSE, MISLEADING, or UNVERIFIABLE, then explain why in 2-4 sentences:\n\n"${t}"`,
   };
 
+  /** Hide incomplete `[FOLLOWUP]…` tails while the stream is still open. */
+  function _stripOpenFollowup(text) {
+    return String(text || '').replace(/\[FOLLOWUP\][\s\S]*/gi, '').trim();
+  }
+
+  /**
+   * Render streamed model text as markdown (same pipeline as the main assistant)
+   * and surface follow-up chips instead of raw `[FOLLOWUP]{…}[/FOLLOWUP]` JSON.
+   */
+  function _renderInlineStreamBody(body, rawBuffer) {
+    if (!body) return;
+    const raw = String(rawBuffer || '');
+    if (!raw.trim()) {
+      body.textContent = '';
+      _lastAiResult = '';
+      return;
+    }
+    const am = typeof AssistantManager !== 'undefined' ? AssistantManager : null;
+    let clean = raw;
+    let chips = [];
+    if (am && typeof am._extractFollowUpChips === 'function') {
+      const ex = am._extractFollowUpChips(raw);
+      clean = _stripOpenFollowup(ex.clean);
+      chips = Array.isArray(ex.chips) ? ex.chips : [];
+    } else {
+      clean = _stripOpenFollowup(raw.replace(/\[FOLLOWUP\][\s\S]*?\[\/FOLLOWUP\]/gi, ''));
+    }
+    body.innerHTML = '';
+    const md = document.createElement('div');
+    md.className = 'message-content';
+    if (am && typeof am.formatMessage === 'function') {
+      md.innerHTML = am.formatMessage(clean, false);
+    } else {
+      md.textContent = clean;
+    }
+    body.appendChild(md);
+    if (chips.length) {
+      const wrap = document.createElement('div');
+      wrap.className = 'navio-followup-chips iai-inline-followup';
+      chips.forEach((chip) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'navio-followup-chip';
+        btn.textContent = chip;
+        btn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          if (typeof AssistantManager === 'undefined' || !AssistantManager.inputEl) return;
+          const ctx = (_text || '').trim().slice(0, 400);
+          const tail = ctx ? `\n\n(Selected text: "${ctx}")` : '';
+          AssistantManager.open();
+          AssistantManager.inputEl.value = `${chip}${tail}`;
+          AssistantManager.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+          AssistantManager.sendMessage();
+        });
+        wrap.appendChild(btn);
+      });
+      body.appendChild(wrap);
+    }
+    _lastAiResult = (md.innerText || '').replace(/\r\n/g, '\n').trim();
+  }
+
   function _cancelStream() {
     _unsubs.forEach(u => { try { u(); } catch {} });
     _unsubs = [];
@@ -1691,8 +1752,7 @@ const InlineAI = (() => {
         }
         if (tid !== omniTab || !chunkText) return;
         result += chunkText;
-        if (body) body.textContent = result;
-        _lastAiResult = result;
+        _renderInlineStreamBody(body, result);
       }));
       _unsubs.push(window.navio.onAiStreamDone((payload) => {
         const tid = payload && payload.tabId != null ? String(payload.tabId) : '__default__';
@@ -1712,8 +1772,12 @@ const InlineAI = (() => {
 
       await window.navio.aiRequestStream({
         messages: [
-          { role: 'system', content: 'You are a helpful writing assistant. Be concise. Reply in plain text only — no markdown, no bullet points.' },
-          { role: 'user',   content: prompt },
+          {
+            role: 'system',
+            content:
+              'You are a helpful writing assistant. Be concise. Use professional markdown when it helps: short ## headings, **bold** labels for variants, and bullet lists for options. Do not append [FOLLOWUP] blocks, JSON metadata, or machine-readable trailing tags.',
+          },
+          { role: 'user', content: prompt },
         ],
         tabId: omniTab,
       });

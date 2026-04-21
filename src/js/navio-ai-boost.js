@@ -252,7 +252,10 @@
 
       const body = omniPreview?.querySelector('.omni-ai-body');
       if (body && result && !result.error) {
-        const text = result.content || result.text || '';
+        let text = result.content || result.text || '';
+        text = text
+          .replace(/\[FOLLOWUP\][\s\S]*?\[\/FOLLOWUP\]/gi, '')
+          .replace(/\[FOLLOWUP\][\s\S]*/gi, '');
         body.innerHTML = `<p>${text.replace(/\n/g, '<br>')}</p>`;
       } else if (body && result?.error) {
         body.innerHTML = `<p style="color:var(--text-tertiary);font-size:12px">${result.error}</p>`;
