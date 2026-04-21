@@ -228,11 +228,16 @@ class NavioApp {
     }
     if (chatBase) {
       const sep = chatBase.includes('?') ? '&' : '?';
-      if (raw) {
-        TabManager.createTab(`${chatBase}${sep}initial=${encodeURIComponent(raw)}`);
-      } else {
-        TabManager.createTab(chatBase);
-      }
+      const parts = [];
+      if (raw) parts.push('initial=' + encodeURIComponent(raw));
+      // Pass the source tab ID so the chat can anchor to it and share history
+      const srcTab = TabManager.getActiveTab?.();
+      const srcTabIsChat = srcTab && typeof TabManager.isNavioChatTabUrl === 'function'
+        ? TabManager.isNavioChatTabUrl(srcTab.url || '')
+        : false;
+      if (srcTab && !srcTabIsChat) parts.push('sourceTabId=' + encodeURIComponent(srcTab.id));
+      const qs = parts.length ? sep + parts.join('&') : '';
+      TabManager.createTab(chatBase + qs);
       return;
     }
 
@@ -551,8 +556,15 @@ ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc
     const chatAiBtn = document.getElementById('btn-chat-with-ai');
     chatAiBtn?.addEventListener('click', () => {
       const raw = urlInput.value.trim();
-      void this.openAssistantInTab(raw, { allowEmpty: true });
-      if (raw) {
+      // If the URL bar just shows the current page URL (not a user-typed query),
+      // don't pass it as the initial AI message — the AI already knows the page context.
+      const activeTabUrl = typeof TabManager !== 'undefined' ? (TabManager.getActiveTab?.()?.url || '') : '';
+      const isCurrentPageUrl = raw && activeTabUrl &&
+        (raw === activeTabUrl || raw === activeTabUrl.replace(/\/$/, '') ||
+         activeTabUrl === raw || activeTabUrl.replace(/\/$/, '') === raw);
+      const queryToSend = isCurrentPageUrl ? '' : raw;
+      void this.openAssistantInTab(queryToSend, { allowEmpty: true });
+      if (queryToSend) {
         urlInput.value = '';
         if (aiHint) aiHint.classList.remove('visible');
       }

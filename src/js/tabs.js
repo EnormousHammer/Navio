@@ -53,6 +53,15 @@ class TabManagerClass {
     /** Idle tab discard (memory): interval in `tabDiscardIdleMinutes` from config. */
     this._tabDiscardInterval = null;
     this._startTabDiscardSchedule();
+
+    // ── Split ratio (0.2 – 0.8); default 50/50 ────────────────────────
+    this._splitRatio = 0.5;
+    this._initSplitDivider();
+
+    // ── Tab drag-to-reorder ────────────────────────────────────────────
+    this._dragState = null;
+    this._boundDragPointerMove = this._onDragPointerMove.bind(this);
+    this._boundDragPointerUp   = this._onDragPointerUp.bind(this);
   }
 
   // ── Passive Memory Capture ────────────────────────────────────────────
@@ -211,6 +220,19 @@ class TabManagerClass {
     const focused = this.activeTabId ? this.tabs.find((t) => t.id === this.activeTabId) : null;
     const partner = this._resolveReciprocalSplitPartner(focused);
 
+    // Show / position the resizable split divider
+    if (this._splitDivider) {
+      if (partner && focused) {
+        const wLeft = Math.round(width * this._splitRatio);
+        this._splitDivider.style.display = '';
+        this._splitDivider.style.left  = `${wLeft - 4}px`;
+        this._splitDivider.style.top   = '0px';
+        this._splitDivider.style.height = `${usableH}px`;
+      } else {
+        this._splitDivider.style.display = 'none';
+      }
+    }
+
     this.tabs.forEach((tab) => {
       const wv = tab.webview;
       if (!wv) return;
@@ -223,7 +245,7 @@ class TabManagerClass {
         const leftId = focused.splitLeftPaneTabId || partner.splitLeftPaneTabId;
         const leftTab = (leftId ? this.tabs.find((t) => t.id === leftId) : null) || fallbackLeft;
         const isLeft = tab.id === leftTab.id;
-        const wLeft = Math.floor(width / 2);
+        const wLeft = Math.round(width * this._splitRatio);
         const wRight = Math.max(0, width - wLeft);
         wv.style.left = isLeft ? '0px' : `${wLeft}px`;
         wv.style.right = 'auto';
@@ -399,6 +421,19 @@ class TabManagerClass {
       const u = active.url || '';
       if (isWebSurface(u)) {
         return active;
+      }
+      // Comet-style: when the full-page AI chat is focused, always use the tab
+      // it was anchored to — not the dynamically-changing _lastBrowserSurfaceTabId.
+      if (this.isNavioChatTabUrl(u)) {
+        const anchoredId = typeof AssistantManager !== 'undefined'
+          ? AssistantManager._guestAnchoredTabId
+          : null;
+        if (anchoredId) {
+          const anchored = this.tabs.find(t => t.id === anchoredId);
+          if (anchored && anchored.webview && isWebSurface(anchored.url || '')) {
+            return anchored;
+          }
+        }
       }
     }
 
@@ -1764,6 +1799,7 @@ class TabManagerClass {
       });
     }
 
+    this._attachTabDragHandlers(tab.id, el);
     this._appendNodeToTabList(el);
 
     requestAnimationFrame(() => {
@@ -2025,6 +2061,10 @@ class TabManagerClass {
     el.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       this._showGroupContextMenu(group.id, e.clientX, e.clientY);
+    });
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      this._startDrag('group', group.id, el, e);
     });
     return el;
   }
@@ -2299,6 +2339,329 @@ class TabManagerClass {
       }
     }
     if (typeof _showAppToast === 'function') _showAppToast('Tab groups updated from AI.', 'success');
+  }
+
+  // ── Split Divider ──────────────────────────────────────────────────────
+
+  _initSplitDivider() {
+    this._splitDivider = document.createElement('div');
+    this._splitDivider.className = 'split-divider';
+    this._splitDivider.style.display = 'none';
+    this.browserContainer.appendChild(this._splitDivider);
+
+    let _dividerDragging = false;
+
+    this._splitDivider.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      _dividerDragging = true;
+      this._splitDivider.setPointerCapture(e.pointerId);
+      this._splitDivider.classList.add('dragging');
+
+      const onMove = (me) => {
+        if (!_dividerDragging) return;
+        const rect = this.browserContainer.getBoundingClientRect();
+        const ratio = (me.clientX - rect.left) / rect.width;
+        this._splitRatio = Math.max(0.2, Math.min(0.8, ratio));
+        this._syncWebviewSizes();
+      };
+
+      const onUp = () => {
+        _dividerDragging = false;
+        this._splitDivider.classList.remove('dragging');
+        this._splitDivider.removeEventListener('pointermove', onMove);
+        this._splitDivider.removeEventListener('pointerup', onUp);
+        this._splitDivider.removeEventListener('pointercancel', onUp);
+      };
+
+      this._splitDivider.addEventListener('pointermove', onMove);
+      this._splitDivider.addEventListener('pointerup', onUp);
+      this._splitDivider.addEventListener('pointercancel', onUp);
+    });
+  }
+
+  // ── Tab & Group Drag-to-Reorder ────────────────────────────────────────
+
+  _attachTabDragHandlers(tabId, el) {
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      if (e.target.closest('.tab-close')) return;
+      this._startDrag('tab', tabId, el, e);
+    });
+  }
+
+  _startDrag(type, id, el, e) {
+    if (this._dragState) return;
+    const rect = el.getBoundingClientRect();
+
+    // Full-screen overlay prevents -webkit-app-region:drag from stealing events
+    const overlay = document.createElement('div');
+    overlay.className = 'tab-drag-overlay';
+    document.body.appendChild(overlay);
+
+    this._dragState = {
+      type,            // 'tab' | 'group'
+      id,              // tabId or groupId
+      el,
+      overlay,
+      startX: e.clientX,
+      startY: e.clientY,
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top,
+      ghost: null,
+      isDragging: false,
+      insertBeforeTabId: null,  // null = end of strip
+      insertInGroupId: null,    // drop on group header
+    };
+
+    el.setPointerCapture(e.pointerId);
+    el.addEventListener('pointermove', this._boundDragPointerMove);
+    el.addEventListener('pointerup',   this._boundDragPointerUp);
+    el.addEventListener('pointercancel', this._boundDragPointerUp);
+  }
+
+  _createDragGhost(el) {
+    const ghost = document.createElement('div');
+    ghost.className = 'tab-drag-ghost';
+    ghost.innerHTML = el.innerHTML;
+    ghost.style.width  = `${el.offsetWidth}px`;
+    ghost.style.height = `${el.offsetHeight}px`;
+    // Carry over group colour if applicable
+    const tgColor = el.style.getPropertyValue('--tg-color');
+    if (tgColor) ghost.style.setProperty('--tg-color', tgColor);
+    if (el.classList.contains('in-group')) ghost.classList.add('in-group');
+    document.body.appendChild(ghost);
+    return ghost;
+  }
+
+  _getOrCreateDropIndicator() {
+    let ind = document.getElementById('tab-drag-indicator');
+    if (!ind) {
+      ind = document.createElement('div');
+      ind.id = 'tab-drag-indicator';
+      ind.className = 'tab-drag-indicator';
+      document.body.appendChild(ind);
+    }
+    return ind;
+  }
+
+  _onDragPointerMove(e) {
+    const ds = this._dragState;
+    if (!ds) return;
+
+    const dx = e.clientX - ds.startX;
+    const dy = e.clientY - ds.startY;
+
+    if (!ds.isDragging) {
+      if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+      ds.isDragging = true;
+      ds.el.classList.add('tab-dragging-source');
+      ds.ghost = this._createDragGhost(ds.el);
+    }
+
+    // Position ghost alongside the pointer
+    const isVertical = document.body.classList.contains('navio-vertical-tabs');
+    const stripRect  = this.tabListEl.getBoundingClientRect();
+
+    if (isVertical) {
+      ds.ghost.style.left = `${stripRect.left + 4}px`;
+      ds.ghost.style.top  = `${e.clientY - ds.offsetY}px`;
+    } else {
+      ds.ghost.style.left = `${e.clientX - ds.offsetX}px`;
+      ds.ghost.style.top  = `${stripRect.top + 1}px`;
+    }
+
+    this._updateDragDropTarget(e.clientX, e.clientY);
+  }
+
+  _updateDragDropTarget(x, y) {
+    const ds = this._dragState;
+    if (!ds) return;
+
+    const isVertical  = document.body.classList.contains('navio-vertical-tabs');
+    const indicator   = this._getOrCreateDropIndicator();
+    const stripRect   = this.tabListEl.getBoundingClientRect();
+
+    // Clear previous group highlights
+    this.tabListEl.querySelectorAll('.tab-drag-over').forEach(el => el.classList.remove('tab-drag-over'));
+    ds.insertInGroupId = null;
+
+    // Check if hovering over a group header (tab-drag only — not group-drag)
+    if (ds.type === 'tab') {
+      for (const header of this.tabListEl.querySelectorAll('.tab-group-header')) {
+        const hr = header.getBoundingClientRect();
+        if (x >= hr.left && x <= hr.right && y >= hr.top && y <= hr.bottom) {
+          const hoverGroupId = header.dataset.groupId;
+          const draggedTab   = this.tabs.find(t => t.id === ds.id);
+          if (hoverGroupId && hoverGroupId !== draggedTab?.groupId) {
+            header.classList.add('tab-drag-over');
+            ds.insertInGroupId    = hoverGroupId;
+            ds.insertBeforeTabId  = null;
+            indicator.style.display = 'none';
+            return;
+          }
+        }
+      }
+    }
+
+    // Find the insert position among visible (non-source) tab items
+    const tabItems = [...this.tabListEl.querySelectorAll('.tab-item:not(.tab-dragging-source)')];
+    let insertBeforeTabId = null;
+    let indicatorBeforeEl = null;  // element we're inserting before
+    let indicatorAfterEl  = null;  // element we're inserting after
+
+    for (let i = 0; i < tabItems.length; i++) {
+      const r   = tabItems[i].getBoundingClientRect();
+      const mid = isVertical ? (r.top + r.bottom) / 2 : (r.left + r.right) / 2;
+      const pos = isVertical ? y : x;
+
+      if (pos < mid) {
+        insertBeforeTabId = tabItems[i].id.replace('tabitem-', '');
+        indicatorBeforeEl = tabItems[i];
+        indicatorAfterEl  = i > 0 ? tabItems[i - 1] : null;
+        break;
+      }
+      indicatorAfterEl = tabItems[i];
+    }
+
+    ds.insertBeforeTabId = insertBeforeTabId;
+
+    // Position the drop indicator
+    indicator.style.display = '';
+
+    if (isVertical) {
+      indicator.style.width  = `${stripRect.width - 8}px`;
+      indicator.style.height = '2px';
+      if (indicatorBeforeEl) {
+        const r = indicatorBeforeEl.getBoundingClientRect();
+        indicator.style.left = `${r.left}px`;
+        indicator.style.top  = `${r.top - 1}px`;
+      } else if (indicatorAfterEl) {
+        const r = indicatorAfterEl.getBoundingClientRect();
+        indicator.style.left = `${r.left}px`;
+        indicator.style.top  = `${r.bottom - 1}px`;
+      } else {
+        indicator.style.display = 'none';
+      }
+    } else {
+      indicator.style.width  = '2px';
+      indicator.style.height = `${stripRect.height - 4}px`;
+      if (indicatorBeforeEl) {
+        const r = indicatorBeforeEl.getBoundingClientRect();
+        indicator.style.left = `${r.left - 1}px`;
+        indicator.style.top  = `${stripRect.top + 2}px`;
+      } else if (indicatorAfterEl) {
+        const r = indicatorAfterEl.getBoundingClientRect();
+        indicator.style.left = `${r.right - 1}px`;
+        indicator.style.top  = `${stripRect.top + 2}px`;
+      } else {
+        indicator.style.display = 'none';
+      }
+    }
+  }
+
+  _onDragPointerUp(e) {
+    const ds = this._dragState;
+    if (!ds) return;
+
+    // Remove event listeners
+    ds.el.removeEventListener('pointermove', this._boundDragPointerMove);
+    ds.el.removeEventListener('pointerup',   this._boundDragPointerUp);
+    ds.el.removeEventListener('pointercancel', this._boundDragPointerUp);
+    ds.el.classList.remove('tab-dragging-source');
+
+    // Remove ghost, indicator, overlay
+    if (ds.ghost) ds.ghost.remove();
+    document.getElementById('tab-drag-indicator')?.remove();
+    ds.overlay?.remove();
+
+    // Clear group drop highlights
+    this.tabListEl.querySelectorAll('.tab-drag-over').forEach(el => el.classList.remove('tab-drag-over'));
+
+    if (ds.isDragging) {
+      if (ds.insertInGroupId && ds.type === 'tab') {
+        // Dropped on a group header → join group
+        this.addTabToGroup(ds.id, ds.insertInGroupId);
+      } else if (ds.type === 'tab') {
+        this._moveTabToIndex(ds.id, ds.insertBeforeTabId);
+      } else if (ds.type === 'group') {
+        this._moveGroupToIndex(ds.id, ds.insertBeforeTabId);
+      }
+
+      // Suppress the click that would fire after pointerup
+      const suppressClick = (ev) => {
+        ev.stopPropagation();
+        ev.preventDefault();
+        ds.el.removeEventListener('click', suppressClick, true);
+      };
+      ds.el.addEventListener('click', suppressClick, true);
+    }
+
+    this._dragState = null;
+  }
+
+  /**
+   * Move a single tab to a new position. `insertBeforeTabId` is the tab whose
+   * slot the dragged tab should occupy (null = append to end of strip).
+   */
+  _moveTabToIndex(tabId, insertBeforeTabId) {
+    const currentIndex = this.tabs.findIndex(t => t.id === tabId);
+    if (currentIndex < 0) return;
+    const tab = this.tabs[currentIndex];
+    const pinnedCount = this.tabs.filter(t => t.pinned).length;
+
+    let targetIndex;
+    if (insertBeforeTabId === null) {
+      targetIndex = this.tabs.length;
+    } else {
+      targetIndex = this.tabs.findIndex(t => t.id === insertBeforeTabId);
+      if (targetIndex < 0) targetIndex = this.tabs.length;
+    }
+
+    // Preserve pinned/unpinned boundary
+    if (tab.pinned) {
+      targetIndex = Math.min(targetIndex, pinnedCount);
+    } else {
+      targetIndex = Math.max(targetIndex, pinnedCount);
+    }
+
+    // Already in place?
+    if (currentIndex === targetIndex || currentIndex + 1 === targetIndex) return;
+
+    this.tabs.splice(currentIndex, 1);
+    const adjusted = targetIndex > currentIndex ? targetIndex - 1 : targetIndex;
+    this.tabs.splice(adjusted, 0, tab);
+
+    this._reRenderTabList();
+    this._emitTabsChanged('tab-reorder');
+  }
+
+  /**
+   * Move an entire group (and all its tabs) so that the group block begins
+   * immediately before `insertBeforeTabId` (null = end of strip).
+   */
+  _moveGroupToIndex(groupId, insertBeforeTabId) {
+    const groupTabs    = this.tabs.filter(t => t.groupId === groupId);
+    const nonGroupTabs = this.tabs.filter(t => t.groupId !== groupId);
+    if (!groupTabs.length) return;
+
+    let insertAt;
+    if (insertBeforeTabId === null) {
+      insertAt = nonGroupTabs.length;
+    } else {
+      insertAt = nonGroupTabs.findIndex(t => t.id === insertBeforeTabId);
+      if (insertAt < 0) insertAt = nonGroupTabs.length;
+    }
+
+    const newTabs = [
+      ...nonGroupTabs.slice(0, insertAt),
+      ...groupTabs,
+      ...nonGroupTabs.slice(insertAt),
+    ];
+    this.tabs.splice(0, this.tabs.length, ...newTabs);
+    this._reRenderTabList();
+    this._emitTabsChanged('tab-reorder');
   }
 
   async suggestCloseDuplicateTabsWithAi() {

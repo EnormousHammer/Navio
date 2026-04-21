@@ -2741,6 +2741,27 @@
         case 'takeoverResumed':
           showTakeoverBanner(false);
           break;
+        case 'historyLoad': {
+          // Pre-populate this chat with the shared sidebar history for the anchored tab.
+          // Only apply if the current session is empty (don't overwrite an existing thread).
+          var hlMsgs = Array.isArray(msg.messages) ? msg.messages : [];
+          if (hlMsgs.length > 0) {
+            ensureActive();
+            var hlSess = activeSession();
+            if (hlSess && hlSess.messages.length === 0) {
+              hlMsgs.forEach(function (m) {
+                if (m.role !== 'user' && m.role !== 'assistant') return;
+                var txt = String(m.content || '');
+                hlSess.messages.push({ role: m.role, text: txt, t: Date.now() });
+                appendMessage(m.role, txt);
+              });
+              saveSessions();
+              renderSidebar();
+              messagesEl.scrollTop = messagesEl.scrollHeight;
+            }
+          }
+          break;
+        }
         default: break;
       }
     }
@@ -3419,18 +3440,33 @@
     updateCharCount();
     setBusy(false);
     try {
-      const initialText = getInitialPromptFromSearch(window.location.search || '');
+      // ── Comet-style: read sourceTabId and anchor this chat to it ──────────
+      var bootParams = new URLSearchParams(window.location.search || '');
+      var sourceTabId = bootParams.get('sourceTabId') || '';
+      var initialText = getInitialPromptFromSearch(window.location.search || '');
+
+      // Clean the URL (remove both initial and sourceTabId params)
+      if (window.location.search) stripInitialFromUrl();
+
+      if (sourceTabId) {
+        // Tell AssistantManager which tab this chat is anchored to
+        post({ action: 'anchorTab', tabId: sourceTabId });
+        // Request existing conversation history for that tab
+        post({ action: 'requestHistory', tabId: sourceTabId });
+      }
+
       if (initialText) {
-        stripInitialFromUrl();
+        // Delay slightly when there's a sourceTabId so historyLoad arrives first
+        var delay = sourceTabId ? 700 : 0;
         setTimeout(function () {
-          const raw = initialText.trim();
+          var raw = initialText.trim();
           if (raw.indexOf('>>') === 0) {
             sendResearch(raw.replace(/^>>\s*/, ''));
           } else {
-            const sendText = raw.indexOf('?') === 0 ? raw.slice(1).trim() : raw;
+            var sendText = raw.indexOf('?') === 0 ? raw.slice(1).trim() : raw;
             if (sendText) send(sendText);
           }
-        }, 0);
+        }, delay);
       }
     } catch { /* ignore */ }
     updateLayoutMode();

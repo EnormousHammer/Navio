@@ -1039,6 +1039,136 @@ body.navio-vertical-tabs .tab-group-header:hover {
 }
 .tab-group-header.collapsed .tgh-chevron { transform: rotate(-90deg); }
 
+/* ── Tab Drag-to-Reorder ─────────────────────────────────────────────── */
+
+/* Full-screen overlay during drag — prevents the native window-drag
+   from firing when the pointer strays over -webkit-app-region:drag areas */
+.tab-drag-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99985;
+  -webkit-app-region: no-drag;
+  cursor: grabbing;
+}
+
+/* Ghost tab that follows the cursor while dragging */
+.tab-drag-ghost {
+  position: fixed;
+  z-index: 99990;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  opacity: 0.92;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.1);
+  transform: scale(1.05) rotate(1deg);
+  background: var(--bg-elevated, #1e2436);
+  border: 1px solid rgba(255,255,255,0.14);
+  color: var(--text-primary, #e2e8f0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+  height: 34px;
+  transition: none;
+  cursor: grabbing;
+}
+
+/* Ghost that carries the group-color bar (for grouped tabs) */
+.tab-drag-ghost.in-group {
+  box-shadow: inset 0 -3px 0 var(--tg-color, transparent),
+              0 8px 24px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.1);
+}
+
+/* Source tab while drag is active — fade it out */
+.tab-dragging-source {
+  opacity: 0.25 !important;
+  pointer-events: none !important;
+}
+
+/* Drop position indicator — a glowing 2px line between tabs */
+.tab-drag-indicator {
+  position: fixed;
+  z-index: 99989;
+  background: #60a5fa;
+  border-radius: 2px;
+  pointer-events: none;
+  box-shadow: 0 0 6px rgba(96, 165, 250, 0.8);
+}
+
+/* Group header highlighted when a tab is dragged over it */
+.tab-group-header.tab-drag-over {
+  filter: brightness(1.35) !important;
+  outline: 2px solid rgba(255,255,255,0.55);
+  outline-offset: 1px;
+}
+
+/* ── Split View Resizable Divider ─────────────────────────────────────── */
+
+.split-divider {
+  position: absolute;
+  width: 8px;
+  top: 0;
+  z-index: 50;
+  cursor: col-resize;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.split-divider::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  background: rgba(0, 216, 255, 0.3);
+  transition: background 0.15s, width 0.12s;
+}
+
+/* Centre handle knob */
+.split-divider::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 36px;
+  background: rgba(0, 216, 255, 0.6);
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.split-divider:hover::after,
+.split-divider.dragging::after {
+  width: 2px;
+  background: rgba(0, 216, 255, 0.75);
+}
+
+.split-divider:hover::before,
+.split-divider.dragging::before {
+  opacity: 1;
+}
+
+[data-theme="light"] .split-divider::after {
+  background: rgba(26, 115, 232, 0.3);
+}
+[data-theme="light"] .split-divider:hover::after,
+[data-theme="light"] .split-divider.dragging::after {
+  background: rgba(26, 115, 232, 0.75);
+}
+[data-theme="light"] .split-divider::before {
+  background: rgba(26, 115, 232, 0.6);
+}
+
 /* ── Tab Context Menu ────────────────────────────────────────────────── */
 .tab-ctx-menu {
   position: fixed;
@@ -5211,6 +5341,28 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 .email-ref-chip:hover .erc-arrow {
   opacity: 1;
   color: var(--accent);
+}
+
+/* Account badge — shown on chips from non-primary Gmail accounts */
+.email-ref-chip .erc-account-badge {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: rgba(255,255,255,0.8);
+  background: rgba(96, 165, 250, 0.25);
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  border-radius: 4px;
+  padding: 1px 5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-theme="light"] .email-ref-chip .erc-account-badge {
+  color: #1a5fb4;
+  background: rgba(26, 95, 180, 0.1);
+  border-color: rgba(26, 95, 180, 0.3);
 }
 
 /* ── Email chip hover tooltip ─────────────────────────────────────────────── */

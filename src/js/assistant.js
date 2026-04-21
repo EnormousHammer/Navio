@@ -327,6 +327,12 @@ class AssistantManagerClass {
     this._turnConversationKey = null;
     /** Sidebar transcript is for this tab id — DOM updates from other in-flight turns are suppressed. */
     this._panelDisplayTabId = null;
+    /**
+     * The web-tab ID that the full-page chat was opened FROM (Comet-style anchoring).
+     * While set, the guest chat uses this tab's conversation bucket instead of '__guest__',
+     * so the sidebar and the full-page chat share the same history.
+     */
+    this._guestAnchoredTabId = null;
     /** When true, `addMessage` always appends (rebuilding history from disk). */
     this._assistantHistoryDomReplay = false;
     /** Dedupe toggle when globalShortcut and guest webview forward both fire. */
@@ -556,6 +562,19 @@ class AssistantManagerClass {
     return t ? this._storageKeyForTab(t) : String(tabId);
   }
 
+  /**
+   * Conversation key for the full-page chat turn.
+   * When anchored to a source tab (Comet-style), returns that tab's key so the
+   * sidebar and the full-page chat share the same history bucket.
+   * Falls back to '__guest__' when no anchor is set.
+   */
+  _guestConversationKey() {
+    if (this._guestAnchoredTabId) {
+      return this._storageKeyForTabId(this._guestAnchoredTabId);
+    }
+    return '__guest__';
+  }
+
   _conversationKey() {
     if (typeof TabManager !== 'undefined' && TabManager.activeTabId) {
       const t = TabManager.getActiveTab();
@@ -578,6 +597,7 @@ class AssistantManagerClass {
   /** Whether sidebar may show typing/streaming/messages for the current turn (avoids cross-tab DOM pollution). */
   _panelShowsTurnDom() {
     const turnKey = this._domTurnTabId();
+    // Legacy: unanchored guest turn always shows
     if (turnKey === '__guest__') return true;
     const panelKey = this._panelDisplayStorageKey();
     if (panelKey == null) return true;
@@ -2307,6 +2327,28 @@ class AssistantManagerClass {
 
   handleGuestChatHostMessage(tab, guestWv, payload) {
     if (!payload || !guestWv) return;
+
+    // ── Comet-style anchoring: tie this chat to a specific web tab ─────────
+    if (payload.action === 'anchorTab') {
+      this._guestAnchoredTabId = payload.tabId || null;
+      return;
+    }
+    // Push the existing sidebar conversation for the anchored tab to the chat page
+    if (payload.action === 'requestHistory') {
+      void this._ensureAssistantHistoryLoaded().then(() => {
+        const gkey = this._guestConversationKey();
+        const history = this._conversationsByTab.get(gkey) || [];
+        const msgs = history
+          .filter(m => m.role === 'user' || m.role === 'assistant')
+          .map(m => ({
+            role: m.role,
+            content: typeof m.content === 'string' ? m.content : ''
+          }));
+        this._guestDeliver(guestWv, { type: 'historyLoad', messages: msgs });
+      });
+      return;
+    }
+
     if (payload.action === 'planAck') {
       try {
         if (payload.approved) window.navio.toolProposePlanAck({ approved: true, title: payload.title });
@@ -2405,7 +2447,8 @@ class AssistantManagerClass {
     if (!guestWv) return;
     const hasFiles = Array.isArray(files) && files.length > 0;
     if (!text && !hasFiles) return;
-    if (this._tabIsBusy('__guest__')) {
+    const guestKey = this._guestConversationKey();
+    if (this._tabIsBusy(guestKey)) {
       this._guestDeliver(guestWv, { type: 'toast', text: 'Still working on the last message…' });
       return;
     }
@@ -2433,8 +2476,8 @@ class AssistantManagerClass {
     // Blank text + only attachments: mirror the sidebar's default prompt.
     const effectiveText = text || (installedSnapshot ? 'Please help with the attached file(s).' : '');
     const prevTurn = this._turnConversationKey;
-    this._turnConversationKey = '__guest__';
-    this._setTabBusy('__guest__', true);
+    this._turnConversationKey = guestKey;
+    this._setTabBusy(guestKey, true);
     this._updateAssistantBusyChrome();
     try {
       if (config.aiUseToolCalling !== false) {
@@ -2446,10 +2489,14 @@ class AssistantManagerClass {
       this._guestDeliver(guestWv, { type: 'assistant', error: true, content: err.message || String(err) });
     } finally {
       this._turnConversationKey = prevTurn;
-      this._setTabBusy('__guest__', false);
+      this._setTabBusy(guestKey, false);
       this._updateAssistantBusyChrome();
       if (installedSnapshot && this._attachmentsSnapshot === installedSnapshot) {
         this._attachmentsSnapshot = null;
+      }
+      // Sync the sidebar panel for the anchored tab so it reflects the new messages
+      if (this._guestAnchoredTabId) {
+        void this._syncPanelToTab(this._guestAnchoredTabId);
       }
     }
   }
@@ -2503,7 +2550,9 @@ class AssistantManagerClass {
     messages.push({ role: 'user', content: this._taskAnchorPrefix() + (text || '') });
     const userHistory = this._historyLabelForAttachments(text);
 
-    const gsk = '__guest__';
+    // Use the already-set _turnConversationKey so stream chunks are routed
+    // to the same bucket as the conversation history (anchored tab or '__guest__').
+    const gsk = String(this._turnConversationKey || '__guest__');
     this._clearStreamListenersForTab(gsk);
     let buffer = '';
     const unChunk = window.navio.onAiStreamChunk((payload) => {
@@ -3675,15 +3724,18 @@ class AssistantManagerClass {
   _gmailWebInboxUrl(messageId, gmailUSlot, authEmail) {
     const id = String(messageId || '').trim();
     if (!id) return '';
-    const slot = gmailUSlot === 1 || gmailUSlot === '1' ? 1 : 0;
+    // Support any slot number (0, 1, 2, …) — not just binary primary/secondary.
+    const slot = Math.max(0, parseInt(String(gmailUSlot ?? 0), 10) || 0);
     const email =
       typeof authEmail === 'string' && authEmail.includes('@') ? authEmail.trim() : '';
     if (email) {
-      const base = new URL('https://mail.google.com/mail/u/0/');
-      base.searchParams.set('authuser', email);
-      return `${base.origin}${base.pathname}?${base.searchParams.toString()}#inbox/${encodeURIComponent(id)}`;
+      // `?authuser=email` is account-position-independent: Gmail's client-side JS
+      // detects the mismatch with u/0 and redirects to the correct u/N slot while
+      // preserving the #inbox/ID hash fragment. This works for any number of accounts.
+      return `https://mail.google.com/mail/u/0/?authuser=${encodeURIComponent(email)}#inbox/${id}`;
     }
-    return `https://mail.google.com/mail/u/${slot}/#inbox/${encodeURIComponent(id)}`;
+    // Fallback: use the numeric slot directly (no hash encoding — Gmail uses raw hex IDs).
+    return `https://mail.google.com/mail/u/${slot}/#inbox/${id}`;
   }
 
   _resolveGmailMessageIdFromMailUrl(href) {
@@ -3716,7 +3768,8 @@ class AssistantManagerClass {
       if (m) slot = parseInt(m[1], 10) || 0;
       else slot = 0;
     }
-    const slotN = slot === 1 || slot === '1' ? 1 : 0;
+    // Support any slot number (0, 1, 2, …)
+    const slotN = Math.max(0, parseInt(String(slot ?? 0), 10) || 0);
     const authEmail = ref.authEmail;
     const safeUrl = (this._gmailWebInboxUrl(msgId, slotN, authEmail) || url || '').replace(/"/g, '&quot;');
     const display = (subjectLabel || ref.subject || '(no subject)').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -3724,10 +3777,21 @@ class AssistantManagerClass {
     const safeSnippet = (ref.snippet || '').replace(/"/g, '&quot;').slice(0, 500);
     const midAttr = msgId ? ` data-msg-id="${String(msgId).replace(/"/g, '&quot;')}"` : '';
     const uAttr = ` data-gmail-u="${slotN}"`;
+
+    // Show a subtle account badge when the email is NOT from the primary inbox,
+    // so the user can see at a glance which account will open.
+    const accountLabel = slotN > 0
+      ? (authEmail ? authEmail.split('@')[0] : `account ${slotN + 1}`)
+      : '';
+    const accountBadge = accountLabel
+      ? `<span class="erc-account-badge" title="${authEmail || `Gmail account ${slotN + 1}`}">${accountLabel}</span>`
+      : '';
+
     return (
       `<span class="email-ref-chip" data-url="${safeUrl}"${midAttr}${uAttr} data-from="${safeFrom}" data-snippet="${safeSnippet}" role="button" tabindex="0" title="Open in Gmail · hover for body">`
       + `<svg class="erc-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`
       + `<span class="erc-subject">${display}</span>`
+      + accountBadge
       + `<svg class="erc-arrow" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`
       + `</span>`
     );
@@ -5093,13 +5157,12 @@ class AssistantManagerClass {
     contentEl.querySelectorAll('.email-ref-chip').forEach(chip => {
       chip.addEventListener('click', async () => {
         const msgId = (chip.dataset.msgId || '').trim();
-        let uSlot = chip.dataset.gmailU;
-        if (uSlot === undefined || uSlot === '') {
-          uSlot = '0';
-        }
-        const isSecond = uSlot === '1' || uSlot === 1;
+        // Use the actual stored slot number — supports 0, 1, 2+ (not just binary).
+        const uSlot = Math.max(0, parseInt(chip.dataset.gmailU || '0', 10) || 0);
+        const isNonPrimary = uSlot >= 1;
+
         if (
-          isSecond &&
+          isNonPrimary &&
           typeof ConnectorsManager !== 'undefined' &&
           ConnectorsManager.connectedIds &&
           typeof ConnectorsManager.connectedIds.has === 'function' &&
@@ -5107,26 +5170,62 @@ class AssistantManagerClass {
         ) {
           if (typeof _showAppToast === 'function') {
             _showAppToast(
-              'That message is from your second Gmail slot. Connect **Gmail (2nd account)** in Settings → Connectors, then click again.',
+              'That message is from your second Gmail account. Connect **Gmail (2nd account)** in Settings → Connectors, then click again.',
               'warning'
             );
           }
           return;
         }
-        let authEmail = msgId && this._emailRefs?.get ? this._emailRefs.get(msgId)?.authEmail : '';
-        if (msgId && (!authEmail || !String(authEmail).includes('@'))) {
+
+        // ── Resolve the best email auth so authuser= routes to the right inbox ──
+        // Priority 1: email stored on the ref when the connector fetched the message
+        let authEmail = (msgId && this._emailRefs?.get?.(msgId)?.authEmail) || '';
+        // Priority 2: live OAuth status (in case the ref was built before OAuth loaded)
+        if (!authEmail || !String(authEmail).includes('@')) {
           try {
             const oauthSt = (await window.navio.oauthStatus()) || {};
-            authEmail = isSecond ? oauthSt.google_2?.email : oauthSt.google?.email;
-          } catch {
-            /* ignore */
-          }
+            // Map slot to the correct OAuth account (slot 0 → google, slot 1 → google_2, …)
+            // Navio's OAuth keys: slot 0 → 'google', slot 1 → 'google_2'
+            authEmail = uSlot === 0
+              ? (oauthSt.google?.email || '')
+              : (oauthSt.google_2?.email || '');
+          } catch { /* ignore */ }
         }
-        const openUrl = msgId
-          ? this._gmailWebInboxUrl(msgId, isSecond ? 1 : 0, authEmail)
-          : (chip.dataset.url || '').trim();
+
+        // ── Build the navigation URL ──
+        // Prefer the pre-built URL baked into the chip (already has correct authuser).
+        // Rebuild only when the stored URL is missing or stale (no authuser param).
+        let openUrl = (chip.dataset.url || '').trim();
+        const storedHasAuth = openUrl && (openUrl.includes('authuser=') || !isNonPrimary);
+        if (msgId && !storedHasAuth) {
+          openUrl = this._gmailWebInboxUrl(msgId, uSlot, authEmail);
+        } else if (msgId && authEmail && !openUrl.includes('authuser=')) {
+          // Refresh with auth email so Gmail routes to the right account
+          openUrl = this._gmailWebInboxUrl(msgId, uSlot, authEmail);
+        }
+
         if (!openUrl) return;
-        if (typeof TabManager !== 'undefined' && typeof TabManager.createTab === 'function') {
+
+        // ── Navigate: reuse an existing Gmail tab for this account if possible ──
+        // This avoids opening a redundant tab and ensures the right session is active.
+        if (typeof TabManager !== 'undefined') {
+          const gmailOrigin = 'https://mail.google.com';
+          const existingGmailTab = TabManager.tabs.find(t => {
+            if (!t.url || !t.url.startsWith(gmailOrigin)) return false;
+            // Match the account slot: u/N/ in the URL path
+            const slotMatch = t.url.match(/\/mail\/u\/(\d+)\//);
+            if (!slotMatch) return false;
+            return parseInt(slotMatch[1], 10) === uSlot;
+          });
+          if (existingGmailTab) {
+            TabManager.switchToTab(existingGmailTab.id);
+            if (typeof TabManager.navigateTab === 'function') {
+              TabManager.navigateTab(existingGmailTab, openUrl);
+            } else if (existingGmailTab.webview) {
+              existingGmailTab.webview.loadURL(openUrl);
+            }
+            return;
+          }
           TabManager.createTab(openUrl);
         } else {
           window.open(openUrl, '_blank');
