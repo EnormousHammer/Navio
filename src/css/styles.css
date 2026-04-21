@@ -4798,7 +4798,8 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 .message {
   position: relative;
 }
-.message:hover .msg-copy-btn { opacity: 1; }
+.message:hover .msg-copy-btn,
+.message:hover .msg-tts-btn { opacity: 1; }
 
 .msg-copy-btn {
   position: absolute;
@@ -4828,6 +4829,32 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   color: #48bb78;
   border-color: #48bb78;
   opacity: 1;
+}
+
+/* Read aloud — own slot so it never stacks on top of Copy (same corner bug). */
+.msg-tts-btn {
+  position: absolute;
+  top: 6px;
+  right: 36px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s, border-color 0.15s;
+  z-index: 3;
+  padding: 0;
+}
+.msg-tts-btn:hover {
+  color: var(--accent);
+  border-color: rgba(125, 211, 252, 0.45);
+  background: rgba(125, 211, 252, 0.08);
 }
 
 /* ── TTS active / stop bar ───────────────────────────────────────────────── */

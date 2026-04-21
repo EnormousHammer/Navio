@@ -460,6 +460,7 @@ const NAVIO_TOOLS = [
       '(from:mailer-daemon OR from:postmaster OR subject:undeliverable OR subject:"Delivery Status" OR subject:bounce) ' +
       'plus optional after:YYYY/MM/DD. Paginate with next_page_token until no more results. ' +
       'Also: "from:user@example.com", "subject:invoice". ' +
+      'When the user says **send/write email to a person’s name** (no @ address), search with that name first, list numbered matches, and ask which thread — do not draft until they pick. ' +
       'Requires Google OAuth to be connected in Navio Settings.',
     parameters: {
       type: 'object',

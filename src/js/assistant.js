@@ -12,6 +12,12 @@ function navioDetectMailboxIntent(text) {
   const s = (text || '').trim();
   if (s.length < 2) return false;
   if (/\b(send|forward|compose)\s+(an?\s+)?(e-?)?mail\s+to\s+\S+@\S+/i.test(s)) return false;
+  // "Send / write / draft email to Musa" (no @) — must run Gmail search + disambiguate, not guess one address.
+  const mCompose = s.match(/\b(send|write|compose|draft)\s+(an?\s+)?(e-?)?mail\s+to\s+(\S+)/i);
+  if (mCompose) {
+    const tok = (mCompose[4] || '').trim();
+    if (tok && !tok.includes('@')) return true;
+  }
   // "Notification" alone matched too many non-mail questions; require mail vocabulary with it.
   const notificationAboutMail =
     /\b(notifications?|notify)\b/i.test(s) && /\b(email|e-?mail|gmail|inbox|mailbox|message|mail)\b/i.test(s);
@@ -107,6 +113,16 @@ function navioMailContextActiveForTurn(text, getHistoryFn) {
   return false;
 }
 
+/** First token after "… mail to " when user names a person without an email address (for tighter prompts). */
+function navioMailComposeRecipientToken(text) {
+  const s = (text || '').trim();
+  const m = s.match(/\b(send|write|compose|draft)\s+(an?\s+)?(e-?)?mail\s+to\s+(\S+)/i);
+  if (!m) return null;
+  const tok = (m[4] || '').trim();
+  if (!tok || tok.includes('@')) return null;
+  return tok;
+}
+
 /** OAuth row from `oauth-status`: connected and token not past expiresAt. */
 function navioOAuthSlotActive(entry) {
   return !!(entry && entry.connected && !entry.expired);
@@ -148,6 +164,8 @@ const NAVIO_ASSISTANT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 const NAVIO_ASSISTANT_PDF_MAX_BYTES = 12 * 1024 * 1024;
 const NAVIO_ASSISTANT_TEXT_MAX_CHARS = 180000;
 const NAVIO_ASSISTANT_MAX_ATTACHMENTS = 8;
+/** Silence after speech before we treat the utterance as finished (Whisper VAD + Web Speech debounce). ~2.8s allows natural mid-sentence pauses. */
+const NAVIO_VOICE_END_SILENCE_MS = 2800;
 /** Non-text files: send as base64 for models that accept inline bytes (Gemini, etc.). */
 const NAVIO_ASSISTANT_INLINE_MAX_BYTES = 4 * 1024 * 1024;
 /** Unknown extensions: try UTF-8 decode when under this size (code, configs, odd MIME). */
@@ -1038,10 +1056,17 @@ class AssistantManagerClass {
   async _maybePushMailBackendOnlyPolicy(messages, text, config, prefKnown) {
     const use = prefKnown !== undefined ? prefKnown : await this._gmailApiMailBackendPreferred(text, config);
     if (!use) return;
+    const nameTok = navioMailComposeRecipientToken(text);
+    let extra = '';
+    if (nameTok) {
+      extra =
+        `\n\n**Compose to a name (no @ address) — user said something like mail to "${nameTok}":** Your **first tool call** must be **gmail_search** with a query that surfaces threads involving that person (e.g. \`${nameTok}\` or \`from:${nameTok} OR to:${nameTok}\` when it is a single token). Use **max_results: 15** and **pages: 1** unless they asked for full history. **Do not** call gmail_create_draft until the user picks which thread/address they mean: show a **numbered list** (subject — counterparty — date — one-line snippet) and ask **which number** to use (or ask them to paste the exact email). If zero results, say so and ask for their address. Keep the first assistant turn short — search first, then list — no long preamble.`;
+    }
     messages.push({
       role: 'system',
       content:
-        '[Mail — API first, browser when needed]\nThe user’s message was detected as mail-related. Gmail is connected in Navio (Settings → Connectors and/or Google sign-in). Prefer **gmail_search**, **gmail_get_message**, **gmail_list_drafts**, and draft tools — they are fast and reliable. **Do not** open Gmail or use mail tools for questions that are not about email/inbox/messages/drafts. **If the API response does not contain what the task requires** (e.g. amounts or text inside an attachment, previews, or anything only visible in the Gmail UI), you MUST NOT stop with “I can’t” — use **navigate** or **open_tab** with **gmail_browser_takeover: true** to open the real Gmail tab, then **read_page**, **click** (open attachment / preview), **screenshot** as needed. Never click Send on email.\n\n**How to reply:** For “how many”, totals, or inbox summaries — **first line = the usable answer** (number or clear “need attachment/UI”); then a few tight bullets. Skip long “what’s evidenced vs inferred” unless they asked for that.'
+        '[Mail — API first, browser when needed]\nThe user’s message was detected as mail-related. Gmail is connected in Navio (Settings → Connectors and/or Google sign-in). Prefer **gmail_search**, **gmail_get_message**, **gmail_list_drafts**, and draft tools — they are fast and reliable. **Do not** open Gmail or use mail tools for questions that are not about email/inbox/messages/drafts. **If the API response does not contain what the task requires** (e.g. amounts or text inside an attachment, previews, or anything only visible in the Gmail UI), you MUST NOT stop with “I can’t” — use **navigate** or **open_tab** with **gmail_browser_takeover: true** to open the real Gmail tab, then **read_page**, **click** (open attachment / preview), **screenshot** as needed. Never click Send on email.\n\n**How to reply:** For “how many”, totals, or inbox summaries — **first line = the usable answer** (number or clear “need attachment/UI”); then a few tight bullets. Skip long “what’s evidenced vs inferred” unless they asked for that.' +
+        extra
     });
   }
 
@@ -1210,6 +1235,27 @@ class AssistantManagerClass {
     this._renderAttachmentChips();
   }
 
+  /**
+   * Merge speech into the composer like typed text: keeps existing draft and appends
+   * a new paragraph so voice stacks with prefixes, @mentions, and pending attachments.
+   * @param {string} transcript
+   * @param {{ replace?: boolean }} opts - `replace: true` for barge-in (new command replaces all).
+   */
+  _applyVoiceTranscriptToInput(transcript, opts = {}) {
+    const replace = !!opts.replace;
+    const t = String(transcript || '').trim();
+    if (!this.inputEl || !t) return;
+    const cur = (this.inputEl.value || '').trim();
+    if (replace || !cur) {
+      this.inputEl.value = t;
+    } else {
+      this.inputEl.value = `${cur}\n${t}`;
+    }
+    this.inputEl.style.height = 'auto';
+    this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + 'px';
+    this.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
   // ── Voice Mode (Web Speech API) ──────────────────────────────────────────
   /**
    * Record microphone audio, detect end-of-speech via silence detection,
@@ -1281,7 +1327,7 @@ class AssistantManagerClass {
         let silenceStart = null;
         const SPEECH_THRESHOLD = 10;  // RMS units (0-100) to classify as speech
         const SILENCE_THRESHOLD = 6;  // RMS below this for sustained silence
-        const SILENCE_NEEDED_MS = 1400; // 1.4 s of silence after speech → submit
+        const SILENCE_NEEDED_MS = NAVIO_VOICE_END_SILENCE_MS;
         const MAX_RECORD_MS = 90_000;   // 90 s safety cap
         const recordStart = Date.now();
 
@@ -1369,13 +1415,17 @@ class AssistantManagerClass {
       if (hint) hint.textContent = HINT_DEFAULT;
     };
 
-    const onGotTranscript = (text) => {
+    const onGotTranscript = (text, sttBaseline = '') => {
       resetUI();
       if (!text.trim()) return;
-      if (this.inputEl) {
-        this.inputEl.value = text.trim();
+      const b = String(sttBaseline || '').trimEnd().trim();
+      if (b && this.inputEl) {
+        this.inputEl.value = `${b}\n${text.trim()}`;
         this.inputEl.style.height = 'auto';
         this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + 'px';
+        this.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+      } else {
+        this._applyVoiceTranscriptToInput(text, { replace: false });
       }
       this.sendMessage();
     };
@@ -1384,7 +1434,7 @@ class AssistantManagerClass {
     const startWhisper = () => {
       active = true;
       btn.classList.add('listening');
-      if (hint) hint.textContent = 'Listening… speak, then pause to send';
+      if (hint) hint.textContent = 'Listening… pause ~3s when done (merges with text in the box)';
       stopFn = this._whisperListen(onGotTranscript, ({ state }) => {
         if (state === 'processing' && hint) hint.textContent = 'Transcribing…';
       });
@@ -1395,42 +1445,44 @@ class AssistantManagerClass {
     const startBrowserSTT = () => {
       if (!SpeechRecognition) return;
       active = true;
+      const baseline = (this.inputEl?.value || '').trimEnd();
       const rec = new SpeechRecognition();
       rec.lang = 'en-US';
       rec.interimResults = true;
       rec.maxAlternatives = 1;
       stopFn = () => { try { rec.stop(); } catch { /* ignore */ } };
 
-      // Silence detection: auto-submit after 1.8s of no new speech.
+      // Silence detection: auto-submit after NAVIO_VOICE_END_SILENCE_MS of no new speech.
       // On Windows/Chromium, isFinal often never fires — this is the reliable path.
       let silenceTimer = null;
       let lastTranscript = '';
-      const SILENCE_MS = 1800;
+      const SILENCE_MS = NAVIO_VOICE_END_SILENCE_MS;
       const scheduleAutoSubmit = (t) => {
         clearTimeout(silenceTimer);
         lastTranscript = t;
         silenceTimer = setTimeout(() => {
           try { rec.stop(); } catch { /* ignore */ }
-          if (lastTranscript.trim()) onGotTranscript(lastTranscript);
+          if (lastTranscript.trim()) onGotTranscript(lastTranscript, baseline);
           else resetUI();
         }, SILENCE_MS);
       };
 
       rec.onstart = () => {
         btn.classList.add('listening');
-        if (hint) hint.textContent = 'Listening… speak then pause to send';
+        if (hint) hint.textContent = 'Listening… pause ~3s when done (merges with text in the box)';
       };
       rec.onresult = (e) => {
         const t = Array.from(e.results).map(r => r[0].transcript).join('');
         if (this.inputEl) {
-          this.inputEl.value = t;
+          const display = baseline.trim() ? `${baseline.trim()}\n${t}` : t;
+          this.inputEl.value = display;
           this.inputEl.style.height = 'auto';
           this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + 'px';
         }
         if (e.results[e.results.length - 1].isFinal) {
           clearTimeout(silenceTimer);
           if (stopFn) try { rec.stop(); } catch { /* ignore */ }
-          onGotTranscript(t);
+          onGotTranscript(t, baseline);
         } else {
           // Interim result — reset the silence timer so we wait for the pause
           scheduleAutoSubmit(t);
@@ -1670,10 +1722,7 @@ class AssistantManagerClass {
           if (transcriptEl) transcriptEl.textContent = '';
           if (text.trim()) {
             this._voiceConvSetState('thinking');
-            if (this.inputEl) {
-              this.inputEl.value = text.trim();
-              this.inputEl.dispatchEvent(new Event('input'));
-            }
+            this._applyVoiceTranscriptToInput(text, { replace: true });
             this.sendMessage();
           } else {
             if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), 350);
@@ -1747,10 +1796,7 @@ class AssistantManagerClass {
           if (transcriptEl) transcriptEl.textContent = '';
           if (text.trim()) {
             this._voiceConvSetState('thinking');
-            if (this.inputEl) {
-              this.inputEl.value = text.trim();
-              this.inputEl.dispatchEvent(new Event('input'));
-            }
+            this._applyVoiceTranscriptToInput(text, { replace: false });
             this.sendMessage();
           } else {
             // Nothing heard — loop back to listening
@@ -1780,6 +1826,7 @@ class AssistantManagerClass {
   _voiceConvListenWebSpeech() {
     if (!this._voiceConvActive) return;
     const transcriptEl = document.getElementById('vch-transcript');
+    const vcBaseline = (this.inputEl?.value || '').trimEnd();
     {
       // Fallback: Web Speech API
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1790,20 +1837,25 @@ class AssistantManagerClass {
       rec.maxAlternatives = 1;
       this._voiceConvRec = { stop: () => { try { rec.stop(); } catch { /* ignore */ } } };
 
-      // Silence detection: auto-submit after 1.8s of no new speech.
+      // Silence detection: auto-submit after NAVIO_VOICE_END_SILENCE_MS of no new speech.
       // Prevents the mic staying open forever when isFinal never fires (common on Windows/Chromium).
       let vcSilenceTimer = null;
       let vcLastText = '';
-      const VC_SILENCE_MS = 1800;
+      const VC_SILENCE_MS = NAVIO_VOICE_END_SILENCE_MS;
       const submitVoiceText = (text) => {
         clearTimeout(vcSilenceTimer);
         this._voiceConvRec = null;
         if (transcriptEl) transcriptEl.textContent = '';
         if (text.trim()) {
           this._voiceConvSetState('thinking');
-          if (this.inputEl) {
-            this.inputEl.value = text.trim();
-            this.inputEl.dispatchEvent(new Event('input'));
+          const b = vcBaseline.trim();
+          if (b && this.inputEl) {
+            this.inputEl.value = `${b}\n${text.trim()}`;
+            this.inputEl.style.height = 'auto';
+            this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + 'px';
+            this.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+          } else {
+            this._applyVoiceTranscriptToInput(text, { replace: false });
           }
           this.sendMessage();
         } else if (this._voiceConvActive) {
@@ -1814,7 +1866,7 @@ class AssistantManagerClass {
       rec.onresult = (e) => {
         const text = Array.from(e.results).map(r => r[0].transcript).join('');
         vcLastText = text;
-        if (transcriptEl) transcriptEl.textContent = text;
+        if (transcriptEl) transcriptEl.textContent = vcBaseline.trim() ? `${vcBaseline.trim()}\n${text}` : text;
         if (e.results[e.results.length - 1].isFinal) {
           submitVoiceText(text);
         } else {
@@ -2111,7 +2163,7 @@ class AssistantManagerClass {
    */
   _makeTTSButton(text) {
     const safe = text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
-    return `<button class="assistant-tts-btn" type="button" title="Read aloud" data-tts="${safe.slice(0, 4000)}">
+    return `<button class="assistant-tts-btn msg-tts-btn" type="button" title="Read aloud" data-tts="${safe.slice(0, 4000)}">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
     </button>`;
   }
@@ -4199,6 +4251,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           this._checkAndShowActionFormatWarning(cleanBuffer, streamingMsg);
         }
         this._attachCopyButtonToMessage(streamingMsg, contentEl);
+        this._attachReadAloudButtonToMessage(streamingMsg, contentEl);
+        const autoSpeakPlain = (contentEl.innerText || contentEl.textContent || '').trim().slice(0, 4000);
+        if (!streamCancelled && autoSpeakPlain) {
+          this._maybeAutoSpeakAssistantReply(autoSpeakPlain);
+        }
         if (elapsed != null) this._appendMessageDurationRow(streamingMsg, elapsed);
         if (this._pendingConnectorCitations && this._pendingConnectorCitations.length) {
           this._appendCitationChips(streamingMsg, this._pendingConnectorCitations);
@@ -4232,14 +4289,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         tabId: graphTab?.id,
         url: graphTab?.url || ''
       });
-      // Voice conversation: auto-speak the streamed response and loop back to listening
-      if (this._voiceConvActive && buffer && !streamCancelled) {
-        const plainForVoice = this._stripMarkdown(buffer).slice(0, 4000);
-        if (plainForVoice) {
-          this._voiceConvSetState('speaking');
-          this._speakText(plainForVoice);
-        }
-      }
+      // Auto-speak (Settings → read aloud and/or voice conversation) runs from
+      // _maybeAutoSpeakAssistantReply inside the streamingMsg block above.
     };
 
     // Stall detector: if no new chunk arrives within 25 s, force-finalize.
@@ -4595,6 +4646,41 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     msgEl.insertBefore(copyBtn, contentEl);
   }
 
+  /**
+   * Read-aloud control (separate from copy — never use `msg-copy-btn` here; those
+   * share the same absolute corner and stacked on top of each other).
+   */
+  _attachReadAloudButtonToMessage(msgEl, contentEl) {
+    if (!msgEl || !contentEl || msgEl.querySelector('.assistant-tts-btn')) return;
+    const plainText = (contentEl.innerText || contentEl.textContent || '').slice(0, 4000);
+    const ttsBtn = document.createElement('button');
+    ttsBtn.className = 'assistant-tts-btn msg-tts-btn';
+    ttsBtn.type = 'button';
+    ttsBtn.title = 'Read aloud';
+    ttsBtn.setAttribute('aria-label', 'Read aloud');
+    ttsBtn.dataset.tts = plainText;
+    ttsBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`;
+    msgEl.insertBefore(ttsBtn, contentEl);
+  }
+
+  /** Auto-play TTS when Settings → read aloud is on, or during voice conversation. */
+  _maybeAutoSpeakAssistantReply(plainText) {
+    const t = String(plainText || '').trim().slice(0, 4000);
+    if (!t) return;
+    const _voiceConvNow = this._voiceConvActive;
+    void window.navio.getConfig().then((cfg) => {
+      if ((cfg && cfg.ttsEnabled) || _voiceConvNow) {
+        if (_voiceConvNow) this._voiceConvSetState('speaking');
+        this._speakText(t);
+      }
+    }).catch(() => {
+      if (_voiceConvNow) {
+        this._voiceConvSetState('speaking');
+        this._speakText(t);
+      }
+    });
+  }
+
   addMessage(role, content, type = '', meta = null) {
     if (!this._assistantHistoryDomReplay && !this._panelShowsTurnDom()) return;
     const msgEl = document.createElement('div');
@@ -4650,60 +4736,17 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (role === 'assistant') this._wireActions(contentEl); // async — fire-and-forget is fine here
     }
 
-    // ── Copy + TTS buttons (assistant + error messages only) ────────────────
+    msgEl.appendChild(contentEl);
+
+    // ── Copy + read-aloud (content first so insertBefore(sidecar, contentEl) orders correctly) ──
     if (role === 'assistant' || type === 'error') {
-      const copyBtn = document.createElement('button');
-      copyBtn.className = 'msg-copy-btn';
-      copyBtn.title = 'Copy message';
-      copyBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
-      copyBtn.addEventListener('click', () => {
-        const raw = contentEl.innerText || contentEl.textContent || '';
-        this._writeClipboard(raw.trim()).then(() => {
-          copyBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-          copyBtn.classList.add('msg-copy-ok');
-          setTimeout(() => {
-            copyBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
-            copyBtn.classList.remove('msg-copy-ok');
-          }, 1800);
-        }).catch(() => {
-          copyBtn.title = 'Copy failed — try selecting text manually';
-          copyBtn.classList.add('msg-copy-err');
-          setTimeout(() => { copyBtn.classList.remove('msg-copy-err'); copyBtn.title = 'Copy message'; }, 2000);
-        });
-      });
-      msgEl.appendChild(copyBtn);
-
-      // TTS speaker button (only on assistant messages, not errors)
+      this._attachCopyButtonToMessage(msgEl, contentEl);
       if (role === 'assistant') {
+        this._attachReadAloudButtonToMessage(msgEl, contentEl);
         const plainText = (contentEl.innerText || contentEl.textContent || content || '').slice(0, 4000);
-        const ttsBtn = document.createElement('button');
-        ttsBtn.className = 'msg-copy-btn assistant-tts-btn';
-        ttsBtn.title = 'Read aloud';
-        ttsBtn.dataset.tts = plainText;
-        ttsBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`;
-        msgEl.appendChild(ttsBtn);
-
-        // Auto-speak if enabled in config, or always in voice conversation mode.
-        // .catch() must NOT call _speakText — it would race against .then() and
-        // cause two simultaneous audio streams.
-        const _voiceConvNow = this._voiceConvActive;
-        void window.navio.getConfig().then(cfg => {
-          if ((cfg && cfg.ttsEnabled) || _voiceConvNow) {
-            if (_voiceConvNow) this._voiceConvSetState('speaking');
-            this._speakText(plainText);
-          }
-        }).catch(() => {
-          // getConfig failed — if in voice conv, still speak (no double-fire risk here
-          // because .then() was not called when the promise rejects)
-          if (_voiceConvNow) {
-            this._voiceConvSetState('speaking');
-            this._speakText(plainText);
-          }
-        });
+        this._maybeAutoSpeakAssistantReply(plainText);
       }
     }
-
-    msgEl.appendChild(contentEl);
     if (meta && meta.durationMs != null && (role === 'assistant' || type === 'error')) {
       this._appendMessageDurationRow(msgEl, meta.durationMs);
     }
