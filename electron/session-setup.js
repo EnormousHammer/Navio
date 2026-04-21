@@ -1,6 +1,6 @@
 'use strict';
 
-const { ipcMain, session, shell, globalShortcut, dialog } = require('electron');
+const { ipcMain, session, shell, globalShortcut, dialog, desktopCapturer } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const {
@@ -96,6 +96,61 @@ let adPopupBlockedCount = 0;
 
 function recordNavioPopupBlocked() {
   adPopupBlockedCount++;
+}
+
+/**
+ * Shows a native dialog listing available screens and windows so the user can
+ * choose what to share via getDisplayMedia(). Returns the chosen DesktopCapturerSource
+ * or null if cancelled.
+ */
+async function showScreenSourcePickerDialog(win) {
+  let sources = [];
+  try {
+    sources = await desktopCapturer.getSources({
+      types: ['screen', 'window'],
+      thumbnailSize: { width: 0, height: 0 }
+    });
+  } catch (e) {
+    console.error('[navio] desktopCapturer.getSources error:', e.message);
+    return null;
+  }
+
+  if (!sources || sources.length === 0) return null;
+
+  const screenSources = sources.filter((s) => s.id.startsWith('screen:'));
+  const windowSources = sources
+    .filter((s) => s.id.startsWith('window:') && s.name && s.name.trim())
+    .slice(0, 12);
+
+  const allSources = [...screenSources, ...windowSources];
+  const screenLabels = screenSources.map((_, i) =>
+    screenSources.length === 1 ? 'Entire Screen' : `Entire Screen ${i + 1}`
+  );
+  const windowLabels = windowSources.map((s) =>
+    s.name.length > 55 ? s.name.slice(0, 55) + '\u2026' : s.name
+  );
+  const buttons = [...screenLabels, ...windowLabels, 'Cancel'];
+
+  try {
+    const { response } = await dialog.showMessageBox(
+      win && !win.isDestroyed() ? win : undefined,
+      {
+        type: 'question',
+        title: 'Share Screen',
+        message: 'Choose what to share',
+        detail: 'Select a screen or window to share with this site.',
+        buttons,
+        defaultId: 0,
+        cancelId: buttons.length - 1,
+        noLink: true
+      }
+    );
+    if (response === buttons.length - 1) return null;
+    return allSources[response] || null;
+  } catch (e) {
+    console.error('[navio] showScreenSourcePickerDialog error:', e.message);
+    return null;
+  }
 }
 
 /**
@@ -568,7 +623,9 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
         googleTrusted &&
         (permission === 'clipboard-read' ||
           permission === 'clipboard-sanitized-write' ||
-          permission === 'fileSystem')
+          permission === 'fileSystem' ||
+          permission === 'displayCapture' ||
+          permission === 'media')
       ) {
         callback(true);
         return;
@@ -641,6 +698,36 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   attachPermissionHandlers(incognitoSession, { incognito: true });
   /** Main BrowserWindow loads index.html on file:// — uses defaultSession, not persist:navio */
   attachPermissionHandlers(session.defaultSession, { incognito: false });
+
+  /**
+   * Required in Electron 17+: without setDisplayMediaRequestHandler the browser
+   * rejects all getDisplayMedia() calls (screen/window/tab sharing), which breaks
+   * Google Meet, Zoom web, Teams web, etc. We show a native source-picker dialog
+   * and pass the chosen DesktopCapturerSource to the callback.
+   * Audio loopback captures system audio on Windows so remote participants hear
+   * shared-window sound without extra steps.
+   */
+  function attachDisplayMediaHandler(ses) {
+    if (typeof ses.setDisplayMediaRequestHandler !== 'function') return;
+    ses.setDisplayMediaRequestHandler(async (_request, callback) => {
+      try {
+        const win = getMainWindow();
+        const chosen = await showScreenSourcePickerDialog(win);
+        if (!chosen) {
+          callback({});
+          return;
+        }
+        callback({ video: chosen, audio: 'loopback' });
+      } catch (e) {
+        console.error('[navio] displayMedia handler error:', e.message);
+        callback({});
+      }
+    });
+  }
+
+  attachDisplayMediaHandler(navioSession);
+  attachDisplayMediaHandler(incognitoSession);
+  attachDisplayMediaHandler(session.defaultSession);
 
   const cfg0 = loadConfig();
   let adBlockEnabled = cfg0.adBlockEnabled !== false;
