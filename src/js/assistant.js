@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Navio Browser - AI Assistant
  * Policy-scoped context, streaming (OpenAI), context receipt, pin tab / graph.
  */
@@ -1219,9 +1219,16 @@ class AssistantManagerClass {
    * @param {function} [onUpdate]    - Called with { state: 'recording'|'processing', level: number }
    * @returns {function}             - Call to abort / stop recording early
    */
-  _whisperListen(onTranscript, onUpdate) {
+  /**
+   * Record mic audio and transcribe via Whisper (OpenAI STT).
+   * @param {Function} onTranscript - called with final text when done
+   * @param {Function} onUpdate - called with {state, level} during recording
+   * @param {MediaStream|null} sharedStream - pre-opened mic stream to reuse (no getUserMedia, no track teardown).
+   *   Pass this._vcPersistentStream in voice-conversation mode so barge-in has zero latency.
+   */
+  _whisperListen(onTranscript, onUpdate, sharedStream = null) {
     let aborted = false;
-    let stream = null;
+    let ownedStream = null;  // only set when WE opened the mic
     let mediaRecorder = null;
     let audioCtx = null;
     let rafId = null;
@@ -1229,7 +1236,8 @@ class AssistantManagerClass {
 
     const cleanup = () => {
       if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-      if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+      // Only stop tracks if we own the stream — never close a shared persistent stream
+      if (ownedStream) { ownedStream.getTracks().forEach(t => t.stop()); ownedStream = null; }
       if (audioCtx) { try { audioCtx.close(); } catch { /* ignore */ } audioCtx = null; }
     };
 
@@ -1244,8 +1252,13 @@ class AssistantManagerClass {
 
     (async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        if (aborted) { stream.getTracks().forEach(t => t.stop()); return; }
+        let stream;
+        if (sharedStream) {
+          stream = sharedStream; // reuse — capture starts immediately, zero getUserMedia latency
+        } else {
+          stream = ownedStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        }
+        if (aborted) { if (ownedStream) { ownedStream.getTracks().forEach(t => t.stop()); ownedStream = null; } return; }
 
         // ── Audio analysis for voice activity detection ──────────────────
         audioCtx = new AudioContext();
@@ -1345,7 +1358,7 @@ class AssistantManagerClass {
     const hint = document.getElementById('voice-hint');
     if (!btn) return;
 
-    const HINT_DEFAULT = 'Enter to send \u00b7 Shift+Enter for new line \u00b7 Paste or attach files';
+    const HINT_DEFAULT = 'Shift+Enter for new line';
     let active = false;
     let stopFn = null;
 
@@ -1387,9 +1400,25 @@ class AssistantManagerClass {
       rec.interimResults = true;
       rec.maxAlternatives = 1;
       stopFn = () => { try { rec.stop(); } catch { /* ignore */ } };
+
+      // Silence detection: auto-submit after 1.8s of no new speech.
+      // On Windows/Chromium, isFinal often never fires — this is the reliable path.
+      let silenceTimer = null;
+      let lastTranscript = '';
+      const SILENCE_MS = 1800;
+      const scheduleAutoSubmit = (t) => {
+        clearTimeout(silenceTimer);
+        lastTranscript = t;
+        silenceTimer = setTimeout(() => {
+          try { rec.stop(); } catch { /* ignore */ }
+          if (lastTranscript.trim()) onGotTranscript(lastTranscript);
+          else resetUI();
+        }, SILENCE_MS);
+      };
+
       rec.onstart = () => {
         btn.classList.add('listening');
-        if (hint) hint.textContent = 'Listening… click mic to stop';
+        if (hint) hint.textContent = 'Listening… speak then pause to send';
       };
       rec.onresult = (e) => {
         const t = Array.from(e.results).map(r => r[0].transcript).join('');
@@ -1399,18 +1428,23 @@ class AssistantManagerClass {
           this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + 'px';
         }
         if (e.results[e.results.length - 1].isFinal) {
+          clearTimeout(silenceTimer);
           if (stopFn) try { rec.stop(); } catch { /* ignore */ }
           onGotTranscript(t);
+        } else {
+          // Interim result — reset the silence timer so we wait for the pause
+          scheduleAutoSubmit(t);
         }
       };
       rec.onerror = (e) => {
+        clearTimeout(silenceTimer);
         resetUI();
         if (e.error !== 'no-speech') {
           if (hint) hint.textContent = `Voice error: ${e.error}`;
           setTimeout(() => { if (hint) hint.textContent = HINT_DEFAULT; }, 2500);
         }
       };
-      rec.onend = () => { if (active) resetUI(); };
+      rec.onend = () => { clearTimeout(silenceTimer); if (active) resetUI(); };
       rec.start();
     };
 
@@ -1454,7 +1488,22 @@ class AssistantManagerClass {
       requestAnimationFrame(() => hud.classList.add('vch-show'));
     }
     this._stopSpeaking();
-    this._voiceConvListen();
+
+    // Open ONE persistent mic stream for the entire conversation.
+    // Shared by both the interrupt VAD analyser and Whisper recorder so barge-in
+    // starts capturing at the exact moment the user's voice is detected — zero getUserMedia latency.
+    navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      .then(stream => {
+        if (!this._voiceConvActive) { stream.getTracks().forEach(t => t.stop()); return; }
+        this._vcPersistentStream = stream;
+        this._voiceConvListen();
+      })
+      .catch(() => {
+        if (typeof _showAppToast === 'function') {
+          _showAppToast('Could not open microphone.', 'warning');
+        }
+        this._stopVoiceConversation();
+      });
   }
 
   _stopVoiceConversation() {
@@ -1465,6 +1514,11 @@ class AssistantManagerClass {
       this._voiceConvRec = null;
     }
     this._stopSpeaking();
+    // Close the persistent mic stream last (interrupt listener and recorder must stop first)
+    if (this._vcPersistentStream) {
+      this._vcPersistentStream.getTracks().forEach(t => t.stop());
+      this._vcPersistentStream = null;
+    }
     document.getElementById('btn-voice-conv')?.classList.remove('voice-conv-on');
     const hud = document.getElementById('voice-conv-hud');
     if (hud) {
@@ -1482,74 +1536,89 @@ class AssistantManagerClass {
    */
   _startVoiceConvInterruptListener() {
     if (this._vcInterruptActive || !this._voiceConvActive) return;
+
+    // Use the persistent stream — no getUserMedia, no latency, no device conflicts
+    const stream = this._vcPersistentStream;
+    if (!stream) return;
+
     this._vcInterruptActive = true;
 
-    navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-      .then(stream => {
-        if (!this._vcInterruptActive || !this._voiceConvActive) {
-          stream.getTracks().forEach(t => t.stop());
-          return;
-        }
-        this._vcInterruptStream = stream;
-        const audioCtx = new AudioContext();
-        this._vcInterruptAudioCtx = audioCtx;
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 512;
-        analyser.smoothingTimeConstant = 0.25;
-        audioCtx.createMediaStreamSource(stream).connect(analyser);
-        const buf = new Uint8Array(analyser.frequencyBinCount);
+    const audioCtx = new AudioContext();
+    this._vcInterruptAudioCtx = audioCtx;
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.25;
+    audioCtx.createMediaStreamSource(stream).connect(analyser);
+    const buf = new Uint8Array(analyser.frequencyBinCount);
 
-        // Higher threshold than Whisper VAD — avoids triggering on TTS bleed-through or light noise
-        const INTERRUPT_THRESHOLD = 15;
-        const INTERRUPT_CONFIRM_MS = 260; // ms of sustained speech before firing
-        let speechStart = null;
+    // Adaptive noise floor: sample ambient audio (including TTS bleed) for 350ms,
+    // then set the trigger threshold above it. This handles rooms where speaker audio
+    // leaks into the mic without causing false triggers or missing the user's voice.
+    const INTERRUPT_CONFIRM_MS = 120; // ms of sustained speech above threshold → fire (was 260ms)
+    let speechStart = null;
+    let noiseSamples = [];
+    let noiseFloor = 8;
+    let noiseMeasured = false;
+    const noiseMeasureStart = Date.now();
+    const NOISE_MEASURE_MS = 350;
 
-        const loop = () => {
-          if (!this._vcInterruptActive || !this._voiceConvActive) {
-            try { audioCtx.close(); } catch { /* ignore */ }
-            stream.getTracks().forEach(t => t.stop());
-            return;
-          }
-          // Only watch during non-listening states
-          const vcState = document.getElementById('voice-conv-hud')?.dataset.vcState;
-          if (vcState === 'listening') {
-            speechStart = null;
-            this._vcInterruptRaf = requestAnimationFrame(loop);
-            return;
-          }
+    const loop = () => {
+      if (!this._vcInterruptActive || !this._voiceConvActive) {
+        try { audioCtx.close(); } catch { /* ignore */ }
+        return;
+      }
 
-          analyser.getByteTimeDomainData(buf);
-          let sum = 0;
-          for (let i = 0; i < buf.length; i++) {
-            const v = (buf[i] - 128) / 128;
-            sum += v * v;
-          }
-          const rms = Math.sqrt(sum / buf.length) * 100;
-
-          if (rms > INTERRUPT_THRESHOLD) {
-            if (!speechStart) speechStart = Date.now();
-            else if (Date.now() - speechStart >= INTERRUPT_CONFIRM_MS) {
-              // Confirmed interrupt — hand off to _handleVoiceConvInterrupt
-              this._handleVoiceConvInterrupt();
-              return; // stop loop; interrupt handler takes over
-            }
-          } else {
-            speechStart = null;
-          }
-          this._vcInterruptRaf = requestAnimationFrame(loop);
-        };
+      // Only watch during non-listening states — Whisper's own VAD handles listening
+      const vcState = document.getElementById('voice-conv-hud')?.dataset.vcState;
+      if (vcState === 'listening') {
+        speechStart = null;
         this._vcInterruptRaf = requestAnimationFrame(loop);
-      })
-      .catch(() => { this._vcInterruptActive = false; });
+        return;
+      }
+
+      analyser.getByteTimeDomainData(buf);
+      let sum = 0;
+      for (let i = 0; i < buf.length; i++) {
+        const v = (buf[i] - 128) / 128;
+        sum += v * v;
+      }
+      const rms = Math.sqrt(sum / buf.length) * 100;
+
+      // Calibration phase — measure ambient noise / TTS bleed level
+      if (!noiseMeasured) {
+        if (Date.now() - noiseMeasureStart < NOISE_MEASURE_MS) {
+          noiseSamples.push(rms);
+        } else {
+          // 90th-percentile of samples = noise ceiling; trigger must be clearly above it
+          noiseSamples.sort((a, b) => a - b);
+          noiseFloor = noiseSamples[Math.floor(noiseSamples.length * 0.9)] || 8;
+          noiseMeasured = true;
+        }
+        this._vcInterruptRaf = requestAnimationFrame(loop);
+        return;
+      }
+
+      // Dynamic threshold: must be meaningfully above measured noise floor
+      const threshold = Math.max(noiseFloor * 1.9 + 5, 12);
+
+      if (rms > threshold) {
+        if (!speechStart) speechStart = Date.now();
+        else if (Date.now() - speechStart >= INTERRUPT_CONFIRM_MS) {
+          this._handleVoiceConvInterrupt();
+          return; // loop stops; interrupt handler takes over
+        }
+      } else {
+        speechStart = null;
+      }
+      this._vcInterruptRaf = requestAnimationFrame(loop);
+    };
+    this._vcInterruptRaf = requestAnimationFrame(loop);
   }
 
   _stopVoiceConvInterruptListener() {
     this._vcInterruptActive = false;
     if (this._vcInterruptRaf) { cancelAnimationFrame(this._vcInterruptRaf); this._vcInterruptRaf = null; }
-    if (this._vcInterruptStream) {
-      this._vcInterruptStream.getTracks().forEach(t => t.stop());
-      this._vcInterruptStream = null;
-    }
+    // Don't touch the persistent mic stream — managed by _startVoiceConversation/_stopVoiceConversation
     if (this._vcInterruptAudioCtx) {
       try { this._vcInterruptAudioCtx.close(); } catch { /* ignore */ }
       this._vcInterruptAudioCtx = null;
@@ -1591,34 +1660,41 @@ class AssistantManagerClass {
       }
     }, 600);
 
-    // Start Whisper — user is mid-sentence right now, this captures from here onward
-    const stopFn = this._whisperListen(
-      (text) => {
-        this._voiceConvRec = null;
-        if (!this._voiceConvActive) return;
-        if (transcriptEl) transcriptEl.textContent = '';
-        if (text.trim()) {
-          this._voiceConvSetState('thinking');
-          if (this.inputEl) {
-            this.inputEl.value = text.trim();
-            this.inputEl.dispatchEvent(new Event('input'));
+    if (window.navio?.navioSTT) {
+      // Whisper path — pass the persistent stream so recording starts at the EXACT moment
+      // the interrupt fired. No getUserMedia latency, no lost words at the start of the barge-in.
+      const stopFn = this._whisperListen(
+        (text) => {
+          this._voiceConvRec = null;
+          if (!this._voiceConvActive) return;
+          if (transcriptEl) transcriptEl.textContent = '';
+          if (text.trim()) {
+            this._voiceConvSetState('thinking');
+            if (this.inputEl) {
+              this.inputEl.value = text.trim();
+              this.inputEl.dispatchEvent(new Event('input'));
+            }
+            this.sendMessage();
+          } else {
+            if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), 350);
           }
-          this.sendMessage();
-        } else {
-          if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), 350);
-        }
-      },
-      ({ state, level }) => {
-        if (!this._voiceConvActive) return;
-        if (state === 'recording' && transcriptEl) {
-          const filled = Math.min(Math.round((level || 0) / 7), 8);
-          transcriptEl.textContent = '▮'.repeat(filled) + '▯'.repeat(8 - filled);
-        } else if (state === 'processing' && transcriptEl) {
-          transcriptEl.textContent = 'Transcribing…';
-        }
-      }
-    );
-    this._voiceConvRec = { stop: stopFn };
+        },
+        ({ state, level }) => {
+          if (!this._voiceConvActive) return;
+          if (state === 'recording' && transcriptEl) {
+            const filled = Math.min(Math.round((level || 0) / 7), 8);
+            transcriptEl.textContent = '▮'.repeat(filled) + '▯'.repeat(8 - filled);
+          } else if (state === 'processing' && transcriptEl) {
+            transcriptEl.textContent = 'Transcribing…';
+          }
+        },
+        this._vcPersistentStream  // ← shared stream, zero latency
+      );
+      this._voiceConvRec = { stop: stopFn };
+    } else {
+      // Web Speech API fallback — no persistent stream support needed (browser manages its own mic)
+      this._voiceConvListenWebSpeech();
+    }
   }
 
   /** Update the HUD ring + label to reflect current conversation state. */
@@ -1631,9 +1707,9 @@ class AssistantManagerClass {
 
     const labels = {
       listening:   'Listening…',
-      thinking:    'Thinking…',
-      speaking:    'Speaking…',
-      summarizing: 'Wrapping up…',
+      thinking:    'Thinking… (speak to interrupt)',
+      speaking:    'Speak anytime to interrupt',
+      summarizing: 'Wrapping up… (speak to interrupt)',
     };
     if (lbl) lbl.textContent = labels[state] || state;
 
@@ -1690,10 +1766,21 @@ class AssistantManagerClass {
           } else if (state === 'processing' && transcriptEl) {
             transcriptEl.textContent = 'Transcribing…';
           }
-        }
+        },
+        this._vcPersistentStream  // ← reuse persistent stream, no getUserMedia per turn
       );
       this._voiceConvRec = { stop: stopFn };
     } else {
+      // Fallback: Web Speech API
+      this._voiceConvListenWebSpeech();
+    }
+  }
+
+  /** Web Speech API listening cycle — used when Whisper (navioSTT) is unavailable. */
+  _voiceConvListenWebSpeech() {
+    if (!this._voiceConvActive) return;
+    const transcriptEl = document.getElementById('vch-transcript');
+    {
       // Fallback: Web Speech API
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SpeechRecognition) { this._stopVoiceConversation(); return; }
@@ -1702,31 +1789,52 @@ class AssistantManagerClass {
       rec.interimResults = true;
       rec.maxAlternatives = 1;
       this._voiceConvRec = { stop: () => { try { rec.stop(); } catch { /* ignore */ } } };
+
+      // Silence detection: auto-submit after 1.8s of no new speech.
+      // Prevents the mic staying open forever when isFinal never fires (common on Windows/Chromium).
+      let vcSilenceTimer = null;
+      let vcLastText = '';
+      const VC_SILENCE_MS = 1800;
+      const submitVoiceText = (text) => {
+        clearTimeout(vcSilenceTimer);
+        this._voiceConvRec = null;
+        if (transcriptEl) transcriptEl.textContent = '';
+        if (text.trim()) {
+          this._voiceConvSetState('thinking');
+          if (this.inputEl) {
+            this.inputEl.value = text.trim();
+            this.inputEl.dispatchEvent(new Event('input'));
+          }
+          this.sendMessage();
+        } else if (this._voiceConvActive) {
+          setTimeout(() => this._voiceConvListen(), 350);
+        }
+      };
+
       rec.onresult = (e) => {
         const text = Array.from(e.results).map(r => r[0].transcript).join('');
+        vcLastText = text;
         if (transcriptEl) transcriptEl.textContent = text;
         if (e.results[e.results.length - 1].isFinal) {
-          this._voiceConvRec = null;
-          if (transcriptEl) transcriptEl.textContent = '';
-          if (text.trim()) {
-            this._voiceConvSetState('thinking');
-            if (this.inputEl) {
-              this.inputEl.value = text.trim();
-              this.inputEl.dispatchEvent(new Event('input'));
-            }
-            this.sendMessage();
-          } else if (this._voiceConvActive) {
-            setTimeout(() => this._voiceConvListen(), 350);
-          }
+          submitVoiceText(text);
+        } else {
+          // Interim result — schedule auto-submit after silence pause
+          clearTimeout(vcSilenceTimer);
+          vcSilenceTimer = setTimeout(() => {
+            try { rec.stop(); } catch { /* ignore */ }
+            submitVoiceText(vcLastText);
+          }, VC_SILENCE_MS);
         }
       };
       rec.onerror = (e) => {
+        clearTimeout(vcSilenceTimer);
         this._voiceConvRec = null;
         if (e.error !== 'aborted' && this._voiceConvActive) {
           setTimeout(() => this._voiceConvListen(), 500);
         }
       };
       rec.onend = () => {
+        clearTimeout(vcSilenceTimer);
         if (this._voiceConvActive && !this._voiceConvRec) {
           const s = document.getElementById('voice-conv-hud')?.dataset.vcState;
           if (s === 'listening') setTimeout(() => this._voiceConvListen(), 300);
@@ -1775,6 +1883,74 @@ class AssistantManagerClass {
   }
 
   /**
+   * Preprocess stripped-markdown text for natural TTS delivery.
+   * Converts ISO dates, standalone years, currency amounts, ordinals, and percentages
+   * into forms that both OpenAI TTS and Web Speech API read naturally.
+   */
+  _prepareSpeechText(text) {
+    const MONTHS = ['January','February','March','April','May','June',
+                    'July','August','September','October','November','December'];
+    const ONES   = ['','one','two','three','four','five','six','seven','eight','nine',
+                    'ten','eleven','twelve','thirteen','fourteen','fifteen',
+                    'sixteen','seventeen','eighteen','nineteen'];
+    const TENS   = ['','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'];
+
+    const tensWords = (n) => {
+      if (n < 20) return ONES[n] || String(n);
+      return TENS[Math.floor(n / 10)] + (n % 10 ? ' ' + ONES[n % 10] : '');
+    };
+    const yearWords = (y) => {
+      if (y >= 2000 && y <= 2099) {
+        const rem = y - 2000;
+        if (rem === 0) return 'two thousand';
+        if (rem < 10) return 'twenty oh ' + ONES[rem];
+        return 'twenty ' + tensWords(rem);
+      }
+      if (y >= 1900 && y <= 1999) {
+        const rem = y - 1900;
+        if (rem === 0) return 'nineteen hundred';
+        return 'nineteen ' + tensWords(rem);
+      }
+      return String(y);
+    };
+    const currencyWords = (numStr, symbol) => {
+      const n = parseFloat(numStr.replace(/,/g, ''));
+      if (isNaN(n)) return symbol + numStr;
+      const dollars = Math.floor(n);
+      const cents = Math.round((n - dollars) * 100);
+      const name = symbol === '£' ? 'pound' : symbol === '€' ? 'euro' : symbol === '¥' ? 'yen' : 'dollar';
+      const plural = (x) => x === 1 ? '' : 's';
+      if (symbol === '¥') return `${dollars.toLocaleString()} yen`;
+      if (cents > 0) return `${dollars.toLocaleString()} ${name}${plural(dollars)} and ${cents} cent${plural(cents)}`;
+      return `${dollars.toLocaleString()} ${name}${plural(dollars)}`;
+    };
+
+    return text
+      // ISO date YYYY-MM-DD → "January 15th, twenty twenty-four"
+      .replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (_, y, m, d) => {
+        const month = MONTHS[parseInt(m, 10) - 1] || m;
+        const day = parseInt(d, 10);
+        const suffix = [,'st','nd','rd'][day % 10] && day < 11 || day > 13 ? [,'st','nd','rd'][day % 10] || 'th' : 'th';
+        return `${month} ${day}${suffix}, ${yearWords(parseInt(y, 10))}`;
+      })
+      // Standalone 4-digit years (1900-2099) not already part of a date
+      .replace(/\b((?:19|20)\d{2})\b(?![-\/])/g, (_, y) => yearWords(parseInt(y, 10)))
+      // Currency with symbol: $1,234.56 / £500 / €1,000
+      .replace(/([$£€¥])(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/g, (_, sym, num) => currencyWords(num, sym))
+      // Bare currency range: "500 - 800 USD" / "USD 500"
+      .replace(/\bUSD\s+(\d[\d,]*)/gi, (_, n) => currencyWords(n, '$'))
+      .replace(/(\d[\d,]*)\s+USD\b/gi, (_, n) => currencyWords(n, '$'))
+      .replace(/\bGBP\s+(\d[\d,]*)/gi, (_, n) => currencyWords(n, '£'))
+      .replace(/(\d[\d,]*)\s+GBP\b/gi, (_, n) => currencyWords(n, '£'))
+      .replace(/\bEUR\s+(\d[\d,]*)/gi, (_, n) => currencyWords(n, '€'))
+      .replace(/(\d[\d,]*)\s+EUR\b/gi, (_, n) => currencyWords(n, '€'))
+      // Percentages: 15% → "15 percent"
+      .replace(/(\d+(?:\.\d+)?)%/g, '$1 percent')
+      // Ordinals read naturally (1st, 2nd etc.) — Web Speech handles these; OpenAI does too
+      .trim();
+  }
+
+  /**
    * Speak text using OpenAI TTS (nova = female, onyx = male) with Web Speech API as fallback.
    * Prefers the configured voice gender preference.
    * @param {string} text - Text to speak
@@ -1782,7 +1958,7 @@ class AssistantManagerClass {
    */
   async _speakText(text, btn = null) {
     if (!text) return;
-    const plain = this._stripMarkdown(text);
+    const plain = this._prepareSpeechText(this._stripMarkdown(text));
     if (!plain) return;
 
     // Stop any current speech and claim this session — any prior in-flight _speakText
@@ -2329,10 +2505,23 @@ class AssistantManagerClass {
       const cfg = await window.navio.getConfig();
       const name = cfg.userName ? ` ${cfg.userName.split(' ')[0]}` : '';
       const tab = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
-      const pageHint = tab && tab.url && !tab.url.startsWith('about:')
-        ? `<p style="font-size:12px;color:var(--text-tertiary);margin-top:6px">On: <span style="color:var(--text-accent)">${TabManager.getTabDisplayTitle(tab)}</span></p>`
-        : '';
-      this.addMessage('assistant', `Hey${name}! I'm Navio — your AI co-pilot.\n\nJust ask me anything — about the page you're on, the web, your emails, or any task you want automated.${pageHint}`);
+      // Render the greeting text first (no raw HTML in the string — formatMessage escapes it)
+      this.addMessage('assistant', `Hey${name}! I'm Navio — your AI co-pilot.\n\nJust ask me anything — about the page you're on, the web, your emails, or any task you want automated.`);
+      // Then inject the page-context hint as a real DOM node into the last message's content area
+      if (tab && tab.url && !tab.url.startsWith('about:')) {
+        const lastMsg = this.messagesEl?.lastElementChild;
+        const contentEl = lastMsg?.querySelector('.message-content');
+        if (contentEl) {
+          const hint = document.createElement('p');
+          hint.style.cssText = 'font-size:12px;color:var(--text-tertiary);margin-top:6px';
+          hint.textContent = 'On: ';
+          const span = document.createElement('span');
+          span.style.color = 'var(--text-accent)';
+          span.textContent = TabManager.getTabDisplayTitle(tab) || tab.url;
+          hint.appendChild(span);
+          contentEl.appendChild(hint);
+        }
+      }
     } catch {
       this.addMessage('assistant', "Hey! I'm Navio — your AI co-pilot. How can I help?");
     }
@@ -2751,7 +2940,14 @@ NARRATE YOUR WORK (this is the most important rule):
 
 END WITH A SPOKEN SUMMARY:
 - When a task completes, give a 2–3 sentence spoken summary of what was done.
-  Example: "All done. I found four flights, the cheapest was Air Canada for 189 dollars on April 12th, and I've got that page open for you. Want me to check another route as well?"`
+  Example: "All done. I found four flights, the cheapest was Air Canada for 189 dollars on April 12th, and I've got that page open for you. Want me to check another route as well?"
+
+DATES AND NUMBERS (spoken naturally — never read digits one by one):
+- Dates: say "January fifteenth, twenty twenty-four" — never "2024-01-15" or "01/15/24".
+- Years: say "twenty twenty-four", "nineteen ninety-nine" — never "two zero two four".
+- Prices: always say the currency — "twelve hundred dollars", "eighty-five pounds fifty pence". Never say a bare number like "the price is 1200" without the currency.
+- Times: say "three fifteen PM" or "quarter past three" — not "15:15".
+- Percentages: say "fifteen percent" — not "15%".`
       });
     }
 
@@ -2913,6 +3109,21 @@ END WITH A SPOKEN SUMMARY:
         'Do not do work they did not ask for. Do not switch to a new goal mid-turn. ' +
         'Earlier messages are context only; short replies mean “continue the same task,” not “start something new.”'
     });
+    // Pre-work acknowledgment: for multi-step tool tasks, output one brief natural sentence before
+    // the first tool call so the user knows you heard them. Text surfaces as a chat bubble.
+    if (!isQuickAction) {
+      messages.push({
+        role: 'system',
+        content:
+          '[Pre-work acknowledgment]\n' +
+          'When this task will require multiple tool calls (browsing, searching, filling forms, reading emails, etc.), ' +
+          'output ONE brief natural sentence BEFORE your first tool call. For example: ' +
+          '"On it \u2014 opening that now." or "Let me look that up." or "Got it, searching for that." ' +
+          'This sentence is shown as a chat bubble so the user knows you are working and not silent. ' +
+          'Do NOT start with filler: no "Sure!", "Certainly!", "Of course!", "Absolutely!". ' +
+          'Skip entirely for: instant single-tool answers, pure question responses, or when asking the user a clarifying question.'
+      });
+    }
     const recentHistory = this._currentHistory().slice(-72);
     messages.push(...recentHistory);
     this._maybePushAttachmentSystemHint(messages);
@@ -3404,6 +3615,21 @@ END WITH A SPOKEN SUMMARY:
         'Do not do work they did not ask for. Do not switch to a new goal mid-turn. ' +
         'Earlier messages are context only; short replies mean “continue the same task,” not “start something new.”'
     });
+    // Pre-work acknowledgment: output one brief sentence before first tool call so the user isn't silent.
+    // This text is sent via tr() as bubble:true and surfaced as a chat message above the Working card.
+    if (!isQuickAction) {
+      messages.push({
+        role: 'system',
+        content:
+          '[Pre-work acknowledgment]\n' +
+          'When this task requires multiple tool calls (browsing, filling forms, searching, reading emails, etc.), ' +
+          'output ONE brief natural sentence BEFORE your first tool call. Examples: ' +
+          '"On it - opening that now." or "Let me look that up." or "Got it, searching for that." ' +
+          'This sentence appears as a chat bubble immediately so the user sees you are working. ' +
+          'Do NOT use filler openers: no "Sure!", "Certainly!", "Of course!", "Absolutely!". ' +
+          'Skip for: instant single-tool answers, pure question responses, clarifying questions.'
+      });
+    }
 
     // Conversation history (skip stale page snapshots)
     const recentHistory = this._currentHistory()
@@ -3585,11 +3811,29 @@ END WITH A SPOKEN SUMMARY:
       }
     });
 
-    // Set up reasoning handler (intermediate AI thinking during tool loop)
+    // Set up reasoning handler (intermediate AI thinking during tool loop).
+    // step-0 text (the model's initial acknowledgment before first tools) surfaces as a real chat bubble
+    // inserted above the Working card so the user sees "On it — navigating to X now" instead of silence.
     const unReasoning = window.navio.onToolReasoning?.((payload) => {
       if (payload && payload.tabId != null && String(payload.tabId) !== tk) return;
-      const { step, text } = payload || {};
-      this._appendActivityStep('thinking', text.slice(0, 200) + (text.length > 200 ? '...' : ''));
+      const { step, text, bubble } = payload || {};
+      if (!text) return;
+      if (bubble && text.trim().length > 8 && this._currentActivityEl) {
+        // Remove the typing indicator (it's been replaced by the activity card already, but clean up just in case)
+        this.removeTypingIndicator();
+        // Build a proper assistant message bubble and insert it BEFORE the Working card
+        const msgEl = document.createElement('div');
+        msgEl.className = 'message assistant-message naa-pre-work-bubble';
+        msgEl.appendChild(this._messageRoleStrip('assistant', ''));
+        const contentEl = document.createElement('div');
+        contentEl.className = 'message-content';
+        contentEl.innerHTML = this.formatMessage(text, true);
+        msgEl.appendChild(contentEl);
+        this._currentActivityEl.parentNode.insertBefore(msgEl, this._currentActivityEl);
+        this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+      } else {
+        this._appendActivityStep('thinking', text.slice(0, 200) + (text.length > 200 ? '...' : ''));
+      }
     });
 
     // Set up plan approval handler
@@ -4302,6 +4546,31 @@ END WITH A SPOKEN SUMMARY:
     msgEl.appendChild(row);
   }
 
+  /**
+   * Robust clipboard write that works in Electron's BrowserWindow renderer.
+   * navigator.clipboard.writeText requires focus and can silently fail when the
+   * sidebar window doesn't have browser focus. Falls back to execCommand which
+   * always works in Electron.
+   */
+  _writeClipboard(text) {
+    const _execFallback = (t) => {
+      const ta = document.createElement('textarea');
+      ta.value = t;
+      ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch { /* ignore */ }
+      document.body.removeChild(ta);
+      return ok ? Promise.resolve() : Promise.reject(new Error('execCommand failed'));
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).catch(() => _execFallback(text));
+    }
+    return _execFallback(text);
+  }
+
   _attachCopyButtonToMessage(msgEl, contentEl) {
     if (!msgEl || !contentEl || msgEl.querySelector('.msg-copy-btn')) return;
     const copyBtn = document.createElement('button');
@@ -4310,14 +4579,18 @@ END WITH A SPOKEN SUMMARY:
     copyBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
     copyBtn.addEventListener('click', () => {
       const raw = contentEl.innerText || contentEl.textContent || '';
-      navigator.clipboard.writeText(raw.trim()).then(() => {
+      this._writeClipboard(raw.trim()).then(() => {
         copyBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
         copyBtn.classList.add('msg-copy-ok');
         setTimeout(() => {
           copyBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
           copyBtn.classList.remove('msg-copy-ok');
         }, 1800);
-      }).catch(() => {});
+      }).catch(() => {
+        copyBtn.title = 'Copy failed — try selecting text manually';
+        copyBtn.classList.add('msg-copy-err');
+        setTimeout(() => { copyBtn.classList.remove('msg-copy-err'); copyBtn.title = 'Copy message'; }, 2000);
+      });
     });
     msgEl.insertBefore(copyBtn, contentEl);
   }
@@ -4384,16 +4657,19 @@ END WITH A SPOKEN SUMMARY:
       copyBtn.title = 'Copy message';
       copyBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
       copyBtn.addEventListener('click', () => {
-        // Copy plain text — strip HTML tags
         const raw = contentEl.innerText || contentEl.textContent || '';
-        navigator.clipboard.writeText(raw.trim()).then(() => {
+        this._writeClipboard(raw.trim()).then(() => {
           copyBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
           copyBtn.classList.add('msg-copy-ok');
           setTimeout(() => {
             copyBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
             copyBtn.classList.remove('msg-copy-ok');
           }, 1800);
-        }).catch(() => {});
+        }).catch(() => {
+          copyBtn.title = 'Copy failed — try selecting text manually';
+          copyBtn.classList.add('msg-copy-err');
+          setTimeout(() => { copyBtn.classList.remove('msg-copy-err'); copyBtn.title = 'Copy message'; }, 2000);
+        });
       });
       msgEl.appendChild(copyBtn);
 
@@ -4798,7 +5074,7 @@ END WITH A SPOKEN SUMMARY:
       const langAttr = lang ? ` class="lang-${lang}"` : '';
       const langLabel = lang || 'code';
       const codeId = 'code-' + Math.random().toString(36).slice(2, 9);
-      return `<div class="msg-code-header"><span class="msg-code-lang">${langLabel}</span><button class="msg-code-copy" data-code-id="${codeId}" onclick="(function(b){var c=document.getElementById('${codeId}');if(c){navigator.clipboard.writeText(c.textContent).then(function(){b.textContent='Copied!';b.classList.add('copied');setTimeout(function(){b.textContent='Copy';b.classList.remove('copied')},1500)})}})(this)">Copy</button></div><pre${langAttr}><code id="${codeId}">${code.trim()}</code></pre>`;
+      return `<div class="msg-code-header"><span class="msg-code-lang">${langLabel}</span><button class="msg-code-copy" data-code-id="${codeId}" onclick="(function(b){var c=document.getElementById('${codeId}');if(!c)return;var t=c.textContent;var ok=function(){b.textContent='Copied!';b.classList.add('copied');setTimeout(function(){b.textContent='Copy';b.classList.remove('copied')},1500)};var fail=function(){b.textContent='Failed';setTimeout(function(){b.textContent='Copy'},1500)};if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(ok).catch(function(){var ta=document.createElement('textarea');ta.value=t;ta.style.cssText='position:fixed;top:-9999px;opacity:0';document.body.appendChild(ta);ta.focus();ta.select();var r=document.execCommand('copy');document.body.removeChild(ta);if(r)ok();else fail()});}else{var ta=document.createElement('textarea');ta.value=t;ta.style.cssText='position:fixed;top:-9999px;opacity:0';document.body.appendChild(ta);ta.focus();ta.select();var r=document.execCommand('copy');document.body.removeChild(ta);if(r)ok();else fail();}})(this)">Copy</button></div><pre${langAttr}><code id="${codeId}">${code.trim()}</code></pre>`;
     });
 
     // ── 4. Horizontal rule ────────────────────────────────────────────────────
@@ -6810,6 +7086,25 @@ ${pageInfo}${snapText}`;
     `;
     this.messagesEl.appendChild(indicator);
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+
+    // Cycle through warm-up labels so the user knows something is happening during context-building.
+    // Labels rotate every 3s while still on "Thinking" (tool updates override immediately via _updateTypingLabel).
+    const warmupLabels = ['Thinking', 'Reading page context', 'Preparing', 'Thinking'];
+    let warmupIdx = 0;
+    const warmupTimer = setInterval(() => {
+      const labelEl = document.getElementById('typing-indicator-label');
+      if (!labelEl) { clearInterval(warmupTimer); return; }
+      // Only cycle if the label is still on a warmup phase (not overridden by a tool-specific label)
+      const curText = labelEl.textContent || '';
+      if (warmupLabels.includes(curText) || curText === 'Thinking') {
+        warmupIdx = (warmupIdx + 1) % warmupLabels.length;
+        labelEl.textContent = warmupLabels[warmupIdx];
+      } else {
+        clearInterval(warmupTimer);
+      }
+    }, 3000);
+    // Store timer ref so removeTypingIndicator can clean it up
+    indicator.dataset.warmupTimer = warmupTimer;
   }
 
   /** Update the "Thinking" label in real-time with the current tool name — Comet style. */
@@ -6843,7 +7138,10 @@ ${pageInfo}${snapText}`;
 
   removeTypingIndicator() {
     const indicator = document.getElementById('typing-indicator');
-    if (indicator) indicator.remove();
+    if (indicator) {
+      if (indicator.dataset.warmupTimer) clearInterval(Number(indicator.dataset.warmupTimer));
+      indicator.remove();
+    }
   }
 
   clearChat() {

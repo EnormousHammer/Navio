@@ -2024,9 +2024,10 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
       return finishAgentRun({ error: errMsg, toolLog });
     }
 
-    // Emit any intermediate reasoning text the model produced alongside tool calls
+    // Emit any intermediate reasoning text the model produced alongside tool calls.
+    // step === 0 text is the model's initial acknowledgment — surface it as a chat bubble, not a buried activity step.
     if (result.content && result.toolCalls && result.toolCalls.length) {
-      tr({ step, text: result.content });
+      tr({ step, text: result.content, bubble: step === 0 });
     }
 
     if (!result.toolCalls || !result.toolCalls.length) {

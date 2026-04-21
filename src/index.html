@@ -1542,27 +1542,31 @@
       <div class="assistant-input-area">
         <div id="assistant-attachment-row" class="assistant-attachment-row" hidden></div>
         <div class="assistant-input-container">
-          <button type="button" class="voice-btn assistant-attach-btn" id="btn-assistant-attach" title="Attach images or files">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-          </button>
-          <input type="file" id="assistant-file-input" multiple style="position:absolute;width:0;height:0;opacity:0;pointer-events:none" aria-hidden="true" tabindex="-1">
-          <button class="voice-btn" id="btn-voice-conv" title="Voice conversation — talk back and forth with Navio">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/><line x1="18" y1="6" x2="22" y2="6"/><line x1="18" y1="10" x2="22" y2="10"/></svg>
-          </button>
-          <button class="voice-btn" id="btn-voice-mode" title="Voice input">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-          </button>
           <textarea id="assistant-input" placeholder="Ask Navio anything..." rows="1"></textarea>
-          <div class="assistant-input-actions">
-            <button type="button" class="voice-btn assistant-stop-btn" id="btn-assistant-stop" title="Stop generating" hidden>Stop</button>
-            <button class="send-btn" id="btn-send-message" title="Send" aria-label="Send message">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-            </button>
+          <div class="assistant-input-toolbar">
+            <div class="assistant-toolbar-left">
+              <button type="button" class="voice-btn assistant-attach-btn" id="btn-assistant-attach" title="Attach images or files">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+              </button>
+              <input type="file" id="assistant-file-input" multiple style="position:absolute;width:0;height:0;opacity:0;pointer-events:none" aria-hidden="true" tabindex="-1">
+              <button class="voice-btn" id="btn-voice-conv" title="Voice conversation — talk back and forth with Navio">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/><line x1="18" y1="6" x2="22" y2="6"/><line x1="18" y1="10" x2="22" y2="10"/></svg>
+              </button>
+              <button class="voice-btn" id="btn-voice-mode" title="Voice input — click to speak">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              </button>
+              <span id="voice-hint" class="assistant-input-hint-inline">Shift+Enter for new line</span>
+            </div>
+            <div class="assistant-toolbar-right">
+              <button type="button" class="assistant-stop-btn" id="btn-assistant-stop" title="Stop generating" hidden>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+                Stop
+              </button>
+              <button class="send-btn" id="btn-send-message" title="Send" aria-label="Send message">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </button>
+            </div>
           </div>
-        </div>
-        <div class="assistant-input-hint">
-          <span id="voice-hint">Enter to send &middot; Shift+Enter for new line &middot; Paste or attach files</span>
-          <span class="ai-powered-badge">Navio AI</span>
         </div>
       </div>
     </aside>
