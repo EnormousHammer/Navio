@@ -794,7 +794,9 @@ body.navio-assistant-open #app {
   min-width: 40px;
   min-height: 32px;
   height: 32px;
-  flex-shrink: 0;
+  /* Tabs shrink proportionally as more are opened, like Chrome/Comet. */
+  flex-shrink: 1;
+  overflow: hidden;
   animation: tab-appear 0.18s ease-out;
   z-index: 0;
   /* Ensure right-click / context menu works under a frameless drag region (parent .tab-strip). */
@@ -1404,6 +1406,8 @@ body.navio-vertical-tabs .tab-group-header:hover {
 }
 
 .tab-item:hover .tab-close { opacity: 1; }
+/* Active tab always shows its close button, matching Chrome/Comet behavior */
+.tab-item.active .tab-close { opacity: 1; }
 .tab-close:hover { background: var(--danger); color: white; }
 
 /* ============================================
@@ -5369,31 +5373,75 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 .email-chip-tooltip {
   position: fixed;
   z-index: 99999;
-  max-width: min(420px, calc(100vw - 24px));
-  background: var(--bg-elevated, #1e2130);
+  width: min(360px, calc(100vw - 24px));
+  background: var(--bg-elevated, #1a1f2e);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  padding: 10px 13px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
-  pointer-events: none;
+  border-radius: 12px;
+  padding: 11px 13px 12px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255,255,255,0.04);
+  /* pointer-events: auto so the user can scroll the body and hover without it disappearing */
+  pointer-events: auto;
   opacity: 0;
-  transform: translateY(-4px);
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transform: translateY(-6px) scale(0.97);
+  transition: opacity 0.14s ease, transform 0.14s ease;
 }
 .email-chip-tooltip.ect-visible {
   opacity: 1;
-  transform: translateY(0);
+  transform: translateY(0) scale(1);
+}
+
+/* Header row: sender + close button */
+.ect-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 4px;
 }
 .ect-from {
   display: flex;
   align-items: center;
   gap: 5px;
+  flex: 1;
+  min-width: 0;
   font-size: 11.5px;
   font-weight: 600;
   color: var(--text-secondary, #94a3b8);
-  margin-bottom: 5px;
 }
+.ect-from span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ect-from svg { flex-shrink: 0; opacity: 0.7; }
+
+/* Account indicator row */
+.ect-account {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: #60a5fa;
+  margin-bottom: 5px;
+  opacity: 0.9;
+}
+.ect-account svg { flex-shrink: 0; opacity: 0.7; }
+
+/* Close button */
+.ect-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: var(--text-muted, #64748b);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s;
+  margin-top: -1px;
+}
+.ect-close:hover {
+  background: rgba(255,255,255,0.1);
+  color: var(--text-primary, #e2e8f0);
+}
+
 .ect-snippet {
   font-size: 12px;
   color: var(--text-muted, #64748b);
@@ -5402,6 +5450,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  margin-bottom: 2px;
 }
 .ect-body-slot { margin-top: 2px; }
 .ect-body-loading {
@@ -5409,20 +5458,26 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   color: var(--text-muted, #64748b);
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
 .ect-body {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  max-height: 240px;
-  overflow: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  max-height: 220px;
+  overflow-y: auto;
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--text-primary, #e2e8f0);
+  /* Custom scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
 }
+.ect-body::-webkit-scrollbar { width: 4px; }
+.ect-body::-webkit-scrollbar-track { background: transparent; }
+.ect-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 4px; }
 .ect-muted {
   -webkit-line-clamp: unset;
   display: block;
@@ -5442,14 +5497,19 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 [data-theme="light"] .email-chip-tooltip {
   background: #fff;
   border-color: rgba(0, 0, 0, 0.1);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0,0,0,0.04);
 }
 [data-theme="light"] .ect-from { color: #475569; }
+[data-theme="light"] .ect-account { color: #1a5fb4; }
 [data-theme="light"] .ect-snippet { color: #64748b; }
+[data-theme="light"] .ect-close { color: #94a3b8; }
+[data-theme="light"] .ect-close:hover { background: rgba(0,0,0,0.06); color: #1e293b; }
 [data-theme="light"] .ect-body {
   border-top-color: rgba(0, 0, 0, 0.08);
   color: var(--text-primary);
+  scrollbar-color: rgba(0,0,0,0.15) transparent;
 }
+[data-theme="light"] .ect-body::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); }
 [data-theme="light"] .ect-body-loading {
   border-top-color: rgba(0, 0, 0, 0.08);
 }

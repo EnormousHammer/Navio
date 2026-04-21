@@ -3778,13 +3778,12 @@ class AssistantManagerClass {
     const midAttr = msgId ? ` data-msg-id="${String(msgId).replace(/"/g, '&quot;')}"` : '';
     const uAttr = ` data-gmail-u="${slotN}"`;
 
-    // Show a subtle account badge when the email is NOT from the primary inbox,
-    // so the user can see at a glance which account will open.
-    const accountLabel = slotN > 0
-      ? (authEmail ? authEmail.split('@')[0] : `account ${slotN + 1}`)
-      : '';
-    const accountBadge = accountLabel
-      ? `<span class="erc-account-badge" title="${authEmail || `Gmail account ${slotN + 1}`}">${accountLabel}</span>`
+    // Show a subtle account badge on chips from non-primary accounts.
+    // Display the full email (or "Account 2" fallback) so the user knows which inbox will open.
+    const accountBadgeEmail = slotN > 0 ? (authEmail || '') : '';
+    const accountBadgeLabel = accountBadgeEmail || (slotN > 0 ? `Account ${slotN + 1}` : '');
+    const accountBadge = accountBadgeLabel
+      ? `<span class="erc-account-badge" title="From: ${accountBadgeEmail || `Gmail account ${slotN + 1}`}">${accountBadgeLabel.replace(/"/g, '&quot;').replace(/</g, '&lt;')}</span>`
       : '';
 
     return (
@@ -5206,27 +5205,53 @@ class AssistantManagerClass {
 
         if (!openUrl) return;
 
-        // ── Navigate: reuse an existing Gmail tab for this account if possible ──
-        // This avoids opening a redundant tab and ensures the right session is active.
+        // ── Navigate: two-step to avoid HTTP-redirect stripping the #inbox/ID hash ──
+        // Problem: ?authuser=email#inbox/ID → server 302 redirect drops the hash fragment.
+        // Solution: load Gmail at the correct account FIRST (no hash), then navigate to the
+        // message via JS once the page has settled.
+        const _navigateGmailToMsg = (wv, mid) => {
+          if (!wv || !mid) return;
+          try {
+            wv.executeJavaScript(
+              `(function(){var b=window.location.href.split('#')[0];window.location.replace(b+'#inbox/${mid}');})()`
+            ).catch(() => {});
+          } catch { /* ignore */ }
+        };
+
+        // Base URL for the correct account — no hash (avoids redirect stripping it)
+        const gmailBaseUrl = authEmail
+          ? `https://mail.google.com/mail/u/0/?authuser=${encodeURIComponent(authEmail)}`
+          : `https://mail.google.com/mail/u/${uSlot}/`;
+
         if (typeof TabManager !== 'undefined') {
+          // Try to reuse an existing Gmail tab already showing the right account
           const gmailOrigin = 'https://mail.google.com';
           const existingGmailTab = TabManager.tabs.find(t => {
             if (!t.url || !t.url.startsWith(gmailOrigin)) return false;
-            // Match the account slot: u/N/ in the URL path
             const slotMatch = t.url.match(/\/mail\/u\/(\d+)\//);
             if (!slotMatch) return false;
+            // Prefer slot match; also accept any Gmail tab when authEmail is set
             return parseInt(slotMatch[1], 10) === uSlot;
           });
-          if (existingGmailTab) {
+
+          if (existingGmailTab && existingGmailTab.webview) {
             TabManager.switchToTab(existingGmailTab.id);
-            if (typeof TabManager.navigateTab === 'function') {
-              TabManager.navigateTab(existingGmailTab, openUrl);
-            } else if (existingGmailTab.webview) {
-              existingGmailTab.webview.loadURL(openUrl);
+            if (msgId) {
+              // Already on the right Gmail session — navigate in-page to the message
+              _navigateGmailToMsg(existingGmailTab.webview, msgId);
+            } else {
+              existingGmailTab.webview.loadURL(gmailBaseUrl);
             }
             return;
           }
-          TabManager.createTab(openUrl);
+
+          // Open a new tab; after Gmail loads at the correct account, navigate to the message
+          const newTab = TabManager.createTab(gmailBaseUrl);
+          if (msgId && newTab && newTab.webview) {
+            newTab.webview.addEventListener('did-stop-loading', () => {
+              _navigateGmailToMsg(newTab.webview, msgId);
+            }, { once: true });
+          }
         } else {
           window.open(openUrl, '_blank');
         }
@@ -5235,20 +5260,59 @@ class AssistantManagerClass {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); chip.click(); }
       });
 
+      // ── Shared tooltip hide logic with delay so mouse can move chip → tooltip ──
+      const _hideTipSoon = (delay = 180) => {
+        clearTimeout(chip._tooltipHideTimer);
+        chip._tooltipHideTimer = setTimeout(() => {
+          chip._emailTipGen = 0;
+          chip._tooltip?.remove();
+          delete chip._tooltip;
+        }, delay);
+      };
+      const _cancelHide = () => clearTimeout(chip._tooltipHideTimer);
+
       chip.addEventListener('mouseenter', () => {
+        _cancelHide();
         const mid = (chip.dataset.msgId || '').trim();
         const from = chip.dataset.from || '';
         const snippet = chip.dataset.snippet || '';
+        const acctEmail = chip.dataset.url?.match(/authuser=([^&#]+)/)?.[1]
+          ? decodeURIComponent(chip.dataset.url.match(/authuser=([^&#]+)/)[1])
+          : '';
+
         document.getElementById('email-chip-tooltip')?.remove();
 
         const tip = document.createElement('div');
         tip.id = 'email-chip-tooltip';
         tip.className = 'email-chip-tooltip';
+
+        // Header row: from + close button
+        const header = document.createElement('div');
+        header.className = 'ect-header';
         if (from) {
-          tip.innerHTML += `<div class="ect-from"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>${_ectEsc(from)}</span></div>`;
+          header.innerHTML = `<div class="ect-from"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>${_ectEsc(from)}</span></div>`;
         }
+        // Close button
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'ect-close';
+        closeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.5"/></svg>';
+        closeBtn.addEventListener('click', (e) => { e.stopPropagation(); chip._emailTipGen = 0; tip.remove(); delete chip._tooltip; });
+        header.appendChild(closeBtn);
+        tip.appendChild(header);
+
+        // Account indicator (only for non-primary accounts)
+        if (acctEmail) {
+          const acctRow = document.createElement('div');
+          acctRow.className = 'ect-account';
+          acctRow.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>${_ectEsc(acctEmail)}`;
+          tip.appendChild(acctRow);
+        }
+
         if (snippet) {
-          tip.innerHTML += `<div class="ect-snippet">${_ectEsc(snippet)}</div>`;
+          const snipEl = document.createElement('div');
+          snipEl.className = 'ect-snippet';
+          snipEl.textContent = snippet;
+          tip.appendChild(snipEl);
         }
 
         const bodySlot = document.createElement('div');
@@ -5256,16 +5320,14 @@ class AssistantManagerClass {
         tip.appendChild(bodySlot);
 
         if (mid && typeof window.navio?.gmailGetMessageBody === 'function') {
-          const cached = this._emailBodyCache.get(mid);
-          const uSlot = chip.dataset.gmailU;
-          const svcId = uSlot === '1' || uSlot === 1 ? 'gmail_2' : 'gmail';
+          const uSlotVal = parseInt(chip.dataset.gmailU || '0', 10) || 0;
+          const svcId = uSlotVal >= 1 ? 'gmail_2' : 'gmail';
           const cacheKey = svcId + ':' + mid;
-          const cachedScoped = this._emailBodyCache.get(cacheKey);
-          const useCache = cachedScoped || cached;
+          const useCache = this._emailBodyCache.get(cacheKey) || this._emailBodyCache.get(mid);
           if (useCache) {
             bodySlot.innerHTML = `<div class="ect-body">${_ectEsc(useCache.slice(0, 12000))}</div>`;
           } else {
-            bodySlot.innerHTML = '<div class="ect-body-loading">Loading full message…</div>';
+            bodySlot.innerHTML = '<div class="ect-body-loading">Loading…</div>';
             const gen = Date.now();
             chip._emailTipGen = gen;
             window.navio.gmailGetMessageBody({ id: mid, serviceId: svcId }).then((res) => {
@@ -5281,12 +5343,10 @@ class AssistantManagerClass {
                 const show = body || (res?.snippet || '').trim();
                 bodySlot.innerHTML = show
                   ? `<div class="ect-body">${_ectEsc(show.slice(0, 12000))}</div>`
-                  : '<div class="ect-snippet ect-muted">No plain-text body for this message.</div>';
+                  : '<div class="ect-snippet ect-muted">No plain-text body.</div>';
               }
               requestAnimationFrame(() => {
-                if (document.body.contains(tip)) {
-                  _ectPositionTip(tip, chip);
-                }
+                if (document.body.contains(tip)) _ectPositionTip(tip, chip);
               });
             }).catch(() => {
               if (chip._emailTipGen !== gen || !document.body.contains(tip)) return;
@@ -5294,25 +5354,25 @@ class AssistantManagerClass {
             });
           }
         } else if (mid) {
-          bodySlot.innerHTML =
-            '<div class="ect-snippet ect-muted">Connect Gmail to load the full message body on hover.</div>';
+          bodySlot.innerHTML = '<div class="ect-snippet ect-muted">Connect Gmail to load full body on hover.</div>';
         } else if (!from && !snippet) {
-          bodySlot.innerHTML =
-            '<div class="ect-snippet ect-muted">Click to open in Gmail.</div>';
+          bodySlot.innerHTML = '<div class="ect-snippet ect-muted">Click to open in Gmail.</div>';
         }
 
         document.body.appendChild(tip);
         chip._tooltip = tip;
+
+        // Allow mouse to move into the tooltip without it disappearing
+        tip.addEventListener('mouseenter', _cancelHide);
+        tip.addEventListener('mouseleave', () => _hideTipSoon(120));
+
         requestAnimationFrame(() => {
           _ectPositionTip(tip, chip);
           tip.classList.add('ect-visible');
         });
       });
-      chip.addEventListener('mouseleave', () => {
-        chip._emailTipGen = 0;
-        chip._tooltip?.remove();
-        delete chip._tooltip;
-      });
+
+      chip.addEventListener('mouseleave', () => _hideTipSoon(180));
     });
 
     // ── Wire plan cards ──────────────────────────────────────────────────
