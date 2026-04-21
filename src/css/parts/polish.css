@@ -990,6 +990,14 @@
 .new-tab-page .ntp-shortcuts-row-inner {
   gap: 5px;
   row-gap: 4px;
+  overflow-x: clip;
+  overflow-y: visible;
+  padding-top: 8px;
+  margin-top: -8px;
+}
+.new-tab-page .ntp-shortcuts-panel,
+.new-tab-page .ntp-shortcuts-col {
+  overflow: visible;
 }
 .new-tab-page .ntp-shortcut {
   gap: 3px;
