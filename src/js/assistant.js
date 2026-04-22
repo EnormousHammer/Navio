@@ -535,6 +535,10 @@ class AssistantManagerClass {
     document.getElementById('btn-tts-stop')?.addEventListener('click', () => this._stopTTSFromBar());
     this._voiceConvActive = false;
     this._voiceConvRec = null;
+    /** Bumped on every voice-conversation end so delayed timers / STT callbacks cannot run after stop or across restart. */
+    this._vcSid = 0;
+    /** Cleared when voice conversation stops. */
+    this._voiceConvFlashTimer = null;
     this._ttsSessionId = 0;
     this._bindVoiceConversation();
 
@@ -544,9 +548,10 @@ class AssistantManagerClass {
     this._recordedSteps = [];
 
     this.inputEl?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      // Skip IME composition (Enter confirms Japanese/Chinese input — do not submit early).
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
         e.preventDefault();
-        this.sendMessage();
+        void this.sendMessage();
       }
     });
 
@@ -1569,6 +1574,11 @@ class AssistantManagerClass {
 
         // ── Audio analysis for voice activity detection ──────────────────
         audioCtx = new AudioContext();
+        try {
+          if (audioCtx.state === 'suspended') await audioCtx.resume();
+        } catch {
+          /* ignore */
+        }
         const source = audioCtx.createMediaStreamSource(stream);
         const analyser = audioCtx.createAnalyser();
         analyser.fftSize = 1024;
@@ -1583,14 +1593,20 @@ class AssistantManagerClass {
         mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
         mediaRecorder.start(80); // 80 ms chunks
 
-        // ── VAD — timestamp-based silence detection ──────────────────────
+        // ── VAD — adaptive floor + "no loud frames for N ms" end detection ──
+        // Fixed speech/silence RMS gates (e.g. >10 vs <6) fail on many Windows setups:
+        // room noise sits between the two, so silence never accumulates and recording
+        // never ends. Calibrate from the first ~400 ms, then end after NAVIO_VOICE_END_SILENCE_MS
+        // with no frame above the speech threshold (same idea as Web Speech silence debounce).
         let hasSpoken = false;
-        let silenceStart = null;
-        const SPEECH_THRESHOLD = 10;  // RMS units (0-100) to classify as speech
-        const SILENCE_THRESHOLD = 6;  // RMS below this for sustained silence
+        let lastLoudMs = 0;
+        let vadCalibrated = false;
+        const vadCalSamples = [];
+        const VAD_CALIBRATE_MS = 400;
         const SILENCE_NEEDED_MS = NAVIO_VOICE_END_SILENCE_MS;
         const MAX_RECORD_MS = 90_000;   // 90 s safety cap
         const recordStart = Date.now();
+        let speechThresh = 14;
 
         const vadLoop = () => {
           if (aborted) return;
@@ -1603,18 +1619,33 @@ class AssistantManagerClass {
           const rms = Math.sqrt(sum / pcmBuf.length) * 100;
           onUpdate?.({ state: 'recording', level: rms });
 
-          if (rms > SPEECH_THRESHOLD) {
-            hasSpoken = true;
-            silenceStart = null;
-          } else if (hasSpoken && rms < SILENCE_THRESHOLD) {
-            if (!silenceStart) silenceStart = Date.now();
-            else if (Date.now() - silenceStart >= SILENCE_NEEDED_MS) {
-              stop(); // silence detected after speech → transcribe
-              return;
+          const now = Date.now();
+          // Collect RMS only until calibrated (avoids unbounded growth + keeps stats stable).
+          if (!vadCalibrated) {
+            vadCalSamples.push(rms);
+            if (now - recordStart >= VAD_CALIBRATE_MS) {
+              vadCalSamples.sort((a, b) => a - b);
+              const pick = (p) => {
+                if (!vadCalSamples.length) return 7;
+                const idx = Math.max(0, Math.min(vadCalSamples.length - 1, Math.floor(vadCalSamples.length * p)));
+                return vadCalSamples[idx];
+              };
+              // Upper-mid percentile tracks steady fan/hum; threshold must stay above it so
+              // "no loud frames for N ms" can elapse after the user stops talking.
+              const qHi = pick(0.72);
+              speechThresh = Math.min(28, Math.max(11, qHi + 6));
+              vadCalibrated = true;
             }
+          } else if (rms > speechThresh) {
+            hasSpoken = true;
+            lastLoudMs = now;
+          }
+          if (vadCalibrated && hasSpoken && lastLoudMs && now - lastLoudMs >= SILENCE_NEEDED_MS) {
+            stop();
+            return;
           }
 
-          if (Date.now() - recordStart > MAX_RECORD_MS) { stop(); return; }
+          if (now - recordStart > MAX_RECORD_MS) { stop(); return; }
           rafId = requestAnimationFrame(vadLoop);
         };
         rafId = requestAnimationFrame(vadLoop);
@@ -1622,13 +1653,18 @@ class AssistantManagerClass {
         // ── On recording stop: encode + send to Whisper ──────────────────
         mediaRecorder.onstop = async () => {
           cleanup();
-          if (chunks.length === 0 || !hasSpoken) { onTranscript(''); return; }
+          if (aborted) return;
+          if (chunks.length === 0 || !hasSpoken) {
+            if (!aborted) onTranscript('');
+            return;
+          }
 
           onUpdate?.({ state: 'processing', level: 0 });
 
           try {
             const blob = new Blob(chunks, { type: mime ? mime.split(';')[0] : 'audio/webm' });
             const arrayBuf = await blob.arrayBuffer();
+            if (aborted) return;
 
             // Chunked base64 encode — avoids stack overflow on large buffers
             const uint8 = new Uint8Array(arrayBuf);
@@ -1639,21 +1675,25 @@ class AssistantManagerClass {
             }
             const b64 = btoa(bin);
 
-            if (!window.navio?.navioSTT) { onTranscript(''); return; }
+            if (!window.navio?.navioSTT) {
+              if (!aborted) onTranscript('');
+              return;
+            }
             const result = await window.navio.navioSTT({
               audio: b64,
               mimeType: mime ? mime.split(';')[0] : 'audio/webm',
               language: 'en',
             });
+            if (aborted) return;
             onTranscript(result?.ok ? (result.text || '') : '');
           } catch {
-            onTranscript('');
+            if (!aborted) onTranscript('');
           }
         };
       } catch {
         // Mic access denied or device error
         cleanup();
-        onTranscript('');
+        if (!aborted) onTranscript('');
       }
     })();
 
@@ -1819,6 +1859,11 @@ class AssistantManagerClass {
 
   _stopVoiceConversation() {
     this._voiceConvActive = false;
+    this._vcSid++;
+    if (this._voiceConvFlashTimer) {
+      try { clearTimeout(this._voiceConvFlashTimer); } catch { /* ignore */ }
+      this._voiceConvFlashTimer = null;
+    }
     this._stopVoiceConvInterruptListener();
     if (this._voiceConvRec) {
       try { this._voiceConvRec.stop(); } catch { /* ignore */ }
@@ -1831,8 +1876,11 @@ class AssistantManagerClass {
       this._vcPersistentStream = null;
     }
     document.getElementById('btn-voice-conv')?.classList.remove('voice-conv-on');
+    const transcriptEl = document.getElementById('vch-transcript');
+    if (transcriptEl) transcriptEl.textContent = '';
     const hud = document.getElementById('voice-conv-hud');
     if (hud) {
+      try { delete hud.dataset.vcState; } catch { /* ignore */ }
       hud.classList.remove('vch-show');
       setTimeout(() => { hud.hidden = true; }, 220);
     }
@@ -1856,6 +1904,7 @@ class AssistantManagerClass {
 
     const audioCtx = new AudioContext();
     this._vcInterruptAudioCtx = audioCtx;
+    void audioCtx.resume().catch(() => {});
     const analyser = audioCtx.createAnalyser();
     analyser.fftSize = 512;
     analyser.smoothingTimeConstant = 0.25;
@@ -1965,7 +2014,13 @@ class AssistantManagerClass {
     this._voiceConvSetState('listening');
 
     // Clear the transcript flash after a moment and let Whisper replace it
-    setTimeout(() => {
+    if (this._voiceConvFlashTimer) {
+      try { clearTimeout(this._voiceConvFlashTimer); } catch { /* ignore */ }
+    }
+    const flashCap = this._vcSid;
+    this._voiceConvFlashTimer = setTimeout(() => {
+      this._voiceConvFlashTimer = null;
+      if (flashCap !== this._vcSid || !this._voiceConvActive) return;
       if (transcriptEl && transcriptEl.textContent === '✋ Interrupted') {
         transcriptEl.textContent = '';
       }
@@ -1984,7 +2039,7 @@ class AssistantManagerClass {
             this._applyVoiceTranscriptToInput(text, { replace: true });
             this.sendMessage();
           } else {
-            if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), 350);
+            this._scheduleVoiceConvListen(350);
           }
         },
         ({ state, level }) => {
@@ -2023,6 +2078,7 @@ CAPABILITY PARITY:
 
 RESPONSE STYLE:
 - Write as if talking, not typing. Natural spoken sentences. No markdown — no asterisks, bullets, dashes, headers, or code fences. They will be spoken literally and sound wrong.
+- Same idea when they are reading on screen in typed chat: sound human there too — just markdown is allowed in text mode.
 - Contractions are good: "I'll", "I've", "I'm now", "let me", "here's what I found".
 - Keep each spoken response to 2–4 sentences. Expand only if they asked for depth.
 - Do NOT append the [FOLLOWUP] chips block — it is not useful in audio.
@@ -2082,6 +2138,18 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     }
   }
 
+  /**
+   * Schedule returning to the mic after a delay. Safe across stop/restart: superseded
+   * when `_vcSid` changes (voice conversation ended) or `_voiceConvActive` is false.
+   */
+  _scheduleVoiceConvListen(delayMs) {
+    const cap = this._vcSid;
+    setTimeout(() => {
+      if (cap !== this._vcSid || !this._voiceConvActive) return;
+      this._voiceConvListen();
+    }, delayMs);
+  }
+
   /** Start a single mic capture cycle in voice conversation mode using Whisper. */
   _voiceConvListen() {
     if (!this._voiceConvActive) return;
@@ -2103,7 +2171,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
             this.sendMessage();
           } else {
             // Nothing heard — loop back to listening
-            if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), 350);
+            this._scheduleVoiceConvListen(350);
           }
         },
         ({ state, level }) => {
@@ -2147,6 +2215,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       const VC_SILENCE_MS = NAVIO_VOICE_END_SILENCE_MS;
       const submitVoiceText = (text) => {
         clearTimeout(vcSilenceTimer);
+        if (!this._voiceConvActive) return;
         this._voiceConvRec = null;
         if (transcriptEl) transcriptEl.textContent = '';
         if (text.trim()) {
@@ -2160,8 +2229,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
             this._applyVoiceTranscriptToInput(text, { replace: false });
           }
           this.sendMessage();
-        } else if (this._voiceConvActive) {
-          setTimeout(() => this._voiceConvListen(), 350);
+        } else {
+          this._scheduleVoiceConvListen(350);
         }
       };
 
@@ -2183,15 +2252,15 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       rec.onerror = (e) => {
         clearTimeout(vcSilenceTimer);
         this._voiceConvRec = null;
-        if (e.error !== 'aborted' && this._voiceConvActive) {
-          setTimeout(() => this._voiceConvListen(), 500);
+        if (e.error !== 'aborted') {
+          this._scheduleVoiceConvListen(500);
         }
       };
       rec.onend = () => {
         clearTimeout(vcSilenceTimer);
         if (this._voiceConvActive && !this._voiceConvRec) {
           const s = document.getElementById('voice-conv-hud')?.dataset.vcState;
-          if (s === 'listening') setTimeout(() => this._voiceConvListen(), 300);
+          if (s === 'listening') this._scheduleVoiceConvListen(300);
         }
       };
       try { rec.start(); } catch { this._voiceConvRec = null; }
@@ -2333,9 +2402,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         if (btn) btn.classList.remove('tts-speaking');
         if (isLastChunk) {
           this._setTTSBarVisible(false);
-          if (this._voiceConvActive) {
-            setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
-          }
+          this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
         }
         resolve();
       };
@@ -2346,9 +2413,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           if (btn) btn.classList.remove('tts-speaking', 'tts-loading');
           if (isLastChunk) {
             this._setTTSBarVisible(false);
-            if (this._voiceConvActive) {
-              setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
-            }
+            this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
           }
           resolve();
         },
@@ -2358,9 +2423,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         if (btn) btn.classList.remove('tts-speaking', 'tts-loading');
         if (isLastChunk) {
           this._setTTSBarVisible(false);
-          if (this._voiceConvActive) {
-            setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
-          }
+          this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
         }
         resolve();
       });
@@ -2391,8 +2454,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         const tail = chunks.slice(i).join('').trim();
         if (tail) {
           await this._speakWebSpeechUtterance(tail, voicePref, mySession, btn, true);
-        } else if (isLast && this._voiceConvActive) {
-          setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
+        } else if (isLast) {
+          this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
         }
         return true;
       }
@@ -2406,8 +2469,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (mySession !== this._ttsSessionId) return;
     if (!window.speechSynthesis) {
       if (btn) btn.classList.remove('tts-speaking');
-      if (isLastChunk && this._voiceConvActive) {
-        setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
+      if (isLastChunk) {
+        this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
       }
       return;
     }
@@ -2448,8 +2511,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         }
         if (btn) btn.classList.remove('tts-speaking');
         if (isLastChunk) this._setTTSBarVisible(false);
-        if (isLastChunk && this._voiceConvActive) {
-          setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
+        if (isLastChunk) {
+          this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
         }
         resolve();
       };
@@ -2460,8 +2523,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         }
         if (btn) btn.classList.remove('tts-speaking', 'tts-loading');
         if (isLastChunk) this._setTTSBarVisible(false);
-        if (isLastChunk && this._voiceConvActive) {
-          setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
+        if (isLastChunk) {
+          this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
         }
         resolve();
       };
@@ -3008,6 +3071,17 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
 
   async sendMessage() {
     await this._ensureAssistantHistoryLoaded();
+    this.inputEl = document.getElementById('assistant-input') || this.inputEl;
+    if (!this.inputEl) return;
+    // `addMessage` is gated by `_panelShowsTurnDom()` vs `_panelDisplayTabId`. That id can go stale
+    // (e.g. tab switch edge cases, "This tab" vs saved thread) so the composer clears but bubbles never render.
+    if (!this._sidebarThreadKey) {
+      if (typeof TabManager !== 'undefined' && TabManager.activeTabId) {
+        this._panelDisplayTabId = String(TabManager.activeTabId);
+      } else {
+        this._panelDisplayTabId = null;
+      }
+    }
     const text = this.inputEl.value.trim();
     const hasReadyAttachments = this._attachmentQueue.some((a) => a.status === 'ready');
     if (this._attachmentsStillLoading()) {
@@ -4112,7 +4186,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       activityEl = document.createElement('div');
       activityEl.className = 'navio-agent-activity';
       activityEl.innerHTML =
-        '<div class="naa-header"><span class="naa-header-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg></span><span class="naa-header-text"><span class="naa-title">Working</span><span class="naa-sub">Steps run in order</span></span></div><div class="naa-steps"></div>';
+        '<div class="naa-header"><span class="naa-header-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg></span><span class="naa-header-text"><span class="naa-title">On it</span><span class="naa-sub">Running steps in order</span></span></div><div class="naa-steps"></div>';
       this.messagesEl.appendChild(activityEl);
       this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
       this._currentActivityEl = activityEl;
@@ -4476,7 +4550,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (header) {
         if (stopBtn) stopBtn.remove();
         const stepsCount = (response.toolLog || []).length;
-        header.innerHTML = `<span class="naa-header-icon naa-header-icon--done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span><span class="naa-header-text"><span class="naa-title">Done${stepsCount ? ` · ${stepsCount} step${stepsCount === 1 ? '' : 's'}` : ''}</span><span class="naa-sub">Reply below</span></span>`;
+        header.innerHTML = `<span class="naa-header-icon naa-header-icon--done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span><span class="naa-header-text"><span class="naa-title">All set${stepsCount ? ` · ${stepsCount} step${stepsCount === 1 ? '' : 's'}` : ''}</span><span class="naa-sub">Answer below</span></span>`;
       }
     } else if (guestWv) {
       this._guestDeliver(guestWv, {
@@ -4575,8 +4649,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     step.className = isThink ? 'naa-step naa-step--thinking' : 'naa-step';
     // Human-readable tool badges (Comet-style)
     const TOOL_BADGES = {
-      thinking: 'Thinking', navigate: 'Browse', read_page: 'Read', get_page_text: 'Extract',
-      click: 'Click', type_text: 'Type', scroll: 'Scroll', screenshot: 'Screenshot',
+      thinking: 'Thinking…', navigate: 'Open', read_page: 'Look', get_page_text: 'Pull text',
+      click: 'Tap', type_text: 'Fill', scroll: 'Scroll', screenshot: 'Snap',
       press_key: 'Key', insert_text: 'Paste', wait: 'Wait', go_back: 'Back', go_forward: 'Forward',
       open_tab: 'New tab', close_tab: 'Close tab', switch_tab: 'Switch tab', list_tabs: 'Tabs',
       read_console: 'Console', read_network: 'Network', propose_plan: 'Plan',
@@ -4597,22 +4671,22 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   _toolProgressLabel(tool, result) {
     if (result?.error) return `Error: ${result.error}`;
     switch (tool) {
-      case 'read_page': return `Read page (${result?.title || 'page'})`;
-      case 'get_page_text': return `Extracted text (${((result?.text || '').length / 1000).toFixed(1)}k chars)`;
-      case 'click': return `Clicked${result?.success ? '' : ' (failed)'}`;
-      case 'type_text': return `Typed text`;
-      case 'select_option': return `Selected option`;
-      case 'scroll': return `Scrolled`;
-      case 'press_key': return `Pressed key`;
-      case 'screenshot': return `Captured screenshot`;
-      case 'insert_text': return `Pasted text`;
-      case 'wait': return `Waited`;
-      case 'go_back': return `Went back`;
+      case 'read_page': return `Checked the page (${result?.title || 'untitled'})`;
+      case 'get_page_text': return `Pulled about ${((result?.text || '').length / 1000).toFixed(1)}k of text`;
+      case 'click': return `Clicked${result?.success ? '' : ' (no luck)'}`;
+      case 'type_text': return `Filled a field`;
+      case 'select_option': return `Chose an option`;
+      case 'scroll': return `Scrolled the view`;
+      case 'press_key': return `Sent a key`;
+      case 'screenshot': return `Grabbed a screenshot`;
+      case 'insert_text': return `Pasted into the field`;
+      case 'wait': return `Paused briefly`;
+      case 'go_back': return `Went back a page`;
       case 'go_forward': return `Went forward`;
-      case 'open_tab': return `Opened new tab${result?.url ? ': ' + result.url : ''}`;
-      case 'close_tab': return `Closed tab`;
-      case 'switch_tab': return `Switched to tab${result?.title ? ': ' + result.title : ''}`;
-      case 'list_tabs': return `Listed ${result?.tabs?.length || 0} tabs`;
+      case 'open_tab': return `Opened a tab${result?.url ? ': ' + result.url : ''}`;
+      case 'close_tab': return `Closed a tab`;
+      case 'switch_tab': return `Jumped to${result?.title ? ' ' + result.title : ' another tab'}`;
+      case 'list_tabs': return `Listed ${result?.tabs?.length || 0} open tabs`;
       case 'read_console': return `Read ${result?.count || 0} console messages`;
       case 'read_network': return `Read ${result?.count || 0} network requests`;
       case 'propose_plan': return `Proposed plan${result?.approved ? ' (approved)' : result?.cancelled ? ' (cancelled)' : ''}`;
@@ -7572,7 +7646,7 @@ ${pageInfo}${snapText}`;
         <span class="msg-role-label">Assistant</span>
       </div>
       <div class="message-content typing-indicator">
-        <span class="typing-indicator-label" id="typing-indicator-label">Thinking</span>
+        <span class="typing-indicator-label" id="typing-indicator-label">One sec</span>
         <span class="typing-dots"><span></span><span></span><span></span></span>
       </div>
     `;
@@ -7581,14 +7655,14 @@ ${pageInfo}${snapText}`;
 
     // Cycle through warm-up labels so the user knows something is happening during context-building.
     // Labels rotate every 3s while still on "Thinking" (tool updates override immediately via _updateTypingLabel).
-    const warmupLabels = ['Thinking', 'Reading page context', 'Preparing', 'Thinking'];
+    const warmupLabels = ['One sec', 'Pulling context', 'Almost there', 'One sec'];
     let warmupIdx = 0;
     const warmupTimer = setInterval(() => {
       const labelEl = document.getElementById('typing-indicator-label');
       if (!labelEl) { clearInterval(warmupTimer); return; }
       // Only cycle if the label is still on a warmup phase (not overridden by a tool-specific label)
       const curText = labelEl.textContent || '';
-      if (warmupLabels.includes(curText) || curText === 'Thinking') {
+      if (warmupLabels.includes(curText) || curText === 'Thinking' || curText === 'One sec') {
         warmupIdx = (warmupIdx + 1) % warmupLabels.length;
         labelEl.textContent = warmupLabels[warmupIdx];
       } else {
@@ -7599,33 +7673,33 @@ ${pageInfo}${snapText}`;
     indicator.dataset.warmupTimer = warmupTimer;
   }
 
-  /** Update the "Thinking" label in real-time with the current tool name — Comet style. */
+  /** Update the typing-indicator label with the current tool (short, human phrasing). */
   _updateTypingLabel(tool) {
     const labelEl = document.getElementById('typing-indicator-label');
     if (!labelEl) return;
     const labels = {
-      navigate: 'Browsing',
-      read_page: 'Reading page',
-      get_page_text: 'Reading page',
-      click: 'Clicking',
-      type_text: 'Typing',
+      navigate: 'Opening the page',
+      read_page: 'Looking at the page',
+      get_page_text: 'Pulling text',
+      click: 'Using the page',
+      type_text: 'Filling something in',
       scroll: 'Scrolling',
-      screenshot: 'Capturing screenshot',
-      open_tab: 'Opening tab',
-      switch_tab: 'Switching tab',
-      list_tabs: 'Checking tabs',
+      screenshot: 'Taking a screenshot',
+      open_tab: 'Opening a tab',
+      switch_tab: 'Switching tabs',
+      list_tabs: 'Listing your tabs',
       web_search: 'Searching the web',
-      gmail_search: 'Searching Gmail',
-      gmail_get_message: 'Reading email',
+      gmail_search: 'Digging through mail',
+      gmail_get_message: 'Opening that email',
       gmail_list_drafts: 'Checking drafts',
-      gmail_create_draft: 'Drafting email',
-      gmail_create_reply_draft: 'Drafting reply',
-      read_console: 'Reading console',
-      read_network: 'Checking network',
-      propose_plan: 'Planning',
-      wait: 'Waiting'
+      gmail_create_draft: 'Drafting mail',
+      gmail_create_reply_draft: 'Drafting a reply',
+      read_console: 'Peeking at the console',
+      read_network: 'Watching network calls',
+      propose_plan: 'Sketching a plan',
+      wait: 'Holding on a moment'
     };
-    labelEl.textContent = labels[tool] || 'Working';
+    labelEl.textContent = labels[tool] || 'On it';
   }
 
   removeTypingIndicator() {

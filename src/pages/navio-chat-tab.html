@@ -2614,7 +2614,7 @@
     el.innerHTML =
       '<div class="ct-thinking-icon"><div class="ct-spin"></div></div>' +
       '<div class="ct-thinking-body">' +
-        '<div class="ct-thinking-label">Working…<span class="ct-toggle-hint">click to expand</span></div>' +
+        '<div class="ct-thinking-label">On it…<span class="ct-toggle-hint">click to expand</span></div>' +
         '<div class="ct-steps"></div>' +
       '</div>';
     ctThinkingEl = el;
@@ -2634,7 +2634,7 @@
     ctThinkingStepsEl.appendChild(step);
     // Update live label to show last activity
     if (ctThinkingLabelEl) {
-      ctThinkingLabelEl.firstChild.textContent = label || 'Working…';
+      ctThinkingLabelEl.firstChild.textContent = label || 'On it…';
     }
     scrollToLatestIfPinned();
   }
@@ -2706,7 +2706,7 @@
         case 'activityStart':
           resetAgentPanel();
           agentStepIndex = 0;
-          drawerStatus.textContent = 'Working…';
+          drawerStatus.textContent = 'On it…';
           btnActivity.classList.add('visible');
           createInlineThinking();
           break;

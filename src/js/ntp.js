@@ -2395,6 +2395,11 @@ const NTP = (() => {
           }
 
           audioCtx = new AudioContext();
+          try {
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+          } catch {
+            /* ignore */
+          }
           const source = audioCtx.createMediaStreamSource(stream);
           const analyser = audioCtx.createAnalyser();
           analyser.fftSize = 1024;
@@ -2409,11 +2414,13 @@ const NTP = (() => {
           mediaRecorder.start(80);
 
           let hasSpoken = false;
-          let silenceStart = null;
-          const SPEECH_THRESHOLD = 10;
-          const SILENCE_THRESHOLD = 6;
+          let lastLoudMs = 0;
+          let vadCalibrated = false;
+          const vadCalSamples = [];
+          const VAD_CALIBRATE_MS = 400;
           const recordStart = Date.now();
           const MAX_RECORD_MS = 90_000;
+          let speechThresh = 14;
 
           const vadLoop = () => {
             if (aborted) return;
@@ -2426,17 +2433,29 @@ const NTP = (() => {
             const rms = Math.sqrt(sum / pcmBuf.length) * 100;
             onUpdate?.({ state: 'recording', level: rms });
 
-            if (rms > SPEECH_THRESHOLD) {
-              hasSpoken = true;
-              silenceStart = null;
-            } else if (hasSpoken && rms < SILENCE_THRESHOLD) {
-              if (!silenceStart) silenceStart = Date.now();
-              else if (Date.now() - silenceStart >= NTP_VOICE_END_SILENCE_MS) {
-                stop();
-                return;
+            const now = Date.now();
+            if (!vadCalibrated) {
+              vadCalSamples.push(rms);
+              if (now - recordStart >= VAD_CALIBRATE_MS) {
+                vadCalSamples.sort((a, b) => a - b);
+                const pick = (p) => {
+                  if (!vadCalSamples.length) return 7;
+                  const idx = Math.max(0, Math.min(vadCalSamples.length - 1, Math.floor(vadCalSamples.length * p)));
+                  return vadCalSamples[idx];
+                };
+                const qHi = pick(0.72);
+                speechThresh = Math.min(28, Math.max(11, qHi + 6));
+                vadCalibrated = true;
               }
+            } else if (rms > speechThresh) {
+              hasSpoken = true;
+              lastLoudMs = now;
             }
-            if (Date.now() - recordStart > MAX_RECORD_MS) { stop(); return; }
+            if (vadCalibrated && hasSpoken && lastLoudMs && now - lastLoudMs >= NTP_VOICE_END_SILENCE_MS) {
+              stop();
+              return;
+            }
+            if (now - recordStart > MAX_RECORD_MS) { stop(); return; }
             rafId = requestAnimationFrame(vadLoop);
           };
           rafId = requestAnimationFrame(vadLoop);
