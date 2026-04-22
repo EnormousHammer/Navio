@@ -1608,15 +1608,21 @@ class AssistantManagerClass {
         let hasSpoken = false;
         let lastLoudMs = 0;
         let vadCalibrated = false;
+        let vadCalibratedAt = 0;
         const vadCalSamples = [];
         const VAD_CALIBRATE_MS = 400;
         const SILENCE_NEEDED_MS = NAVIO_VOICE_END_SILENCE_MS;
+        /** If we never cross `speakGate` after calibration, stop anyway (quiet room / mic gain / hung analyser). */
+        const NO_SPEECH_GIVEUP_MS = SILENCE_NEEDED_MS + 1200;
         const MAX_RECORD_MS = 90_000;   // 90 s safety cap
         const recordStart = Date.now();
         let speechThresh = 14;
 
         const vadLoop = () => {
           if (userAborted) return;
+          if (audioCtx && audioCtx.state === 'suspended') {
+            void audioCtx.resume().catch(() => {});
+          }
           analyser.getByteTimeDomainData(pcmBuf);
           let sum = 0;
           for (let i = 0; i < pcmBuf.length; i++) {
@@ -1640,14 +1646,25 @@ class AssistantManagerClass {
               // Upper-mid percentile tracks steady fan/hum; threshold must stay above it so
               // "no loud frames for N ms" can elapse after the user stops talking.
               const qHi = pick(0.72);
-              speechThresh = Math.min(28, Math.max(11, qHi + 6));
+              // Slightly gentler than qHi+6 so quiet laptops still register speech for end-of-utterance.
+              speechThresh = Math.min(26, Math.max(10, qHi + 5));
               vadCalibrated = true;
+              vadCalibratedAt = now;
             }
-          } else if (rms > speechThresh) {
-            hasSpoken = true;
-            lastLoudMs = now;
+          } else {
+            // Gate below `speechThresh` so soft voices still arm VAD; silence still uses clock after last loud frame.
+            const speakGate = Math.max(7.5, speechThresh - 4.5);
+            if (rms > speakGate) {
+              hasSpoken = true;
+              lastLoudMs = now;
+            }
           }
           if (vadCalibrated && hasSpoken && lastLoudMs && now - lastLoudMs >= SILENCE_NEEDED_MS) {
+            endRecording();
+            return;
+          }
+          // Never crossed speakGate — do not spin forever; treat as empty utterance.
+          if (vadCalibrated && vadCalibratedAt && !hasSpoken && now - vadCalibratedAt >= NO_SPEECH_GIVEUP_MS) {
             endRecording();
             return;
           }
@@ -1661,7 +1678,7 @@ class AssistantManagerClass {
         mediaRecorder.onstop = async () => {
           cleanup();
           if (userAborted) return;
-          if (chunks.length === 0 || !hasSpoken) {
+          if (chunks.length === 0) {
             onTranscript('');
             return;
           }
@@ -3934,6 +3951,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     this._turnConversationKey = guestKey;
     this._setTabBusy(guestKey, true);
     this._updateAssistantBusyChrome();
+    // Signals a full-page guest turn to TabManager.getBrowserContextTab() (tools + streaming).
+    this._guestChatWebview = guestWv;
     try {
       if (config.aiUseToolCalling !== false) {
         await this._processWithTools(effectiveText, config, this._historyLabelForAttachments(effectiveText), guestWv);
@@ -3943,6 +3962,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     } catch (err) {
       this._guestDeliver(guestWv, { type: 'assistant', error: true, content: err.message || String(err) });
     } finally {
+      this._guestChatWebview = null;
       this._turnConversationKey = prevTurn;
       this._setTabBusy(guestKey, false);
       this._updateAssistantBusyChrome();
@@ -4665,7 +4685,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       });
     }
     } finally {
-      this._guestChatWebview = null;
+      // Guest turns: processGuestChatMessage owns _guestChatWebview lifecycle (Comet-style context).
+      if (!guestWv) this._guestChatWebview = null;
       if (this._turnStartedAt != null) this._turnStartedAt = null;
       if (typeof TabManager !== 'undefined') {
         if (this._takeoverMode) TabManager.setAgentControlledTab?.(TabManager.getTakeoverHighlightTabId?.() ?? null);

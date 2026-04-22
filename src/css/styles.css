@@ -12496,7 +12496,8 @@ button:focus-visible,
 
 /* ── Light Chrome: one soft toolbar band + clean pill omnibox ───────────── */
 [data-theme="light"] #top-chrome {
-  background: #f3f4f9;
+  /* Slightly cooler than inactive tabs so white tab pills read as separate surfaces */
+  background: #eceff5;
   border-bottom: none;
   box-shadow: 0 1px 0 rgba(15, 23, 42, 0.05);
 }
@@ -12506,7 +12507,7 @@ button:focus-visible,
   box-shadow: inset 0 -1px 0 rgba(15, 23, 42, 0.06);
 }
 [data-theme="light"] #navbar {
-  background: #f3f4f9;
+  background: #eceff5;
   border-bottom: none;
   box-shadow: 0 1px 0 rgba(15, 23, 42, 0.05);
 }
@@ -12538,15 +12539,50 @@ button:focus-visible,
   border-bottom-color: rgba(255, 255, 255, 0.055);
 }
 [data-theme="light"] .bookmark-bar {
-  background: #f3f4f9;
+  background: #eceff5;
   border-bottom-color: rgba(15, 23, 42, 0.06);
 }
 
 /* ── Light tab items ────────────────────────────────────────────────────── */
-[data-theme="light"] .tab-item:hover {
-  background: rgba(50,70,160,0.07);
+/* Horizontal: each tab is its own pill (gap + border) — no washed-out overlap on #f3f4f9 */
+[data-theme="light"] body:not(.navio-vertical-tabs) .tab-strip-list {
+  gap: 5px;
+  padding: 2px 8px 0 6px;
 }
-[data-theme="light"] .tab-item.active {
+[data-theme="light"] body:not(.navio-vertical-tabs) .tab-strip-list .tab-item + .tab-item {
+  margin-left: 0;
+}
+[data-theme="light"] body:not(.navio-vertical-tabs) .tab-item:not(.tab-pinned) {
+  min-width: 108px;
+}
+[data-theme="light"] body:not(.navio-vertical-tabs) .tab-item {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-bottom-color: rgba(15, 23, 42, 0.07);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+[data-theme="light"] body:not(.navio-vertical-tabs) .tab-item:hover {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.16);
+}
+[data-theme="light"] body:not(.navio-vertical-tabs) .tab-item.active {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    0 1px 4px rgba(15, 23, 42, 0.08);
+}
+[data-theme="light"] body:not(.navio-vertical-tabs) .tab-item.loading:not(.active) {
+  border-color: rgba(26, 115, 232, 0.42);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 0 0 1px rgba(26, 115, 232, 0.14);
+}
+/* Vertical strip: keep compact hover (no horizontal gap layout) */
+[data-theme="light"] body.navio-vertical-tabs .tab-item:hover {
+  background: rgba(50, 70, 160, 0.07);
+}
+[data-theme="light"] body.navio-vertical-tabs .tab-item.active {
   background: #ffffff;
   box-shadow: 0 1px 0 rgba(15, 23, 42, 0.05);
 }

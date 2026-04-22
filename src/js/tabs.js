@@ -409,14 +409,34 @@ class TabManagerClass {
 
   /**
    * Tab used for AI tools, page extraction, and snapshots.
-   * Priority: (1) focused tab if it is a normal web page (http/https); (2) last focused
-   * non-chat page when the user is on Navio AI chat or NTP; (3) first other non-chat tab.
-   * Previously this always returned the first non-chat tab in strip order, which was wrong
-   * when another tab was active.
+   * Priority: (1) agent-controlled tab (tool loop / takeover); (2) during a full-page guest
+   * AI turn with a source-tab anchor, that anchored tab — even if the user focuses another site;
+   * (3) focused tab if it is a normal web page (http/https); (4) anchored tab when Navio AI
+   * chat is focused; (5) last focused non-chat page; (6) first other non-chat tab.
    */
   getBrowserContextTab() {
     const isWebSurface = (u) =>
       typeof u === 'string' && u.startsWith('http') && !this.isNavioChatTabUrl(u);
+
+    const agentTab = this.getAgentControlledTab();
+    if (agentTab && agentTab.webview) {
+      const au = agentTab.url || '';
+      if (isWebSurface(au)) return agentTab;
+    }
+
+    // Comet-style: guest full-page chat anchored to a tab — keep that tab as browsing context
+    // while the turn runs, so focusing another site does not steal context from the AI task.
+    try {
+      const AM = typeof AssistantManager !== 'undefined' ? AssistantManager : null;
+      if (AM && AM._guestChatWebview && AM._guestAnchoredTabId != null && AM._guestAnchoredTabId !== '') {
+        const anchored = this.tabs.find((t) => t.id === AM._guestAnchoredTabId);
+        if (anchored && anchored.webview && isWebSurface(anchored.url || '')) {
+          return anchored;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
 
     const active = this.getActiveTab();
     if (active && active.webview) {
