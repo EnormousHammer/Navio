@@ -109,46 +109,77 @@ function createStore(userData) {
   }
 
   /**
+   * v3: v2 `byKey` plus optional `sidebarSessionOrder` (Comet-style saved sidebar threads, keys `sb:…`).
    * v2: per-tab (or tab-group) transcripts — `byKey` maps storage keys (e.g. tab-3, g:groupId).
    * v1: single global array (deprecated; migrated away on load).
    */
-  function loadAssistantChat() {
-    const emptyV2 = { version: 2, byKey: {} };
-    const data = readJson(assistantChatPath, null);
-    if (!data || typeof data !== 'object') return emptyV2;
+  function _cleanSidebarSessionOrder(arr) {
+    if (!Array.isArray(arr)) return [];
+    const out = [];
+    const seen = new Set();
+    for (const row of arr) {
+      if (!row || typeof row !== 'object') continue;
+      const id = typeof row.id === 'string' ? row.id.trim() : '';
+      if (!id.startsWith('sb:') || seen.has(id)) continue;
+      seen.add(id);
+      const title = typeof row.title === 'string' ? row.title.slice(0, 120) : 'Saved chat';
+      const updatedAt = typeof row.updatedAt === 'number' && Number.isFinite(row.updatedAt) ? row.updatedAt : Date.now();
+      out.push({ id, title, updatedAt });
+      if (out.length >= 80) break;
+    }
+    return out;
+  }
 
-    if (data.version === 2 && data.byKey && typeof data.byKey === 'object') {
+  function loadAssistantChat() {
+    const empty = { version: 3, byKey: {}, sidebarSessionOrder: [] };
+    const data = readJson(assistantChatPath, null);
+    if (!data || typeof data !== 'object') return empty;
+
+    if (
+      (data.version === 2 || data.version === 3) &&
+      data.byKey &&
+      typeof data.byKey === 'object'
+    ) {
       const byKey = {};
       for (const [k, msgs] of Object.entries(data.byKey)) {
         if (!k || typeof k !== 'string') continue;
         const cleaned = _cleanAssistantMessages(msgs);
-        if (cleaned.length) byKey[k] = cleaned;
+        if (cleaned.length || k.startsWith('sb:')) byKey[k] = cleaned.length ? cleaned : [];
       }
-      return { version: 2, byKey };
+      let sidebarSessionOrder = _cleanSidebarSessionOrder(data.sidebarSessionOrder);
+      if (!sidebarSessionOrder.length) {
+        const inferred = Object.keys(byKey)
+          .filter((k) => k.startsWith('sb:'))
+          .map((id) => ({ id, title: 'Saved chat', updatedAt: 0 }));
+        inferred.sort((a, b) => a.id.localeCompare(b.id));
+        sidebarSessionOrder = inferred.slice(0, 80);
+      }
+      return { version: 3, byKey, sidebarSessionOrder };
     }
 
     const legacy = _cleanAssistantMessages(data.messages);
     if (legacy.length) {
       try {
-        writeJson(assistantChatPath, { version: 2, byKey: {} });
+        writeJson(assistantChatPath, { version: 3, byKey: {}, sidebarSessionOrder: [] });
       } catch (e) {
         console.error('navio-store migrate assistant v1→v2', e.message);
       }
     }
-    return emptyV2;
+    return empty;
   }
 
   function saveAssistantChat(data) {
-    if (data && data.version === 2 && data.byKey && typeof data.byKey === 'object') {
+    if (data && data.byKey && typeof data.byKey === 'object') {
       const byKey = {};
       for (const [k, msgs] of Object.entries(data.byKey)) {
         if (!k || typeof k !== 'string') continue;
         const cleaned = _cleanAssistantMessages(msgs);
-        if (cleaned.length) byKey[k] = cleaned;
+        if (cleaned.length || k.startsWith('sb:')) byKey[k] = cleaned.length ? cleaned : [];
       }
-      return writeJson(assistantChatPath, { version: 2, byKey });
+      const sidebarSessionOrder = _cleanSidebarSessionOrder(data.sidebarSessionOrder);
+      return writeJson(assistantChatPath, { version: 3, byKey, sidebarSessionOrder });
     }
-    return writeJson(assistantChatPath, { version: 2, byKey: {} });
+    return writeJson(assistantChatPath, { version: 3, byKey: {}, sidebarSessionOrder: [] });
   }
 
   return {

@@ -1405,8 +1405,8 @@
         </div>
       </div>
 
-      <div class="assistant-meta-bar" aria-label="Tab context and AI scope">
-        <div class="assistant-context" id="assistant-context" title="Chat is per tab, not per page. A new tab starts a fresh thread; navigating in this tab keeps this thread.">
+        <div class="assistant-meta-bar" aria-label="Tab context and AI scope">
+        <div class="assistant-context" id="assistant-context" title="Default: one thread per tab. Use New chat / History for saved threads you can return to (like Comet).">
           <div class="context-dot"></div>
           <span id="context-page-title">No page loaded</span>
         </div>
@@ -1421,6 +1421,14 @@
             </button>
           </div>
         </div>
+      </div>
+
+      <div class="assistant-session-bar" aria-label="Saved sidebar chats">
+        <button type="button" class="assistant-session-new-btn" id="assistant-session-new" title="Start a new saved thread (persists across tabs)">New chat</button>
+        <details class="assistant-session-history" id="assistant-session-history">
+          <summary class="assistant-session-history-summary" title="Open a saved thread or return to this tab’s thread">History</summary>
+          <div class="assistant-session-history-scroll" id="assistant-session-history-list"></div>
+        </details>
       </div>
 
       <div class="assistant-smart-row" id="assistant-smart-row" aria-label="Smart suggestions">

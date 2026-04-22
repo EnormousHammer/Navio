@@ -175,6 +175,8 @@ const NAVIO_ASSISTANT_HEURISTIC_TEXT_MAX_BYTES = 768 * 1024;
 
 /** Fallback storage key when no tab is active (edge cases only). Never written to disk as v2 byKey. */
 const NAVIO_PROFILE_CHAT_KEY = '__profile__';
+/** Saved sidebar threads (Comet-style); persisted under `byKey` with this prefix. */
+const NAVIO_SIDEBAR_THREAD_PREFIX = 'sb:';
 
 function navioLooksLikePrintableText(s) {
   if (!s || typeof s !== 'string') return false;
@@ -353,6 +355,13 @@ class AssistantManagerClass {
      * so the sidebar and the full-page chat share the same history.
      */
     this._guestAnchoredTabId = null;
+    /**
+     * When set, sidebar transcript + API history use this storage key instead of the active tab
+     * (or tab group). Browsing tools still use the focused tab via TabManager.
+     */
+    this._sidebarThreadKey = null;
+    /** @type {Array<{ id: string, title: string, updatedAt: number }>} */
+    this._sidebarSessionOrder = [];
     /** When true, `addMessage` always appends (rebuilding history from disk). */
     this._assistantHistoryDomReplay = false;
     /** Dedupe toggle when globalShortcut and guest webview forward both fire. */
@@ -393,6 +402,31 @@ class AssistantManagerClass {
     }
     document.getElementById('btn-close-assistant')?.addEventListener('click', () => this.close());
     document.getElementById('btn-clear-chat')?.addEventListener('click', () => this.clearChat());
+    document.getElementById('assistant-session-new')?.addEventListener('click', () => void this._startNewSidebarSession());
+    document.getElementById('assistant-session-history-list')?.addEventListener('click', (e) => {
+      const delBtn = e.target.closest('[data-session-delete]');
+      const openBtn = e.target.closest('[data-session-open]');
+      const tabBtn = e.target.closest('[data-session-this-tab]');
+      const hist = document.getElementById('assistant-session-history');
+      if (delBtn) {
+        e.preventDefault();
+        const sid = delBtn.getAttribute('data-session-delete');
+        if (sid) void this._deleteSidebarSession(sid);
+        return;
+      }
+      if (openBtn) {
+        e.preventDefault();
+        const sid = openBtn.getAttribute('data-session-open');
+        if (sid) void this._openSidebarSession(sid);
+        if (hist) hist.open = false;
+        return;
+      }
+      if (tabBtn) {
+        e.preventDefault();
+        void this._selectThisTabThread();
+        if (hist) hist.open = false;
+      }
+    });
     document.getElementById('btn-send-message')?.addEventListener('click', () => this.sendMessage());
     document.getElementById('btn-assistant-stop')?.addEventListener('click', () => this.stopGeneration());
     document.getElementById('btn-tts-stop')?.addEventListener('click', () => this._stopTTSFromBar());
@@ -604,6 +638,7 @@ class AssistantManagerClass {
   }
 
   _conversationKey() {
+    if (this._sidebarThreadKey) return this._sidebarThreadKey;
     if (typeof TabManager !== 'undefined' && TabManager.activeTabId) {
       const t = TabManager.getActiveTab();
       return this._storageKeyForTab(t);
@@ -627,6 +662,7 @@ class AssistantManagerClass {
     const turnKey = this._domTurnTabId();
     // Legacy: unanchored guest turn always shows
     if (turnKey === '__guest__') return true;
+    if (this._sidebarThreadKey && String(this._sidebarThreadKey) === String(turnKey)) return true;
     const panelKey = this._panelDisplayStorageKey();
     if (panelKey == null) return true;
     return panelKey === turnKey;
@@ -666,7 +702,8 @@ class AssistantManagerClass {
       if (!window.navio || typeof window.navio.assistantChatLoad !== 'function') return;
       const data = await window.navio.assistantChatLoad();
       this._conversationsByTab.delete(NAVIO_PROFILE_CHAT_KEY);
-      if (data && data.version === 2 && data.byKey && typeof data.byKey === 'object') {
+      this._sidebarSessionOrder = [];
+      if (data && (data.version === 2 || data.version === 3) && data.byKey && typeof data.byKey === 'object') {
         for (const [k, raw] of Object.entries(data.byKey)) {
           if (!k || k === NAVIO_PROFILE_CHAT_KEY || k.startsWith('__')) continue;
           if (!Array.isArray(raw)) continue;
@@ -676,8 +713,32 @@ class AssistantManagerClass {
             if (typeof m.content !== 'string') continue;
             messages.push({ role: m.role, content: m.content });
           }
-          if (messages.length) this._conversationsByTab.set(k, messages);
+          if (messages.length || k.startsWith(NAVIO_SIDEBAR_THREAD_PREFIX)) {
+            this._conversationsByTab.set(k, messages);
+          }
         }
+        const order = Array.isArray(data.sidebarSessionOrder) ? data.sidebarSessionOrder : [];
+        const cleaned = [];
+        const seen = new Set();
+        for (const row of order) {
+          if (!row || typeof row !== 'object') continue;
+          const id = typeof row.id === 'string' ? row.id.trim() : '';
+          if (!id.startsWith(NAVIO_SIDEBAR_THREAD_PREFIX) || seen.has(id)) continue;
+          if (!this._conversationsByTab.has(id)) continue;
+          seen.add(id);
+          cleaned.push({
+            id,
+            title: typeof row.title === 'string' ? row.title.slice(0, 120) : 'Saved chat',
+            updatedAt: typeof row.updatedAt === 'number' && Number.isFinite(row.updatedAt) ? row.updatedAt : 0
+          });
+        }
+        for (const kid of this._conversationsByTab.keys()) {
+          if (!kid.startsWith(NAVIO_SIDEBAR_THREAD_PREFIX)) continue;
+          if (cleaned.some((x) => x.id === kid)) continue;
+          cleaned.push({ id: kid, title: 'Saved chat', updatedAt: Date.now() });
+        }
+        cleaned.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+        this._sidebarSessionOrder = cleaned.slice(0, 80);
         return;
       }
     } catch (e) {
@@ -699,13 +760,22 @@ class AssistantManagerClass {
       const byKey = {};
       for (const [k, h] of this._conversationsByTab.entries()) {
         if (!k || k === NAVIO_PROFILE_CHAT_KEY || k.startsWith('__')) continue;
-        if (!h || !h.length) continue;
-        const messages = h
+        const isSb = k.startsWith(NAVIO_SIDEBAR_THREAD_PREFIX);
+        if ((!h || !h.length) && !isSb) continue;
+        const messages = (h || [])
           .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
           .map((m) => ({ role: m.role, content: m.content }));
-        if (messages.length) byKey[k] = messages;
+        if (messages.length || isSb) byKey[k] = messages;
       }
-      await window.navio.assistantChatSave({ version: 2, byKey });
+      const sidebarSessionOrder = (this._sidebarSessionOrder || [])
+        .filter((row) => row && row.id && String(row.id).startsWith(NAVIO_SIDEBAR_THREAD_PREFIX) && byKey[row.id])
+        .map((row) => ({
+          id: row.id,
+          title: String(row.title || 'Saved chat').slice(0, 120),
+          updatedAt: typeof row.updatedAt === 'number' && Number.isFinite(row.updatedAt) ? row.updatedAt : Date.now()
+        }))
+        .slice(0, 80);
+      await window.navio.assistantChatSave({ version: 3, byKey, sidebarSessionOrder });
     } catch (e) {
       console.warn('[navio-assistant] persist chat failed', e);
     }
@@ -726,6 +796,10 @@ class AssistantManagerClass {
    */
   onActiveTabChanged(prevTabId, nextTabId) {
     if (!prevTabId || prevTabId === nextTabId) return;
+    if (this._sidebarThreadKey) {
+      navioAssistantDebug('onActiveTabChanged: sidebar session — keep transcript', { prevTabId, nextTabId });
+      return;
+    }
     void this._syncPanelToTab(String(nextTabId));
     navioAssistantDebug('onActiveTabChanged', { prevTabId, nextTabId });
   }
@@ -816,6 +890,7 @@ class AssistantManagerClass {
    * Swap the sidebar transcript to match `tabId` (conversation + attachments cleared for that view).
    */
   async _syncPanelToTab(tabId) {
+    if (this._sidebarThreadKey) return;
     const k = String(tabId || '');
     if (!k) return;
     const storageKey = this._storageKeyForTabId(k);
@@ -2548,7 +2623,21 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       await this.syncScopeFromConfig();
       await this.syncConnectorTogglesFromConfig();
       const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
-      if (aid) await this._syncPanelToTab(aid);
+      if (this._sidebarThreadKey) {
+        const sk = this._sidebarThreadKey;
+        const busy = this._busyTabs.has(sk);
+        if (!busy) {
+          const h = this._conversationsByTab.get(sk) || [];
+          if (h.length) this._renderDomFromHistoryKey(sk);
+          else {
+            this.messagesEl.innerHTML = '';
+            await this._showGreeting();
+          }
+        }
+      } else if (aid) {
+        await this._syncPanelToTab(aid);
+      }
+      this._renderSidebarSessionList();
     } catch (err) {
       console.warn('[Assistant] open(): config/sync failed', err);
       navioAssistantDebug('open: config/sync threw', err && err.message ? err.message : String(err));
@@ -2640,7 +2729,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       return;
     }
     const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
-    if ((!text && !hasReadyAttachments) || (aid && this._tabIsBusy(aid))) return;
+    if ((!text && !hasReadyAttachments) || this._threadBusyForSend() || (aid && this._tabIsBusy(aid))) return;
 
     if (text.startsWith('>>')) {
       if (hasReadyAttachments) {
@@ -2710,7 +2799,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
 
   async handleQuickAction(action) {
     const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
-    if (aid && this._tabIsBusy(aid)) return;
+    if (this._threadBusyForSend() || (aid && this._tabIsBusy(aid))) return;
     if (!this.isOpen) this.open();
 
     if (action === 'all-tabs') {
@@ -2839,13 +2928,21 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   stopGeneration() {
     try {
       if (window.navio && typeof window.navio.aiAbort === 'function') {
-        const t = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
-        const sk = t ? this._storageKeyForTab(t) : '';
+        let sk = this._turnConversationKey ? String(this._turnConversationKey) : '';
+        if (!sk) {
+          const t = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
+          sk = t ? this._storageKeyForTab(t) : '';
+        }
         void window.navio.aiAbort(sk ? { tabId: sk } : {});
       }
     } catch {
       /* ignore */
     }
+  }
+
+  _threadBusyForSend() {
+    if (this._sidebarThreadKey && this._busyTabs.has(this._sidebarThreadKey)) return true;
+    return false;
   }
 
   _tabIsBusy(tabId) {
@@ -2884,7 +2981,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   _updateAssistantBusyChrome() {
     const active = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
     const sk = active ? this._storageKeyForTab(active) : '';
-    const busy = !!(active && sk && this._busyTabs.has(sk));
+    const sbBusy = !!(this._sidebarThreadKey && this._busyTabs.has(this._sidebarThreadKey));
+    const busy = sbBusy || !!(active && sk && this._busyTabs.has(sk));
     const stop = document.getElementById('btn-assistant-stop');
     const send = document.getElementById('btn-send-message');
     if (stop) {
@@ -3250,7 +3348,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       this._turnConversationKey = null;
       this._setTabBusy(turnKey, false);
       this._updateAssistantBusyChrome();
-      if (typeof TabManager !== 'undefined' && TabManager.activeTabId) {
+      if (typeof TabManager !== 'undefined' && TabManager.activeTabId && !this._sidebarThreadKey) {
         void this._syncPanelToTab(String(TabManager.activeTabId));
       }
     }
@@ -4483,6 +4581,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         }
       }
     }
+    this._maybeRefreshSidebarSessionMeta(k);
     this._schedulePersistAssistantHistory();
   }
 
@@ -7017,7 +7116,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   async _smartFollowUp() {
     const MAX_AUTO_STEPS = 35;
     const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
-    if ((aid && this._tabIsBusy(aid)) || this._autoFollowCount >= MAX_AUTO_STEPS) {
+    if (this._threadBusyForSend() || (aid && this._tabIsBusy(aid)) || this._autoFollowCount >= MAX_AUTO_STEPS) {
       if (this._autoFollowCount >= MAX_AUTO_STEPS) {
         this._addContinuePill('Reached step limit. Tell me what to do next.');
         this._autoFollowCount = 0;
@@ -7255,14 +7354,194 @@ ${pageInfo}${snapText}`;
     }
   }
 
+  _maybeRefreshSidebarSessionMeta(storageKey) {
+    if (!storageKey || !String(storageKey).startsWith(NAVIO_SIDEBAR_THREAD_PREFIX)) return;
+    const h = this._conversationsByTab.get(storageKey);
+    if (!h || !h.length) return;
+    const firstUser = h.find((m) => m && m.role === 'user' && String(m.content || '').trim());
+    const title = firstUser
+      ? String(firstUser.content).replace(/\s+/g, ' ').trim().slice(0, 56) || 'Saved chat'
+      : 'Saved chat';
+    let meta = this._sidebarSessionOrder.find((x) => x.id === storageKey);
+    if (!meta) {
+      meta = { id: storageKey, title, updatedAt: Date.now() };
+      this._sidebarSessionOrder.unshift(meta);
+    } else {
+      meta.title = title;
+      meta.updatedAt = Date.now();
+    }
+    this._renderSidebarSessionList();
+  }
+
+  _thisTabThreadSubtitle() {
+    try {
+      if (typeof TabManager === 'undefined' || !TabManager.getActiveTab) return 'Per-tab thread';
+      const t = TabManager.getActiveTab();
+      if (!t) return 'Per-tab thread';
+      return (TabManager.getTabDisplayTitle && TabManager.getTabDisplayTitle(t)) || t.title || 'Current tab';
+    } catch {
+      return 'Per-tab thread';
+    }
+  }
+
+  _formatSessionTime(ts) {
+    const t = typeof ts === 'number' && ts > 0 ? ts : Date.now();
+    try {
+      const d = new Date(t);
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    } catch {
+      return '';
+    }
+  }
+
+  _renderSidebarSessionList() {
+    const root = document.getElementById('assistant-session-history-list');
+    if (!root) return;
+    const esc = (s) =>
+      String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/"/g, '&quot;');
+    const rows = [];
+    rows.push(
+      `<button type="button" class="assistant-session-this-tab${!this._sidebarThreadKey ? ' is-active' : ''}" data-session-this-tab="1">` +
+        `<span class="assistant-session-row-title">This tab</span>` +
+        `<span class="assistant-session-row-sub">${esc(this._thisTabThreadSubtitle())}</span></button>`
+    );
+    const order = [...(this._sidebarSessionOrder || [])].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    for (const meta of order) {
+      const active = this._sidebarThreadKey === meta.id ? ' is-active' : '';
+      const title = esc(meta.title || 'Saved chat');
+      const idAttr = esc(meta.id);
+      rows.push(
+        `<div class="assistant-session-row${active}">` +
+          `<button type="button" class="assistant-session-open" data-session-open="${idAttr}">` +
+            `<span class="assistant-session-row-title">${title}</span>` +
+            `<span class="assistant-session-row-sub">${esc(this._formatSessionTime(meta.updatedAt))}</span>` +
+          `</button>` +
+          `<button type="button" class="assistant-session-delete" data-session-delete="${idAttr}" title="Delete conversation" aria-label="Delete conversation">` +
+            `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>` +
+          `</button>` +
+        `</div>`
+      );
+    }
+    root.innerHTML = rows.join('');
+  }
+
+  async _startNewSidebarSession() {
+    await this._ensureAssistantHistoryLoaded();
+    const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
+    if (this._threadBusyForSend() || (aid && this._tabIsBusy(aid))) return;
+    let id;
+    try {
+      id =
+        NAVIO_SIDEBAR_THREAD_PREFIX +
+        (typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}_${Math.random().toString(36).slice(2, 11)}`);
+    } catch {
+      id = NAVIO_SIDEBAR_THREAD_PREFIX + `${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+    }
+    this._conversationsByTab.set(id, []);
+    this._sidebarThreadKey = id;
+    this._sidebarSessionOrder = this._sidebarSessionOrder.filter((x) => x.id !== id);
+    this._sidebarSessionOrder.unshift({ id, title: 'New chat', updatedAt: Date.now() });
+    if (aid) this._panelDisplayTabId = aid;
+    this.messagesEl.innerHTML = '';
+    this.setReceipt('');
+    document.getElementById('navio-continue-pill')?.remove();
+    try {
+      this._clearAttachmentQueue();
+    } catch {
+      /* ignore */
+    }
+    await this._showGreeting();
+    this._renderSidebarSessionList();
+    void this._persistAssistantHistoryNow();
+    if (!this.isOpen) void this.open();
+    setTimeout(() => this.inputEl?.focus(), 200);
+  }
+
+  async _openSidebarSession(id) {
+    await this._ensureAssistantHistoryLoaded();
+    const sid = String(id || '').trim();
+    if (!sid.startsWith(NAVIO_SIDEBAR_THREAD_PREFIX)) return;
+    if (this._threadBusyForSend()) return;
+    const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
+    if (aid && this._tabIsBusy(aid)) return;
+    this._sidebarThreadKey = sid;
+    this._ensureConversationEntry(sid);
+    if (aid) this._panelDisplayTabId = aid;
+    try {
+      this._clearAttachmentQueue();
+    } catch {
+      /* ignore */
+    }
+    this.setReceipt('');
+    document.getElementById('navio-continue-pill')?.remove();
+    const h = this._conversationsByTab.get(sid) || [];
+    this.messagesEl.innerHTML = '';
+    if (h.length) this._renderDomFromHistoryKey(sid);
+    else await this._showGreeting();
+    this._renderSidebarSessionList();
+    setTimeout(() => this.inputEl?.focus(), 150);
+  }
+
+  async _selectThisTabThread() {
+    await this._ensureAssistantHistoryLoaded();
+    if (this._threadBusyForSend()) return;
+    this._sidebarThreadKey = null;
+    const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
+    if (aid) await this._syncPanelToTab(aid);
+    else {
+      this.messagesEl.innerHTML = '';
+      await this._showGreeting();
+    }
+    this._renderSidebarSessionList();
+    setTimeout(() => this.inputEl?.focus(), 150);
+  }
+
+  async _deleteSidebarSession(id) {
+    await this._ensureAssistantHistoryLoaded();
+    const sid = String(id || '').trim();
+    if (!sid.startsWith(NAVIO_SIDEBAR_THREAD_PREFIX)) return;
+    if (this._busyTabs.has(sid)) return;
+    this._conversationsByTab.delete(sid);
+    this._sidebarSessionOrder = this._sidebarSessionOrder.filter((x) => x.id !== sid);
+    if (this._sidebarThreadKey === sid) {
+      this._sidebarThreadKey = null;
+      const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
+      if (aid) await this._syncPanelToTab(aid);
+      else {
+        this.messagesEl.innerHTML = '';
+        await this._showGreeting();
+      }
+    }
+    void this._persistAssistantHistoryNow();
+    this._renderSidebarSessionList();
+  }
+
   clearChat() {
-    this._conversationsByTab.set(this._conversationKey(), []);
+    const k = this._conversationKey();
+    const wasSidebar = String(k).startsWith(NAVIO_SIDEBAR_THREAD_PREFIX);
+    if (wasSidebar) {
+      this._conversationsByTab.delete(k);
+      this._sidebarSessionOrder = this._sidebarSessionOrder.filter((x) => x.id !== k);
+      this._sidebarThreadKey = null;
+    } else {
+      this._conversationsByTab.set(k, []);
+    }
     this.setReceipt('');
     this.messagesEl.innerHTML = '';
     this._attachmentsSnapshot = null;
     this._clearAttachmentQueue();
     void this._persistAssistantHistoryNow();
     this._showGreeting();
+    if (wasSidebar) {
+      const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
+      if (aid) void this._syncPanelToTab(aid);
+    }
+    this._renderSidebarSessionList();
   }
 
   // ── Macro Recording ──────────────────────────────────────────────────────

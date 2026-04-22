@@ -5673,12 +5673,12 @@ ipcMain.handle('context-graph', (event, payload) => {
 });
 
 ipcMain.handle('assistant-chat-load', () => {
-  if (!store) return { version: 2, byKey: {} };
+  if (!store) return { version: 3, byKey: {}, sidebarSessionOrder: [] };
   try {
     return store.loadAssistantChat();
   } catch (e) {
     console.error('[navio] assistant-chat-load', e.message);
-    return { version: 2, byKey: {} };
+    return { version: 3, byKey: {}, sidebarSessionOrder: [] };
   }
 });
 
