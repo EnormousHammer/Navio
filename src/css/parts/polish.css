@@ -1021,6 +1021,8 @@
 }
 .new-tab-page .ntp-shortcut--dragging {
   cursor: grabbing;
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* Dashboard: natural height — does not stretch to swallow the wallpaper */

@@ -36,6 +36,9 @@ const NTP = (() => {
   let _shortcutDraft = null;
   let _shortcutEditorBound = false;
   let _shortcutDndBound = false;
+  let _shortcutDragFrom = -1;
+  /** Detached clone used as HTML5 drag image (must stay in DOM until dragend). */
+  let _shortcutDragGhost = null;
 
   // Brand colours for popular sites — gradient background + hover glow
   const _SHORTCUT_BRANDS = {
@@ -944,6 +947,13 @@ const NTP = (() => {
       panel.querySelectorAll('.ntp-shortcut--drop-hover').forEach((el) => el.classList.remove('ntp-shortcut--drop-hover'));
     };
 
+    const removeShortcutDragGhost = () => {
+      if (_shortcutDragGhost) {
+        _shortcutDragGhost.remove();
+        _shortcutDragGhost = null;
+      }
+    };
+
     panel.addEventListener('dragstart', (e) => {
       const editor = document.getElementById('ntp-shortcuts-editor');
       if (editor && !editor.hidden) {
@@ -952,19 +962,49 @@ const NTP = (() => {
       }
       const btn = e.target.closest?.('.ntp-shortcut');
       if (!btn || !panel.contains(btn)) return;
-      dragFrom = parseInt(btn.dataset.shortcutIndex, 10);
-      if (Number.isNaN(dragFrom)) return;
-      e.dataTransfer.setData('application/x-navio-shortcut-index', String(dragFrom));
+      _shortcutDragFrom = parseInt(btn.dataset.shortcutIndex, 10);
+      if (Number.isNaN(_shortcutDragFrom)) return;
+      e.dataTransfer.setData('application/x-navio-shortcut-index', String(_shortcutDragFrom));
       e.dataTransfer.effectAllowed = 'move';
+
+      removeShortcutDragGhost();
+      const ghost = btn.cloneNode(true);
+      ghost.classList.remove('ntp-shortcut--dragging', 'ntp-shortcut--drop-hover');
+      ghost.removeAttribute('draggable');
+      ghost.setAttribute('aria-hidden', 'true');
+      const r = btn.getBoundingClientRect();
+      const w = Math.max(1, Math.round(r.width));
+      const h = Math.max(1, Math.round(r.height));
+      ghost.style.cssText = [
+        'position:fixed',
+        'left:0',
+        'top:0',
+        'width:' + w + 'px',
+        'margin:0',
+        'padding:0',
+        'box-sizing:border-box',
+        'pointer-events:none',
+        'z-index:2147483646',
+        'opacity:1',
+        'transform:translate3d(' + Math.round(r.left) + 'px,' + Math.round(r.top) + 'px,0)',
+        'filter:drop-shadow(0 10px 22px rgba(0,0,0,0.45))',
+        'cursor:grabbing'
+      ].join(';');
+      document.body.appendChild(ghost);
+      _shortcutDragGhost = ghost;
       try {
-        e.dataTransfer.setDragImage(btn, btn.offsetWidth / 2, btn.offsetHeight / 2);
+        e.dataTransfer.setDragImage(ghost, Math.round(w / 2), Math.round(h / 2));
       } catch {
-        /* ignore */
+        removeShortcutDragGhost();
       }
+      panel.classList.add('ntp-shortcuts-panel--dnd-active');
       btn.classList.add('ntp-shortcut--dragging');
     });
 
     panel.addEventListener('dragend', () => {
+      panel.classList.remove('ntp-shortcuts-panel--dnd-active');
+      removeShortcutDragGhost();
+      _shortcutDragFrom = -1;
       panel.querySelectorAll('.ntp-shortcut--dragging').forEach((el) => el.classList.remove('ntp-shortcut--dragging'));
       clearDropHover();
     });

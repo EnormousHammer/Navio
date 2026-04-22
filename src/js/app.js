@@ -491,6 +491,14 @@ class NavioApp {
       if (b === 'frequent') return 'url-suggestion-badge url-suggestion-badge--frequent';
       return 'url-suggestion-badge url-suggestion-badge--recent';
     };
+    const bookmarkIcon =
+      '<svg class="url-suggestion-badge-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+    const badgeHtml = (b) => {
+      if (b === 'bookmark') {
+        return `<span class="${badgeClass(b)}" aria-label="Saved bookmark">${bookmarkIcon}</span>`;
+      }
+      return `<span class="${badgeClass(b)}">${esc(badgeLabel(b))}</span>`;
+    };
     list.innerHTML = items
       .map((it, i) => {
         let host = '';
@@ -502,7 +510,7 @@ class NavioApp {
         const fav = this._suggestionIconHtml(it.url, it.favicon);
         return `<button type="button" class="url-suggestion-row" role="option" data-i="${i}" aria-selected="false">
 ${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc(it.title)}</span><span class="url-suggestion-url">${esc(host)}</span></span>
-<span class="${badgeClass(it.badge)}">${esc(badgeLabel(it.badge))}</span>
+${badgeHtml(it.badge)}
 </button>`;
       })
       .join('');
