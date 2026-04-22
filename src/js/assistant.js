@@ -3918,6 +3918,17 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       this.disableTakeover();
       return;
     }
+    if (payload.action === 'openUrl') {
+      const url = String(payload.url || '').trim();
+      if (url && /^https?:\/\//i.test(url) && typeof TabManager !== 'undefined' && typeof TabManager.createTab === 'function') {
+        try {
+          TabManager.createTab(url);
+        } catch {
+          /* ignore */
+        }
+      }
+      return;
+    }
     if (payload.action === 'send' && (payload.text || (Array.isArray(payload.files) && payload.files.length))) {
       const text = payload.text != null ? String(payload.text).trim() : '';
       const files = Array.isArray(payload.files) ? payload.files : null;
@@ -4940,9 +4951,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         }
         this._pendingConnectorCitations = null;
         if (streamChips && streamChips.length) {
-          this._appendFollowUpChips(streamingMsg, streamChips, (chip) => {
+          this._appendFollowUpChips(streamingMsg, streamChips, (label) => {
             if (this.inputEl) {
-              this.inputEl.value = chip;
+              this.inputEl.value = label;
               this.inputEl.dispatchEvent(new Event('input'));
               this.sendMessage();
             }
@@ -5432,9 +5443,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       this._appendCitationChips(msgEl, citeUrls);
     }
     if (role === 'assistant' && followUpChips && followUpChips.length) {
-      this._appendFollowUpChips(msgEl, followUpChips, (chip) => {
+      this._appendFollowUpChips(msgEl, followUpChips, (label) => {
         if (this.inputEl) {
-          this.inputEl.value = chip;
+          this.inputEl.value = label;
           this.inputEl.dispatchEvent(new Event('input'));
           this.sendMessage();
         }
@@ -5692,8 +5703,46 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   /**
+   * Normalize one FOLLOWUP chip entry: string (prompt) or { text|label|title, url } (optional new-tab URL).
+   * @returns {{ label: string, url: string|null }|null}
+   */
+  _normalizeFollowUpChipEntry(c) {
+    if (c == null) return null;
+    if (typeof c === 'string') {
+      const t = c.trim();
+      return t ? { label: t, url: null } : null;
+    }
+    if (typeof c === 'object') {
+      const label = String(c.text || c.label || c.title || '').trim();
+      let url = typeof c.url === 'string' ? c.url.trim() : typeof c.href === 'string' ? c.href.trim() : '';
+      if (url && !/^https?:\/\//i.test(url)) url = '';
+      try {
+        if (url) url = new URL(url).href;
+      } catch {
+        url = '';
+      }
+      if (!label && !url) return null;
+      return { label: label || 'Open link', url: url || null };
+    }
+    return null;
+  }
+
+  /** Open a follow-up chip URL in a new tab (http/https only). */
+  _openFollowUpChipUrl(url) {
+    const u = String(url || '').trim();
+    if (!u || !/^https?:\/\//i.test(u)) return;
+    try {
+      if (typeof TabManager !== 'undefined' && typeof TabManager.createTab === 'function') {
+        TabManager.createTab(u);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /**
    * Strip [FOLLOWUP]{...}[/FOLLOWUP] from content and return chips separately.
-   * Returns { clean: string, chips: string[] }.
+   * Returns { clean: string, chips: Array<{ label: string, url: string|null }> }.
    */
   _extractFollowUpChips(text) {
     if (!text || typeof text !== 'string') return { clean: text || '', chips: [] };
@@ -5705,7 +5754,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           const parsed = JSON.parse(json);
           if (Array.isArray(parsed.chips)) {
             parsed.chips.forEach((c) => {
-              if (typeof c === 'string' && c.trim()) chips.push(c.trim());
+              const norm = this._normalizeFollowUpChipEntry(c);
+              if (norm) chips.push(norm);
             });
           }
         } catch {
@@ -5723,13 +5773,20 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (!msgEl || !chips || !chips.length) return;
     const wrap = document.createElement('div');
     wrap.className = 'navio-followup-chips';
-    chips.forEach((chip) => {
+    chips.forEach((raw) => {
+      const chip = this._normalizeFollowUpChipEntry(raw);
+      if (!chip) return;
       const btn = document.createElement('button');
       btn.className = 'navio-followup-chip';
       btn.type = 'button';
-      btn.textContent = chip;
+      btn.textContent = chip.label;
+      if (chip.url) btn.title = chip.url;
       btn.addEventListener('click', () => {
-        if (typeof onChipClick === 'function') onChipClick(chip);
+        if (chip.url) {
+          this._openFollowUpChipUrl(chip.url);
+          return;
+        }
+        if (typeof onChipClick === 'function') onChipClick(chip.label);
       });
       wrap.appendChild(btn);
     });

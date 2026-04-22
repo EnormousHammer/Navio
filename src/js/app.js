@@ -1636,18 +1636,36 @@ const InlineAI = (() => {
     if (chips.length) {
       const wrap = document.createElement('div');
       wrap.className = 'navio-followup-chips iai-inline-followup';
-      chips.forEach((chip) => {
+      chips.forEach((raw) => {
+        const norm =
+          am && typeof am._normalizeFollowUpChipEntry === 'function'
+            ? am._normalizeFollowUpChipEntry(raw)
+            : typeof raw === 'string'
+              ? { label: raw.trim(), url: null }
+              : null;
+        if (!norm || !norm.label) return;
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'navio-followup-chip';
-        btn.textContent = chip;
+        btn.textContent = norm.label;
+        if (norm.url) btn.title = norm.url;
         btn.addEventListener('click', (ev) => {
           ev.stopPropagation();
+          if (norm.url) {
+            if (typeof TabManager !== 'undefined' && typeof TabManager.createTab === 'function') {
+              try {
+                TabManager.createTab(norm.url);
+              } catch {
+                /* ignore */
+              }
+            }
+            return;
+          }
           if (typeof AssistantManager === 'undefined' || !AssistantManager.inputEl) return;
           const ctx = (_text || '').trim().slice(0, 400);
           const tail = ctx ? `\n\n(Selected text: "${ctx}")` : '';
           AssistantManager.open();
-          AssistantManager.inputEl.value = `${chip}${tail}`;
+          AssistantManager.inputEl.value = `${norm.label}${tail}`;
           AssistantManager.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
           AssistantManager.sendMessage();
         });

@@ -2561,6 +2561,25 @@
     scrollToLatestIfPinned();
   }
   // ── FOLLOWUP chip extraction (mirrors assistant.js logic) ────────────
+  function normalizeFollowUpChipEntry(c) {
+    if (c == null) return null;
+    if (typeof c === 'string') {
+      var ts = c.trim();
+      return ts ? { label: ts, url: null } : null;
+    }
+    if (typeof c === 'object') {
+      var lab = String(c.text || c.label || c.title || '').trim();
+      var u = typeof c.url === 'string' ? c.url.trim() : (typeof c.href === 'string' ? c.href.trim() : '');
+      if (u && !/^https?:\/\//i.test(u)) u = '';
+      try {
+        if (u) u = new URL(u).href;
+      } catch (e) { u = ''; }
+      if (!lab && !u) return null;
+      return { label: lab || 'Open link', url: u || null };
+    }
+    return null;
+  }
+
   function extractFollowUpChips(text) {
     if (!text) return { clean: text || '', chips: [] };
     const chips = [];
@@ -2572,7 +2591,10 @@
         const parsed = JSON.parse(json);
         const arr = Array.isArray(parsed) ? parsed
                   : (parsed && Array.isArray(parsed.chips)) ? parsed.chips : [];
-        arr.forEach(function (c) { if (typeof c === 'string' && c.trim()) chips.push(c.trim()); });
+        arr.forEach(function (c) {
+          var norm = normalizeFollowUpChipEntry(c);
+          if (norm) chips.push(norm);
+        });
       } catch (e) { /* malformed JSON — still strip the block */ }
       return '';
     });
@@ -2585,14 +2607,21 @@
     if (!chips || !chips.length) return;
     const wrap = document.createElement('div');
     wrap.className = 'ct-followup-chips';
-    chips.forEach(function (chip) {
+    chips.forEach(function (raw) {
+      var chip = normalizeFollowUpChipEntry(raw);
+      if (!chip) return;
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'ct-followup-chip';
-      btn.textContent = chip;
+      btn.textContent = chip.label;
+      if (chip.url) btn.title = chip.url;
       btn.addEventListener('click', function () {
         if (busy) return;
-        send(chip);
+        if (chip.url) {
+          post({ action: 'openUrl', url: chip.url });
+          return;
+        }
+        send(chip.label);
       });
       wrap.appendChild(btn);
     });

@@ -85,7 +85,12 @@ const DEFAULT_CONFIG = {
   /** When true, assistant receives short text excerpts from each open tab (capped). */
   assistantTabDigest: false,
   /** User-defined NTP shortcuts (array of { title, url }). Empty → fallback defaults in ntp.js. */
-  ntpShortcuts: []
+  ntpShortcuts: [],
+  /**
+   * Predicta sports hub URL. Navio's AI appendix uses this for deep links (?view=betting&sport=nba&board=live).
+   * Default: hosted app. Override in navio-config.json for local dev (e.g. http://localhost:5173).
+   */
+  predictaBaseUrl: 'https://predicta-bet.vercel.app'
 };
 
 function readConfigFile() {

@@ -793,10 +793,31 @@ ipcMain.handle('memory-search', (_, { query }) => {
 // Replaces ONLY the first system message with NAVIO_SYSTEM_PROMPT + memory + profile.
 // Other system messages (page context, selection, tab list, etc.) are preserved.
 // Called in every IPC handler so the cached renderer's stale system prompt is ignored.
+function buildPredictaAppendix(cfg) {
+  let base = String(cfg.predictaBaseUrl || 'https://predicta-bet.vercel.app').trim().replace(/\/+$/, '');
+  if (!base || !/^https?:\/\//i.test(base)) return '';
+  const exBetting = `${base}/?view=betting&sport=nba&board=all-games`;
+  const exLive = `${base}/?view=betting&sport=nba&board=live`;
+  const exNews = `${base}/?view=news`;
+  const exCal = `${base}/?view=calendar`;
+  return (
+    '\n\n---\n**PREDICTA_LINKS** (user sports hub — apply **only** when the gated **SPORTS** rules in the main prompt apply)\n' +
+    `- **Base URL:** ${base}\n` +
+    '- Build tabs with **open_tab** using query params on that base (no path; trailing slash on base is stripped).\n' +
+    '- **view** — main area: `betting` (Games: live scoreboards, box scores, team stats, streams), `calendar` (schedule), `news` (feed), `dashboard`, `live`, `draftkings`, `multi-source`, `tracker`, `calculator`.\n' +
+    '- **sport** (when `view` is `betting` or omitted): nfl, nba, mlb, nhl, ufc, raf, boxing, cfb, cbb, wnba, epl, laliga, seriea, bundesliga, ligue1, mls, ucl, uel, all\n' +
+    '- **board** (Games sub-tab): `all-games` | `schedule` | `standings` | `live` (aliases: `games`, `tab=games` → all-games).\n' +
+    `- Examples: NBA games board \`${exBetting}\` · NBA live board \`${exLive}\` · News \`${exNews}\` · Schedule \`${exCal}\`\n` +
+    '- For **[FOLLOWUP]** object chips on sports turns, **prefer these Predicta URLs** before generic ESPN. If the tab fails to load, suggest checking the site or setting **predictaBaseUrl** in navio-config.json (e.g. `http://localhost:5173` for local Predicta).\n' +
+    '---\n'
+  );
+}
+
 function injectSystemPrompt(messages) {
   const memBlock = buildMemoryBlock();
   const profileBlock = buildProfileBlock();
   const cfg = loadConfig();
+  const predictaAppendix = buildPredictaAppendix(cfg);
   let basePrompt = cfg.aiUseToolCalling !== false ? NAVIO_SYSTEM_PROMPT : NAVIO_SYSTEM_PROMPT_LEGACY;
 
   // Resolve conditional prompt blocks — replace {{BLOCK:x}} with block content
@@ -813,7 +834,8 @@ function injectSystemPrompt(messages) {
   const activeUrl = extractActiveUrl(messages);
   const siteIntel = getSiteIntelForUrl(activeUrl);
 
-  const fullPrompt = basePrompt + memBlock + profileBlock + (siteIntel ? '\n' + siteIntel + '\n' : '');
+  const fullPrompt =
+    basePrompt + memBlock + profileBlock + predictaAppendix + (siteIntel ? '\n' + siteIntel + '\n' : '');
   let replaced = false;
   const result = messages.map((m) => {
     if (!replaced && m.role === 'system') {
