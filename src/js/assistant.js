@@ -439,6 +439,15 @@ class AssistantManagerClass {
         e.preventDefault();
         void this._selectThisTabThread();
         if (hist) hist.open = false;
+        return;
+      }
+      const jumpTab = e.target.closest('[data-session-switch-tab]');
+      if (jumpTab) {
+        e.preventDefault();
+        const tid = jumpTab.getAttribute('data-session-switch-tab');
+        if (tid) void this._openTabThreadFromHistory(tid);
+        if (hist) hist.open = false;
+        return;
       }
     });
     document.getElementById('btn-send-message')?.addEventListener('click', () => this.sendMessage());
@@ -510,6 +519,14 @@ class AssistantManagerClass {
         if (typeof App !== 'undefined') App.config = cfg;
       });
     }
+
+    window.addEventListener('navio-tabs-changed', () => {
+      try {
+        this._renderSidebarSessionList();
+      } catch {
+        /* ignore */
+      }
+    });
 
     const pinBtn = document.getElementById('btn-pin-tab');
     if (pinBtn) {
@@ -817,6 +834,11 @@ class AssistantManagerClass {
     }
     void this._syncPanelToTab(String(nextTabId));
     navioAssistantDebug('onActiveTabChanged', { prevTabId, nextTabId });
+    try {
+      this._renderSidebarSessionList();
+    } catch {
+      /* ignore */
+    }
   }
 
   /**
@@ -968,6 +990,9 @@ class AssistantManagerClass {
       return;
     }
 
+    const prevPanelId = this._panelDisplayTabId;
+    const prevStorageKey = prevPanelId ? this._storageKeyForTabId(String(prevPanelId)) : '';
+
     this._panelDisplayTabId = k;
     this._ensureConversationEntry(storageKey);
     try {
@@ -986,6 +1011,20 @@ class AssistantManagerClass {
     if (h.length && !isStreamingTab) {
       this._renderDomFromHistoryKey(storageKey);
     } else if (this.messagesEl && !isStreamingTab) {
+      // Never replace a visible in-progress thread with the welcome screen just because `h` is
+      // momentarily empty (wrong storage key, race with persistence, or post-turn resync timing).
+      if (!h.length) {
+        const liveThread = this.messagesEl.querySelector(
+          '.assistant-message, .user-message, .navio-agent-activity, .navio-plan-card, #typing-indicator, .message-content.streaming-content'
+        );
+        // Same conversation bucket as before: do not wipe live DOM on a transient empty `h`.
+        if (liveThread && prevStorageKey === storageKey) {
+          navioAssistantDebug('_syncPanelToTab: skip empty-history wipe — DOM still shows an active thread', {
+            storageKey
+          });
+          return;
+        }
+      }
       this.messagesEl.innerHTML = '';
       await this._showGreeting();
     }
@@ -2771,8 +2810,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           contentEl.appendChild(hint);
         }
       }
+      /* addMessage() sets scrollTop to bottom; for a short greeting we want the thread pinned to the top. */
+      if (this.messagesEl) this.messagesEl.scrollTop = 0;
     } catch {
       this.addMessage('assistant', "Hey! I'm Navio — your AI co-pilot. How can I help?");
+      if (this.messagesEl) this.messagesEl.scrollTop = 0;
     }
   }
 
@@ -3412,9 +3454,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       this._turnConversationKey = null;
       this._setTabBusy(turnKey, false);
       this._updateAssistantBusyChrome();
-      if (typeof TabManager !== 'undefined' && TabManager.activeTabId && !this._sidebarThreadKey) {
-        void this._syncPanelToTab(String(TabManager.activeTabId));
-      }
+      // Do NOT call _syncPanelToTab here: it replays from `_conversationsByTab` and can wipe the live
+      // transcript (empty key / wrong-tab timing / async ordering) back to the welcome screen mid-work.
+      // Tab switches already call _syncPanelToTab from onActiveTabChanged; addMessage keeps DOM in sync.
     }
   }
 
@@ -7458,6 +7500,55 @@ ${pageInfo}${snapText}`;
     }
   }
 
+  /**
+   * Other open tabs (or tab groups) that already have AI messages — listed under History from any tab.
+   */
+  _otherTabsWithChatHistory() {
+    const out = [];
+    if (typeof TabManager === 'undefined' || !TabManager.tabs || !TabManager.getActiveTab) return out;
+    const active = TabManager.getActiveTab();
+    const activeSk = active ? this._storageKeyForTab(active) : '';
+    const seen = new Set();
+    for (const t of TabManager.tabs) {
+      if (!t || !t.id) continue;
+      const sk = this._storageKeyForTab(t);
+      if (!sk || sk === NAVIO_PROFILE_CHAT_KEY || sk.startsWith('__')) continue;
+      if (sk.startsWith(NAVIO_SIDEBAR_THREAD_PREFIX)) continue;
+      if (seen.has(sk)) continue;
+      if (sk === activeSk) continue;
+      seen.add(sk);
+      const h = this._conversationsByTab.get(sk) || [];
+      if (!h.length) continue;
+      const firstUser = h.find((m) => m && m.role === 'user' && String(m.content || '').trim());
+      const tabLabel =
+        (TabManager.getTabDisplayTitle && TabManager.getTabDisplayTitle(t)) || t.title || 'Tab';
+      let title;
+      if (firstUser) {
+        title = String(firstUser.content).replace(/\s+/g, ' ').trim().slice(0, 52);
+        if (String(firstUser.content).replace(/\s+/g, ' ').trim().length > 52) title += '\u2026';
+      } else {
+        title = tabLabel.slice(0, 56);
+      }
+      const sub =
+        sk.startsWith('g:') && TabManager.tabs.filter((x) => x && x.groupId === t.groupId).length > 1
+          ? `${tabLabel} \u00b7 tab group`
+          : tabLabel;
+      out.push({ tabId: String(t.id), title, sub });
+    }
+    return out;
+  }
+
+  async _openTabThreadFromHistory(tabId) {
+    await this._ensureAssistantHistoryLoaded();
+    if (this._threadBusyForSend()) return;
+    const tid = String(tabId || '').trim();
+    if (!tid || typeof TabManager === 'undefined' || typeof TabManager.switchToTab !== 'function') return;
+    if (this._tabIsBusy(tid)) return;
+    this._sidebarThreadKey = null;
+    TabManager.switchToTab(tid);
+    await this._selectThisTabThread();
+  }
+
   _renderSidebarSessionList() {
     const root = document.getElementById('assistant-session-history-list');
     if (!root) return;
@@ -7472,7 +7563,25 @@ ${pageInfo}${snapText}`;
         `<span class="assistant-session-row-title">This tab</span>` +
         `<span class="assistant-session-row-sub">${esc(this._thisTabThreadSubtitle())}</span></button>`
     );
+    const otherTabs = this._otherTabsWithChatHistory();
+    if (otherTabs.length) {
+      rows.push('<div class="assistant-session-section-h" role="presentation">Other tabs</div>');
+      for (const row of otherTabs) {
+        const tid = esc(row.tabId);
+        rows.push(
+          `<div class="assistant-session-row assistant-session-row--jump-tab">` +
+            `<button type="button" class="assistant-session-open assistant-session-open--full" data-session-switch-tab="${tid}" title="Switch to this tab and show its AI thread">` +
+            `<span class="assistant-session-row-title">${esc(row.title)}</span>` +
+            `<span class="assistant-session-row-sub">${esc(row.sub)}</span>` +
+            `</button>` +
+            `</div>`
+        );
+      }
+    }
     const order = [...(this._sidebarSessionOrder || [])].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    if (order.length) {
+      rows.push('<div class="assistant-session-section-h" role="presentation">Saved chats</div>');
+    }
     for (const meta of order) {
       const active = this._sidebarThreadKey === meta.id ? ' is-active' : '';
       const title = esc(meta.title || 'Saved chat');
