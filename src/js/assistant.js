@@ -168,6 +168,73 @@ const NAVIO_ASSISTANT_MAX_ATTACHMENTS = 8;
 const NAVIO_VOICE_END_SILENCE_MS = 2800;
 /** After OpenAI TTS (or speech) ends in voice conversation, reopen the mic after this delay. */
 const NAVIO_VOICE_CONV_AFTER_TTS_MS = 200;
+/** Voice-conversation TTS: first chunk target size (chars) — smaller first request = faster time-to-first-audio. */
+const NAVIO_VOICE_TTS_FIRST_CHUNK = 320;
+/** Voice-conversation TTS: max chars per subsequent chunk (pipelined while previous plays). */
+const NAVIO_VOICE_TTS_CHUNK_MAX = 520;
+
+/**
+ * Split assistant speech into chunks at natural breaks for low-latency TTS playback.
+ * @param {string} text
+ * @param {number} maxChunk
+ * @returns {string[]}
+ */
+function navioSplitTtsChunks(text, maxChunk) {
+  const t = String(text || '').trim();
+  if (!t) return [];
+  if (t.length <= maxChunk) return [t];
+  const chunks = [];
+  let rest = t;
+  while (rest.length) {
+    if (rest.length <= maxChunk) {
+      chunks.push(rest);
+      break;
+    }
+    const slice = rest.slice(0, maxChunk);
+    let breakEnd = -1;
+    const tryDelim = (d) => {
+      const idx = slice.lastIndexOf(d);
+      if (idx > breakEnd) breakEnd = idx + d.length;
+    };
+    tryDelim('. ');
+    tryDelim('? ');
+    tryDelim('! ');
+    if (breakEnd < maxChunk * 0.22) tryDelim('; ');
+    if (breakEnd < maxChunk * 0.18) {
+      const nl = slice.lastIndexOf('\n');
+      if (nl >= maxChunk * 0.2) breakEnd = nl + 1;
+    }
+    if (breakEnd < maxChunk * 0.12) {
+      const sp = slice.lastIndexOf(' ');
+      if (sp > 48) breakEnd = sp + 1;
+    }
+    if (breakEnd < 32) breakEnd = maxChunk;
+    const piece = rest.slice(0, breakEnd).trim();
+    if (!piece) {
+      chunks.push(rest.slice(0, maxChunk).trim());
+      rest = rest.slice(maxChunk).trim();
+      continue;
+    }
+    chunks.push(piece);
+    rest = rest.slice(breakEnd).trim();
+  }
+  return chunks.filter(Boolean);
+}
+
+/**
+ * Build a TTS chunk list for voice conversation: aggressive first chunk, larger follow-ups.
+ * @param {string} text
+ * @returns {string[]}
+ */
+function navioVoiceConvTtsChunkPlan(text) {
+  const t = String(text || '').trim();
+  if (!t) return [];
+  const rough = navioSplitTtsChunks(t, NAVIO_VOICE_TTS_CHUNK_MAX);
+  const firstSeg = rough[0] || t;
+  if (firstSeg.length <= NAVIO_VOICE_TTS_FIRST_CHUNK) return rough;
+  const sub = navioSplitTtsChunks(firstSeg, NAVIO_VOICE_TTS_FIRST_CHUNK);
+  return sub.length ? [...sub, ...rough.slice(1)] : rough;
+}
 /** Non-text files: send as base64 for models that accept inline bytes (Gemini, etc.). */
 const NAVIO_ASSISTANT_INLINE_MAX_BYTES = 4 * 1024 * 1024;
 /** Unknown extensions: try UTF-8 decode when under this size (code, configs, odd MIME). */
@@ -371,9 +438,22 @@ class AssistantManagerClass {
     // navio-system-prompt.txt (or -legacy.txt) and injected by
     // injectSystemPrompt() in main.js before every API call.
     this.systemPrompt = 'You are Navio, an intelligent AI browser assistant.';
+    /** Last known Settings → TTS voice; avoids awaiting IPC before every speak. */
+    this._cachedTtsVoice = 'nova';
 
     this.bindEvents();
     this._assistantHistoryLoadPromise = this._loadPersistedChat();
+    void this._refreshCachedTtsVoice();
+  }
+
+  /** Refresh `_cachedTtsVoice` from disk (fire-and-forget; called at init and after speaking). */
+  async _refreshCachedTtsVoice() {
+    try {
+      const cfg = await window.navio.getConfig();
+      if (cfg && cfg.ttsVoice) this._cachedTtsVoice = cfg.ttsVoice;
+    } catch {
+      /* ignore */
+    }
   }
 
   /** Re-resolve panel if DOM changed or constructor ran before the node existed. */
@@ -1948,10 +2028,12 @@ RESPONSE STYLE:
 - Do NOT append the [FOLLOWUP] chips block — it is not useful in audio.
 
 NARRATE YOUR WORK (this is the most important rule):
-- As you execute multi-step tasks, speak brief progress updates between tool calls.
-  Examples: "Opening the page now." · "Found it, filling in the address." · "Done with step 1, moving on to the quote form."
-- Before starting a distinct new phase of a task, tell the user what you're about to do and ask if they want you to continue.
-  Example: "I've logged in and the cart is ready. Should I go ahead and get the shipping quote now?"
+- Keep the user oriented while tools run, but never sound like a broken record: invent fresh wording every time. Do not reuse the same sentence, opener, or catchphrase twice in this conversation turn — and avoid leaning on the same stock fillers you used on the last turn when you can help it.
+- Vary structure and tone across steps: mix factual pings, plain status, and brief asides — but write each line from scratch for this moment. Never start two consecutive updates with the same word or the same template (e.g. do not do "One sec…" then "One sec…" again, or two lines that both begin with "Okay").
+- Anchor each line to what is literally happening (which mailbox, which site, which attachment, what you're opening next) so uniqueness comes naturally from the task, not from random fluff.
+- After each meaningful tool result, say what you actually found using real titles — never vague "the first email" alone. Name the subject, sender, company, order, flight, or amount when the data gives you one.
+- Between tool calls, one short new line is enough; make it different from the line before it in both words and rhythm.
+- Before starting a distinct new phase of a task, tell the user what you're about to do and ask if they want you to continue — again, phrase it in your own words, not the same template every time.
 - This is not permission-seeking between micro-steps — it's a natural pause at logical checkpoints (e.g. between login and checkout, between search and booking, between filling and submitting).
 
 END WITH A SPOKEN SUMMARY:
@@ -2223,6 +2305,171 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   /**
+   * Play one OpenAI TTS audio clip; resolves when playback finishes or errors.
+   * @param {{ ok?: boolean, audio?: string, mimeType?: string }} result
+   * @param {number} mySession
+   * @param {HTMLElement|null} btn
+   * @param {boolean} isLastChunk — only then reopen mic in voice conversation mode
+   */
+  async _playOpenAITtsClip(result, mySession, btn, isLastChunk) {
+    if (mySession !== this._ttsSessionId) return;
+    if (!result || !result.ok || !result.audio) return;
+    if (btn) {
+      btn.classList.remove('tts-loading');
+      btn.classList.add('tts-speaking');
+    }
+    this._setTTSBarVisible(true, 'Reading aloud…');
+    const dataUrl = `data:${result.mimeType || 'audio/mpeg'};base64,${result.audio}`;
+    const audio = new Audio(dataUrl);
+    audio.volume = 1.0;
+    this._currentAudio = audio;
+    await new Promise((resolve) => {
+      const finish = () => {
+        if (mySession !== this._ttsSessionId) {
+          resolve();
+          return;
+        }
+        this._currentAudio = null;
+        if (btn) btn.classList.remove('tts-speaking');
+        if (isLastChunk) {
+          this._setTTSBarVisible(false);
+          if (this._voiceConvActive) {
+            setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
+          }
+        }
+        resolve();
+      };
+      audio.addEventListener('ended', finish, { once: true });
+      audio.addEventListener(
+        'error',
+        () => {
+          if (btn) btn.classList.remove('tts-speaking', 'tts-loading');
+          if (isLastChunk) {
+            this._setTTSBarVisible(false);
+            if (this._voiceConvActive) {
+              setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
+            }
+          }
+          resolve();
+        },
+        { once: true }
+      );
+      audio.play().catch(() => {
+        if (btn) btn.classList.remove('tts-speaking', 'tts-loading');
+        if (isLastChunk) {
+          this._setTTSBarVisible(false);
+          if (this._voiceConvActive) {
+            setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
+          }
+        }
+        resolve();
+      });
+    });
+  }
+
+  /**
+   * Voice-conversation path: small first TTS request + prefetch next chunk while audio plays.
+   * @returns {boolean} true if the full plan was handled here (success or aborted mid-flight)
+   */
+  async _speakVoiceConvChunkedPipeline(plain, voicePref, mySession, btn) {
+    if (!window.navio?.navioTTS || btn) return false;
+    const chunks = navioVoiceConvTtsChunkPlan(plain.slice(0, 4000));
+    if (chunks.length <= 1) return false;
+
+    void this._refreshCachedTtsVoice();
+    let prefetched = window.navio.navioTTS({ text: chunks[0].slice(0, 4000), voice: voicePref });
+
+    for (let i = 0; i < chunks.length; i++) {
+      if (mySession !== this._ttsSessionId) return true;
+      const result = await prefetched;
+      if (mySession !== this._ttsSessionId) return true;
+      if (i + 1 < chunks.length) {
+        prefetched = window.navio.navioTTS({ text: chunks[i + 1].slice(0, 4000), voice: voicePref });
+      }
+      const isLast = i === chunks.length - 1;
+      if (!result || !result.ok || !result.audio) {
+        const tail = chunks.slice(i).join('').trim();
+        if (tail) {
+          await this._speakWebSpeechUtterance(tail, voicePref, mySession, btn, true);
+        } else if (isLast && this._voiceConvActive) {
+          setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
+        }
+        return true;
+      }
+      await this._playOpenAITtsClip(result, mySession, btn, isLast);
+    }
+    return true;
+  }
+
+  /** Web Speech fallback / tail after chunked OpenAI partial failure. */
+  async _speakWebSpeechUtterance(plain, voicePref, mySession, btn, isLastChunk = true) {
+    if (mySession !== this._ttsSessionId) return;
+    if (!window.speechSynthesis) {
+      if (btn) btn.classList.remove('tts-speaking');
+      if (isLastChunk && this._voiceConvActive) {
+        setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
+      }
+      return;
+    }
+    if (btn) {
+      btn.classList.remove('tts-loading');
+      btn.classList.add('tts-speaking');
+    }
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(plain);
+    const voices = window.speechSynthesis.getVoices();
+    const isFemalePref = voicePref === 'nova' || voicePref === 'shimmer' || voicePref === 'alloy';
+    const scoreVoice = (v) => {
+      let score = 0;
+      if (/en[-_]US/i.test(v.lang)) score += 10;
+      else if (/en/i.test(v.lang)) score += 5;
+      if (/online|neural|natural/i.test(v.name)) score += 8;
+      if (/premium|enhanced/i.test(v.name)) score += 4;
+      const isFemale = /ava|emma|aria|nova|shimmer|zira|samantha|victoria|karen|moira|siri|google uk english female|female/i.test(v.name);
+      const isMale = /andrew|ryan|echo|onyx|guy|luca|daniel|rishi|aaron|male/i.test(v.name);
+      if (isFemalePref && isFemale) score += 6;
+      if (!isFemalePref && isMale) score += 6;
+      return score;
+    };
+    if (voices.length > 0) {
+      const sorted = voices.slice().sort((a, b) => scoreVoice(b) - scoreVoice(a));
+      const best = sorted[0];
+      if (best) utt.voice = best;
+    }
+    utt.rate = 0.92;
+    utt.pitch = isFemalePref ? 1.05 : 0.9;
+    utt.volume = 1.0;
+    this._setTTSBarVisible(true, 'Reading aloud…');
+    await new Promise((resolve) => {
+      utt.onend = () => {
+        if (mySession !== this._ttsSessionId) {
+          resolve();
+          return;
+        }
+        if (btn) btn.classList.remove('tts-speaking');
+        if (isLastChunk) this._setTTSBarVisible(false);
+        if (isLastChunk && this._voiceConvActive) {
+          setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
+        }
+        resolve();
+      };
+      utt.onerror = () => {
+        if (mySession !== this._ttsSessionId) {
+          resolve();
+          return;
+        }
+        if (btn) btn.classList.remove('tts-speaking', 'tts-loading');
+        if (isLastChunk) this._setTTSBarVisible(false);
+        if (isLastChunk && this._voiceConvActive) {
+          setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
+        }
+        resolve();
+      };
+      window.speechSynthesis.speak(utt);
+    });
+  }
+
+  /**
    * Speak text using OpenAI TTS (nova = female, onyx = male) with Web Speech API as fallback.
    * Prefers the configured voice gender preference.
    * @param {string} text - Text to speak
@@ -2238,15 +2485,18 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     this._stopSpeaking();
     const mySession = ++this._ttsSessionId;
 
-    // Get voice preference (default: 'nova' = female)
-    let voicePref = 'nova';
-    try {
-      const cfg = await window.navio.getConfig();
-      voicePref = cfg.ttsVoice || 'nova';
-    } catch { /* ignore */ }
+    void this._refreshCachedTtsVoice();
+    const voicePref = this._cachedTtsVoice || 'nova';
 
-    // Bail if a newer _speakText call started while we were waiting for config
     if (mySession !== this._ttsSessionId) return;
+
+    const useChunkedVoice =
+      this._voiceConvActive && !btn && plain.length > NAVIO_VOICE_TTS_FIRST_CHUNK && window.navio?.navioTTS;
+
+    if (useChunkedVoice) {
+      const handled = await this._speakVoiceConvChunkedPipeline(plain, voicePref, mySession, btn);
+      if (handled) return;
+    }
 
     // Try OpenAI TTS first (much more human-sounding)
     if (window.navio && window.navio.navioTTS) {
@@ -2257,28 +2507,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         if (mySession !== this._ttsSessionId) return;
 
         if (result && result.ok && result.audio) {
-          // Audio ready — transition from loading → speaking, show stop bar
-          if (btn) { btn.classList.remove('tts-loading'); btn.classList.add('tts-speaking'); }
-          this._setTTSBarVisible(true, 'Reading aloud…');
-          const dataUrl = `data:${result.mimeType || 'audio/mpeg'};base64,${result.audio}`;
-          const audio = new Audio(dataUrl);
-          audio.volume = 1.0;
-          this._currentAudio = audio;
-          audio.addEventListener('ended', () => {
-            if (mySession !== this._ttsSessionId) return;
-            this._currentAudio = null;
-            if (btn) btn.classList.remove('tts-speaking');
-            this._setTTSBarVisible(false);
-            if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
-          });
-          audio.addEventListener('error', () => {
-            if (mySession !== this._ttsSessionId) return;
-            this._currentAudio = null;
-            if (btn) btn.classList.remove('tts-speaking', 'tts-loading');
-            this._setTTSBarVisible(false);
-            if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
-          });
-          await audio.play();
+          await this._playOpenAITtsClip(result, mySession, btn, true);
           return;
         }
       } catch { /* fall through to Web Speech API */ }
@@ -2287,56 +2516,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     // Bail again if superseded before reaching Web Speech fallback
     if (mySession !== this._ttsSessionId) return;
 
-    // Fallback: Web Speech API with best available voice (near-instant, skip loading state)
-    if (btn) { btn.classList.remove('tts-loading'); btn.classList.add('tts-speaking'); }
-    if (!window.speechSynthesis) {
-      if (btn) btn.classList.remove('tts-speaking');
-      return;
-    }
-    window.speechSynthesis.cancel();
-    const utt = new SpeechSynthesisUtterance(plain);
-
-    // Select the most natural-sounding available voice
-    const voices = window.speechSynthesis.getVoices();
-    const isFemalePref = voicePref === 'nova' || voicePref === 'shimmer' || voicePref === 'alloy';
-
-    // Priority order: online Neural → online → any matching gender/language
-    const scoreVoice = (v) => {
-      let score = 0;
-      if (/en[-_]US/i.test(v.lang)) score += 10;
-      else if (/en/i.test(v.lang)) score += 5;
-      if (/online|neural|natural/i.test(v.name)) score += 8;
-      if (/premium|enhanced/i.test(v.name)) score += 4;
-      const isFemale = /ava|emma|aria|nova|shimmer|zira|samantha|victoria|karen|moira|siri|google uk english female|female/i.test(v.name);
-      const isMale = /andrew|ryan|echo|onyx|guy|luca|daniel|rishi|aaron|male/i.test(v.name);
-      if (isFemalePref && isFemale) score += 6;
-      if (!isFemalePref && isMale) score += 6;
-      return score;
-    };
-
-    if (voices.length > 0) {
-      const sorted = voices.slice().sort((a, b) => scoreVoice(b) - scoreVoice(a));
-      const best = sorted[0];
-      if (best) utt.voice = best;
-    }
-
-    utt.rate = 0.92;    // Slightly slower for soothing feel
-    utt.pitch = isFemalePref ? 1.05 : 0.9;
-    utt.volume = 1.0;
-    this._setTTSBarVisible(true, 'Reading aloud…');
-    utt.onend = () => {
-      if (mySession !== this._ttsSessionId) return;
-      if (btn) btn.classList.remove('tts-speaking');
-      this._setTTSBarVisible(false);
-      if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
-    };
-    utt.onerror = () => {
-      if (mySession !== this._ttsSessionId) return;
-      if (btn) btn.classList.remove('tts-speaking', 'tts-loading');
-      this._setTTSBarVisible(false);
-      if (this._voiceConvActive) setTimeout(() => this._voiceConvListen(), NAVIO_VOICE_CONV_AFTER_TTS_MS);
-    };
-    window.speechSynthesis.speak(utt);
+    await this._speakWebSpeechUtterance(plain, voicePref, mySession, btn, true);
   }
 
   /** Show / hide the persistent TTS active bar above the input area. */
@@ -4936,18 +5116,14 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   _maybeAutoSpeakAssistantReply(plainText) {
     const t = String(plainText || '').trim().slice(0, 4000);
     if (!t) return;
-    const _voiceConvNow = this._voiceConvActive;
+    if (this._voiceConvActive) {
+      this._voiceConvSetState('speaking');
+      void this._speakText(t);
+      return;
+    }
     void window.navio.getConfig().then((cfg) => {
-      if ((cfg && cfg.ttsEnabled) || _voiceConvNow) {
-        if (_voiceConvNow) this._voiceConvSetState('speaking');
-        this._speakText(t);
-      }
-    }).catch(() => {
-      if (_voiceConvNow) {
-        this._voiceConvSetState('speaking');
-        this._speakText(t);
-      }
-    });
+      if (cfg && cfg.ttsEnabled) void this._speakText(t);
+    }).catch(() => { /* ignore */ });
   }
 
   addMessage(role, content, type = '', meta = null) {
