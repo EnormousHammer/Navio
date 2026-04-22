@@ -900,7 +900,7 @@ const NTP = (() => {
         : `style="--shortcut-glow:rgba(0,216,255,0.35)"`;
       const iconContent = hasCustom
         ? brandSvg
-        : `<img src="${favicon}" alt="${_esc(item.title)}" loading="lazy">`;
+        : `<img src="${favicon}" alt="${_esc(item.title)}" loading="lazy" draggable="false">`;
       btn.innerHTML = `
         <div class="${iconClass}" ${iconStyle}>${iconContent}</div>
         <span>${_esc(item.title)}</span>

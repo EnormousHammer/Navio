@@ -990,7 +990,8 @@
 .new-tab-page .ntp-shortcuts-row-inner {
   gap: 5px;
   row-gap: 4px;
-  overflow-x: clip;
+  /* hidden: clips overflow without breaking HTML5 drag like overflow-x: clip can in Chromium */
+  overflow-x: hidden;
   overflow-y: visible;
   padding-top: 8px;
   margin-top: -8px;

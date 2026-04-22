@@ -1841,6 +1841,7 @@ class TabManagerClass {
       while (faviconEl.firstChild) faviconEl.removeChild(faviconEl.firstChild);
       const img = document.createElement('img');
       img.alt = '';
+      img.draggable = false;
       img.setAttribute('src', String(tab.favicon));
       faviconEl.appendChild(img);
     } else {

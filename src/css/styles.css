@@ -777,6 +777,10 @@ body.navio-assistant-open #app {
 
 /* ── Horizontal Tab Items ── */
 
+.tab-favicon img {
+  -webkit-user-drag: none;
+}
+
 .tab-item {
   display: flex;
   align-items: center;
@@ -4329,6 +4333,14 @@ button.ntp-ticker-sport--stream:focus-visible {
 
 .ntp-shortcut[draggable="true"] {
   cursor: grab;
+}
+/* Favicons/images are draggable by default — that steals DnD from the parent shortcut tile */
+.ntp-shortcut img {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+.ntp-shortcut .shortcut-icon--custom-svg svg {
+  -webkit-user-drag: none;
 }
 .ntp-shortcut--dragging {
   cursor: grabbing;
