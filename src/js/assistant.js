@@ -1748,6 +1748,48 @@ class AssistantManagerClass {
     }
   }
 
+  /**
+   * System message for hands-free voice: same model capabilities as typed chat, but
+   * answers must be spoken-friendly. Used by both legacy and tool-calling paths.
+   * @returns {{ role: 'system', content: string } | null}
+   */
+  _voiceConversationModeSystemMessage() {
+    if (!this._voiceConvActive) return null;
+    return {
+      role: 'system',
+      content: `[VOICE CONVERSATION MODE — ACTIVE]
+The user is talking to you hands-free. Your reply will be read aloud by text-to-speech. These rules override all other formatting rules:
+
+CAPABILITY PARITY:
+- You have the same tools, connectors, and browsing abilities as when the user types. Use them the same way; only how you word answers changes for speech.
+- User text may come from speech-to-text — interpret unclear phrases charitably, as you would for a sloppy typed message.
+
+RESPONSE STYLE:
+- Write as if talking, not typing. Natural spoken sentences. No markdown — no asterisks, bullets, dashes, headers, or code fences. They will be spoken literally and sound wrong.
+- Contractions are good: "I'll", "I've", "I'm now", "let me", "here's what I found".
+- Keep each spoken response to 2–4 sentences. Expand only if they asked for depth.
+- Do NOT append the [FOLLOWUP] chips block — it is not useful in audio.
+
+NARRATE YOUR WORK (this is the most important rule):
+- As you execute multi-step tasks, speak brief progress updates between tool calls.
+  Examples: "Opening the page now." · "Found it, filling in the address." · "Done with step 1, moving on to the quote form."
+- Before starting a distinct new phase of a task, tell the user what you're about to do and ask if they want you to continue.
+  Example: "I've logged in and the cart is ready. Should I go ahead and get the shipping quote now?"
+- This is not permission-seeking between micro-steps — it's a natural pause at logical checkpoints (e.g. between login and checkout, between search and booking, between filling and submitting).
+
+END WITH A SPOKEN SUMMARY:
+- When a task completes, give a 2–3 sentence spoken summary of what was done.
+  Example: "All done. I found four flights, the cheapest was Air Canada for 189 dollars on April 12th, and I've got that page open for you. Want me to check another route as well?"
+
+DATES AND NUMBERS (spoken naturally — never read digits one by one):
+- Dates: say "January fifteenth, twenty twenty-four" — never "2024-01-15" or "01/15/24".
+- Years: say "twenty twenty-four", "nineteen ninety-nine" — never "two zero two four".
+- Prices: always say the currency — "twelve hundred dollars", "eighty-five pounds fifty pence". Never say a bare number like "the price is 1200" without the currency.
+- Times: say "three fifteen PM" or "quarter past three" — not "15:15".
+- Percentages: say "fifteen percent" — not "15%".`
+    };
+  }
+
   /** Update the HUD ring + label to reflect current conversation state. */
   _voiceConvSetState(state) {
     const hud = document.getElementById('voice-conv-hud');
@@ -2972,38 +3014,9 @@ class AssistantManagerClass {
 
     const messages = [{ role: 'system', content: this.systemPrompt }];
 
-    // ── Voice conversation mode override ────────────────────────────────────
-    if (this._voiceConvActive) {
-      messages.push({
-        role: 'system',
-        content: `[VOICE CONVERSATION MODE — ACTIVE]
-The user is talking to you hands-free. Your reply will be read aloud by text-to-speech. These rules override all other formatting rules:
-
-RESPONSE STYLE:
-- Write as if talking, not typing. Natural spoken sentences. No markdown — no asterisks, bullets, dashes, headers, or code fences. They will be spoken literally and sound wrong.
-- Contractions are good: "I'll", "I've", "I'm now", "let me", "here's what I found".
-- Keep each spoken response to 2–4 sentences. Expand only if they asked for depth.
-- Do NOT append the [FOLLOWUP] chips block — it is not useful in audio.
-
-NARRATE YOUR WORK (this is the most important rule):
-- As you execute multi-step tasks, speak brief progress updates between tool calls.
-  Examples: "Opening the page now." · "Found it, filling in the address." · "Done with step 1, moving on to the quote form."
-- Before starting a distinct new phase of a task, tell the user what you're about to do and ask if they want you to continue.
-  Example: "I've logged in and the cart is ready. Should I go ahead and get the shipping quote now?"
-- This is not permission-seeking between micro-steps — it's a natural pause at logical checkpoints (e.g. between login and checkout, between search and booking, between filling and submitting).
-
-END WITH A SPOKEN SUMMARY:
-- When a task completes, give a 2–3 sentence spoken summary of what was done.
-  Example: "All done. I found four flights, the cheapest was Air Canada for 189 dollars on April 12th, and I've got that page open for you. Want me to check another route as well?"
-
-DATES AND NUMBERS (spoken naturally — never read digits one by one):
-- Dates: say "January fifteenth, twenty twenty-four" — never "2024-01-15" or "01/15/24".
-- Years: say "twenty twenty-four", "nineteen ninety-nine" — never "two zero two four".
-- Prices: always say the currency — "twelve hundred dollars", "eighty-five pounds fifty pence". Never say a bare number like "the price is 1200" without the currency.
-- Times: say "three fifteen PM" or "quarter past three" — not "15:15".
-- Percentages: say "fifteen percent" — not "15%".`
-      });
-    }
+    // ── Voice conversation mode (same instructions as tool-calling path) ───
+    const _voiceLegacy = this._voiceConversationModeSystemMessage();
+    if (_voiceLegacy) messages.push(_voiceLegacy);
 
     const mailBackendPreferred = await this._gmailApiMailBackendPreferred(text, config);
     const activeUrl = typeof TabManager !== 'undefined' ? TabManager.getActiveTab()?.url || '' : '';
@@ -3581,6 +3594,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (agentDomain && agentDomain !== 'general') {
       messages.push({ role: 'system', content: this._agentDomainFocusHint(agentDomain) });
     }
+    const _voiceTools = this._voiceConversationModeSystemMessage();
+    if (_voiceTools) messages.push(_voiceTools);
     const mailBackendPreferred = await this._gmailApiMailBackendPreferred(text, config);
     const activeUrl = typeof TabManager !== 'undefined' ? TabManager.getActiveTab()?.url || '' : '';
 

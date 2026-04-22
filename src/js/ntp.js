@@ -22,6 +22,8 @@ const NTP = (() => {
   let _ntpChatStreaming  = false;
   let _ntpChatStreamUnsubs = []; // cleanup fns for stream listeners
   const _ntpChatStreamKey = 'ntp-chat-' + Date.now();
+  /** Keep in sync with NAVIO_VOICE_END_SILENCE_MS in assistant.js (Whisper + browser STT end-of-utterance). */
+  const NTP_VOICE_END_SILENCE_MS = 2800;
   const DEFAULT_NTP_SHORTCUTS = [
     { title: 'Google', url: 'https://www.google.com' },
     { title: 'Gmail', url: 'https://mail.google.com' },
@@ -2220,57 +2222,262 @@ const NTP = (() => {
   }
 
   // ── NTP Voice Mode ────────────────────────────────────────────────────────
+  // Same STT stack as the sidebar assistant: OpenAI Whisper when navioSTT exists,
+  // else Web Speech with silence-based auto-send (Windows/Chromium rarely marks isFinal).
 
   function _bindNtpVoiceMode() {
+    const hasWhisper = !!(window.navio && window.navio.navioSTT);
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
+    if (!hasWhisper && !SpeechRecognition) return;
 
-    let recognition = null;
     let listening = false;
+    let stopWhisper = null;
+    let recognition = null;
+    let webSpeechSilenceTimer = null;
 
-    const startListening = (targetInput, onFinal) => {
+    const clearMicUi = () => {
+      document.getElementById('ntp-search-mic')?.classList.remove('listening');
+      document.getElementById('ntp-chat-voice')?.classList.remove('listening');
+    };
+
+    const restoreInputPlaceholder = (targetInput) => {
+      if (!targetInput) return;
+      if (targetInput.dataset.ntpVoicePhSave != null) {
+        targetInput.placeholder = targetInput.dataset.ntpVoicePhSave;
+        delete targetInput.dataset.ntpVoicePhSave;
+      }
+    };
+
+    const stopListening = () => {
+      listening = false;
+      clearTimeout(webSpeechSilenceTimer);
+      webSpeechSilenceTimer = null; // also clears pending browser-STT auto-submit
+      if (stopWhisper) {
+        try { stopWhisper(); } catch { /* ignore */ }
+        stopWhisper = null;
+      }
+      if (recognition) {
+        try { recognition.stop(); } catch { /* ignore */ }
+        recognition = null;
+      }
+      clearMicUi();
+    };
+
+    /**
+     * Record mic → Whisper (mirrors AssistantManager._whisperListen without sharedStream).
+     * @returns {function} stop
+     */
+    function ntpWhisperListen(onTranscript, onUpdate) {
+      let aborted = false;
+      let ownedStream = null;
+      let mediaRecorder = null;
+      let audioCtx = null;
+      let rafId = null;
+      const chunks = [];
+
+      const cleanup = () => {
+        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+        if (ownedStream) { ownedStream.getTracks().forEach(t => t.stop()); ownedStream = null; }
+        if (audioCtx) { try { audioCtx.close(); } catch { /* ignore */ } audioCtx = null; }
+      };
+
+      const stop = () => {
+        aborted = true;
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          try { mediaRecorder.stop(); } catch { /* ignore */ }
+        } else {
+          cleanup();
+        }
+      };
+
+      (async () => {
+        try {
+          const stream = ownedStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          if (aborted) {
+            ownedStream.getTracks().forEach(t => t.stop());
+            ownedStream = null;
+            return;
+          }
+
+          audioCtx = new AudioContext();
+          const source = audioCtx.createMediaStreamSource(stream);
+          const analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 1024;
+          analyser.smoothingTimeConstant = 0.2;
+          source.connect(analyser);
+          const pcmBuf = new Uint8Array(analyser.frequencyBinCount);
+
+          const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/ogg']
+            .find(t => MediaRecorder.isTypeSupported(t)) || '';
+          mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+          mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+          mediaRecorder.start(80);
+
+          let hasSpoken = false;
+          let silenceStart = null;
+          const SPEECH_THRESHOLD = 10;
+          const SILENCE_THRESHOLD = 6;
+          const recordStart = Date.now();
+          const MAX_RECORD_MS = 90_000;
+
+          const vadLoop = () => {
+            if (aborted) return;
+            analyser.getByteTimeDomainData(pcmBuf);
+            let sum = 0;
+            for (let i = 0; i < pcmBuf.length; i++) {
+              const v = (pcmBuf[i] - 128) / 128;
+              sum += v * v;
+            }
+            const rms = Math.sqrt(sum / pcmBuf.length) * 100;
+            onUpdate?.({ state: 'recording', level: rms });
+
+            if (rms > SPEECH_THRESHOLD) {
+              hasSpoken = true;
+              silenceStart = null;
+            } else if (hasSpoken && rms < SILENCE_THRESHOLD) {
+              if (!silenceStart) silenceStart = Date.now();
+              else if (Date.now() - silenceStart >= NTP_VOICE_END_SILENCE_MS) {
+                stop();
+                return;
+              }
+            }
+            if (Date.now() - recordStart > MAX_RECORD_MS) { stop(); return; }
+            rafId = requestAnimationFrame(vadLoop);
+          };
+          rafId = requestAnimationFrame(vadLoop);
+
+          mediaRecorder.onstop = async () => {
+            cleanup();
+            if (chunks.length === 0 || !hasSpoken) { onTranscript(''); return; }
+            onUpdate?.({ state: 'processing', level: 0 });
+            try {
+              const blob = new Blob(chunks, { type: mime ? mime.split(';')[0] : 'audio/webm' });
+              const arrayBuf = await blob.arrayBuffer();
+              const uint8 = new Uint8Array(arrayBuf);
+              const CHUNK = 8192;
+              let bin = '';
+              for (let i = 0; i < uint8.length; i += CHUNK) {
+                bin += String.fromCharCode(...uint8.subarray(i, Math.min(i + CHUNK, uint8.length)));
+              }
+              const b64 = btoa(bin);
+              if (!window.navio?.navioSTT) { onTranscript(''); return; }
+              const result = await window.navio.navioSTT({
+                audio: b64,
+                mimeType: mime ? mime.split(';')[0] : 'audio/webm',
+                language: 'en',
+              });
+              onTranscript(result?.ok ? (result.text || '') : '');
+            } catch {
+              onTranscript('');
+            }
+          };
+        } catch {
+          cleanup();
+          onTranscript('');
+        }
+      })();
+
+      return stop;
+    }
+
+    function startWebSpeech(micEl, targetInput, onFinal) {
+      if (!SpeechRecognition) return;
       if (listening) { stopListening(); return; }
+      listening = true;
+      micEl?.classList.add('listening');
+      const baseline = (targetInput?.value || '').trimEnd();
       recognition = new SpeechRecognition();
       recognition.lang = 'en-US';
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 
-      recognition.onstart = () => { listening = true; };
-      recognition.onresult = (e) => {
-        const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
-        if (targetInput) targetInput.value = transcript;
-        if (e.results[e.results.length - 1].isFinal) {
+      let lastTranscript = '';
+      const scheduleAutoSubmit = (t) => {
+        clearTimeout(webSpeechSilenceTimer);
+        lastTranscript = t;
+        webSpeechSilenceTimer = setTimeout(() => {
+          try { recognition?.stop(); } catch { /* ignore */ }
+          const done = lastTranscript.trim();
           stopListening();
-          if (transcript.trim()) onFinal(transcript.trim());
+          if (done) onFinal(done);
+        }, NTP_VOICE_END_SILENCE_MS);
+      };
+
+      const finish = (t) => {
+        clearTimeout(webSpeechSilenceTimer);
+        webSpeechSilenceTimer = null;
+        const raw = (t || '').trim();
+        stopListening();
+        if (raw) onFinal(raw);
+      };
+
+      recognition.onresult = (e) => {
+        const t = Array.from(e.results).map(r => r[0].transcript).join('');
+        if (targetInput) {
+          const display = baseline.trim() ? `${baseline.trim()}\n${t}` : t;
+          targetInput.value = display;
+        }
+        if (e.results[e.results.length - 1].isFinal) {
+          finish(t);
+        } else {
+          scheduleAutoSubmit(t);
         }
       };
-      recognition.onerror = () => stopListening();
-      recognition.onend   = () => stopListening();
-      recognition.start();
+      recognition.onerror = () => { stopListening(); };
+      recognition.onend = () => {
+        clearTimeout(webSpeechSilenceTimer);
+        webSpeechSilenceTimer = null;
+        if (listening) stopListening();
+      };
+      try {
+        recognition.start();
+      } catch {
+        stopListening();
+      }
+    }
+
+    function startWhisper(micEl, targetInput, onFinal) {
+      if (listening) { stopListening(); return; }
+      if (!navigator.mediaDevices?.getUserMedia) {
+        if (typeof _showAppToast === 'function') {
+          _showAppToast('Voice input needs microphone access.', 'warning');
+        }
+        return;
+      }
+      listening = true;
+      micEl?.classList.add('listening');
+      if (targetInput) {
+        targetInput.dataset.ntpVoicePhSave = targetInput.placeholder || '';
+        targetInput.placeholder = 'Listening… pause ~3 sec when done';
+      }
+
+      stopWhisper = ntpWhisperListen(
+        (text) => {
+          restoreInputPlaceholder(targetInput);
+          stopWhisper = null;
+          stopListening();
+          if (text.trim()) onFinal(text.trim());
+        },
+        ({ state }) => {
+          if (targetInput && state === 'processing') targetInput.placeholder = 'Transcribing…';
+        }
+      );
+    }
+
+    const wireMic = (micEl, targetInput) => {
+      micEl?.addEventListener('click', () => {
+        if (listening) {
+          stopListening();
+          return;
+        }
+        const onFinal = (text) => { _ntpStartChat(text); };
+        if (hasWhisper) startWhisper(micEl, targetInput, onFinal);
+        else startWebSpeech(micEl, targetInput, onFinal);
+      });
     };
 
-    const stopListening = () => {
-      listening = false;
-      if (recognition) { try { recognition.stop(); } catch {} recognition = null; }
-      document.getElementById('ntp-search-mic')?.classList.remove('listening');
-      document.getElementById('ntp-chat-voice')?.classList.remove('listening');
-    };
-
-    // Search bar mic
-    const searchMic = document.getElementById('ntp-search-mic');
-    const searchInput = document.getElementById('ntp-search-input');
-    searchMic?.addEventListener('click', () => {
-      searchMic.classList.toggle('listening');
-      startListening(searchInput, (text) => { _ntpStartChat(text); });
-    });
-
-    // Follow-up mic inside chat panel
-    const chatMic = document.getElementById('ntp-chat-voice');
-    const followInput = document.getElementById('ntp-chat-followup-input');
-    chatMic?.addEventListener('click', () => {
-      chatMic.classList.toggle('listening');
-      startListening(followInput, (text) => { _ntpStartChat(text); });
-    });
+    wireMic(document.getElementById('ntp-search-mic'), document.getElementById('ntp-search-input'));
+    wireMic(document.getElementById('ntp-chat-voice'), document.getElementById('ntp-chat-followup-input'));
   }
 
   // ── NTP TTS ───────────────────────────────────────────────────────────────
