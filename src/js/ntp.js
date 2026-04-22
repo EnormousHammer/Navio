@@ -751,13 +751,14 @@ const NTP = (() => {
       if (_mode === 'task') {
         await _openAssistantInNewTab(val, { taskMode: true });
       } else if (_mode === 'ai') {
-        _ntpStartChat(val);
+        // Full-page AI tab — not inline NTP overlay (users need a normal tab + back to home).
+        await _openAssistantInNewTab(val);
       } else {
         const raw = val;
         if (raw.startsWith('>>') || /^ai:\s*/i.test(raw)) {
-          _ntpStartChat(val.replace(/^ai:\s*/i, '').replace(/^>>/, '').trim() || val);
+          await _openAssistantInNewTab(val);
         } else if (typeof App !== 'undefined' && App._isAIQuery && App._isAIQuery(val)) {
-          _ntpStartChat(val);
+          await _openAssistantInNewTab(val);
         } else {
           if (typeof App !== 'undefined') App.handleSearch(val);
         }
@@ -2584,7 +2585,9 @@ const NTP = (() => {
           stopListening();
           return;
         }
-        const onFinal = (text) => { _ntpStartChat(text); };
+        const onFinal = (text) => {
+          void _openAssistantInNewTab(text);
+        };
         if (hasWhisper) startWhisper(micEl, targetInput, onFinal);
         else startWebSpeech(micEl, targetInput, onFinal);
       });
