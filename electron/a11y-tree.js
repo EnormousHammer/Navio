@@ -43,9 +43,30 @@ const STRUCTURAL_ROLES = new Set([
 
 // ── CDP tree extraction ──────────────────────────────────────────────────────
 
+/** Collect every frame id (root first, then depth-preorder) from Page.getFrameTree. */
+function collectFrameDescriptors(frameTreeRoot) {
+  const out = [];
+  const walk = (n) => {
+    if (!n) return;
+    if (n.frame && n.frame.id) {
+      out.push({
+        id: n.frame.id,
+        url: String(n.frame.url || '').slice(0, 220)
+      });
+    }
+    for (const c of n.childFrames || []) walk(c);
+  };
+  walk(frameTreeRoot);
+  return out;
+}
+
 /**
  * Attaches the CDP debugger, fetches the full accessibility tree, transforms it
  * to YAML with ref_ids, and stores the refMap for later click resolution.
+ *
+ * Fetches **one AX tree per frame** (`Accessibility.getFullAXTree` with `frameId`).
+ * Without this, only the root document is returned — nested iframes (Gmail compose
+ * To / Subject / body, many SPAs) appear empty to the assistant.
  *
  * Returns { yaml, url, title } or null if CDP fails (e.g. DevTools is open).
  */
@@ -58,11 +79,72 @@ async function getAccessibilityTreeOnce(wc, opts = {}) {
       attachedHere = true;
       persistentSessions.set(wc.id, true);
     }
-    // depth: -1 = full tree including shadow DOM frames
-    const { nodes } = await wc.debugger.sendCommand('Accessibility.getFullAXTree', { depth });
-    const { yaml, refMap } = buildYamlTree(nodes, filter, maxChars, refId);
-    refMaps.set(wc.id, refMap);
-    return { yaml, url: wc.getURL(), title: wc.getTitle() };
+    await wc.debugger.sendCommand('Page.enable').catch(() => {});
+
+    let frameDescriptors = [];
+    try {
+      const { frameTree } = await wc.debugger.sendCommand('Page.getFrameTree');
+      if (frameTree) frameDescriptors = collectFrameDescriptors(frameTree);
+    } catch {
+      frameDescriptors = [];
+    }
+
+    // Safety cap — some sites have huge frame trees; Gmail is typically < 30.
+    const MAX_FRAMES = 40;
+    if (frameDescriptors.length > MAX_FRAMES) {
+      frameDescriptors = frameDescriptors.slice(0, MAX_FRAMES);
+    }
+
+    if (!frameDescriptors.length) {
+      const { nodes } = await wc.debugger.sendCommand('Accessibility.getFullAXTree', { depth });
+      const built = buildYamlTree(nodes, filter, maxChars, refId, 1);
+      refMaps.set(wc.id, built.refMap);
+      return { yaml: built.yaml, url: wc.getURL(), title: wc.getTitle() };
+    }
+
+    let combinedYaml = '';
+    const combinedRefMap = new Map();
+    let nextRefStart = 1;
+
+    for (let fi = 0; fi < frameDescriptors.length; fi++) {
+      const { id: frameId, url: frameUrl } = frameDescriptors[fi];
+      const charBudget = Math.max(0, maxChars - combinedYaml.length);
+      if (charBudget < 120) break;
+
+      let nodes;
+      try {
+        const res = await wc.debugger.sendCommand('Accessibility.getFullAXTree', {
+          depth,
+          frameId
+        });
+        nodes = res.nodes;
+      } catch {
+        continue;
+      }
+      if (!nodes || !nodes.length) continue;
+
+      const scopeThis = fi === 0 ? refId : undefined;
+      const built = buildYamlTree(nodes, filter, charBudget, scopeThis, nextRefStart);
+      for (const [k, v] of built.refMap) combinedRefMap.set(k, v);
+      nextRefStart = built.nextRefCounter;
+
+      const header =
+        fi === 0 ? '' : `# --- Subframe (${frameUrl || frameId}) ---\n`;
+      combinedYaml += header + built.yaml;
+      if (fi < frameDescriptors.length - 1 && combinedYaml.length < maxChars - 2) {
+        combinedYaml += '\n';
+      }
+    }
+
+    if (!combinedYaml.trim()) {
+      const { nodes } = await wc.debugger.sendCommand('Accessibility.getFullAXTree', { depth });
+      const built = buildYamlTree(nodes, filter, maxChars, refId, 1);
+      refMaps.set(wc.id, built.refMap);
+      return { yaml: built.yaml, url: wc.getURL(), title: wc.getTitle() };
+    }
+
+    refMaps.set(wc.id, combinedRefMap);
+    return { yaml: combinedYaml, url: wc.getURL(), title: wc.getTitle() };
   } catch (err) {
     console.log('[navio] CDP accessibility tree attempt failed:', err.message);
     return null;
@@ -90,9 +172,13 @@ async function getAccessibilityTree(wc, opts = {}) {
  *
  * Each AXNode has: { nodeId, backendDOMNodeId, parentId, role, name, childIds, ... }
  * (backendDOMNodeId is the DOM node identifier used by DOM.resolveNode)
+ *
+ * @param {number} refCounterStart  First ref index (ref_N) for this segment — used when merging multi-frame trees.
  */
-function buildYamlTree(nodes, filter, maxChars, scopeRefId) {
-  if (!nodes || !nodes.length) return { yaml: '(empty page)', refMap: new Map() };
+function buildYamlTree(nodes, filter, maxChars, scopeRefId, refCounterStart = 1) {
+  if (!nodes || !nodes.length) {
+    return { yaml: '(empty page)', refMap: new Map(), nextRefCounter: refCounterStart };
+  }
 
   // Build a lookup by nodeId
   const byId = new Map();
@@ -101,7 +187,7 @@ function buildYamlTree(nodes, filter, maxChars, scopeRefId) {
   }
 
   const refMap = new Map();
-  let refCounter = 1;
+  let refCounter = refCounterStart;
 
   // Determine the effective role string from an AXNode
   function getRole(node) {
@@ -259,7 +345,7 @@ function buildYamlTree(nodes, filter, maxChars, scopeRefId) {
     walkNode(root.nodeId, 0);
   }
 
-  return { yaml: output || '(empty page)', refMap };
+  return { yaml: output || '(empty page)', refMap, nextRefCounter: refCounter };
 }
 
 function truncName(name) {
