@@ -1539,7 +1539,8 @@ class AssistantManagerClass {
    *   Pass this._vcPersistentStream in voice-conversation mode so barge-in has zero latency.
    */
   _whisperListen(onTranscript, onUpdate, sharedStream = null) {
-    let aborted = false;
+    /** True only when the user cancels — NOT when VAD / max-duration ends the take. */
+    let userAborted = false;
     let ownedStream = null;  // only set when WE opened the mic
     let mediaRecorder = null;
     let audioCtx = null;
@@ -1553,13 +1554,19 @@ class AssistantManagerClass {
       if (audioCtx) { try { audioCtx.close(); } catch { /* ignore */ } audioCtx = null; }
     };
 
-    const stop = () => {
-      aborted = true;
+    /** End-of-utterance (silence VAD or cap) — must still run Whisper in `onstop`. */
+    const endRecording = () => {
       if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         try { mediaRecorder.stop(); } catch { /* ignore */ }
       } else {
         cleanup();
       }
+    };
+
+    /** Mic toolbar Stop / End — discard audio, do not transcribe. */
+    const userStop = () => {
+      userAborted = true;
+      endRecording();
     };
 
     (async () => {
@@ -1570,7 +1577,7 @@ class AssistantManagerClass {
         } else {
           stream = ownedStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         }
-        if (aborted) { if (ownedStream) { ownedStream.getTracks().forEach(t => t.stop()); ownedStream = null; } return; }
+        if (userAborted) { if (ownedStream) { ownedStream.getTracks().forEach(t => t.stop()); ownedStream = null; } return; }
 
         // ── Audio analysis for voice activity detection ──────────────────
         audioCtx = new AudioContext();
@@ -1609,7 +1616,7 @@ class AssistantManagerClass {
         let speechThresh = 14;
 
         const vadLoop = () => {
-          if (aborted) return;
+          if (userAborted) return;
           analyser.getByteTimeDomainData(pcmBuf);
           let sum = 0;
           for (let i = 0; i < pcmBuf.length; i++) {
@@ -1641,11 +1648,11 @@ class AssistantManagerClass {
             lastLoudMs = now;
           }
           if (vadCalibrated && hasSpoken && lastLoudMs && now - lastLoudMs >= SILENCE_NEEDED_MS) {
-            stop();
+            endRecording();
             return;
           }
 
-          if (now - recordStart > MAX_RECORD_MS) { stop(); return; }
+          if (now - recordStart > MAX_RECORD_MS) { endRecording(); return; }
           rafId = requestAnimationFrame(vadLoop);
         };
         rafId = requestAnimationFrame(vadLoop);
@@ -1653,9 +1660,9 @@ class AssistantManagerClass {
         // ── On recording stop: encode + send to Whisper ──────────────────
         mediaRecorder.onstop = async () => {
           cleanup();
-          if (aborted) return;
+          if (userAborted) return;
           if (chunks.length === 0 || !hasSpoken) {
-            if (!aborted) onTranscript('');
+            onTranscript('');
             return;
           }
 
@@ -1664,7 +1671,7 @@ class AssistantManagerClass {
           try {
             const blob = new Blob(chunks, { type: mime ? mime.split(';')[0] : 'audio/webm' });
             const arrayBuf = await blob.arrayBuffer();
-            if (aborted) return;
+            if (userAborted) return;
 
             // Chunked base64 encode — avoids stack overflow on large buffers
             const uint8 = new Uint8Array(arrayBuf);
@@ -1676,7 +1683,7 @@ class AssistantManagerClass {
             const b64 = btoa(bin);
 
             if (!window.navio?.navioSTT) {
-              if (!aborted) onTranscript('');
+              onTranscript('');
               return;
             }
             const result = await window.navio.navioSTT({
@@ -1684,20 +1691,20 @@ class AssistantManagerClass {
               mimeType: mime ? mime.split(';')[0] : 'audio/webm',
               language: 'en',
             });
-            if (aborted) return;
+            if (userAborted) return;
             onTranscript(result?.ok ? (result.text || '') : '');
           } catch {
-            if (!aborted) onTranscript('');
+            if (!userAborted) onTranscript('');
           }
         };
       } catch {
         // Mic access denied or device error
         cleanup();
-        if (!aborted) onTranscript('');
+        if (!userAborted) onTranscript('');
       }
     })();
 
-    return stop;
+    return userStop;
   }
 
   _bindVoiceMode() {
@@ -1830,6 +1837,10 @@ class AssistantManagerClass {
       }
       return;
     }
+    // Tear down any in-flight read-aloud **before** voice conv flips on — otherwise
+    // `_setTTSBarVisible(false)` is suppressed while `_voiceConvActive` is true and the
+    // TTS bar can stay interactive / misleading above the HUD.
+    this._stopSpeaking();
     this._voiceConvActive = true;
     this._vcInterruptActive = false;
     document.getElementById('btn-voice-conv')?.classList.add('voice-conv-on');
@@ -1838,7 +1849,6 @@ class AssistantManagerClass {
       hud.hidden = false;
       requestAnimationFrame(() => hud.classList.add('vch-show'));
     }
-    this._stopSpeaking();
 
     // Open ONE persistent mic stream for the entire conversation.
     // Shared by both the interrupt VAD analyser and Whisper recorder so barge-in
@@ -2393,18 +2403,24 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     audio.volume = 1.0;
     this._currentAudio = audio;
     await new Promise((resolve) => {
+      let settled = false;
+      const safeResolve = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
       const finish = () => {
         if (mySession !== this._ttsSessionId) {
-          resolve();
+          safeResolve();
           return;
         }
         this._currentAudio = null;
-        if (btn) btn.classList.remove('tts-speaking');
+        if (btn && isLastChunk) btn.classList.remove('tts-speaking');
         if (isLastChunk) {
           this._setTTSBarVisible(false);
           this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
         }
-        resolve();
+        safeResolve();
       };
       audio.addEventListener('ended', finish, { once: true });
       audio.addEventListener(
@@ -2415,27 +2431,40 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
             this._setTTSBarVisible(false);
             this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
           }
-          resolve();
+          safeResolve();
         },
         { once: true }
       );
+      // `pause()` from `_stopSpeaking()` does not emit `ended` — without this, the
+      // await never completes and chunked / voice TTS pipelines can stall indefinitely.
+      audio.addEventListener('pause', () => {
+        if (settled) return;
+        if (mySession !== this._ttsSessionId) {
+          this._currentAudio = null;
+          if (btn && isLastChunk) btn.classList.remove('tts-speaking');
+          if (isLastChunk) this._setTTSBarVisible(false);
+          safeResolve();
+        }
+      });
       audio.play().catch(() => {
         if (btn) btn.classList.remove('tts-speaking', 'tts-loading');
         if (isLastChunk) {
           this._setTTSBarVisible(false);
           this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
         }
-        resolve();
+        safeResolve();
       });
     });
   }
 
   /**
-   * Voice-conversation path: small first TTS request + prefetch next chunk while audio plays.
+   * Chunked OpenAI TTS: small first request + prefetch next chunk while audio plays.
+   * Used for voice conversation and for **manual Read aloud** so the user hears audio
+   * quickly instead of waiting on one huge `/v1/audio/speech` response.
    * @returns {boolean} true if the full plan was handled here (success or aborted mid-flight)
    */
   async _speakVoiceConvChunkedPipeline(plain, voicePref, mySession, btn) {
-    if (!window.navio?.navioTTS || btn) return false;
+    if (!window.navio?.navioTTS) return false;
     const chunks = navioVoiceConvTtsChunkPlan(plain.slice(0, 4000));
     if (chunks.length <= 1) return false;
 
@@ -2553,10 +2582,13 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
 
     if (mySession !== this._ttsSessionId) return;
 
-    const useChunkedVoice =
-      this._voiceConvActive && !btn && plain.length > NAVIO_VOICE_TTS_FIRST_CHUNK && window.navio?.navioTTS;
+    const chunkPlan = navioVoiceConvTtsChunkPlan(plain.slice(0, 4000));
+    const useChunkedOpenAi =
+      window.navio?.navioTTS &&
+      plain.length > NAVIO_VOICE_TTS_FIRST_CHUNK &&
+      chunkPlan.length > 1;
 
-    if (useChunkedVoice) {
+    if (useChunkedOpenAi) {
       const handled = await this._speakVoiceConvChunkedPipeline(plain, voicePref, mySession, btn);
       if (handled) return;
     }
@@ -2584,7 +2616,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
 
   /** Show / hide the persistent TTS active bar above the input area. */
   _setTTSBarVisible(visible, label = 'Reading aloud…') {
-    if (this._voiceConvActive) return; // voice conv HUD handles state display
+    // During voice conversation we hide the duplicate "reading" chrome on **show** only;
+    // **hide** must always run so Stop / End can clear a stale bar left from prior read-aloud.
+    if (visible && this._voiceConvActive) return;
     const bar = document.getElementById('tts-active-bar');
     if (!bar) return;
     const lbl = bar.querySelector('.tts-active-label');
@@ -2600,7 +2634,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
 
   /** Called by the Stop button in the TTS active bar. */
   _stopTTSFromBar() {
-    this._stopSpeaking();
+    this._stopSpeaking({ resumeVoiceListen: !!this._voiceConvActive });
     // Clear any active button states in the messages list
     if (this.messagesEl) {
       this.messagesEl.querySelectorAll('.assistant-tts-btn.tts-speaking, .assistant-tts-btn.tts-loading')
@@ -2608,8 +2642,12 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     }
   }
 
-  /** Stop any in-progress speech and cancel any pending _speakText IPC calls. */
-  _stopSpeaking() {
+  /**
+   * Stop any in-progress speech and cancel any pending _speakText IPC calls.
+   * @param {{ resumeVoiceListen?: boolean }} [opts] - If true and voice conv is active, reopen the mic after a user Stop on read-aloud (OpenAI clips do not fire `ended` when paused).
+   */
+  _stopSpeaking(opts = {}) {
+    const resumeMic = !!opts.resumeVoiceListen && this._voiceConvActive;
     // Increment session so any in-flight _speakText awaits abort themselves
     this._ttsSessionId = (this._ttsSessionId || 0) + 1;
     if (this._currentAudio) {
@@ -2618,6 +2656,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     }
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     this._setTTSBarVisible(false);
+    if (resumeMic) this._scheduleVoiceConvListen(0);
   }
 
   /**

@@ -95,9 +95,13 @@ app.on('second-instance', () => {
 function redactPII(text) {
   if (!text || typeof text !== 'string') return text;
   let t = text;
+  // Hyphenated SSN (123-45-6789)
   t = t.replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[REDACTED-SSN]');
-  t = t.replace(/\b\d{3}\s?\d{2}\s?\d{4}\b/g, '[REDACTED-SSN]');
-  t = t.replace(/\b(?:\d{4}[-\s]?){3}\d{4}\b/g, '[REDACTED-CARD]');
+  // Spaced SSN only when groups are separated by whitespace — NOT optional gaps, or 9-digit
+  // PO/SO/order IDs (e.g. 280109384) false-positive as SSN (280+10+9384).
+  t = t.replace(/\b\d{3}\s+\d{2}\s+\d{4}\b/g, '[REDACTED-SSN]');
+  // Card numbers only when 4×4 groups are separated — plain 16-digit strings match too many IDs.
+  t = t.replace(/\b\d{4}(?:[-\s]\d{4}){3}\b/g, '[REDACTED-CARD]');
   return t;
 }
 
@@ -883,8 +887,43 @@ function navioIsExternalProtocolUrl(url) {
   return /^(mailto|tel|sms|callto|wtai|market|ms-windows-store):/i.test(url || '');
 }
 
-function navioNormalizeTabOpenUrl(url) {
+/**
+ * Windows / Google sometimes emit "open in Edge/Chrome/…" handoff URLs instead of plain https.
+ * If we do not rewrite them, Chromium hands the protocol off to the OS default browser and
+ * OAuth leaves Navio entirely (e.g. Vercel "Sign in with Google").
+ */
+function navioExtractHttpsFromBrowserHandoffUrl(url) {
   const raw = String(url || '').trim();
+  if (!raw) return null;
+  const direct =
+    /^(?:microsoft-edge(?:-holographic)?|googlechrome|cometbrowser|comet|brave|vivaldi|firefox):(?:\/\/|)(https?:\/\/[^\s'"]+)/i.exec(
+      raw
+    );
+  if (direct) return direct[2];
+
+  const lower = raw.toLowerCase();
+  if (
+    lower.startsWith('microsoft-edge:') ||
+    lower.startsWith('microsoft-edge-holographic:') ||
+    lower.startsWith('googlechrome:')
+  ) {
+    try {
+      const qIdx = raw.indexOf('?');
+      if (qIdx !== -1) {
+        const params = new URLSearchParams(raw.slice(qIdx + 1));
+        const uq = params.get('url');
+        if (uq && /^https?:\/\//i.test(uq)) return decodeURIComponent(uq);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
+}
+
+function navioNormalizeTabOpenUrl(url) {
+  const raw0 = String(url || '').trim();
+  const raw = navioExtractHttpsFromBrowserHandoffUrl(raw0) || raw0;
   if (!raw) return 'about:blank';
   if (raw === 'about:blank') return raw;
   if (navioIsExternalProtocolUrl(raw)) return null;
@@ -966,8 +1005,26 @@ function bindNavioGuestWindowOpenOnce(guestContents) {
   if (!guestContents || navioGuestWindowOpenBound.has(guestContents)) return;
   navioGuestWindowOpenBound.add(guestContents);
 
+  const handoffNavigate = (event, navigationUrl) => {
+    const inner = navioExtractHttpsFromBrowserHandoffUrl(navigationUrl);
+    if (!inner) return;
+    event.preventDefault();
+    setImmediate(() => {
+      try {
+        if (guestContents.isDestroyed()) return;
+        guestContents.loadURL(inner);
+      } catch {
+        /* ignore */
+      }
+    });
+  };
+  guestContents.on('will-navigate', handoffNavigate);
+  guestContents.on('will-redirect', handoffNavigate);
+
   guestContents.setWindowOpenHandler((details) => {
-    const url = (details && details.url) || '';
+    let url = (details && details.url) || '';
+    const ho = navioExtractHttpsFromBrowserHandoffUrl(url);
+    if (ho) url = ho;
     if (navioIsExternalProtocolUrl(url)) {
       try {
         shell.openExternal(url);

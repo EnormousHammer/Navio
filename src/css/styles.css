@@ -105,8 +105,9 @@
 
   --text-primary: #e8ecf4;
   --text-secondary: #8b95ab;
-  --text-tertiary: #5c667e;
-  --text-muted: #4a5568;
+  /* Was too close to charcoal on dark panels; keep assistant + chips readable */
+  --text-tertiary: #7a869f;
+  --text-muted: #6b7a90;
   --text-accent: #7dd3fc;
   --text-bright: #ffffff;
 
@@ -5133,6 +5134,8 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   transition: background 0.13s ease, border-color 0.13s ease, color 0.13s ease;
   flex-shrink: 0;
   white-space: nowrap;
+  /* Parent `.tts-active-bar` is pointer-events:none until `.tts-bar-show`; keep Stop live during the fade-in. */
+  pointer-events: auto;
 }
 .tts-stop-btn:hover {
   background: rgba(125, 211, 252, 0.18);
@@ -5295,6 +5298,8 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   cursor: pointer;
   flex-shrink: 0;
   transition: background 0.13s, border-color 0.13s, color 0.13s;
+  /* Parent `.voice-conv-hud` is pointer-events:none until `.vch-show` (rAF after unhide). */
+  pointer-events: auto;
 }
 .vch-end-btn:hover {
   background: rgba(139, 92, 246, 0.2);
@@ -5328,6 +5333,25 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 [data-theme="light"] #btn-voice-conv.voice-conv-on {
   color: #7c3aed !important;
   background: rgba(109, 40, 217, 0.08) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-conv-hud[data-vc-state="listening"] .vch-ring,
+  .voice-conv-hud[data-vc-state="thinking"] .vch-ring,
+  .voice-conv-hud[data-vc-state="speaking"] .vch-ring,
+  .voice-conv-hud[data-vc-state="summarizing"] .vch-ring {
+    animation: none !important;
+  }
+  .tts-active-icon {
+    animation: none !important;
+  }
+  .voice-btn.listening {
+    animation: none !important;
+  }
+  .voice-conv-hud,
+  .tts-active-bar {
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* ── TTS button states ───────────────────────────────────────────────────── */
@@ -5661,6 +5685,66 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 .assistant-panel .assistant-message .message-content a:any-link em {
   color: rgba(226, 232, 250, 0.92);
   -webkit-text-fill-color: rgba(226, 232, 250, 0.92);
+}
+
+/* ── Assistant reply card (dark theme): contrast floor — no charcoal-on-charcoal ─ */
+[data-theme="dark"] .assistant-panel .assistant-message .message-content {
+  color: #e8ecf4;
+}
+[data-theme="dark"] .assistant-panel .assistant-message .message-content h5 {
+  color: #b8c5dc;
+}
+[data-theme="dark"] .assistant-panel .assistant-message .message-content h4 {
+  color: #c5d2e8;
+}
+[data-theme="dark"] .assistant-panel .assistant-message .message-content kbd,
+[data-theme="dark"] .assistant-panel .assistant-message .message-content samp,
+[data-theme="dark"] .assistant-panel .assistant-message .message-content var {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  color: #eef2ff;
+  background: rgba(255, 255, 255, 0.11);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+[data-theme="dark"] .assistant-panel .assistant-message .message-content .msg-code-lang {
+  color: #c8d6ee;
+}
+[data-theme="dark"] .assistant-panel .assistant-message .message-content .msg-code-copy {
+  color: #dce6f8;
+}
+[data-theme="dark"] .assistant-panel .assistant-message .message-content .msg-code-copy:hover {
+  color: #7dd3fc;
+}
+[data-theme="dark"] .assistant-panel .assistant-message .message-content .msg-citation-card .mcc-url {
+  color: #b4c4df;
+}
+[data-theme="dark"] .assistant-panel .assistant-message .message-content .msg-citation-card .mcc-num {
+  color: #d0daf0;
+}
+[data-theme="dark"] .assistant-panel .assistant-message .message-content .email-ref-chip .erc-arrow {
+  color: #aabbd8;
+  opacity: 0.95;
+}
+[data-theme="dark"] .assistant-panel .assistant-message .message-content .email-ref-chip .erc-subject {
+  color: #eef2fb;
+}
+[data-theme="dark"] .assistant-panel .assistant-message .message-content table th,
+[data-theme="dark"] .assistant-panel .assistant-message .message-content table td {
+  color: #dce5f7;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+[data-theme="dark"] .assistant-panel .assistant-message .message-content table th {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.07);
+}
+[data-theme="dark"] .assistant-panel .assistant-message .message-content .browser-action-card.bac-done .bac-desc strong,
+[data-theme="dark"] .assistant-panel .assistant-message .message-content .browser-action-card.bac-done .bac-param {
+  color: #c5d4ea;
+}
+[data-theme="dark"] .assistant-panel .assistant-message .message-content .browser-action-card.bac-done {
+  opacity: 0.88;
 }
 
 /* ── Email reference chip ──────────────────────────────────────────────────── */
@@ -10466,6 +10550,7 @@ button.navio-followup-chip:active {
   color: rgba(252, 211, 211, 0.92);
   font-family: var(--font-sans);
   transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+  pointer-events: auto;
 }
 .assistant-input-container .assistant-stop-btn:hover {
   background: rgba(248, 113, 113, 0.14);
