@@ -1017,7 +1017,7 @@
   white-space: nowrap;
 }
 
-.new-tab-page .ntp-shortcut[draggable="true"] {
+.new-tab-page .ntp-shortcut--reorderable {
   cursor: grab;
 }
 .new-tab-page .ntp-shortcut--dragging {
@@ -1521,12 +1521,13 @@ html[data-theme="light"] .assistant-panel .assistant-meta-bar .assistant-context
 }
 
 html[data-theme="light"] .assistant-panel .assistant-messages {
-  background: var(--bg-primary);
+  /* One continuous panel — opaque messages bg read as a slab above the composer */
+  background: transparent;
 }
 
 html[data-theme="light"] .assistant-panel .assistant-input-area {
-  background: linear-gradient(180deg, rgba(12, 14, 22, 0.98) 0%, rgba(8, 10, 14, 0.99) 100%);
-  border-top-color: rgba(255, 255, 255, 0.08);
+  background: transparent;
+  border-top: none;
 }
 
 html[data-theme="light"] .assistant-panel .assistant-input-area::before {
@@ -1534,11 +1535,15 @@ html[data-theme="light"] .assistant-panel .assistant-input-area::before {
 }
 
 html[data-theme="light"] .assistant-panel .assistant-input-container {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 8px 28px rgba(0, 0, 0, 0.35);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
 }
 
 html[data-theme="light"] .assistant-panel .assistant-input-container:focus-within {
-  box-shadow: 0 0 0 1px rgba(125, 211, 252, 0.35), 0 0 0 4px rgba(0, 216, 255, 0.1), 0 12px 32px rgba(0, 0, 0, 0.4);
+  background: transparent;
+  box-shadow: none;
 }
 
 html[data-theme="light"] .assistant-panel .assistant-smart-row {
@@ -2827,4 +2832,22 @@ body:not(.navio-vertical-tabs) .tab-item.active {
   height: 1px;
   background: rgba(255, 255, 255, 0.08);
   margin: 4px 8px;
+}
+
+/* Assistant dock: kill any remaining bottom “card” chrome (wins over §10 + base styles). */
+#assistant-panel .assistant-input-area {
+  background: transparent !important;
+  border-top: none !important;
+}
+#assistant-panel .assistant-input-container,
+#assistant-panel .assistant-input-container:focus-within {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+#assistant-panel .assistant-input-toolbar {
+  border-top: none !important;
 }

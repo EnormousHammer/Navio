@@ -382,6 +382,20 @@ class AssistantManagerClass {
     return this.panel;
   }
 
+  /** Autosize sidebar composer; keeps at least two lines when empty (see #assistant-input rows + min-height). */
+  _fitAssistantInputHeight() {
+    if (!this.inputEl) return;
+    const maxPx = 160;
+    const cs = getComputedStyle(this.inputEl);
+    const fs = parseFloat(cs.fontSize) || 14;
+    let linePx = parseFloat(cs.lineHeight);
+    if (!Number.isFinite(linePx) || linePx <= 0 || cs.lineHeight === 'normal') linePx = fs * 1.5;
+    const minPx = Math.ceil(linePx * 2);
+    this.inputEl.style.height = 'auto';
+    const sh = this.inputEl.scrollHeight;
+    this.inputEl.style.height = Math.min(Math.max(sh, minPx), maxPx) + 'px';
+  }
+
   bindEvents() {
     const toggleBtn = document.getElementById('btn-toggle-assistant');
     if (!toggleBtn) {
@@ -448,8 +462,7 @@ class AssistantManagerClass {
     });
 
     this.inputEl?.addEventListener('input', () => {
-      this.inputEl.style.height = 'auto';
-      this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 120) + 'px';
+      this._fitAssistantInputHeight();
       this._handleAtMention();
     });
 
@@ -512,6 +525,8 @@ class AssistantManagerClass {
     this._bindVoiceMode();
     this._bindAssistantAttachments();
     this._bindTTSDelegate();
+    this._fitAssistantInputHeight();
+    requestAnimationFrame(() => this._fitAssistantInputHeight());
   }
 
   /** Delegate TTS button clicks from any assistant bubble. */
@@ -1328,8 +1343,7 @@ class AssistantManagerClass {
     } else {
       this.inputEl.value = `${cur}\n${t}`;
     }
-    this.inputEl.style.height = 'auto';
-    this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + 'px';
+    this._fitAssistantInputHeight();
     this.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
@@ -1498,8 +1512,7 @@ class AssistantManagerClass {
       const b = String(sttBaseline || '').trimEnd().trim();
       if (b && this.inputEl) {
         this.inputEl.value = `${b}\n${text.trim()}`;
-        this.inputEl.style.height = 'auto';
-        this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + 'px';
+        this._fitAssistantInputHeight();
         this.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
       } else {
         this._applyVoiceTranscriptToInput(text, { replace: false });
@@ -1553,8 +1566,7 @@ class AssistantManagerClass {
         if (this.inputEl) {
           const display = baseline.trim() ? `${baseline.trim()}\n${t}` : t;
           this.inputEl.value = display;
-          this.inputEl.style.height = 'auto';
-          this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + 'px';
+          this._fitAssistantInputHeight();
         }
         if (e.results[e.results.length - 1].isFinal) {
           clearTimeout(silenceTimer);
@@ -1970,8 +1982,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           const b = vcBaseline.trim();
           if (b && this.inputEl) {
             this.inputEl.value = `${b}\n${text.trim()}`;
-            this.inputEl.style.height = 'auto';
-            this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + 'px';
+            this._fitAssistantInputHeight();
             this.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
           } else {
             this._applyVoiceTranscriptToInput(text, { replace: false });
@@ -2423,8 +2434,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         const atIdx2 = before.lastIndexOf('@');
         const newVal = val.slice(0, atIdx2) + `@[${title}]` + val.slice(cursor);
         this.inputEl.value = newVal;
-        this.inputEl.style.height = 'auto';
-        this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + 'px';
+        this._fitAssistantInputHeight();
         this._hideMentionPicker();
         this.inputEl.focus();
       });
@@ -2653,7 +2663,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         pointerEvents: cs.pointerEvents
       });
     });
-    setTimeout(() => this.inputEl?.focus(), 300);
+    setTimeout(() => {
+      this.inputEl?.focus();
+      this._fitAssistantInputHeight();
+    }, 300);
   }
 
   async syncConnectorTogglesFromConfig() {
@@ -2738,7 +2751,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       }
       const q = text.slice(2).trim();
       this.inputEl.value = '';
-      this.inputEl.style.height = 'auto';
+      this._fitAssistantInputHeight();
       if (!q) {
         this.addMessage('assistant', 'Add a topic after **>>** in the omnibar or assistant (e.g. `>> best CRM for small business`).');
         return;
@@ -2757,7 +2770,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       this._awaitingTaskChain = false;
       const steps = text.split('\n').map(l => l.replace(/^\d+[\.\)]\s*/, '').trim()).filter(Boolean);
       this.inputEl.value = '';
-      this.inputEl.style.height = 'auto';
+      this._fitAssistantInputHeight();
       this.addMessage('user', text);
       if (steps.length === 0) {
         this.addMessage('assistant', 'No steps detected. Please enter at least one task per line.');
@@ -2771,7 +2784,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     this._autoFollowCount = 0; // reset agent loop on new user message
     if (this._voiceConvActive) this._voiceConvSetState('thinking');
     this.inputEl.value = '';
-    this.inputEl.style.height = 'auto';
+    this._fitAssistantInputHeight();
 
     const effectiveText = text || (hasReadyAttachments ? 'Please help with the attached file(s).' : '');
     const userDisplay = hasReadyAttachments

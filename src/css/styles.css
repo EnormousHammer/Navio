@@ -4331,8 +4331,9 @@ button.ntp-ticker-sport--stream:focus-visible {
   border-radius: var(--radius-sm);
 }
 
-.ntp-shortcut[draggable="true"] {
+.ntp-shortcut--reorderable {
   cursor: grab;
+  touch-action: none;
 }
 /* Favicons/images are draggable by default — that steals DnD from the parent shortcut tile */
 .ntp-shortcut img {
@@ -4437,13 +4438,13 @@ button.ntp-ticker-sport--stream:focus-visible {
 
 /* Fixed dock: the panel used to live in the #app flex row with main + other nodes; in Chromium
    that often collapsed or pushed the panel off-screen. Dock to the viewport instead.
-   Top is measured below the full top chrome (tab strip + URL bar) so the panel header
-   sits neatly inside the main content area instead of overlapping the navbar. */
+   Top sits just under the tab strip so the sidecar runs the full height beside the URL bar
+   (same “from the top” column as the page), without covering window controls in the tab row. */
 .assistant-panel {
   --ap-pad-x: 14px;
   --ap-control-radius: 9px;
   position: fixed;
-  top: calc(var(--titlebar-height) + var(--tabstrip-height) + var(--navbar-height));
+  top: calc(var(--titlebar-height) + var(--tabstrip-height));
   right: 0;
   bottom: 0;
   width: 0;
@@ -4467,28 +4468,15 @@ button.ntp-ticker-sport--stream:focus-visible {
 }
 
 body.navio-vertical-tabs .assistant-panel {
-  top: calc(var(--tabstrip-height) + var(--navbar-height));
+  top: var(--tabstrip-height);
 }
 
-/* Fills the top-right rectangle above the now-inset assistant panel with the
-   navbar background so the URL bar appears to extend cleanly across the full
-   width while the panel sits neatly in the main content area below it.
-   Only shown when the assistant is open. */
+/* Previously filled the strip above the assistant when it started below the navbar; no longer used. */
 body.navio-assistant-open::after {
-  content: '';
-  position: fixed;
-  top: calc(var(--titlebar-height) + var(--tabstrip-height));
-  right: 0;
-  width: var(--assistant-width);
-  height: var(--navbar-height);
-  background: var(--bg-deep);
-  border-bottom: 1px solid var(--border);
-  border-left: 1px solid var(--border);
-  pointer-events: none;
-  z-index: 4999; /* just below .assistant-panel (5000) */
+  content: none;
 }
 body.navio-vertical-tabs.navio-assistant-open::after {
-  top: var(--tabstrip-height);
+  content: none;
 }
 
 .assistant-panel::before {
@@ -6090,12 +6078,12 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   30% { transform: translateY(-4px); opacity: 0.85; }
 }
 
-/* Input area */
+/* Input area — flush with thread (no separate footer “block”) */
 .assistant-input-area {
-  padding: 10px var(--ap-pad-x) 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 8px var(--ap-pad-x) 10px;
+  border-top: none;
   flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.02);
+  background: transparent;
   position: relative;
   z-index: 1;
 }
@@ -6254,13 +6242,13 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   display: flex;
   flex-direction: column;
   gap: 0;
-  padding: 12px 14px 8px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease), background 0.2s var(--ease);
-  backdrop-filter: blur(12px) saturate(1.06);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 28px rgba(0, 0, 0, 0.12);
+  padding: 4px 0 2px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  transition: opacity 0.15s ease;
+  backdrop-filter: none;
+  box-shadow: none;
   position: relative;
 }
 
@@ -6269,9 +6257,9 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   align-items: center;
   justify-content: space-between;
   gap: 4px;
-  margin-top: 8px;
-  padding-top: 6px;
-  border-top: 1px solid rgba(255,255,255,0.05);
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: none;
 }
 
 .assistant-toolbar-left {
@@ -6308,14 +6296,16 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 }
 
 .assistant-input-container:focus-within {
-  border-color: var(--border-accent);
-  box-shadow: 0 0 0 1px rgba(82, 213, 242, 0.2), 0 0 0 4px rgba(82, 213, 242, 0.08), 0 12px 32px rgba(0, 0, 0, 0.16);
-  background: var(--bg-elevated);
+  border: none;
+  box-shadow: none;
+  background: transparent;
   outline: none;
 }
 
 #assistant-input {
-  flex: 1;
+  /* Not flex:1 — column flex + min-height:auto on controls shrinks the textarea to one line. */
+  flex: 0 0 auto;
+  align-self: stretch;
   border: none;
   background: transparent;
   color: var(--text-primary);
@@ -6328,7 +6318,8 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   -webkit-appearance: none;
   appearance: none;
   max-height: 160px;
-  min-height: 22px;
+  /* Where the user types: always at least two visible lines (line-height 1.5 → 3em). */
+  min-height: 3em;
   padding: 0;
   overflow-y: auto;
   box-sizing: border-box;
@@ -12555,8 +12546,8 @@ button:focus-visible,
   background: var(--bg-hover);
 }
 [data-theme="light"] .assistant-input-area {
-  background: linear-gradient(180deg, #f2f4fa 0%, #f8f9fd 55%);
-  border-top-color: var(--border);
+  background: transparent;
+  border-top: none;
 }
 [data-theme="light"] .assistant-input-area::before {
   display: none;
@@ -12577,13 +12568,16 @@ button:focus-visible,
   color: var(--text-secondary);
 }
 [data-theme="light"] .assistant-input-container {
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.95) inset, 0 8px 24px rgba(50, 70, 160, 0.07);
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 [data-theme="light"] .assistant-input-container:focus-within {
-  box-shadow: 0 0 0 1px rgba(0, 120, 220, 0.35), 0 0 0 4px rgba(0, 120, 220, 0.1), 0 12px 28px rgba(50, 70, 160, 0.1);
+  background: transparent;
+  box-shadow: none;
 }
 [data-theme="light"] .assistant-input-toolbar {
-  border-top-color: rgba(50, 70, 160, 0.08);
+  border-top: none;
 }
 [data-theme="light"] .assistant-input-hint-inline {
   color: var(--text-tertiary);
@@ -12767,8 +12761,8 @@ button:focus-visible,
 
 /* ── Dark AI input area ─────────────────────────────────────────────────── */
 [data-theme="dark"] .assistant-input-area {
-  background: var(--bg-deep);
-  border-top-color: var(--border);
+  background: transparent;
+  border-top: none;
 }
 [data-theme="dark"] .chat-input {
   background: rgba(20,30,50,0.75);
