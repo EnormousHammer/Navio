@@ -1160,6 +1160,8 @@ body.navio-vertical-tabs .tab-strip {
   border-right: 1px solid var(--border);
   padding: 6px 4px;
   z-index: 50;
+  overflow-x: clip;
+  background-clip: padding-box;
 }
 body.navio-vertical-tabs .tab-strip-list {
   flex-direction: column;

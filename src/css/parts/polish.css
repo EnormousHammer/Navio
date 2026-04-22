@@ -1492,7 +1492,7 @@ html[data-theme="light"] .assistant-panel {
   color-scheme: dark;
   background: rgba(10, 12, 18, 0.94);
   border-left-color: rgba(255, 255, 255, 0.09);
-  box-shadow: -18px 0 56px rgba(0, 0, 0, 0.42);
+  box-shadow: 8px 0 40px rgba(0, 0, 0, 0.42), inset 1px 0 0 rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(14px) saturate(1.06);
   -webkit-backdrop-filter: blur(14px) saturate(1.06);
 }
@@ -1595,7 +1595,7 @@ html[data-theme="light"] .assistant-panel .ai-powered-badge {
 html[data-theme="dark"] .assistant-panel {
   background: rgba(10, 12, 18, 0.92);
   border-left-color: rgba(255, 255, 255, 0.08);
-  box-shadow: -18px 0 52px rgba(0, 0, 0, 0.48);
+  box-shadow: 8px 0 40px rgba(0, 0, 0, 0.48), inset 1px 0 0 rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(14px) saturate(1.06);
   -webkit-backdrop-filter: blur(14px) saturate(1.06);
 }
