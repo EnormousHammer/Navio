@@ -58,6 +58,10 @@ const DEFAULT_CONFIG = {
   popupBlockerEnabled: true,
   /** When true (and pop-up blocking on), also block small / blank script pop-ups unless URL looks like OAuth/SSO. */
   adStrictPopupBlock: true,
+  /** Read AI replies aloud (sidebar + compatible surfaces). */
+  ttsEnabled: false,
+  /** OpenAI speech voice id (see `navio-tts-voice-catalog.js`). */
+  ttsVoice: 'nova',
   /** When true, each download opens a system Save dialog (pick folder and name). When false, saves to Downloads automatically (Chrome default). */
   downloadAskWhere: false,
   /** When true, open File Explorer to the file after a successful download. Off by default to avoid interrupting browsing. */

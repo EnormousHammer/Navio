@@ -918,6 +918,11 @@
                 <span>Read AI replies aloud (text-to-speech)</span>
               </label>
               <div class="setting-row">
+                <label for="setting-tts-voice">Read-aloud voice (OpenAI)</label>
+                <select id="setting-tts-voice" aria-describedby="setting-tts-voice-hint"></select>
+              </div>
+              <p class="settings-inline-hint" id="setting-tts-voice-hint">Same list as Navio AI full-page chat. Uses your OpenAI-compatible API key. Web Speech fallback may sound different.</p>
+              <div class="setting-row">
                 <label for="setting-ai-proactivity">Proactive tips</label>
                 <select id="setting-ai-proactivity">
                   <option value="off">Off</option>
@@ -1582,6 +1587,7 @@
   <script src="js/onboarding.js"></script>
   <script src="js/launch-intro.js"></script>
   <script src="js/email-assistant.js"></script>
+  <script src="js/navio-tts-voice-catalog.js"></script>
   <script src="js/tabs.js"></script>
   <script src="js/ntp.js"></script>
   <script src="js/ui-shell-extras.js"></script>

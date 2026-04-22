@@ -2885,7 +2885,24 @@ ipcMain.handle('navio-stt', async (event, { audio, mimeType, language }) => {
 });
 
 // ── OpenAI Text-to-Speech ─────────────────────────────────────────────────
-ipcMain.handle('navio-tts', async (event, { text, voice, model }) => {
+/** Built-in OpenAI speech voices (keep in sync with `src/js/navio-tts-voice-catalog.js`). */
+const NAVIO_OPENAI_TTS_VOICE_IDS = new Set([
+  'alloy',
+  'ash',
+  'ballad',
+  'coral',
+  'echo',
+  'fable',
+  'onyx',
+  'nova',
+  'sage',
+  'shimmer',
+  'verse',
+  'marin',
+  'cedar'
+]);
+
+ipcMain.handle('navio-tts', async (event, { text, voice, model, speed }) => {
   try {
     const cfg = loadConfig();
     const provider = cfg.aiProvider || 'openai';
@@ -2898,9 +2915,17 @@ ipcMain.handle('navio-tts', async (event, { text, voice, model }) => {
 
     // tts-1 is much lower-latency than tts-1-hd; quality is still strong for assistant read-aloud.
     const ttsModel = model || 'tts-1';
-    const ttsVoice = voice || cfg.ttsVoice || 'nova';
+    let ttsVoice = String(voice || cfg.ttsVoice || 'nova')
+      .trim()
+      .toLowerCase();
+    if (!NAVIO_OPENAI_TTS_VOICE_IDS.has(ttsVoice)) ttsVoice = 'nova';
     const inputText = String(text || '').slice(0, 4096).trim();
     if (!inputText) return { ok: false, error: 'Empty text' };
+
+    const fromCfg = typeof cfg.ttsSpeed === 'number' && Number.isFinite(cfg.ttsSpeed) ? cfg.ttsSpeed : NaN;
+    const fromArg = speed != null ? Number(speed) : NaN;
+    const rawSpeed = Number.isFinite(fromArg) ? fromArg : Number.isFinite(fromCfg) ? fromCfg : 0.94;
+    const ttsSpeed = Math.min(4, Math.max(0.25, rawSpeed));
 
     const endpoint = (cfg.customEndpoint || 'https://api.openai.com').replace(/\/v1.*$/, '') + '/v1/audio/speech';
     const resp = await fetch(endpoint, {
@@ -2911,7 +2936,7 @@ ipcMain.handle('navio-tts', async (event, { text, voice, model }) => {
         input: inputText,
         voice: ttsVoice,
         response_format: 'mp3',
-        speed: 1.08
+        speed: ttsSpeed
       }),
       signal: AbortSignal.timeout(45000)
     });

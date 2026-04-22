@@ -235,6 +235,13 @@ function navioVoiceConvTtsChunkPlan(text) {
   const sub = navioSplitTtsChunks(firstSeg, NAVIO_VOICE_TTS_FIRST_CHUNK);
   return sub.length ? [...sub, ...rough.slice(1)] : rough;
 }
+
+/** Ellipses after ? / ! so TTS takes a short breath before the next clause (voice mode). */
+function navioAddSpokenBreathingPauses(s) {
+  const t = String(s || '').trim();
+  if (!t) return t;
+  return t.replace(/([!?])\s+(?=[A-Z0-9"'(\[])/g, '$1 … ');
+}
 /** Non-text files: send as base64 for models that accept inline bytes (Gemini, etc.). */
 const NAVIO_ASSISTANT_INLINE_MAX_BYTES = 4 * 1024 * 1024;
 /** Unknown extensions: try UTF-8 decode when under this size (code, configs, odd MIME). */
@@ -450,7 +457,12 @@ class AssistantManagerClass {
   async _refreshCachedTtsVoice() {
     try {
       const cfg = await window.navio.getConfig();
-      if (cfg && cfg.ttsVoice) this._cachedTtsVoice = cfg.ttsVoice;
+      if (cfg && cfg.ttsVoice) {
+        this._cachedTtsVoice =
+          typeof window.navioNormalizeTtsVoiceId === 'function'
+            ? window.navioNormalizeTtsVoiceId(cfg.ttsVoice)
+            : cfg.ttsVoice;
+      }
     } catch {
       /* ignore */
     }
@@ -539,6 +551,8 @@ class AssistantManagerClass {
     this._vcSid = 0;
     /** Cleared when voice conversation stops. */
     this._voiceConvFlashTimer = null;
+    /** Throttle optional spoken tool-progress updates in voice conversation (ms since epoch). */
+    this._voiceConvProgressTtsAt = 0;
     this._ttsSessionId = 0;
     this._bindVoiceConversation();
 
@@ -611,6 +625,9 @@ class AssistantManagerClass {
       } catch {
         /* ignore */
       }
+    });
+    window.addEventListener('navio-config-saved', () => {
+      void this._refreshCachedTtsVoice();
     });
 
     const pinBtn = document.getElementById('btn-pin-tab');
@@ -1886,6 +1903,7 @@ class AssistantManagerClass {
 
   _stopVoiceConversation() {
     this._voiceConvActive = false;
+    this._voiceConvProgressTtsAt = 0;
     this._vcSid++;
     if (this._voiceConvFlashTimer) {
       try { clearTimeout(this._voiceConvFlashTimer); } catch { /* ignore */ }
@@ -2111,6 +2129,7 @@ RESPONSE STYLE:
 - Do NOT append the [FOLLOWUP] chips block — it is not useful in audio.
 
 NARRATE YOUR WORK (this is the most important rule):
+- Your reply is read aloud in real time: always include at least one short spoken sentence in your FIRST assistant message before tool calls (no empty content round). If you would otherwise jump straight to tools, say what you are doing first so the user never sits in long silence.
 - Keep the user oriented while tools run, but never sound like a broken record: invent fresh wording every time. Do not reuse the same sentence, opener, or catchphrase twice in this conversation turn — and avoid leaning on the same stock fillers you used on the last turn when you can help it.
 - Vary structure and tone across steps: mix factual pings, plain status, and brief asides — but write each line from scratch for this moment. Never start two consecutive updates with the same word or the same template (e.g. do not do "One sec…" then "One sec…" again, or two lines that both begin with "Okay").
 - Anchor each line to what is literally happening (which mailbox, which site, which attachment, what you're opening next) so uniqueness comes naturally from the task, not from random fluff.
@@ -2480,38 +2499,46 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
    * quickly instead of waiting on one huge `/v1/audio/speech` response.
    * @returns {boolean} true if the full plan was handled here (success or aborted mid-flight)
    */
-  async _speakVoiceConvChunkedPipeline(plain, voicePref, mySession, btn) {
+  async _speakVoiceConvChunkedPipeline(plain, voicePref, mySession, btn, ttsSpeed, speechOpts = {}) {
     if (!window.navio?.navioTTS) return false;
     const chunks = navioVoiceConvTtsChunkPlan(plain.slice(0, 4000));
     if (chunks.length <= 1) return false;
 
     void this._refreshCachedTtsVoice();
-    let prefetched = window.navio.navioTTS({ text: chunks[0].slice(0, 4000), voice: voicePref });
+    const ttsPayload = (txt) => {
+      const o = { text: txt.slice(0, 4000), voice: voicePref };
+      if (ttsSpeed != null && Number.isFinite(Number(ttsSpeed))) o.speed = Number(ttsSpeed);
+      return o;
+    };
+    let prefetched = window.navio.navioTTS(ttsPayload(chunks[0]));
 
     for (let i = 0; i < chunks.length; i++) {
       if (mySession !== this._ttsSessionId) return true;
       const result = await prefetched;
       if (mySession !== this._ttsSessionId) return true;
       if (i + 1 < chunks.length) {
-        prefetched = window.navio.navioTTS({ text: chunks[i + 1].slice(0, 4000), voice: voicePref });
+        prefetched = window.navio.navioTTS(ttsPayload(chunks[i + 1]));
       }
       const isLast = i === chunks.length - 1;
       if (!result || !result.ok || !result.audio) {
         const tail = chunks.slice(i).join('').trim();
         if (tail) {
-          await this._speakWebSpeechUtterance(tail, voicePref, mySession, btn, true);
+          await this._speakWebSpeechUtterance(tail, voicePref, mySession, btn, true, speechOpts || {});
         } else if (isLast) {
           this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
         }
         return true;
       }
       await this._playOpenAITtsClip(result, mySession, btn, isLast);
+      if (this._voiceConvActive && !isLast) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
     }
     return true;
   }
 
   /** Web Speech fallback / tail after chunked OpenAI partial failure. */
-  async _speakWebSpeechUtterance(plain, voicePref, mySession, btn, isLastChunk = true) {
+  async _speakWebSpeechUtterance(plain, voicePref, mySession, btn, isLastChunk = true, speechOpts = {}) {
     if (mySession !== this._ttsSessionId) return;
     if (!window.speechSynthesis) {
       if (btn) btn.classList.remove('tts-speaking');
@@ -2527,7 +2554,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     window.speechSynthesis.cancel();
     const utt = new SpeechSynthesisUtterance(plain);
     const voices = window.speechSynthesis.getVoices();
-    const isFemalePref = voicePref === 'nova' || voicePref === 'shimmer' || voicePref === 'alloy';
+    const isFemalePref =
+      typeof window.navioTtsVoiceFemalePreferred === 'function'
+        ? window.navioTtsVoiceFemalePreferred(voicePref)
+        : voicePref === 'nova' || voicePref === 'shimmer' || voicePref === 'alloy';
     const scoreVoice = (v) => {
       let score = 0;
       if (/en[-_]US/i.test(v.lang)) score += 10;
@@ -2545,7 +2575,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       const best = sorted[0];
       if (best) utt.voice = best;
     }
-    utt.rate = 0.92;
+    const baseRate = this._voiceConvActive ? 0.84 : 0.92;
+    utt.rate =
+      typeof speechOpts.webSpeechRate === 'number' && Number.isFinite(speechOpts.webSpeechRate)
+        ? speechOpts.webSpeechRate
+        : baseRate;
     utt.pitch = isFemalePref ? 1.05 : 0.9;
     utt.volume = 1.0;
     this._setTTSBarVisible(true, 'Reading aloud…');
@@ -2583,11 +2617,15 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
    * Prefers the configured voice gender preference.
    * @param {string} text - Text to speak
    * @param {HTMLElement|null} btn - TTS button element for state management (loading → speaking → done)
+   * @param {{ speed?: number, workNudge?: boolean, humanPace?: boolean, webSpeechRate?: number }} [opts]
    */
-  async _speakText(text, btn = null) {
+  async _speakText(text, btn = null, opts = {}) {
     if (!text) return;
-    const plain = this._prepareSpeechText(this._stripMarkdown(text));
+    let plain = this._prepareSpeechText(this._stripMarkdown(text));
     if (!plain) return;
+    if (this._voiceConvActive && opts.humanPace !== false) {
+      plain = navioAddSpokenBreathingPauses(plain);
+    }
 
     // Stop any current speech and claim this session — any prior in-flight _speakText
     // will see a mismatched session ID after its awaits and bail without playing.
@@ -2599,21 +2637,46 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
 
     if (mySession !== this._ttsSessionId) return;
 
+    const ttsSpeed =
+      opts.speed != null && Number.isFinite(Number(opts.speed))
+        ? Number(opts.speed)
+        : this._voiceConvActive
+          ? opts.workNudge
+            ? 0.82
+            : 0.9
+          : undefined;
+    const speechOpts = {};
+    if (opts.webSpeechRate != null && Number.isFinite(Number(opts.webSpeechRate))) {
+      speechOpts.webSpeechRate = Number(opts.webSpeechRate);
+    } else if (this._voiceConvActive) {
+      speechOpts.webSpeechRate = opts.workNudge ? 0.8 : 0.84;
+    }
+
     const chunkPlan = navioVoiceConvTtsChunkPlan(plain.slice(0, 4000));
     const useChunkedOpenAi =
       window.navio?.navioTTS &&
+      !opts.workNudge &&
       plain.length > NAVIO_VOICE_TTS_FIRST_CHUNK &&
       chunkPlan.length > 1;
 
     if (useChunkedOpenAi) {
-      const handled = await this._speakVoiceConvChunkedPipeline(plain, voicePref, mySession, btn);
+      const handled = await this._speakVoiceConvChunkedPipeline(
+        plain,
+        voicePref,
+        mySession,
+        btn,
+        ttsSpeed,
+        speechOpts
+      );
       if (handled) return;
     }
 
     // Try OpenAI TTS first (much more human-sounding)
     if (window.navio && window.navio.navioTTS) {
       try {
-        const result = await window.navio.navioTTS({ text: plain.slice(0, 4000), voice: voicePref });
+        const req = { text: plain.slice(0, 4000), voice: voicePref };
+        if (ttsSpeed != null && Number.isFinite(ttsSpeed)) req.speed = ttsSpeed;
+        const result = await window.navio.navioTTS(req);
 
         // Bail if superseded while waiting for TTS IPC
         if (mySession !== this._ttsSessionId) return;
@@ -2628,7 +2691,15 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     // Bail again if superseded before reaching Web Speech fallback
     if (mySession !== this._ttsSessionId) return;
 
-    await this._speakWebSpeechUtterance(plain, voicePref, mySession, btn, true);
+    await this._speakWebSpeechUtterance(plain, voicePref, mySession, btn, true, speechOpts);
+  }
+
+  /** Short spoken status while tools run (voice conversation); avoids long silent gaps. */
+  async _speakVoiceConvWorkNudge(snippet) {
+    const s = String(snippet || '').trim();
+    if (!this._voiceConvActive || !s) return;
+    if (s.length > 900) return;
+    await this._speakText(s, null, { speed: 0.82, workNudge: true, humanPace: true });
   }
 
   /** Show / hide the persistent TTS active bar above the input area. */
@@ -4414,19 +4485,27 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (payload && payload.tabId != null && String(payload.tabId) !== tk) return;
       const { step, text, bubble } = payload || {};
       if (!text) return;
-      if (bubble && text.trim().length > 8 && this._currentActivityEl) {
-        // Remove the typing indicator (it's been replaced by the activity card already, but clean up just in case)
-        this.removeTypingIndicator();
-        // Build a proper assistant message bubble and insert it BEFORE the Working card
-        const msgEl = document.createElement('div');
-        msgEl.className = 'message assistant-message naa-pre-work-bubble';
-        msgEl.appendChild(this._messageRoleStrip('assistant', ''));
-        const contentEl = document.createElement('div');
-        contentEl.className = 'message-content';
-        contentEl.innerHTML = this.formatMessage(text, true);
-        msgEl.appendChild(contentEl);
-        this._currentActivityEl.parentNode.insertBefore(msgEl, this._currentActivityEl);
-        this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+      const snippet = text.trim();
+      if (bubble && snippet.length > 8) {
+        if (this._currentActivityEl) {
+          // Remove the typing indicator (it's been replaced by the activity card already, but clean up just in case)
+          this.removeTypingIndicator();
+          // Build a proper assistant message bubble and insert it BEFORE the Working card
+          const msgEl = document.createElement('div');
+          msgEl.className = 'message assistant-message naa-pre-work-bubble';
+          msgEl.appendChild(this._messageRoleStrip('assistant', ''));
+          const contentEl = document.createElement('div');
+          contentEl.className = 'message-content';
+          contentEl.innerHTML = this.formatMessage(text, true);
+          msgEl.appendChild(contentEl);
+          this._currentActivityEl.parentNode.insertBefore(msgEl, this._currentActivityEl);
+          this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+        } else if (guestWv) {
+          this._guestDeliver(guestWv, { type: 'preWorkBubble', text: snippet });
+        }
+        if (this._voiceConvActive) {
+          void this._speakVoiceConvWorkNudge(snippet);
+        }
       } else {
         this._appendActivityStep('thinking', text.slice(0, 200) + (text.length > 200 ? '...' : ''));
       }
@@ -4523,6 +4602,20 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       this._updateTypingLabel(tool);
       const label = this._toolProgressLabel(tool, result);
       this._appendActivityStep(tool, label);
+      if (
+        this._voiceConvActive &&
+        tool &&
+        tool !== 'navigate' &&
+        tool !== 'thinking' &&
+        label &&
+        String(label).length < 130
+      ) {
+        const now = Date.now();
+        if (now - (this._voiceConvProgressTtsAt || 0) > 6200) {
+          this._voiceConvProgressTtsAt = now;
+          void this._speakVoiceConvWorkNudge(String(label));
+        }
+      }
     });
 
     // Stop button aborts in-flight AI in main (streaming + tool loop).

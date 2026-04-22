@@ -1565,33 +1565,37 @@
     }
     /* Improve table cell text */
     .msg .body td { color: var(--text-2); }
-    /* Voice selector pills — shown in topbar when TTS is available */
+    /* Read-aloud voice (OpenAI) — topbar */
     .tts-voice-selector {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      padding: 3px 6px;
+      gap: 6px;
+      padding: 2px 4px 2px 8px;
       border-radius: 8px;
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid var(--border-2);
     }
-    .tts-voice-btn {
-      padding: 3px 9px;
-      border-radius: 999px;
-      border: 1px solid transparent;
-      background: transparent;
-      color: var(--muted);
+    .tts-voice-selector label {
       font-size: 11px;
-      font-weight: 500;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .guest-tts-voice {
+      max-width: min(200px, 34vw);
+      min-width: 120px;
+      padding: 5px 8px;
+      border-radius: 7px;
+      border: 1px solid var(--border-3);
+      background: var(--bg-input);
+      color: var(--text-2);
+      font-size: 12px;
       font-family: inherit;
       cursor: pointer;
-      transition: background 0.12s, color 0.12s, border-color 0.12s;
     }
-    .tts-voice-btn:hover { color: var(--text-2); background: rgba(255,255,255,0.06); }
-    .tts-voice-btn.active {
-      background: rgba(45, 212, 191, 0.12);
-      border-color: rgba(45, 212, 191, 0.3);
-      color: var(--cyan);
+    .guest-tts-voice:focus {
+      outline: none;
+      border-color: var(--cyan-border);
+      box-shadow: 0 0 0 2px var(--cyan-soft);
     }
     /* Speak button on assistant messages */
     .msg-speak-btn {
@@ -1680,10 +1684,9 @@
           <span class="tb-brand-text">Navio AI</span>
         </div>
         <div class="tb-spacer"></div>
-        <!-- Voice selector -->
-        <div class="tts-voice-selector" id="tts-voice-selector" title="Read-aloud voice (OpenAI text-to-speech)">
-          <button type="button" class="tts-voice-btn active" id="tts-voice-female" title="Female read-aloud voice (OpenAI: Nova)">♀ Female</button>
-          <button type="button" class="tts-voice-btn" id="tts-voice-male" title="Male read-aloud voice (OpenAI: Onyx)">♂ Male</button>
+        <div class="tts-voice-selector" id="tts-voice-selector" title="Read-aloud voice (OpenAI)">
+          <label for="guest-tts-voice">Voice</label>
+          <select id="guest-tts-voice" class="guest-tts-voice" aria-label="Read-aloud voice"></select>
         </div>
         <button type="button" class="tb-btn" id="btn-activity" title="Agent activity">Activity</button>
         <div class="tb-kebab-wrap">
@@ -1802,6 +1805,7 @@
     <div id="agent-steps"></div>
   </aside>
 
+  <script src="../js/navio-tts-voice-catalog.js"></script>
   <script>
 (function () {
   const api = window.navioChatTab;
@@ -2324,16 +2328,7 @@
 
   // ── TTS (Text-to-Speech) — OpenAI TTS preferred, Web Speech API fallback ──
   let _currentTTSAudio = null;
-  let _ttsVoicePref = 'nova'; // 'nova' = female, 'onyx' = male
-
-  // Load voice preference from config
-  (function loadTTSPref() {
-    if (api && api.getConfig) {
-      api.getConfig().then(function(cfg) {
-        if (cfg && cfg.ttsVoice) _ttsVoicePref = cfg.ttsVoice;
-      }).catch(function() {});
-    }
-  })();
+  let _ttsVoicePref = 'nova';
 
   function stripMarkdownForTTS(text) {
     return String(text || '')
@@ -2364,7 +2359,7 @@
     // Try OpenAI TTS (human-quality voices)
     if (api && api.navioTTS) {
       try {
-        const result = await api.navioTTS({ text: plain, voice: _ttsVoicePref });
+        const result = await api.navioTTS({ text: plain, voice: _ttsVoicePref, speed: 0.92 });
         if (result && result.ok && result.audio) {
           const dataUrl = 'data:' + (result.mimeType || 'audio/mpeg') + ';base64,' + result.audio;
           const audio = new Audio(dataUrl);
@@ -2381,7 +2376,10 @@
     // Fallback: Web Speech API
     if (!window.speechSynthesis) { if (onDone) onDone(); return; }
     const utt = new SpeechSynthesisUtterance(plain);
-    const isFemalePref = _ttsVoicePref === 'nova' || _ttsVoicePref === 'shimmer' || _ttsVoicePref === 'alloy';
+    const isFemalePref =
+      typeof window.navioTtsVoiceFemalePreferred === 'function'
+        ? window.navioTtsVoiceFemalePreferred(_ttsVoicePref)
+        : _ttsVoicePref === 'nova' || _ttsVoicePref === 'shimmer' || _ttsVoicePref === 'alloy';
     const voices = window.speechSynthesis.getVoices();
     if (voices.length > 0) {
       const score = function(v) {
@@ -2398,7 +2396,7 @@
       const best = voices.slice().sort(function(a,b){ return score(b)-score(a); })[0];
       if (best) utt.voice = best;
     }
-    utt.rate = 0.92;
+    utt.rate = 0.86;
     utt.pitch = isFemalePref ? 1.05 : 0.90;
     utt.volume = 1.0;
     utt.addEventListener('end', function() { if (onDone) onDone(); });
@@ -2710,6 +2708,12 @@
           btnActivity.classList.add('visible');
           createInlineThinking();
           break;
+        case 'preWorkBubble': {
+          var ptxt = String(msg.text || '').trim();
+          if (!ptxt) break;
+          appendMessage('assistant', ptxt, { scroll: 'ifPinned' });
+          break;
+        }
         case 'toolStep': {
           agentStepIndex += 1;
           // Keep drawer data for the Activity button (don't auto-open)
@@ -3477,27 +3481,34 @@
 
     sbClearAll.addEventListener('click', clearAllSessions);
 
-    // Voice selector (female = nova, male = onyx)
-    const voiceFemaleBtn = document.getElementById('tts-voice-female');
-    const voiceMaleBtn = document.getElementById('tts-voice-male');
-    if (voiceFemaleBtn && voiceMaleBtn) {
-      function setVoicePref(voice) {
-        _ttsVoicePref = voice;
-        voiceFemaleBtn.classList.toggle('active', voice === 'nova' || voice === 'shimmer');
-        voiceMaleBtn.classList.toggle('active', voice === 'onyx' || voice === 'echo');
-        // Persist to config
-        if (api && api.saveConfig) {
-          api.saveConfig({ ttsVoice: voice }).catch(function(){});
-        }
+    const guestTtsVoiceEl = document.getElementById('guest-tts-voice');
+    if (guestTtsVoiceEl && typeof window.navioPopulateTtsVoiceSelect === 'function') {
+      function syncGuestTtsFromConfig(cfg) {
+        var raw = cfg && cfg.ttsVoice ? cfg.ttsVoice : 'nova';
+        _ttsVoicePref =
+          typeof window.navioNormalizeTtsVoiceId === 'function'
+            ? window.navioNormalizeTtsVoiceId(raw)
+            : String(raw)
+                .trim()
+                .toLowerCase();
+        window.navioPopulateTtsVoiceSelect(guestTtsVoiceEl, _ttsVoicePref);
       }
-      voiceFemaleBtn.addEventListener('click', function() { setVoicePref('nova'); });
-      voiceMaleBtn.addEventListener('click', function() { setVoicePref('onyx'); });
-      // Set initial state from config
       if (api && api.getConfig) {
-        api.getConfig().then(function(cfg) {
-          if (cfg && cfg.ttsVoice) setVoicePref(cfg.ttsVoice);
-        }).catch(function(){});
+        api.getConfig().then(syncGuestTtsFromConfig).catch(function () {
+          window.navioPopulateTtsVoiceSelect(guestTtsVoiceEl, 'nova');
+        });
+      } else {
+        window.navioPopulateTtsVoiceSelect(guestTtsVoiceEl, 'nova');
       }
+      guestTtsVoiceEl.addEventListener('change', function () {
+        _ttsVoicePref =
+          typeof window.navioNormalizeTtsVoiceId === 'function'
+            ? window.navioNormalizeTtsVoiceId(guestTtsVoiceEl.value)
+            : guestTtsVoiceEl.value;
+        if (api && api.saveConfig) {
+          api.saveConfig({ ttsVoice: _ttsVoicePref }).catch(function () {});
+        }
+      });
     }
   }
 

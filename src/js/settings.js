@@ -69,6 +69,7 @@ class SettingsManagerClass {
       aiAutoScreenshot: document.getElementById('setting-ai-auto-screenshot'),
       aiAgentStepMode: document.getElementById('setting-ai-agent-step-mode'),
       ttsEnabled: document.getElementById('setting-tts-enabled'),
+      ttsVoice: document.getElementById('setting-tts-voice'),
       assistantConnectorWeb: document.getElementById('setting-assistant-connector-web'),
       assistantConnectorMail: document.getElementById('setting-assistant-connector-mail'),
       assistantTabDigest: document.getElementById('setting-assistant-tab-digest'),
@@ -531,6 +532,9 @@ class SettingsManagerClass {
     }
     if (this.elements.ttsEnabled) {
       this.elements.ttsEnabled.checked = !!this.config.ttsEnabled;
+    }
+    if (this.elements.ttsVoice && typeof window.navioPopulateTtsVoiceSelect === 'function') {
+      window.navioPopulateTtsVoiceSelect(this.elements.ttsVoice, this.config.ttsVoice);
     }
     if (this.elements.assistantConnectorWeb) {
       const w = this.config.assistantConnectorWeb || 'auto';
@@ -1399,6 +1403,15 @@ class SettingsManagerClass {
       aiAutoScreenshotAfterNavigate: !!(this.elements.aiAutoScreenshot && this.elements.aiAutoScreenshot.checked),
       aiAgentStepMode: !!(this.elements.aiAgentStepMode && this.elements.aiAgentStepMode.checked),
       ttsEnabled: !!(this.elements.ttsEnabled && this.elements.ttsEnabled.checked),
+      ttsVoice: this.elements.ttsVoice
+        ? typeof window.navioNormalizeTtsVoiceId === 'function'
+          ? window.navioNormalizeTtsVoiceId(this.elements.ttsVoice.value)
+          : String(this.elements.ttsVoice.value || 'nova')
+              .trim()
+              .toLowerCase()
+        : typeof window.navioNormalizeTtsVoiceId === 'function'
+          ? window.navioNormalizeTtsVoiceId(this.config.ttsVoice)
+          : this.config.ttsVoice || 'nova',
       assistantConnectorWeb: this.elements.assistantConnectorWeb
         ? this.elements.assistantConnectorWeb.value || 'auto'
         : (this.config.assistantConnectorWeb || 'auto'),
