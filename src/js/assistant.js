@@ -819,19 +819,70 @@ class AssistantManagerClass {
     navioAssistantDebug('onActiveTabChanged', { prevTabId, nextTabId });
   }
 
+  /**
+   * When a tab (or the last tab in a group) goes away, keep a Comet-style copy in saved History (`sb:…`)
+   * instead of discarding the transcript with the storage key.
+   */
+  _archiveThreadToSavedHistory(messages, titleHint) {
+    if (!Array.isArray(messages) || !messages.length) return;
+    const copy = [];
+    for (const m of messages) {
+      if (!m || (m.role !== 'user' && m.role !== 'assistant')) continue;
+      if (typeof m.content !== 'string') continue;
+      copy.push({ role: m.role, content: m.content });
+    }
+    if (!copy.length) return;
+    let id;
+    try {
+      id =
+        NAVIO_SIDEBAR_THREAD_PREFIX +
+        (typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}_${Math.random().toString(36).slice(2, 11)}`);
+    } catch {
+      id = NAVIO_SIDEBAR_THREAD_PREFIX + `${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+    }
+    this._conversationsByTab.set(id, copy);
+    const firstUser = copy.find((m) => m && m.role === 'user' && String(m.content || '').trim());
+    let title = firstUser
+      ? String(firstUser.content).replace(/\s+/g, ' ').trim().slice(0, 56)
+      : '';
+    const hint = String(titleHint || '').replace(/\s+/g, ' ').trim();
+    if (!title && hint) title = hint.slice(0, 56);
+    if (!title) title = 'Saved chat';
+    this._sidebarSessionOrder = (this._sidebarSessionOrder || []).filter((x) => x.id !== id);
+    this._sidebarSessionOrder.unshift({ id, title, updatedAt: Date.now() });
+    if (this._sidebarSessionOrder.length > 80) this._sidebarSessionOrder.length = 80;
+    try {
+      this._renderSidebarSessionList();
+    } catch {
+      /* ignore */
+    }
+    this._schedulePersistAssistantHistory();
+  }
+
   onTabClosed(tabId, meta = {}) {
     if (!tabId) return;
     const id = String(tabId);
     const gid = meta && meta.groupId != null && meta.groupId !== '' ? String(meta.groupId) : '';
+    const skipArchive = !!(meta && meta.incognito);
     if (gid) {
       const gk = `g:${gid}`;
       const stillGrouped =
         typeof TabManager !== 'undefined' && TabManager.tabs.some((t) => t.groupId === gid);
       if (!stillGrouped) {
+        if (!skipArchive) {
+          const h = this._conversationsByTab.get(gk);
+          if (h && h.length) this._archiveThreadToSavedHistory(h, meta.archiveTitle);
+        }
         this._conversationsByTab.delete(gk);
       }
       this._busyTabs.delete(gk);
     } else {
+      if (!skipArchive) {
+        const h = this._conversationsByTab.get(id);
+        if (h && h.length) this._archiveThreadToSavedHistory(h, meta.archiveTitle);
+      }
       this._conversationsByTab.delete(id);
       this._busyTabs.delete(id);
     }

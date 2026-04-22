@@ -1408,7 +1408,11 @@ class TabManagerClass {
     this.tabs.splice(index, 1);
 
     if (typeof AssistantManager !== 'undefined' && typeof AssistantManager.onTabClosed === 'function') {
-      AssistantManager.onTabClosed(id, { groupId: tab.groupId || null });
+      AssistantManager.onTabClosed(id, {
+        groupId: tab.groupId || null,
+        incognito: !!tab.incognito,
+        archiveTitle: (this.getTabDisplayTitle(tab) || tab.title || '').trim()
+      });
     }
 
     // If the closed tab was in a group, rebuild the strip to update counts/remove empty headers
