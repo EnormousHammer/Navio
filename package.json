@@ -5,6 +5,7 @@
   "main": "electron/main.js",
   "scripts": {
     "test": "node --test ./test/*.test.js",
+    "ci": "npm test && npx electron-forge package",
     "start": "electron .",
     "dev": "electron . --dev",
     "package": "electron-forge package",

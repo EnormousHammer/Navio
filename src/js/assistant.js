@@ -164,10 +164,17 @@ const NAVIO_ASSISTANT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 const NAVIO_ASSISTANT_PDF_MAX_BYTES = 12 * 1024 * 1024;
 const NAVIO_ASSISTANT_TEXT_MAX_CHARS = 180000;
 const NAVIO_ASSISTANT_MAX_ATTACHMENTS = 8;
-/** Silence after speech before we treat the utterance as finished (Whisper VAD + Web Speech debounce). ~2.8s allows natural mid-sentence pauses. */
-const NAVIO_VOICE_END_SILENCE_MS = 2800;
+/**
+ * Silence after speech before we treat the utterance as finished (Whisper VAD + Web Speech debounce).
+ * Toolbar dictation: user can keep talking; longer pause before we stop recording.
+ */
+const NAVIO_VOICE_END_SILENCE_MS = 4000;
+/** Extra silence when voice-conversation reuses the persistent mic (hands-free turns). */
+const NAVIO_VOICE_CONV_EXTRA_SILENCE_MS = 700;
 /** After OpenAI TTS (or speech) ends in voice conversation, reopen the mic after this delay. */
 const NAVIO_VOICE_CONV_AFTER_TTS_MS = 200;
+/** Pause before auto TTS (voice conversation + Settings → read aloud) so the first syllable is not immediate. */
+const NAVIO_ASSISTANT_AUTO_TTS_START_DELAY_MS = 2500;
 /** Voice-conversation TTS: first chunk target size (chars) — smaller first request = faster time-to-first-audio. */
 const NAVIO_VOICE_TTS_FIRST_CHUNK = 320;
 /** Voice-conversation TTS: max chars per subsequent chunk (pipelined while previous plays). */
@@ -554,6 +561,8 @@ class AssistantManagerClass {
     /** Throttle optional spoken tool-progress updates in voice conversation (ms since epoch). */
     this._voiceConvProgressTtsAt = 0;
     this._ttsSessionId = 0;
+    /** Pending setTimeout for delayed auto read-aloud / voice reply (cleared on stop or new reply). */
+    this._autoTtsStartTimer = null;
     this._bindVoiceConversation();
 
     // ── Macro record button ────────────────────────────────────────────────
@@ -929,7 +938,7 @@ class AssistantManagerClass {
    * (`_panelDisplayTabId`) so another tab’s stream does not append into this transcript.
    */
   onActiveTabChanged(prevTabId, nextTabId) {
-    if (!prevTabId || prevTabId === nextTabId) return;
+    if (!nextTabId || prevTabId === nextTabId) return;
     if (this._sidebarThreadKey) {
       navioAssistantDebug('onActiveTabChanged: sidebar session — keep transcript', { prevTabId, nextTabId });
       return;
@@ -1628,7 +1637,9 @@ class AssistantManagerClass {
         let vadCalibratedAt = 0;
         const vadCalSamples = [];
         const VAD_CALIBRATE_MS = 400;
-        const SILENCE_NEEDED_MS = NAVIO_VOICE_END_SILENCE_MS;
+        const SILENCE_NEEDED_MS = sharedStream
+          ? NAVIO_VOICE_END_SILENCE_MS + NAVIO_VOICE_CONV_EXTRA_SILENCE_MS
+          : NAVIO_VOICE_END_SILENCE_MS;
         /** If we never cross `speakGate` after calibration, stop anyway (quiet room / mic gain / hung analyser). */
         const NO_SPEECH_GIVEUP_MS = SILENCE_NEEDED_MS + 1200;
         const MAX_RECORD_MS = 90_000;   // 90 s safety cap
@@ -1768,14 +1779,15 @@ class AssistantManagerClass {
       } else {
         this._applyVoiceTranscriptToInput(text, { replace: false });
       }
-      this.sendMessage();
+      if (hint) hint.textContent = 'Review above, then press Send (mic again to add more)';
+      this.inputEl?.focus();
     };
 
     // ── Whisper path ──────────────────────────────────────────────────────
     const startWhisper = () => {
       active = true;
       btn.classList.add('listening');
-      if (hint) hint.textContent = 'Listening… pause ~3s when done (merges with text in the box)';
+      if (hint) hint.textContent = 'Listening… pause ~4s when done — text goes in the box; you press Send';
       stopFn = this._whisperListen(onGotTranscript, ({ state }) => {
         if (state === 'processing' && hint) hint.textContent = 'Transcribing…';
       });
@@ -1810,7 +1822,7 @@ class AssistantManagerClass {
 
       rec.onstart = () => {
         btn.classList.add('listening');
-        if (hint) hint.textContent = 'Listening… pause ~3s when done (merges with text in the box)';
+        if (hint) hint.textContent = 'Listening… pause ~4s when done — text in the box; press Send when ready';
       };
       rec.onresult = (e) => {
         const t = Array.from(e.results).map(r => r[0].transcript).join('');
@@ -2130,6 +2142,7 @@ RESPONSE STYLE:
 
 NARRATE YOUR WORK (this is the most important rule):
 - Your reply is read aloud in real time: always include at least one short spoken sentence in your FIRST assistant message before tool calls (no empty content round). If you would otherwise jump straight to tools, say what you are doing first so the user never sits in long silence.
+- **Two mailboxes on screen:** you can **open_tab** twice (real Gmail with **gmail_browser_takeover** and different accounts / `mail/u/0` vs `u/1` or **authuser**), then **split_tabs** so both inboxes show side-by-side; **switch_tab** picks which pane gets clicks and read_page. For a spoken summary only, **gmail_search** on primary and secondary may be enough without split view.
 - Keep the user oriented while tools run, but never sound like a broken record: invent fresh wording every time. Do not reuse the same sentence, opener, or catchphrase twice in this conversation turn — and avoid leaning on the same stock fillers you used on the last turn when you can help it.
 - Vary structure and tone across steps: mix factual pings, plain status, and brief asides — but write each line from scratch for this moment. Never start two consecutive updates with the same word or the same template (e.g. do not do "One sec…" then "One sec…" again, or two lines that both begin with "Okay").
 - Anchor each line to what is literally happening (which mailbox, which site, which attachment, what you're opening next) so uniqueness comes naturally from the task, not from random fluff.
@@ -2258,7 +2271,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       // Prevents the mic staying open forever when isFinal never fires (common on Windows/Chromium).
       let vcSilenceTimer = null;
       let vcLastText = '';
-      const VC_SILENCE_MS = NAVIO_VOICE_END_SILENCE_MS;
+      const VC_SILENCE_MS = NAVIO_VOICE_END_SILENCE_MS + NAVIO_VOICE_CONV_EXTRA_SILENCE_MS;
       const submitVoiceText = (text) => {
         clearTimeout(vcSilenceTimer);
         if (!this._voiceConvActive) return;
@@ -2575,7 +2588,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       const best = sorted[0];
       if (best) utt.voice = best;
     }
-    const baseRate = this._voiceConvActive ? 0.84 : 0.92;
+    const baseRate = this._voiceConvActive ? 0.93 : 0.92;
     utt.rate =
       typeof speechOpts.webSpeechRate === 'number' && Number.isFinite(speechOpts.webSpeechRate)
         ? speechOpts.webSpeechRate
@@ -2642,14 +2655,14 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         ? Number(opts.speed)
         : this._voiceConvActive
           ? opts.workNudge
-            ? 0.82
-            : 0.9
+            ? 0.91
+            : 0.99
           : undefined;
     const speechOpts = {};
     if (opts.webSpeechRate != null && Number.isFinite(Number(opts.webSpeechRate))) {
       speechOpts.webSpeechRate = Number(opts.webSpeechRate);
     } else if (this._voiceConvActive) {
-      speechOpts.webSpeechRate = opts.workNudge ? 0.8 : 0.84;
+      speechOpts.webSpeechRate = opts.workNudge ? 0.89 : 0.93;
     }
 
     const chunkPlan = navioVoiceConvTtsChunkPlan(plain.slice(0, 4000));
@@ -2699,7 +2712,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const s = String(snippet || '').trim();
     if (!this._voiceConvActive || !s) return;
     if (s.length > 900) return;
-    await this._speakText(s, null, { speed: 0.82, workNudge: true, humanPace: true });
+    await this._speakText(s, null, { speed: 0.91, workNudge: true, humanPace: true });
   }
 
   /** Show / hide the persistent TTS active bar above the input area. */
@@ -2735,6 +2748,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
    * @param {{ resumeVoiceListen?: boolean }} [opts] - If true and voice conv is active, reopen the mic after a user Stop on read-aloud (OpenAI clips do not fire `ended` when paused).
    */
   _stopSpeaking(opts = {}) {
+    this._clearPendingAutoTts();
     const resumeMic = !!opts.resumeVoiceListen && this._voiceConvActive;
     // Increment session so any in-flight _speakText awaits abort themselves
     this._ttsSessionId = (this._ttsSessionId || 0) + 1;
@@ -3425,6 +3439,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     } catch {
       /* ignore */
     }
+    this._clearPendingAutoTts();
   }
 
   _threadBusyForSend() {
@@ -3658,7 +3673,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         messages.push({
           role: 'system',
           content:
-            `[Open tabs (${allTabs.length}) — use tab_id with switch_tab / close_tab]\n${tabList}`
+            `[Open tabs (${allTabs.length}) — use tab_id with switch_tab / close_tab / split_tabs (two tab ids)]\n${tabList}`
         });
       }
 
@@ -3838,6 +3853,20 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       // Do NOT call _syncPanelToTab here: it replays from `_conversationsByTab` and can wipe the live
       // transcript (empty key / wrong-tab timing / async ordering) back to the welcome screen mid-work.
       // Tab switches already call _syncPanelToTab from onActiveTabChanged; addMessage keeps DOM in sync.
+      // Exception: while a turn was in-flight, `_syncPanelToTab` skipped updating `_panelDisplayTabId` so
+      // the busy tab's stream stayed in the sidebar. After the turn ends, realign with the focused tab.
+      try {
+        if (!this._sidebarThreadKey && typeof TabManager !== 'undefined' && TabManager.activeTabId) {
+          const aid = String(TabManager.activeTabId);
+          const activeSk = this._storageKeyForTabId(aid);
+          const panelSk = this._panelDisplayStorageKey();
+          if (panelSk == null || activeSk !== panelSk) {
+            void this._syncPanelToTab(aid);
+          }
+        }
+      } catch {
+        /* non-critical */
+      }
     }
   }
 
@@ -4083,7 +4112,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         messages.push({
           role: 'system',
           content:
-            `[Open tabs (${allTabs.length}) — use tab_id with switch_tab / close_tab]\n${tabList}`
+            `[Open tabs (${allTabs.length}) — use tab_id with switch_tab / close_tab / split_tabs (two tab ids)]\n${tabList}`
         });
       }
     }
@@ -4245,7 +4274,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         messages.push({
           role: 'system',
           content:
-            `[Open tabs (${allTabs.length}) — use tab_id with switch_tab / close_tab]\n${tabList}`
+            `[Open tabs (${allTabs.length}) — use tab_id with switch_tab / close_tab / split_tabs (two tab ids)]\n${tabList}`
         });
       }
     }
@@ -4489,6 +4518,50 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       }
     });
 
+    const unSplitTabs = window.navio.onToolSplitTabs(async (payload) => {
+      if (payload && payload.tabId != null && String(payload.tabId) !== tk) return;
+      const { tab_id_a, tab_id_b, operationId } = payload || {};
+      const idA = String(tab_id_a || '').trim();
+      const idB = String(tab_id_b || '').trim();
+      this._appendActivityStep('split_tabs', `Split view: ${idA} | ${idB}`);
+      try {
+        if (!idA || !idB) {
+          window.navio.toolSplitTabsAck({
+            success: false,
+            error: 'Provide tab_id_a and tab_id_b from list_tabs.',
+            operationId
+          });
+          return;
+        }
+        const ok = typeof TabManager.splitTabWith === 'function' && TabManager.splitTabWith(idA, idB);
+        if (!ok) {
+          window.navio.toolSplitTabsAck({
+            success: false,
+            error:
+              'Split failed. Both tabs need http(s) URLs, the same privacy mode (not incognito vs normal), ' +
+              'and neither can be the Navio chat tab. Open both pages first, then try again.',
+            operationId
+          });
+          return;
+        }
+        const active = TabManager.getActiveTab();
+        const wv = active?.webview;
+        if (active?.id) TabManager.setAgentControlledTab?.(active.id);
+        window.navio.toolSplitTabsAck({
+          success: true,
+          active_tab_id: active?.id || '',
+          partner_tab_id: active?.splitPartnerId || '',
+          webContentsId: wv?.getWebContentsId?.() || null,
+          url: active?.url || '',
+          title: active ? TabManager.getTabDisplayTitle(active) : '',
+          note: 'Both panes are visible. Use switch_tab to target read_page / click at one side or the other.',
+          operationId
+        });
+      } catch (e) {
+        window.navio.toolSplitTabsAck({ success: false, error: e.message, operationId });
+      }
+    });
+
     // Set up reasoning handler (intermediate AI thinking during tool loop).
     // step-0 text (the model's initial acknowledgment before first tools) surfaces as a real chat bubble
     // inserted above the Working card so the user sees "On it — navigating to X now" instead of silence.
@@ -4681,6 +4754,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     unCloseTab();
     unSwitchTab();
     unListTabs();
+    unSplitTabs();
     if (unReasoning) unReasoning();
     if (unProposePlan) unProposePlan();
     if (unGmailSendConfirm) unGmailSendConfirm();
@@ -4817,6 +4891,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       click: 'Tap', type_text: 'Fill', scroll: 'Scroll', screenshot: 'Snap',
       press_key: 'Key', insert_text: 'Paste', wait: 'Wait', go_back: 'Back', go_forward: 'Forward',
       open_tab: 'New tab', close_tab: 'Close tab', switch_tab: 'Switch tab', list_tabs: 'Tabs',
+      split_tabs: 'Split view',
       read_console: 'Console', read_network: 'Network', propose_plan: 'Plan',
       list_workflows: 'Workflows', run_workflow: 'Run workflow',
       gmail_search: 'Gmail', gmail_get_message: 'Gmail', gmail_list_drafts: 'Drafts',
@@ -4851,6 +4926,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       case 'close_tab': return `Closed a tab`;
       case 'switch_tab': return `Jumped to${result?.title ? ' ' + result.title : ' another tab'}`;
       case 'list_tabs': return `Listed ${result?.tabs?.length || 0} open tabs`;
+      case 'split_tabs': return result?.success ? 'Split view — two tabs side by side' : `Split failed: ${result?.error || 'unknown'}`;
       case 'read_console': return `Read ${result?.count || 0} console messages`;
       case 'read_network': return `Read ${result?.count || 0} network requests`;
       case 'propose_plan': return `Proposed plan${result?.approved ? ' (approved)' : result?.cancelled ? ' (cancelled)' : ''}`;
@@ -5350,18 +5426,37 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     msgEl.insertBefore(ttsBtn, contentEl);
   }
 
+  _clearPendingAutoTts() {
+    if (this._autoTtsStartTimer) {
+      try {
+        clearTimeout(this._autoTtsStartTimer);
+      } catch {
+        /* ignore */
+      }
+      this._autoTtsStartTimer = null;
+    }
+  }
+
   /** Auto-play TTS when Settings → read aloud is on, or during voice conversation. */
   _maybeAutoSpeakAssistantReply(plainText) {
+    this._clearPendingAutoTts();
     const t = String(plainText || '').trim().slice(0, 4000);
     if (!t) return;
-    if (this._voiceConvActive) {
-      this._voiceConvSetState('speaking');
-      void this._speakText(t);
-      return;
-    }
-    void window.navio.getConfig().then((cfg) => {
-      if (cfg && cfg.ttsEnabled) void this._speakText(t);
-    }).catch(() => { /* ignore */ });
+    const voiceWasActive = this._voiceConvActive;
+    const voiceSid = this._vcSid;
+    this._autoTtsStartTimer = setTimeout(() => {
+      this._autoTtsStartTimer = null;
+      if (voiceWasActive) {
+        if (!this._voiceConvActive || this._vcSid !== voiceSid) return;
+        this._voiceConvSetState('speaking');
+        void this._speakText(t);
+        return;
+      }
+      void window.navio.getConfig().then((cfg) => {
+        if (this._voiceConvActive) return;
+        if (cfg && cfg.ttsEnabled) void this._speakText(t);
+      }).catch(() => { /* ignore */ });
+    }, NAVIO_ASSISTANT_AUTO_TTS_START_DELAY_MS);
   }
 
   addMessage(role, content, type = '', meta = null) {
@@ -7898,6 +7993,7 @@ ${pageInfo}${snapText}`;
       open_tab: 'Opening a tab',
       switch_tab: 'Switching tabs',
       list_tabs: 'Listing your tabs',
+      split_tabs: 'Splitting the view',
       web_search: 'Searching the web',
       gmail_search: 'Digging through mail',
       gmail_get_message: 'Opening that email',

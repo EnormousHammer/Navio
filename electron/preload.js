@@ -62,6 +62,12 @@ contextBridge.exposeInMainWorld('navio', {
     return () => ipcRenderer.removeListener('tool-list-tabs', handler);
   },
   toolListTabsAck: (result) => ipcRenderer.send('tool-list-tabs-ack', result),
+  onToolSplitTabs: (callback) => {
+    const handler = (_, data) => callback(data);
+    ipcRenderer.on('tool-split-tabs', handler);
+    return () => ipcRenderer.removeListener('tool-split-tabs', handler);
+  },
+  toolSplitTabsAck: (result) => ipcRenderer.send('tool-split-tabs-ack', result),
 
   // Tool reasoning (intermediate AI thinking during tool loop)
   onToolReasoning: (callback) => {

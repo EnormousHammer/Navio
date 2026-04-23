@@ -55,6 +55,18 @@ if (!navioGotSingleInstanceLock) {
   process.exit(0);
 }
 
+/** Surface main-process failures and renderer exits in logs (especially when no dev terminal). */
+function installNavioProductionDiagnostics() {
+  process.on('uncaughtException', (err) => {
+    console.error('[navio] uncaughtException:', err && err.stack ? err.stack : String(err));
+  });
+  process.on('unhandledRejection', (reason) => {
+    const msg = reason instanceof Error ? reason.stack : String(reason);
+    console.error('[navio] unhandledRejection:', msg);
+  });
+}
+installNavioProductionDiagnostics();
+
 // Disable browser-level COOP/COEP enforcement so sites like Gmail and Google
 // services load correctly in Electron webviews. Without this, Chromium 130+
 // (Electron 33+) rejects the navigation with ERR_BLOCKED_BY_RESPONSE BEFORE
@@ -1223,6 +1235,18 @@ function createMainWindow() {
 
   mainWindow.loadFile(path.join(__dirname, '..', 'src', 'index.html'));
 
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error(
+      '[navio] render-process-gone:',
+      details && details.reason,
+      'exitCode=',
+      details && details.exitCode
+    );
+  });
+  mainWindow.webContents.on('unresponsive', () => {
+    console.warn('[navio] main window webContents became unresponsive');
+  });
+
   // Prefer Electron tab routing over Chromium's native paired BrowserWindow for
   // window.open when this key still exists on the guest webPreferences object.
   mainWindow.webContents.on('will-attach-webview', (_event, webPreferences) => {
@@ -2083,7 +2107,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
     /* non-fatal */
   }
 
-  const TAB_TOOLS = new Set(['open_tab', 'close_tab', 'switch_tab', 'list_tabs']);
+  const TAB_TOOLS = new Set(['open_tab', 'close_tab', 'switch_tab', 'list_tabs', 'split_tabs']);
 
   for (let step = 0; step < maxSteps; step++) {
     if (signal?.aborted) {
@@ -2278,7 +2302,11 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
           const newWc = electronWebContents.fromId(tabResult.webContentsId);
           if (newWc) activeWc = newWc;
         }
-        if (!tabResult.error && (tc.name === 'open_tab' || tc.name === 'switch_tab') && activeWc) {
+        if (tc.name === 'split_tabs' && tabResult.webContentsId) {
+          const splitWc = electronWebContents.fromId(tabResult.webContentsId);
+          if (splitWc) activeWc = splitWc;
+        }
+        if (!tabResult.error && (tc.name === 'open_tab' || tc.name === 'switch_tab' || tc.name === 'split_tabs') && activeWc) {
           await waitForWebContentsSettled(activeWc);
         }
         currentMessages = appendToolResult(currentMessages, tc, tabResult, provider);
@@ -2374,13 +2402,14 @@ async function executeTabTool(tc, sender, tabId) {
     open_tab:   { send: 'tool-open-tab',   ack: 'tool-open-tab-ack' },
     close_tab:  { send: 'tool-close-tab',  ack: 'tool-close-tab-ack' },
     switch_tab: { send: 'tool-switch-tab', ack: 'tool-switch-tab-ack' },
-    list_tabs:  { send: 'tool-list-tabs',  ack: 'tool-list-tabs-ack' }
+    list_tabs:  { send: 'tool-list-tabs',  ack: 'tool-list-tabs-ack' },
+    split_tabs: { send: 'tool-split-tabs', ack: 'tool-split-tabs-ack' }
   };
   const ch = channelMap[tc.name];
   if (!ch) return { error: `Unknown tab tool: ${tc.name}` };
   const operationId = crypto.randomUUID();
   sender.send(ch.send, { ...(tc.arguments || {}), tabId: tid, operationId });
-  const ackMs = tc.name === 'open_tab' ? 60000 : 30000;
+  const ackMs = tc.name === 'open_tab' ? 60000 : tc.name === 'split_tabs' ? 45000 : 30000;
   return await waitForRendererAck(sender, ch.ack, ackMs, operationId);
 }
 

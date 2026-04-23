@@ -1291,7 +1291,7 @@ class TabManagerClass {
     });
 
     if (typeof AssistantManager !== 'undefined' && typeof AssistantManager.onActiveTabChanged === 'function') {
-      if (prevId && prevId !== id) {
+      if (prevId !== id) {
         AssistantManager.onActiveTabChanged(prevId, id);
       }
     }

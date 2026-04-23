@@ -336,6 +336,29 @@ const NAVIO_TOOLS = [
       'When the user names a workspace or group (e.g. research batch), match group_name and use switch_tab on every tab in that group for multi-tab tasks.',
     parameters: { type: 'object', properties: {} }
   },
+  {
+    name: 'split_tabs',
+    description:
+      'Put **two** browser tabs **side-by-side** (split view): both pages stay visible and interactive at once. ' +
+      'Use **tab_id_a** and **tab_id_b** from **list_tabs**. Both tabs must already show **http(s)** pages, the same privacy mode (normal vs incognito), and neither may be the Navio full-page chat tab. ' +
+      '**Typical workflow — two Gmail inboxes:** (1) **open_tab** with **gmail_browser_takeover: true** to `https://mail.google.com/mail/u/0/` (or `?authuser=` primary email) for account A; (2) **open_tab** same with `https://mail.google.com/mail/u/1/` or the other **authuser** for account B; wait for each to load / user to sign in if needed; (3) **split_tabs** with those two **tab_id** values. ' +
+      'After split, use **switch_tab** to choose which pane receives **read_page**, **click**, and **type_text**; the other pane stays visible. ' +
+      'If the user only wants a **summary** of today’s mail across accounts (no UI), prefer **gmail_search** / **gmail_get_message** with **google_account** `primary` and `secondary` per mail rules instead of forcing split view.',
+    parameters: {
+      type: 'object',
+      properties: {
+        tab_id_a: {
+          type: 'string',
+          description: 'First tab id (from list_tabs). Left/right on screen follows tab strip order.'
+        },
+        tab_id_b: {
+          type: 'string',
+          description: 'Second tab id (from list_tabs).'
+        }
+      },
+      required: ['tab_id_a', 'tab_id_b']
+    }
+  },
 
   // ── Developer / inspection tools ────────────────────────────────────────────
   {
