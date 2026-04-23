@@ -68,6 +68,15 @@ Copy the **Setup.exe** or **ZIP** to a USB drive or cloud share; each target PC 
 - **Vanilla JS** (zero-framework for speed)
 - **CSS Custom Properties** (full design system)
 
+## Security and privacy (Phase B docs)
+
+- [Threat model](docs/SECURITY_THREAT_MODEL.md) — trust boundaries and main risks.
+- [IPC inventory](docs/IPC_INVENTORY.md) — main-process `invoke` channels by module.
+- [Updates and releases](docs/UPDATES.md) — GitHub Releases and auto-update expectations.
+- [Release signing](docs/RELEASE_SIGNING.md) — Windows and macOS signing/notarization env vars.
+- [Privacy overview](docs/PRIVACY.md) — what stays local vs what may leave the device.
+- [Third-party notices](docs/THIRD_PARTY_NOTICES.md) — major OSS components (refresh for compliance).
+
 ## Development and diagnostics
 
 - **Unit tests:** `npm test`
