@@ -5900,6 +5900,13 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   border-radius: 4px;
   padding: 1px 5px;
 }
+/* Inline `code` in sidecar: same contrast floor as kbd (pre>code stays on pre rules). */
+[data-theme="dark"] .assistant-panel .assistant-message .message-content :not(pre) > code {
+  color: #f1f5ff;
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.18);
+  -webkit-text-fill-color: #f1f5ff;
+}
 [data-theme="dark"] .assistant-panel .assistant-message .message-content .msg-code-lang {
   color: #c8d6ee;
 }
@@ -10892,7 +10899,8 @@ button.navio-followup-chip:active {
 }
 .navio-agent-activity .naa-step {
   display: grid;
-  grid-template-columns: 22px minmax(64px, 88px) 1fr;
+  /* minmax(0, …) lets the badge column shrink so long labels never collide (grid default min-size is "auto"). */
+  grid-template-columns: 22px minmax(0, 92px) minmax(0, 1fr);
   align-items: start;
   gap: 8px 10px;
   font-size: 12px;
@@ -10924,12 +10932,16 @@ button.navio-followup-chip:active {
   background: var(--bg-surface);
 }
 .navio-agent-activity .naa-tool {
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-secondary);
+  min-width: 0;
+  max-width: 100%;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  text-transform: none;
 }
 .navio-agent-activity .naa-step--thinking .naa-tool {
   color: var(--text-accent);
@@ -10939,6 +10951,7 @@ button.navio-followup-chip:active {
   letter-spacing: 0.04em;
 }
 .navio-agent-activity .naa-label {
+  min-width: 0;
   word-break: break-word;
   color: var(--text-primary);
   font-size: 12px;

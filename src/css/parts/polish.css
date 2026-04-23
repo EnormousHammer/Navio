@@ -1576,18 +1576,80 @@ html[data-theme="light"] .assistant-panel .assistant-smart-chip:hover {
 html[data-theme="light"] .assistant-panel .assistant-message .message-content {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.08);
-  color: var(--text-primary);
+  /* Sidecar stays dark-on-glass; never use global light-theme text tokens here (they are ink-colored). */
+  color: #e8ecf4;
 }
 
 html[data-theme="light"] .assistant-panel .user-message .message-content {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.11);
-  color: var(--text-primary);
+  color: #e8ecf4;
+}
+
+/* Light OS theme + dark assistant panel: markdown must stay high-contrast (global [data-theme=light] code rules are for pale bubbles only). */
+html[data-theme="light"] .assistant-panel .assistant-message .message-content p,
+html[data-theme="light"] .assistant-panel .assistant-message .message-content li,
+html[data-theme="light"] .assistant-panel .assistant-message .message-content ol li,
+html[data-theme="light"] .assistant-panel .assistant-message .message-content td,
+html[data-theme="light"] .assistant-panel .assistant-message .message-content th {
+  color: #d8e2f5;
+}
+
+html[data-theme="light"] .assistant-panel .assistant-message .message-content strong {
+  color: #ffffff;
+}
+
+html[data-theme="light"] .assistant-panel .assistant-message .message-content em {
+  color: #b4c4e0;
 }
 
 html[data-theme="light"] .assistant-panel .assistant-message .message-content h2,
-html[data-theme="light"] .assistant-panel .assistant-message .message-content strong {
-  color: var(--text-bright);
+html[data-theme="light"] .assistant-panel .assistant-message .message-content h3 {
+  color: #f1f5ff;
+}
+
+html[data-theme="light"] .assistant-panel .assistant-message .message-content h4,
+html[data-theme="light"] .assistant-panel .assistant-message .message-content h5 {
+  color: #b8c5dc;
+}
+
+html[data-theme="light"] .assistant-panel .assistant-message .message-content code {
+  color: #f0f7ff;
+  background: rgba(0, 0, 0, 0.38);
+  border-color: rgba(255, 255, 255, 0.16);
+  -webkit-text-fill-color: #f0f7ff;
+}
+
+html[data-theme="light"] .assistant-panel .assistant-message .message-content strong code,
+html[data-theme="light"] .assistant-panel .assistant-message .message-content em code {
+  color: #f0f7ff;
+  -webkit-text-fill-color: #f0f7ff;
+}
+
+html[data-theme="light"] .assistant-panel .assistant-message .message-content pre {
+  background: rgba(0, 0, 0, 0.42);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+html[data-theme="light"] .assistant-panel .assistant-message .message-content pre code {
+  color: #e8edf7;
+  background: transparent;
+  border: none;
+  -webkit-text-fill-color: #e8edf7;
+}
+
+html[data-theme="light"] .assistant-panel .assistant-message .message-content blockquote {
+  color: #c5d0e8;
+  background: rgba(0, 216, 255, 0.06);
+}
+
+html[data-theme="light"] .assistant-panel .assistant-message .message-content kbd,
+html[data-theme="light"] .assistant-panel .assistant-message .message-content samp,
+html[data-theme="light"] .assistant-panel .assistant-message .message-content var {
+  color: #eef2ff;
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(255, 255, 255, 0.16);
+  -webkit-text-fill-color: #eef2ff;
 }
 
 html[data-theme="light"] .assistant-panel .assistant-message .message-content a {
@@ -1675,6 +1737,10 @@ html[data-theme="dark"] .assistant-panel {
 
 .assistant-panel .navio-agent-activity .naa-tool {
   color: rgba(226, 232, 248, 0.92);
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .assistant-panel .navio-agent-activity .naa-step--thinking .naa-tool {

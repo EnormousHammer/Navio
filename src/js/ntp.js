@@ -145,6 +145,7 @@ const NTP = (() => {
     _bindNtpChatPanel();
     _bindDimSlider();
     _bindSportsPredictaLink();
+    _bindNtpCitationSourceLinks();
 
     _applyTickerBottomReserve();
 
@@ -766,6 +767,70 @@ const NTP = (() => {
     // Old #ntp-results panel removed; binding is now a no-op kept for safety.
   }
 
+  /** `google.com/url?…` wrappers (common in citations) → real https target (e.g. Drive). */
+  function _unwrapGoogleRedirectUrlForTab(href) {
+    const s = String(href || '').trim();
+    if (!s) return s;
+    try {
+      const u = new URL(s);
+      const bareHost = u.hostname.replace(/^www\./i, '').toLowerCase();
+      if (bareHost !== 'google.com') return s;
+      const qp = u.searchParams;
+      const dec = (v) => {
+        if (!v) return '';
+        const t = String(v).trim();
+        if (!/^https?:\/\//i.test(t)) return '';
+        try {
+          return decodeURIComponent(t.replace(/\+/g, ' '));
+        } catch {
+          return '';
+        }
+      };
+      return dec(qp.get('q')) || dec(qp.get('url')) || s;
+    } catch {
+      return s;
+    }
+  }
+
+  /** Perplexity source chips: open in the tab strip (not Chromium/Electron popup window). */
+  function _bindNtpCitationSourceLinks() {
+    const root = document.getElementById('new-tab-page');
+    if (!root || root.dataset.ntpCiteNavigateBound === '1') return;
+    root.dataset.ntpCiteNavigateBound = '1';
+    root.addEventListener(
+      'click',
+      (e) => {
+        const a = e.target && typeof e.target.closest === 'function' ? e.target.closest('a.ntp-cite-chip[href]') : null;
+        if (!a || !root.contains(a)) return;
+        const href0 = (a.getAttribute('href') || '').trim();
+        const href = _unwrapGoogleRedirectUrlForTab(href0);
+        if (!href || !/^https?:\/\//i.test(href)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof TabManager === 'undefined') return;
+        const bg = !!(e.ctrlKey || e.metaKey);
+        TabManager.createTab(href, { switchTo: !bg });
+      },
+      true
+    );
+    root.addEventListener(
+      'auxclick',
+      (e) => {
+        if (e.button !== 1) return;
+        const a = e.target && typeof e.target.closest === 'function' ? e.target.closest('a.ntp-cite-chip[href]') : null;
+        if (!a || !root.contains(a)) return;
+        const href0 = (a.getAttribute('href') || '').trim();
+        const href = _unwrapGoogleRedirectUrlForTab(href0);
+        if (!href || !/^https?:\/\//i.test(href)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof TabManager === 'undefined') return;
+        TabManager.createTab(href, { switchTo: false });
+      },
+      true
+    );
+  }
+
   function _closeResults() {
     _ntpCloseChat();
   }
@@ -919,7 +984,7 @@ const NTP = (() => {
               if (!url) return '';
               const safeU = _esc(url);
               const label = _esc(`[${i + 1}] ${url.replace(/^https?:\/\//, '').split('/')[0] || 'source'}`);
-              return `<a class="email-ref-chip ntp-cite-chip" href="${safeU}" target="_blank" rel="noopener">${label}</a>`;
+              return `<a class="email-ref-chip ntp-cite-chip" href="${safeU}" rel="noopener noreferrer">${label}</a>`;
             })
             .join('') +
           '</div>';

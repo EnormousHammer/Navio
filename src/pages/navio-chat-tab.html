@@ -1424,7 +1424,17 @@
       background: rgba(255, 255, 255, 0.035);
       border: 1px solid rgba(255, 255, 255, 0.05);
     }
-    .step-row .t { color: var(--cyan); font-weight: 600; font-size: 10px; text-transform: uppercase; }
+    .step-row .t {
+      color: var(--cyan);
+      font-weight: 600;
+      font-size: 10px;
+      letter-spacing: 0.02em;
+      text-transform: none;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .step-row .l { color: var(--text); margin-top: 4px; line-height: 1.4; }
 
     /* Toast / typing */
@@ -1531,21 +1541,31 @@
     }
     .ct-thinking.ct-done.ct-collapsed .ct-steps { max-height: 0; opacity: 0; margin-top: 0; }
     .ct-step {
-      display: flex;
-      align-items: baseline;
-      gap: 8px;
+      display: grid;
+      grid-template-columns: minmax(0, 88px) minmax(0, 1fr);
+      align-items: start;
+      gap: 6px 10px;
       line-height: 1.4;
     }
     .ct-step-tool {
       font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.07em;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-transform: none;
       color: var(--cyan);
-      flex-shrink: 0;
-      opacity: 0.85;
+      min-width: 0;
+      max-width: 100%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      opacity: 0.9;
     }
-    .ct-step-label { color: var(--text-3); font-size: 12px; }
+    .ct-step-label {
+      color: var(--text-3);
+      font-size: 12px;
+      min-width: 0;
+      word-break: break-word;
+    }
     .ct-toggle-hint {
       font-size: 10px;
       color: var(--dim);
@@ -1902,6 +1922,39 @@
   const tbMenu = document.getElementById('tb-menu');
   const charCountEl = document.getElementById('char-count');
 
+  /** Open https links in the host tab strip (not a separate BrowserWindow). */
+  if (messagesEl) {
+    messagesEl.addEventListener(
+      'click',
+      function (e) {
+        var a = e.target && e.target.closest && e.target.closest('a[href]');
+        if (!a || !messagesEl.contains(a)) return;
+        var href = a.getAttribute('href') || '';
+        if (!href || href.indexOf('javascript:') === 0 || href === '#') return;
+        if (!/^https?:\/\//i.test(href)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var bg = !!(e.ctrlKey || e.metaKey);
+        post({ action: 'openUrl', url: href, background: bg });
+      },
+      true
+    );
+    messagesEl.addEventListener(
+      'auxclick',
+      function (e) {
+        if (e.button !== 1) return;
+        var a = e.target && e.target.closest && e.target.closest('a[href]');
+        if (!a || !messagesEl.contains(a)) return;
+        var href = a.getAttribute('href') || '';
+        if (!/^https?:\/\//i.test(href)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        post({ action: 'openUrl', url: href, background: true });
+      },
+      true
+    );
+  }
+
   // ── SVG helpers (inline, minimal) ───────────────────────────────
   const SVG = {
     assistant:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L4 6.5V12c0 5.25 3.5 9.75 8 10 4.5-.25 8-4.75 8-10V6.5L12 2z"/><path d="M9.5 11.5L11 13l3.5-3.5"/></svg>',
@@ -2003,13 +2056,13 @@
       const u = url.trim();
       const safe = /^(https?:|mailto:|#)/i.test(u);
       if (!safe) return label;
-      return '<a href="' + u.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener">' + label + '</a>';
+      return '<a href="' + u.replace(/"/g, '&quot;') + '" rel="noopener noreferrer">' + label + '</a>';
     });
     // Autolink bare URLs — avoid touching already-linked text
     html = html.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, function (_, pre, url) {
       const trailing = (url.match(/[).,!?;:]+$/) || [''])[0];
       const core = url.slice(0, url.length - trailing.length);
-      return pre + '<a href="' + core.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener">' + core + '</a>' + trailing;
+      return pre + '<a href="' + core.replace(/"/g, '&quot;') + '" rel="noopener noreferrer">' + core + '</a>' + trailing;
     });
 
     // 9. Tables — GitHub-flavored basic tables
@@ -2819,14 +2872,15 @@
         }
         case 'toolStep': {
           agentStepIndex += 1;
+          const badge = String(msg.badge || msg.tool || '').trim() || msg.tool;
           // Keep drawer data for the Activity button (don't auto-open)
           const stepRow = document.createElement('div');
           stepRow.className = 'step-row';
-          stepRow.innerHTML = '<div class="t">' + esc(msg.tool) + '</div><div class="l">' + esc(msg.label) + '</div>';
+          stepRow.innerHTML = '<div class="t">' + esc(badge) + '</div><div class="l">' + esc(msg.label) + '</div>';
           agentStepsEl.appendChild(stepRow);
           agentStepsEl.scrollTop = agentStepsEl.scrollHeight;
           // Show inline in the chat thread
-          addInlineStep(msg.tool, msg.label);
+          addInlineStep(badge, msg.label);
           break;
         }
         case 'activityDone':

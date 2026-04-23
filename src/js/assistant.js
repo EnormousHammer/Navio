@@ -583,7 +583,7 @@ class AssistantManagerClass {
     if (!this.receiptEl) this.receiptEl = document.getElementById('assistant-context-receipt');
     if (this.messagesEl && !this._assistantLinkDelegateBound) {
       this._assistantLinkDelegateBound = true;
-      this.messagesEl.addEventListener('click', (e) => {
+      const _delegateAssistantLink = (e) => {
         const a = e.target && typeof e.target.closest === 'function' ? e.target.closest('a[href]') : null;
         if (!a || !this.messagesEl.contains(a)) return;
         if (a.closest('.email-ref-chip')) return;
@@ -592,8 +592,28 @@ class AssistantManagerClass {
         if (!/^https?:\/\//i.test(href)) return;
         e.preventDefault();
         e.stopPropagation();
-        this._openAssistantExternalUrl(href);
-      });
+        // Ctrl/Cmd-click: new tab in background (same as browser). Middle-click handled in auxclick.
+        const switchTo = !(e.ctrlKey || e.metaKey);
+        this._openAssistantExternalUrl(href, { switchTo });
+      };
+      // Capture: run before Chromium/Electron default for target=_blank on <a> (avoids extra BrowserWindow).
+      this.messagesEl.addEventListener('click', _delegateAssistantLink, true);
+      this.messagesEl.addEventListener(
+        'auxclick',
+        (e) => {
+          if (e.button !== 1) return;
+          const a = e.target && typeof e.target.closest === 'function' ? e.target.closest('a[href]') : null;
+          if (!a || !this.messagesEl.contains(a)) return;
+          if (a.closest('.email-ref-chip')) return;
+          const href = a.getAttribute('href');
+          if (!href || href.startsWith('javascript:') || href.startsWith('#')) return;
+          if (!/^https?:\/\//i.test(href)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          this._openAssistantExternalUrl(href, { switchTo: false });
+        },
+        true
+      );
     }
     return this.panel;
   }
@@ -4293,7 +4313,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       const url = String(payload.url || '').trim();
       if (url && /^https?:\/\//i.test(url)) {
         try {
-          this._openAssistantExternalUrl(url);
+          const bg = !!payload.background;
+          this._openAssistantExternalUrl(url, { switchTo: !bg });
         } catch {
           /* ignore */
         }
@@ -5290,10 +5311,76 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     }
   }
 
+  /**
+   * Short column label for the activity step row (never raw snake_case API ids — avoids overlap with the detail column).
+   */
+  _activityStepBadge(tool) {
+    const t = String(tool || '').trim();
+    if (!t) return 'Step';
+    const map = {
+      thinking: 'Thinking…',
+      navigate: 'Open',
+      read_page: 'Look',
+      get_page_text: 'Pull text',
+      click: 'Tap',
+      type_text: 'Fill',
+      scroll: 'Scroll',
+      screenshot: 'Snap',
+      press_key: 'Key',
+      insert_text: 'Paste',
+      wait: 'Wait',
+      go_back: 'Back',
+      go_forward: 'Forward',
+      open_tab: 'New tab',
+      close_tab: 'Close tab',
+      switch_tab: 'Switch tab',
+      list_tabs: 'Tabs',
+      split_tabs: 'Split view',
+      read_console: 'Console',
+      read_network: 'Network',
+      propose_plan: 'Plan',
+      list_workflows: 'Workflows',
+      run_workflow: 'Workflow',
+      gmail_search: 'Gmail',
+      gmail_get_message: 'Gmail',
+      gmail_get_thread: 'Gmail',
+      gmail_get_attachment: 'Gmail',
+      gmail_list_drafts: 'Drafts',
+      gmail_create_draft: 'Draft',
+      gmail_create_reply_draft: 'Reply',
+      gmail_update_draft: 'Draft',
+      gmail_delete_draft: 'Draft',
+      gmail_send_draft: 'Send',
+      drive_search: 'Drive',
+      drive_get_file: 'Drive',
+      drive_list_folder: 'Drive',
+      drive_create_file: 'Drive',
+      drive_update_text_file: 'Drive',
+      drive_update_google_doc: 'Drive',
+      drive_trash_file: 'Drive',
+      calendar_list_events: 'Calendar',
+      calendar_create_event: 'Calendar',
+      web_search: 'Web'
+    };
+    if (map[t]) return map[t];
+    if (t.startsWith('gmail_')) return 'Gmail';
+    if (t.startsWith('drive_')) return 'Drive';
+    if (t.startsWith('calendar_')) return 'Calendar';
+    const parts = t.split('_').filter(Boolean);
+    const tail = parts.length ? parts[parts.length - 1] : t;
+    return tail.slice(0, 1).toUpperCase() + tail.slice(1, 14);
+  }
+
   _appendActivityStep(tool, label) {
     if (!this._panelShowsTurnDom()) return;
+    const badge = this._activityStepBadge(tool);
     if (this._guestChatWebview) {
-      this._guestDeliver(this._guestChatWebview, { type: 'toolStep', tool, label });
+      this._guestDeliver(this._guestChatWebview, {
+        type: 'toolStep',
+        tool,
+        badge,
+        label
+      });
       return;
     }
     if (!this._currentActivityEl) return;
@@ -5302,25 +5389,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const step = document.createElement('div');
     const isThink = tool === 'thinking';
     step.className = isThink ? 'naa-step naa-step--thinking' : 'naa-step';
-    // Human-readable tool badges (Comet-style)
-    const TOOL_BADGES = {
-      thinking: 'Thinking…', navigate: 'Open', read_page: 'Look', get_page_text: 'Pull text',
-      click: 'Tap', type_text: 'Fill', scroll: 'Scroll', screenshot: 'Snap',
-      press_key: 'Key', insert_text: 'Paste', wait: 'Wait', go_back: 'Back', go_forward: 'Forward',
-      open_tab: 'New tab', close_tab: 'Close tab', switch_tab: 'Switch tab', list_tabs: 'Tabs',
-      split_tabs: 'Split view',
-      read_console: 'Console', read_network: 'Network', propose_plan: 'Plan',
-      list_workflows: 'Workflows', run_workflow: 'Run workflow',
-      gmail_search: 'Gmail', gmail_get_message: 'Gmail', gmail_list_drafts: 'Drafts',
-      gmail_create_draft: 'Draft', gmail_create_reply_draft: 'Reply draft',
-      gmail_update_draft: 'Update draft', gmail_delete_draft: 'Delete draft',
-      gmail_send_draft: 'Send',
-      drive_search: 'Drive', drive_get_file: 'Drive', drive_list_folder: 'Drive',
-      drive_create_file: 'Drive', drive_update_text_file: 'Drive', drive_update_google_doc: 'Drive',
-      drive_trash_file: 'Drive',
-      web_search: 'Web search'
-    };
-    const toolShown = TOOL_BADGES[tool] || this._escapeHtml(String(tool));
+    const toolShown = this._escapeHtml(badge);
     const toolClass = tool === 'web_search' ? 'naa-tool naa-tool--search' : 'naa-tool';
     const n = stepsEl.children.length + 1;
     step.innerHTML = `<span class="naa-step-index" aria-hidden="true">${n}</span><span class="${toolClass}">${toolShown}</span><span class="naa-label">${this._escapeHtml(String(label))}</span>`;
@@ -5361,8 +5430,21 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       }
       case 'gmail_search': return `Gmail: ${result?.results?.length ?? 0} message(s)`;
       case 'gmail_get_message': return `Gmail: opened message`;
+      case 'gmail_get_thread': {
+        const n = result?.message_count ?? result?.messages?.length ?? 0;
+        return n ? `Loaded thread (${n} message${n === 1 ? '' : 's'})` : 'Loaded email thread';
+      }
+      case 'gmail_get_attachment': {
+        const fn = result?.filename || 'attachment';
+        const sz = result?.size_bytes;
+        return typeof sz === 'number' ? `Downloaded "${fn}" (${Math.round(sz / 1024)} KB)` : `Fetched "${fn}"`;
+      }
       case 'gmail_list_drafts': return `Gmail: ${result?.count ?? result?.drafts?.length ?? 0} draft(s)`;
       case 'gmail_create_draft': return `Gmail: new draft`;
+      case 'gmail_create_reply_draft': return 'Gmail: reply draft ready';
+      case 'gmail_update_draft': return 'Gmail: draft updated';
+      case 'gmail_delete_draft': return 'Gmail: draft removed';
+      case 'gmail_send_draft': return 'Gmail: message sent';
       case 'drive_search': return `Drive: ${result?.count ?? result?.results?.length ?? 0} file(s)`;
       case 'drive_get_file': return `Drive: read "${result?.name || 'file'}"`;
       case 'drive_list_folder': return `Drive: ${result?.count ?? result?.files?.length ?? 0} item(s) in folder`;
@@ -5375,7 +5457,20 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         const cites = Array.isArray(result?.citations) ? result.citations.length : 0;
         return `Web search${cites ? ` (${cites} sources)` : ''}`;
       }
-      default: return tool;
+      case 'calendar_list_events': {
+        const ev = result?.events?.length ?? result?.count ?? 0;
+        return `${ev} calendar event${ev === 1 ? '' : 's'} in range`;
+      }
+      case 'calendar_create_event': {
+        return result?.htmlLink || result?.id ? 'Calendar: event created' : 'Calendar: event saved';
+      }
+      default: {
+        const t = String(tool || '');
+        if (!t) return 'Done';
+        return t
+          .replace(/_/g, ' ')
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+      }
     }
   }
 
@@ -5671,12 +5766,13 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     urls.slice(0, 8).forEach((u) => {
       const raw = String(u).trim();
       if (!raw) return;
-      const href = this._ensureGmailSourceLinkHref(raw);
+      const href = this._ensureDriveDocsSheetsSlidesSourceHref(
+        this._ensureGmailSourceLinkHref(this._unwrapGoogleRedirectUrl(raw))
+      );
       idx += 1;
       const a = document.createElement('a');
       a.className = 'navio-citation-chip';
       a.href = href;
-      a.target = '_blank';
       a.rel = 'noopener noreferrer';
       let host = 'Source';
       try {
@@ -5707,7 +5803,25 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const push = (raw) => {
       let u = String(raw).trim().replace(/[),.;]+$/, '');
       const q = u.indexOf('?');
-      if (q > 0 && u.length - q > 200) u = u.slice(0, q);
+      if (q > 0 && u.length - q > 200) {
+        let keepQuery = false;
+        try {
+          const h = new URL(u).hostname.toLowerCase();
+          if (
+            h === 'drive.google.com' ||
+            h === 'docs.google.com' ||
+            h === 'sheets.google.com' ||
+            h === 'slides.google.com' ||
+            h === 'www.google.com' ||
+            h === 'google.com'
+          ) {
+            keepQuery = true;
+          }
+        } catch {
+          /* ignore */
+        }
+        if (!keepQuery) u = u.slice(0, q);
+      }
       if (!/^https?:\/\//i.test(u) || seen.has(u)) return false;
       seen.add(u);
       urls.push(u);
@@ -6013,6 +6127,65 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   /**
+   * Perplexity / search results often wrap targets as `https://www.google.com/url?q=…` or `…&url=…`.
+   * Unwrap so Drive/Docs links resolve to a real https URL (and open in-app tabs, not a handoff window).
+   */
+  _unwrapGoogleRedirectUrl(href) {
+    const s = String(href || '').trim();
+    if (!s) return s;
+    try {
+      const u = new URL(s);
+      const bareHost = u.hostname.replace(/^www\./i, '').toLowerCase();
+      if (bareHost !== 'google.com') return s;
+      const qp = u.searchParams;
+      const tryDecode = (v) => {
+        if (!v) return '';
+        const t = String(v).trim();
+        if (!/^https?:\/\//i.test(t)) return '';
+        try {
+          return decodeURIComponent(t.replace(/\+/g, ' '));
+        } catch {
+          return '';
+        }
+      };
+      const fromQ = tryDecode(qp.get('q'));
+      if (fromQ) return fromQ;
+      const fromUrl = tryDecode(qp.get('url'));
+      if (fromUrl) return fromUrl;
+    } catch {
+      /* keep */
+    }
+    return s;
+  }
+
+  /**
+   * Drive / Docs / Sheets / Slides: hint OAuth mailbox with `authuser=` (same connector identity as Gmail API).
+   */
+  _ensureDriveDocsSheetsSlidesSourceHref(href) {
+    const h0 = String(href || '').trim();
+    if (!h0) return h0;
+    let host = '';
+    try {
+      host = new URL(h0).hostname.toLowerCase();
+    } catch {
+      return h0;
+    }
+    if (!/^(drive|docs|sheets|slides)\.google\.com$/i.test(host)) return h0;
+    try {
+      const u = new URL(h0);
+      if (u.searchParams.get('authuser')) return u.href;
+      const email =
+        String(this._gmailOAuthPrimaryEmail || '').trim() ||
+        String(this._gmailOAuthSecondaryEmail || '').trim();
+      if (!email.includes('@')) return h0;
+      u.searchParams.set('authuser', email);
+      return u.href;
+    } catch {
+      return h0;
+    }
+  }
+
+  /**
    * Citation chips and some model links bypass the markdown pipeline — ensure Gmail opens with
    * `?authuser=` from OAuth cache or `_emailRefs` (never a hardcoded address).
    */
@@ -6046,22 +6219,31 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   /**
-   * Open Gmail via AccountChooser + continue=(mail URL with authuser=). Avoids the browser's
-   * first signed-in Google account (often not the Navio OAuth / connector mailbox) hijacking the tab.
+   * Open Gmail / Drive / Workspace via AccountChooser + continue=(target URL with `authuser=`).
+   * Avoids the first browser Google login hijacking the tab when the connector uses another mailbox.
    */
-  _gmailAccountChooserTabUrl(mailHref) {
+  _gmailAccountChooserTabUrl(anyHref) {
     try {
-      const raw = String(mailHref || '').trim();
+      const raw = String(anyHref || '').trim();
       const u = new URL(raw);
-      if (!/^mail\.google\.com$/i.test(u.hostname)) return raw;
+      const host = u.hostname.toLowerCase();
+      const isMail = /^mail\.google\.com$/i.test(host);
+      const isWorkspace = /^(drive|docs|sheets|slides)\.google\.com$/i.test(host);
+      if (!isMail && !isWorkspace) return raw;
+
       let email = (u.searchParams.get('authuser') || '').trim();
-      const um = raw.match(/\/mail\/u\/(\d+)\//);
-      const pathSlot = um ? parseInt(um[1], 10) || 0 : 0;
-      if (!email.includes('@')) {
+      if (!email.includes('@') && isMail) {
+        const um = raw.match(/\/mail\/u\/(\d+)\//);
+        const pathSlot = um ? parseInt(um[1], 10) || 0 : 0;
         const pri = (this._gmailOAuthPrimaryEmail || '').trim();
         const sec = (this._gmailOAuthSecondaryEmail || '').trim();
         if (pathSlot >= 1 && sec) email = sec;
         else email = pri || sec;
+      }
+      if (!email.includes('@')) {
+        const pri = (this._gmailOAuthPrimaryEmail || '').trim();
+        const sec = (this._gmailOAuthSecondaryEmail || '').trim();
+        email = pri || sec;
       }
       if (!email.includes('@')) return raw;
       const inner = new URL(raw);
@@ -6073,20 +6255,24 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         encodeURIComponent(inner.href)
       );
     } catch {
-      return mailHref;
+      return anyHref;
     }
   }
 
-  _openAssistantExternalUrl(href) {
-    const url = String(href || '').trim();
+  _openAssistantExternalUrl(href, opts = {}) {
+    let url = String(href || '').trim();
     if (!url) return;
+    url = this._unwrapGoogleRedirectUrl(url);
+    url = this._ensureGmailSourceLinkHref(url);
+    url = this._ensureDriveDocsSheetsSlidesSourceHref(url);
     let tabUrl = url;
-    if (/^https?:\/\/mail\.google\.com/i.test(url)) {
+    if (/^https?:\/\/mail\.google\.com/i.test(url) || /^https:\/\/(drive|docs|sheets|slides)\.google\.com/i.test(url)) {
       tabUrl = this._gmailAccountChooserTabUrl(url);
     }
+    const tabOpts = { switchTo: opts.switchTo !== false };
     try {
       if (typeof TabManager !== 'undefined' && typeof TabManager.createTab === 'function') {
-        TabManager.createTab(tabUrl);
+        TabManager.createTab(tabUrl, tabOpts);
       } else {
         window.open(tabUrl, '_blank');
       }
@@ -6500,7 +6686,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       // Block dangerous schemes to prevent XSS / open-redirect via model output
       const safe = /^https?:\/\//i.test(url.trim()) || /^mailto:/i.test(url.trim());
       if (!safe) return label;
-      return `<a href="${url.replace(/"/g, '&quot;')}" target="_blank" rel="noopener">${label}</a>`;
+      return `<a href="${url.replace(/"/g, '&quot;')}" rel="noopener noreferrer">${label}</a>`;
     });
 
     // ── 9b. Gmail links → professional email reference chips ─────────────────
@@ -8571,9 +8757,16 @@ ${pageInfo}${snapText}`;
       web_search: 'Searching the web',
       gmail_search: 'Digging through mail',
       gmail_get_message: 'Opening that email',
+      gmail_get_thread: 'Reading the thread',
+      gmail_get_attachment: 'Fetching an attachment',
       gmail_list_drafts: 'Checking drafts',
       gmail_create_draft: 'Drafting mail',
       gmail_create_reply_draft: 'Drafting a reply',
+      gmail_update_draft: 'Updating a draft',
+      gmail_delete_draft: 'Removing a draft',
+      gmail_send_draft: 'Sending mail',
+      calendar_list_events: 'Checking the calendar',
+      calendar_create_event: 'Creating a calendar event',
       read_console: 'Peeking at the console',
       read_network: 'Watching network calls',
       propose_plan: 'Sketching a plan',
