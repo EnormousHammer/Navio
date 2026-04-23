@@ -1385,8 +1385,8 @@
    9) Settings — structured sidebar + calm content (chrome-like)
    --------------------------------------------- */
 .modal.modal-settings {
-  width: min(960px, 96vw);
-  max-height: min(90vh, 820px);
+  width: min(960px, calc(100vw - 32px));
+  max-height: min(820px, max(240px, calc(100vh - 48px)));
   border-radius: 12px;
   border: 1px solid var(--p-border);
   box-shadow: var(--p-shadow), 0 0 0 1px rgba(0, 0, 0, 0.1);

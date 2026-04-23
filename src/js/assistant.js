@@ -478,7 +478,31 @@ class AssistantManagerClass {
   /** Re-resolve panel if DOM changed or constructor ran before the node existed. */
   _ensurePanel() {
     if (!this.panel) this.panel = document.getElementById('assistant-panel');
+    if (!this.messagesEl) this.messagesEl = document.getElementById('assistant-messages');
+    if (!this.inputEl) this.inputEl = document.getElementById('assistant-input');
+    if (!this.scopeSelect) this.scopeSelect = document.getElementById('assistant-data-scope');
+    if (!this.receiptEl) this.receiptEl = document.getElementById('assistant-context-receipt');
     return this.panel;
+  }
+
+  /**
+   * If the splash is already dismissed but `shell-prelude-active` stayed on `body`, CSS keeps
+   * `#app` at `pointer-events: none` and the navbar AI button feels dead (see styles.css comment).
+   */
+  _scrubStaleShellPrelude() {
+    try {
+      const sp = document.getElementById('shell-prelude');
+      if (sp && sp.getAttribute('aria-hidden') === 'true') {
+        document.body.classList.remove(
+          'shell-prelude-active',
+          'shell-prelude-in',
+          'shell-browser-reveal',
+          'shell-prelude-fading'
+        );
+      }
+    } catch {
+      /* ignore */
+    }
   }
 
   /** Autosize sidebar composer; keeps at least two lines when empty (see #assistant-input rows + min-height). */
@@ -838,6 +862,28 @@ class AssistantManagerClass {
       this._assistantHistoryLoadPromise = this._loadPersistedChat();
     }
     await this._assistantHistoryLoadPromise;
+  }
+
+  /**
+   * `assistant-chat-load` IPC can stall (disk / main). Awaiting it indefinitely leaves the guest
+   * chat stuck on "busy" before the host runs the model. Time out and drop the hung promise so a
+   * later load can retry; any in-flight `_loadPersistedChat` may still complete and merge data.
+   */
+  async _ensureAssistantHistoryLoadedBounded(maxMs = 8000) {
+    try {
+      await Promise.race([
+        this._ensureAssistantHistoryLoaded(),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('navio-assistant-history-timeout')), maxMs))
+      ]);
+    } catch (e) {
+      const msg = e && e.message != null ? String(e.message) : String(e || '');
+      if (msg === 'navio-assistant-history-timeout') {
+        navioAssistantDebug('_ensureAssistantHistoryLoadedBounded: timeout', { maxMs });
+        this._assistantHistoryLoadPromise = null;
+      } else {
+        console.warn('[navio-assistant] history load bounded wait failed', e);
+      }
+    }
   }
 
   async _loadPersistedChat() {
@@ -2142,7 +2188,7 @@ RESPONSE STYLE:
 
 NARRATE YOUR WORK (this is the most important rule):
 - Your reply is read aloud in real time: always include at least one short spoken sentence in your FIRST assistant message before tool calls (no empty content round). If you would otherwise jump straight to tools, say what you are doing first so the user never sits in long silence.
-- **Two mailboxes on screen:** you can **open_tab** twice (real Gmail with **gmail_browser_takeover** and different accounts / `mail/u/0` vs `u/1` or **authuser**), then **split_tabs** so both inboxes show side-by-side; **switch_tab** picks which pane gets clicks and read_page. For a spoken summary only, **gmail_search** on primary and secondary may be enough without split view.
+- **Two mailboxes on screen:** you can **open_tab** twice (real Gmail with **gmail_browser_takeover** and different accounts / mail/u/0 vs u/1 or **authuser**), then **split_tabs** so both inboxes show side-by-side; **switch_tab** picks which pane gets clicks and read_page. For a spoken summary only, **gmail_search** on primary and secondary may be enough without split view.
 - Keep the user oriented while tools run, but never sound like a broken record: invent fresh wording every time. Do not reuse the same sentence, opener, or catchphrase twice in this conversation turn — and avoid leaning on the same stock fillers you used on the last turn when you can help it.
 - Vary structure and tone across steps: mix factual pings, plain status, and brief asides — but write each line from scratch for this moment. Never start two consecutive updates with the same word or the same template (e.g. do not do "One sec…" then "One sec…" again, or two lines that both begin with "Okay").
 - Anchor each line to what is literally happening (which mailbox, which site, which attachment, what you're opening next) so uniqueness comes naturally from the task, not from random fluff.
@@ -3076,6 +3122,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   toggle() {
+    this._scrubStaleShellPrelude();
+    if (!this._takeoverMode) {
+      document.getElementById('navio-agent-chrome-pill')?.remove();
+    }
     const now = Date.now();
     if (now - this._lastToggleAt < 100) {
       navioAssistantDebug('toggle: ignored (debounce <100ms)');
@@ -3090,12 +3140,14 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   async open() {
-    await this._ensureAssistantHistoryLoaded();
+    this._scrubStaleShellPrelude();
     this._ensurePanel();
     if (!this.panel) {
       navioAssistantDebug('open: ABORT — #assistant-panel not found after _ensurePanel()');
       return;
     }
+    // Show the dock immediately. Persisted chat loads via IPC — if that awaited first, a slow or
+    // stuck `assistant-chat-load` left width at 0 so the assistant appeared "not to launch".
     this.isOpen = true;
     this.panel.classList.add('open');
     document.body.classList.add('navio-assistant-open');
@@ -3104,6 +3156,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       panelClass: this.panel.className
     });
     try {
+      await this._ensureAssistantHistoryLoadedBounded();
       await this.syncScopeFromConfig();
       await this.syncConnectorTogglesFromConfig();
       const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
@@ -3211,7 +3264,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   async sendMessage() {
-    await this._ensureAssistantHistoryLoaded();
+    await this._ensureAssistantHistoryLoadedBounded();
     this.inputEl = document.getElementById('assistant-input') || this.inputEl;
     if (!this.inputEl) return;
     // `addMessage` is gated by `_panelShowsTurnDom()` vs `_panelDisplayTabId`. That id can go stale
@@ -3576,7 +3629,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   async processMessage(text, isQuickAction = false, historyUserLabel = null) {
-    await this._ensureAssistantHistoryLoaded();
+    await this._ensureAssistantHistoryLoadedBounded();
     const config = await window.navio.getConfig();
 
     if (config.aiKillSwitch) {
@@ -3958,6 +4011,23 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       }
       return;
     }
+    // Guest Stop button: navio-chat-tab.html posts this. Without it the main in-flight tool/stream
+    // loop keeps running, `_busyTabs` stays set, and the next send appears to "freeze".
+    if (payload.action === 'stop') {
+      const tid =
+        this._turnConversationKey != null && String(this._turnConversationKey).length
+          ? String(this._turnConversationKey)
+          : this._guestConversationKey();
+      try {
+        void window.navio.aiAbort({ tabId: tid });
+      } catch {
+        /* ignore */
+      }
+      const gk = this._guestConversationKey();
+      this._setTabBusy(gk, false);
+      this._updateAssistantBusyChrome();
+      return;
+    }
     if (payload.action === 'send' && (payload.text || (Array.isArray(payload.files) && payload.files.length))) {
       const text = payload.text != null ? String(payload.text).trim() : '';
       const files = Array.isArray(payload.files) ? payload.files : null;
@@ -4026,13 +4096,18 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   async processGuestChatMessage(guestWv, text, files) {
-    await this._ensureAssistantHistoryLoaded();
+    await this._ensureAssistantHistoryLoadedBounded();
     if (!guestWv) return;
     const hasFiles = Array.isArray(files) && files.length > 0;
     if (!text && !hasFiles) return;
     const guestKey = this._guestConversationKey();
     if (this._tabIsBusy(guestKey)) {
-      this._guestDeliver(guestWv, { type: 'toast', text: 'Still working on the last message…' });
+      this._guestDeliver(guestWv, {
+        type: 'assistant',
+        error: false,
+        content:
+          '*(A previous turn is still marked in-flight on the host — press **Stop** or wait. If it is stuck, Stop cancels the model work.)*'
+      });
       return;
     }
     const config = await window.navio.getConfig();
@@ -4084,6 +4159,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (this._guestAnchoredTabId) {
         void this._syncPanelToTab(this._guestAnchoredTabId);
       }
+      void this._guestDeliver(guestWv, { type: 'hostTurnEnd' });
     }
   }
 
@@ -4172,6 +4248,29 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           tabId: graphTab?.id,
           url: graphTab?.url || ''
         });
+      } else {
+        const cancelled = !!(payload && payload.cancelled);
+        const out = cancelled
+          ? '*(Stopped)*'
+          : '*(No response text was streamed. Try again or check **Settings → AI**.)*';
+        this._currentHistory().push({ role: 'user', content: userHistory }, { role: 'assistant', content: out });
+        this._trimHistory();
+        // No live stream bubble exists without chunks — `assistant` runs addAssistantBubble + clears busy.
+        this._guestDeliver(guestWv, { type: 'assistant', content: out });
+        if (!cancelled) {
+          const graphTab = TabManager.getActiveTab?.() || null;
+          try {
+            await window.navio.contextGraph({
+              op: 'addTurn',
+              role: 'assistant',
+              summary: out.slice(0, 200),
+              tabId: graphTab?.id,
+              url: graphTab?.url || ''
+            });
+          } catch {
+            /* ignore */
+          }
+        }
       }
     });
     const unErr = window.navio.onAiStreamError(async (msg) => {
@@ -4212,6 +4311,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     try {
     const tk = String(this._turnConversationKey || '__default__');
     if (this.inputEl && typeof this.inputEl.blur === 'function') this.inputEl.blur();
+    if (guestWv) {
+      void this._guestDeliver(guestWv, { type: 'activityStart' });
+    }
 
     // ── Agent Router — detect domain and add focused context ────────────────
     const agentDomain = this._detectAgentDomain(text, typeof TabManager !== 'undefined' ? TabManager.getActiveTab()?.url || '' : '');
@@ -4364,7 +4466,6 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       this._currentActivityEl = null;
     } else {
       this._currentActivityEl = null;
-      this._guestDeliver(guestWv, { type: 'activityStart' });
     }
 
     // Set up navigate handler (tabId + operationId so parallel agent loops don't cross-ack)
@@ -8095,7 +8196,7 @@ ${pageInfo}${snapText}`;
   }
 
   async _openTabThreadFromHistory(tabId) {
-    await this._ensureAssistantHistoryLoaded();
+    await this._ensureAssistantHistoryLoadedBounded();
     if (this._threadBusyForSend()) return;
     const tid = String(tabId || '').trim();
     if (!tid || typeof TabManager === 'undefined' || typeof TabManager.switchToTab !== 'function') return;
@@ -8158,7 +8259,7 @@ ${pageInfo}${snapText}`;
   }
 
   async _startNewSidebarSession() {
-    await this._ensureAssistantHistoryLoaded();
+    await this._ensureAssistantHistoryLoadedBounded();
     const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
     if (this._threadBusyForSend() || (aid && this._tabIsBusy(aid))) return;
     let id;
@@ -8192,7 +8293,7 @@ ${pageInfo}${snapText}`;
   }
 
   async _openSidebarSession(id) {
-    await this._ensureAssistantHistoryLoaded();
+    await this._ensureAssistantHistoryLoadedBounded();
     const sid = String(id || '').trim();
     if (!sid.startsWith(NAVIO_SIDEBAR_THREAD_PREFIX)) return;
     if (this._threadBusyForSend()) return;
@@ -8217,7 +8318,7 @@ ${pageInfo}${snapText}`;
   }
 
   async _selectThisTabThread() {
-    await this._ensureAssistantHistoryLoaded();
+    await this._ensureAssistantHistoryLoadedBounded();
     if (this._threadBusyForSend()) return;
     this._sidebarThreadKey = null;
     const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
@@ -8231,7 +8332,7 @@ ${pageInfo}${snapText}`;
   }
 
   async _deleteSidebarSession(id) {
-    await this._ensureAssistantHistoryLoaded();
+    await this._ensureAssistantHistoryLoadedBounded();
     const sid = String(id || '').trim();
     if (!sid.startsWith(NAVIO_SIDEBAR_THREAD_PREFIX)) return;
     if (this._busyTabs.has(sid)) return;

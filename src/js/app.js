@@ -215,13 +215,14 @@ class NavioApp {
 
   _openAssistantSidebar(query) {
     const q = (query || '').trim();
-    AssistantManager.open();
+    if (typeof AssistantManager === 'undefined') return;
+    void AssistantManager.open();
     setTimeout(() => {
-      if (AssistantManager.inputEl) {
-        AssistantManager.inputEl.value = q;
-        AssistantManager.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-        AssistantManager.sendMessage();
-      }
+      if (!AssistantManager.inputEl) return;
+      AssistantManager.inputEl.value = q;
+      AssistantManager.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+      if (q) void AssistantManager.sendMessage();
+      else AssistantManager.inputEl.focus();
     }, 150);
   }
 
@@ -1022,9 +1023,11 @@ ${badgeHtml(it.badge)}
           } catch {
             /* ignore */
           }
-          if (typeof AssistantManager !== 'undefined' && typeof AssistantManager.toggle === 'function') {
-            AssistantManager.toggle();
-          }
+          runDedupedShortcut('toggle-assistant', () => {
+            if (typeof AssistantManager !== 'undefined' && typeof AssistantManager.toggle === 'function') {
+              AssistantManager.toggle();
+            }
+          });
           break;
         case 'toggle-connectors':
           if (typeof ConnectorsManager !== 'undefined') {

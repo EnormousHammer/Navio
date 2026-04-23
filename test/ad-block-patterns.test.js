@@ -290,3 +290,21 @@ test('shouldBlockAdNetworkRequest: does not cancel image/font (avoids broken log
   );
   assert.strictEqual(urlMatchesAdBlock('https://doubleclick.net/pixel.png'), true);
 });
+
+test('shouldBlockAdNetworkRequest: blocks script-like types on ad hosts', () => {
+  assert.strictEqual(
+    shouldBlockAdNetworkRequest('https://doubleclick.net/track', 'stylesheet'),
+    true
+  );
+  assert.strictEqual(
+    shouldBlockAdNetworkRequest('https://doubleclick.net/beacon', 'ping'),
+    true
+  );
+});
+
+test('shouldBlockAdNetworkRequest: non-ad URL is never blocked', () => {
+  assert.strictEqual(
+    shouldBlockAdNetworkRequest('https://example.com/app.js', 'script'),
+    false
+  );
+});

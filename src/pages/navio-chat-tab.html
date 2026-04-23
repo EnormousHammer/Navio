@@ -2730,6 +2730,13 @@
       switch (msg.type) {
         case 'toast':
           toast(msg.text || ''); break;
+        case 'hostTurnEnd':
+          // Host finished or bailed — always release composer (mirrors stopGeneration without re-posting stop).
+          if (streamBubble) finalizeStream(streamBuffer || '');
+          document.getElementById('research-wait')?.remove();
+          setBusy(false);
+          updateLayoutMode();
+          break;
         case 'activityStart':
           resetAgentPanel();
           agentStepIndex = 0;

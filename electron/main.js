@@ -8,7 +8,11 @@ const { NAVIO_PARTITION_INCOGNITO } = require('./navio-partitions');
 const { clearRendererCodeCachesIfDev } = require('./clear-code-cache-dev');
 const { resolveTranslateTargetLang } = require('./translate-locale');
 const { createStore } = require('./navio-store');
-const { setupSessionInfrastructure, recordNavioPopupBlocked } = require('./session-setup');
+const {
+  setupSessionInfrastructure,
+  recordNavioPopupBlocked,
+  navioPrimeGlobalShortcutsIfFocused
+} = require('./session-setup');
 const sitePerms = require('./site-permissions');
 const { loadConfig, saveConfig } = require('./config-store');
 const { registerBookmarksIpc } = require('./bookmarks-ipc');
@@ -1219,8 +1223,12 @@ function createMainWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow.maximize();
     mainWindow.show();
+    // globalShortcut is only registered while the window is focused; cold start often misses
+    // the early setImmediate in session-setup (window not focused yet). Prime after show.
+    queueMicrotask(() => navioPrimeGlobalShortcutsIfFocused());
+    setTimeout(() => navioPrimeGlobalShortcutsIfFocused(), 400);
   });
-
+  mainWindow.on('focus', () => navioPrimeGlobalShortcutsIfFocused());
 
   mainWindow.loadFile(path.join(__dirname, '..', 'src', 'index.html'));
 
@@ -1235,6 +1243,74 @@ function createMainWindow() {
       } catch (e) {
         console.error('[navio] e2e ready flag write failed:', e && e.message ? e.message : String(e));
       }
+    });
+  }
+
+  if (process.env.NAVIO_E2E_ASSISTANT === '1') {
+    const e2eConsole = [];
+    mainWindow.webContents.on('console-message', (_event, level, message) => {
+      try {
+        e2eConsole.push({ level, message: String(message || '').slice(0, 600) });
+        if (e2eConsole.length > 80) e2eConsole.shift();
+      } catch {
+        /* ignore */
+      }
+    });
+    mainWindow.webContents.once('did-finish-load', () => {
+      void (async () => {
+        const outPath = path.join(app.getPath('userData'), 'navio-e2e-assistant.json');
+        const result = { ok: false, error: null, details: null, consoleTail: e2eConsole };
+        try {
+          navioPrimeGlobalShortcutsIfFocused();
+          let probe = null;
+          for (let attempt = 0; attempt < 80; attempt++) {
+            await new Promise((r) => setTimeout(r, 250));
+            navioPrimeGlobalShortcutsIfFocused();
+            probe = await mainWindow.webContents.executeJavaScript(`(() => {
+              const panel = document.getElementById('assistant-panel');
+              const btn = document.getElementById('btn-toggle-assistant');
+              const sp = document.getElementById('shell-prelude');
+              return {
+                href: String(location.href || ''),
+                readyState: document.readyState,
+                hasPanel: !!panel,
+                hasBtn: !!btn,
+                hasToggleApi: typeof window.__navioToggleAssistant === 'function',
+                preludeAriaHidden: sp ? sp.getAttribute('aria-hidden') : null,
+                bodyShellPreludeActive: document.body.classList.contains('shell-prelude-active'),
+                openBefore: !!(panel && panel.classList.contains('open'))
+              };
+            })()`);
+            if (probe && probe.hasToggleApi) break;
+          }
+          if (!probe || !probe.hasToggleApi) {
+            result.error = 'window.__navioToggleAssistant missing after wait (assistant.js not loaded or crashed)';
+            result.details = probe;
+          } else {
+            await mainWindow.webContents.executeJavaScript('window.__navioToggleAssistant()');
+            await new Promise((r) => setTimeout(r, 600));
+            const open1 = await mainWindow.webContents.executeJavaScript(
+              `document.getElementById('assistant-panel').classList.contains('open')`
+            );
+            await mainWindow.webContents.executeJavaScript('window.__navioToggleAssistant()');
+            await new Promise((r) => setTimeout(r, 400));
+            const open2 = await mainWindow.webContents.executeJavaScript(
+              `document.getElementById('assistant-panel').classList.contains('open')`
+            );
+            result.ok = !!probe.hasPanel && !!probe.hasBtn && open1 === true && open2 === false;
+            result.details = { ...probe, openAfterFirstToggle: !!open1, openAfterSecondToggle: !!open2 };
+            if (!result.ok) result.error = 'toggle did not open/close panel as expected';
+          }
+        } catch (e) {
+          result.error = e && e.message ? e.message : String(e);
+        }
+        try {
+          fs.writeFileSync(outPath, JSON.stringify(result, null, 2), 'utf8');
+        } catch (e2) {
+          console.error('[navio] e2e assistant write failed', e2);
+        }
+        app.quit();
+      })();
     });
   }
 

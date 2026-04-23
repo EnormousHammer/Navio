@@ -1450,6 +1450,9 @@ body.navio-vertical-tabs .tab-group-header:hover {
   padding: 0 12px;
   background: var(--bg-deep);
   border-bottom: 1px solid var(--border);
+  /* Stay above the webview compositor and any in-page overlays that leak hit-testing */
+  position: relative;
+  z-index: 2500;
 }
 
 /* Chrome-style fused back / forward / reload cluster */
@@ -6562,17 +6565,30 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 
 .modal-overlay {
   position: fixed;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
+  inset: 0;
+  box-sizing: border-box;
   background: var(--overlay-bg);
   backdrop-filter: blur(8px);
   display: none;
-  align-items: center;
+  /* Tall dialogs must not be vertically “centered” into body overflow:hidden — top gets clipped.
+     Padding + scroll + margin-block:auto on the child centers when short, pins to padded top when tall. */
+  align-items: flex-start;
   justify-content: center;
+  padding: max(12px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px))
+    max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   z-index: 2000;
 }
 
 .modal-overlay.visible { display: flex; }
+
+.modal-overlay > .modal {
+  flex-shrink: 0;
+  margin-top: auto;
+  margin-bottom: auto;
+}
 
 .modal {
   width: 540px;
@@ -6608,11 +6624,18 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 
 /* Settings: category nav + panels (premium layout) */
 .modal.modal-settings {
-  width: min(920px, 96vw);
-  max-width: min(96vw, 920px);
-  max-height: min(88vh, 800px);
+  width: min(920px, calc(100vw - 32px));
+  max-width: min(920px, calc(100vw - 32px));
+  /* Leave room for overlay padding + titlebar so the header is never clipped */
+  max-height: min(800px, max(240px, calc(100vh - 48px)));
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg), 0 0 0 1px rgba(0, 216, 255, 0.06);
+  min-height: 0;
+}
+
+.modal.modal-settings > .modal-header,
+.modal.modal-settings > .modal-footer {
+  flex-shrink: 0;
 }
 
 .modal-header-settings {
@@ -6659,7 +6682,8 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   gap: 0;
   overflow: hidden;
   flex: 1;
-  min-height: 280px;
+  /* Allow the column layout to shrink inside .modal max-height so inner panes scroll */
+  min-height: 0;
 }
 
 .settings-nav {

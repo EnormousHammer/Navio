@@ -41,6 +41,9 @@ function permissionHumanLabel(permission) {
  */
 const NAVIO_LOCAL_UI_ORIGIN = 'https://navio.local-ui';
 
+/** Assigned inside setupSessionInfrastructure — primes globalShortcut when the main window is focused. */
+let navioShortcutPrimeIfFocused = null;
+
 function permissionOriginFromUrl(pageUrl) {
   if (!pageUrl || typeof pageUrl !== 'string') return { origin: '', isNavioLocal: false };
   const u = pageUrl.trim();
@@ -924,6 +927,27 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   for (let i = 1; i <= 9; i++) {
     regShortcut(`CommandOrControl+${i}`, `tab-${i}`);
   }
+
+  // Cold start: `setImmediate` in this module often runs before the BrowserWindow is shown,
+  // so `isFocused()` is false and OS shortcuts (incl. Ctrl+Shift+A) never register until a blur/focus cycle.
+  navioShortcutPrimeIfFocused = () => {
+    try {
+      const main = getMainWindow();
+      if (main && !main.isDestroyed() && main.isFocused()) _registerAll();
+    } catch {
+      /* ignore */
+    }
+  };
 }
 
-module.exports = { setupSessionInfrastructure, recordNavioPopupBlocked };
+module.exports = {
+  setupSessionInfrastructure,
+  recordNavioPopupBlocked,
+  navioPrimeGlobalShortcutsIfFocused: () => {
+    try {
+      if (typeof navioShortcutPrimeIfFocused === 'function') navioShortcutPrimeIfFocused();
+    } catch {
+      /* ignore */
+    }
+  }
+};
