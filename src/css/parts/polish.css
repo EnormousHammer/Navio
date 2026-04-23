@@ -1029,8 +1029,8 @@
 /* Dashboard: natural height — does not stretch to swallow the wallpaper */
 .new-tab-page .ntp-widgets {
   flex: 0 0 auto;
-  align-items: start;
-  align-content: start;
+  align-items: stretch;
+  align-content: stretch;
   min-height: 0;
   margin-top: clamp(10px, 2vh, 22px);
   padding-left: 0;
@@ -1071,18 +1071,24 @@
 }
 
 .new-tab-page .ntp-news-widget .ntp-widget-header,
-.new-tab-page .ntp-email-widget .ntp-widget-header {
+.new-tab-page .ntp-email-widget .ntp-widget-header,
+.new-tab-page .ntp-stocks-widget .ntp-widget-header,
+.new-tab-page .ntp-sports-widget .ntp-widget-header {
   background: rgba(255, 255, 255, 0.03);
   border-bottom-color: rgba(255, 255, 255, 0.07);
 }
 .new-tab-page .ntp-news-widget .ntp-widget-header svg,
-.new-tab-page .ntp-email-widget .ntp-widget-header svg {
+.new-tab-page .ntp-email-widget .ntp-widget-header svg,
+.new-tab-page .ntp-stocks-widget .ntp-widget-header svg,
+.new-tab-page .ntp-sports-widget .ntp-widget-header svg {
   color: rgba(226, 232, 248, 0.55);
   opacity: 1;
 }
 
 .new-tab-page .ntp-news-widget .ntp-widget-body,
-.new-tab-page .ntp-email-widget .ntp-widget-body {
+.new-tab-page .ntp-email-widget .ntp-widget-body,
+.new-tab-page .ntp-stocks-widget .ntp-widget-body,
+.new-tab-page .ntp-sports-widget .ntp-widget-body {
   background: rgba(4, 6, 12, 0.28);
   border: 1px solid rgba(255, 255, 255, 0.045);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -1090,7 +1096,9 @@
   border-radius: 10px;
 }
 .new-tab-page .ntp-news-widget:hover .ntp-widget-body,
-.new-tab-page .ntp-email-widget:hover .ntp-widget-body {
+.new-tab-page .ntp-email-widget:hover .ntp-widget-body,
+.new-tab-page .ntp-stocks-widget:hover .ntp-widget-body,
+.new-tab-page .ntp-sports-widget:hover .ntp-widget-body {
   border-color: rgba(255, 255, 255, 0.09);
   box-shadow: none;
 }

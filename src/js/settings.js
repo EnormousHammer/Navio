@@ -26,6 +26,9 @@ class SettingsManagerClass {
     this.elements = {
       startupMode: document.getElementById('setting-startup-mode'),
       newTabMode: document.getElementById('setting-new-tab-mode'),
+      ntpWidgetLeft: document.getElementById('setting-ntp-widget-left'),
+      ntpWidgetRight: document.getElementById('setting-ntp-widget-right'),
+      ntpNewsSubreddit: document.getElementById('setting-ntp-news-subreddit'),
       launchIntro: document.getElementById('setting-launch-intro'),
       downloadAskWhere: document.getElementById('setting-download-ask-where'),
       downloadRevealInFolder: document.getElementById('setting-download-reveal'),
@@ -496,6 +499,23 @@ class SettingsManagerClass {
     if (this.elements.newTabMode) {
       const mode = String(this.config.newTabMode || 'home');
       this.elements.newTabMode.value = ['home', 'chat', 'blank'].includes(mode) ? mode : 'home';
+    }
+    const WOPTS = ['inbox', 'news', 'stocks', 'sports', 'none'];
+    if (this.elements.ntpWidgetLeft) {
+      const v = String(this.config.ntpWidgetLeft || 'inbox').toLowerCase();
+      this.elements.ntpWidgetLeft.value = WOPTS.includes(v) ? v : 'inbox';
+    }
+    if (this.elements.ntpWidgetRight) {
+      const v = String(this.config.ntpWidgetRight || 'news').toLowerCase();
+      this.elements.ntpWidgetRight.value = WOPTS.includes(v) ? v : 'news';
+    }
+    if (this.elements.ntpNewsSubreddit) {
+      const sub = String(this.config.ntpNewsSubreddit || 'worldnews')
+        .trim()
+        .toLowerCase()
+        .replace(/^r\//, '');
+      const allowed = ['worldnews', 'news', 'technology', 'sports', 'business', 'science'];
+      this.elements.ntpNewsSubreddit.value = allowed.includes(sub) ? sub : 'worldnews';
     }
 
     const z = this.config.defaultZoom;
@@ -1396,6 +1416,20 @@ class SettingsManagerClass {
       newTabMode: (() => {
         const v = this.elements.newTabMode ? String(this.elements.newTabMode.value || '').trim() : '';
         return ['home', 'chat', 'blank'].includes(v) ? v : 'home';
+      })(),
+      ntpWidgetLeft: (() => {
+        const v = this.elements.ntpWidgetLeft ? String(this.elements.ntpWidgetLeft.value || '').trim() : '';
+        return ['inbox', 'news', 'stocks', 'sports', 'none'].includes(v) ? v : 'inbox';
+      })(),
+      ntpWidgetRight: (() => {
+        const v = this.elements.ntpWidgetRight ? String(this.elements.ntpWidgetRight.value || '').trim() : '';
+        return ['inbox', 'news', 'stocks', 'sports', 'none'].includes(v) ? v : 'news';
+      })(),
+      ntpNewsSubreddit: (() => {
+        const raw = this.elements.ntpNewsSubreddit ? String(this.elements.ntpNewsSubreddit.value || '').trim() : '';
+        const sub = raw.toLowerCase().replace(/^r\//, '');
+        const allowed = ['worldnews', 'news', 'technology', 'sports', 'business', 'science'];
+        return allowed.includes(sub) ? sub : 'worldnews';
       })(),
       showLaunchIntro: !!(this.elements.launchIntro && this.elements.launchIntro.checked),
       downloadAskWhere: !!(this.elements.downloadAskWhere && this.elements.downloadAskWhere.checked),

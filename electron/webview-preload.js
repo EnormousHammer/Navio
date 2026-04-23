@@ -249,8 +249,26 @@ try {
     true
   );
 
+  function trySubmitLoginAfterAutofill(root) {
+    if (!root) return;
+    try {
+      const candidates = root.querySelectorAll('button[type="submit"],input[type="submit"],button');
+      for (const btn of candidates) {
+        const t = (btn.innerText || btn.value || '').trim().toLowerCase();
+        if (/log ?(in| on)|sign ?in|continue( with)?|submit|next|verify/.test(t)) {
+          btn.click();
+          return;
+        }
+      }
+      const submit = root.querySelector('button[type="submit"],input[type="submit"]');
+      if (submit) submit.click();
+    } catch {
+      /* ignore */
+    }
+  }
+
   // ── Handle autofill command sent from the renderer ─────────────────────────
-  ipcRenderer.on('navio-autofill', (_, { username, password }) => {
+  ipcRenderer.on('navio-autofill', (_, { username, password, autoSubmit }) => {
     try {
       const pwdField = document.querySelector('input[type="password"]:not([disabled])');
       if (!pwdField) return;
@@ -262,7 +280,12 @@ try {
       }
       pwdField.focus();
       fillField(pwdField, password);
-    } catch {}
+      if (autoSubmit) {
+        setTimeout(() => trySubmitLoginAfterAutofill(root), 140);
+      }
+    } catch {
+      /* ignore */
+    }
   });
 
   // ── YouTube: auto-skip ads ────────────────────────────────────────────────

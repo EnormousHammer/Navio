@@ -4,9 +4,11 @@
  * Dashboard features:
  *  • Greeting + live clock
  *  • Connected services status bar (IMAP email counts)
- *  • World News (Reddit r/worldnews — free, CORS-enabled JSON API)
- *  • Stock quotes (IPC) — cached for smart row / AI context
+ *  • World News (Reddit — subreddit configurable)
+ *  • Stock quotes (IPC) — optional Markets widget + smart row
+ *  • Live scores (ESPN via main IPC) — optional widget
  *  • Inbox widget — unread emails from IMAP Gmail/Outlook
+ *  • Dashboard slots configurable in Settings (left / right panel)
  *  • "Draft All" button — triggers batch email drafting
  */
 
@@ -16,6 +18,11 @@ const NTP = (() => {
   let _newsHeadlines  = [];   // cached for AI brief
   let _stockData      = [];   // cached for AI brief
   let _inboxMessages  = [];   // cached from _loadInbox() for AI brief
+  let _ntpNewsSubreddit = 'worldnews';
+  /** @type {Array<{ league: string, home: string, away: string, status: string, live?: boolean }>} */
+  let _sportsGamesSummary = [];
+
+  const NTP_WIDGET_TYPES = new Set(['inbox', 'news', 'stocks', 'sports', 'none']);
 
   // ── NTP Chat state ────────────────────────────────────────────────────────
   let _ntpChatMessages  = [];   // current in-memory thread: [{role,content}]
@@ -137,6 +144,7 @@ const NTP = (() => {
     _bindNtpModelSelector();
     _bindNtpChatPanel();
     _bindDimSlider();
+    _bindSportsPredictaLink();
 
     _applyTickerBottomReserve();
 
@@ -163,6 +171,15 @@ const NTP = (() => {
 
     // Hydrate config-driven NTP preferences (shortcuts)
     void _hydrateNtpPreferences();
+    void _applyNtpDashboardWidgets();
+
+    document.addEventListener('navio-config-saved', () => {
+      void (async () => {
+        await _applyNtpDashboardWidgets();
+        const ntp = document.getElementById('new-tab-page');
+        if (ntp?.classList.contains('active')) await _runNtpDashboardDataLoads();
+      })();
+    });
 
     _syncNtpNoEmailLayout();
   }
@@ -203,6 +220,7 @@ const NTP = (() => {
           b.classList.toggle('active', b.dataset.mode === 'search');
         });
       }
+      if (mode === 'home') void _applyNtpDashboardWidgets();
     } catch {
       /* config unavailable → fall back to default home */
     }
@@ -212,23 +230,129 @@ const NTP = (() => {
     window.__navioApplyNewTabMode = _applyNewTabMode;
   }
 
-  /** When inbox shows the connect prompt (.ntp-email-empty), hide the inbox tile and widen news. */
+  /** When inbox shows the connect prompt (.ntp-email-empty), hide the inbox tile and widen the other panel. */
   function _syncNtpNoEmailLayout() {
+    const root = document.getElementById('ntp-widgets-root') || document.querySelector('.ntp-widgets');
+    const emailW = document.getElementById('ntp-widget-email');
     const list = document.getElementById('ntp-email-list');
+    if (!root) return;
+    if (!emailW || emailW.hidden) {
+      root.classList.remove('ntp-widgets--no-email');
+      return;
+    }
     const noEmail = !!(list && list.querySelector('.ntp-email-empty'));
-    document.querySelector('.ntp-widgets')?.classList.toggle('ntp-widgets--no-email', noEmail);
+    root.classList.toggle('ntp-widgets--no-email', noEmail);
+  }
+
+  function _coerceNtpWidgetSlot(v, fallback) {
+    const s = String(v || '').trim().toLowerCase();
+    return NTP_WIDGET_TYPES.has(s) ? s : fallback;
+  }
+
+  function _bindSportsPredictaLink() {
+    const hub = document.getElementById('ntp-sports-predicta-link');
+    if (!hub || hub.dataset.navioHubBound === '1') return;
+    hub.dataset.navioHubBound = '1';
+    hub.addEventListener('click', (e) => {
+      e.preventDefault();
+      const u = (hub.dataset.navioHref || 'https://predicta-bet.vercel.app/').trim() || 'https://predicta-bet.vercel.app/';
+      if (typeof TabManager !== 'undefined') TabManager.createTab(u);
+    });
+  }
+
+  async function _applyNtpDashboardWidgets() {
+    const root = document.getElementById('ntp-widgets-root') || document.querySelector('.ntp-widgets');
+    if (!root) return;
+    let cfg = {};
+    try {
+      cfg = await window.navio.getConfig();
+    } catch {
+      cfg = {};
+    }
+    let left = _coerceNtpWidgetSlot(cfg.ntpWidgetLeft, 'inbox');
+    let right = _coerceNtpWidgetSlot(cfg.ntpWidgetRight, 'news');
+    if (left === right && left !== 'none') right = 'none';
+
+    const sub = String(cfg.ntpNewsSubreddit || 'worldnews')
+      .trim()
+      .toLowerCase()
+      .replace(/^r\//, '');
+    _ntpNewsSubreddit = /^[a-z0-9_]{2,24}$/.test(sub) ? sub : 'worldnews';
+
+    const pred = String(cfg.predictaBaseUrl || 'https://predicta-bet.vercel.app').trim() || 'https://predicta-bet.vercel.app/';
+    const hub = document.getElementById('ntp-sports-predicta-link');
+    if (hub) {
+      hub.dataset.navioHref = pred.replace(/\/+$/, '') + '/';
+    }
+
+    const defs = {
+      inbox: document.getElementById('ntp-widget-email'),
+      news: document.getElementById('ntp-widget-news'),
+      stocks: document.getElementById('ntp-widget-stocks'),
+      sports: document.getElementById('ntp-widget-sports')
+    };
+    const slots = [left, right].filter((x) => x !== 'none');
+    root.classList.toggle('ntp-widgets--no-widgets', slots.length === 0);
+
+    for (const t of ['inbox', 'news', 'stocks', 'sports']) {
+      const el = defs[t];
+      if (!el) continue;
+      el.classList.remove('ntp-widget-slot-left', 'ntp-widget-slot-right', 'ntp-widget-slot-full');
+      el.hidden = true;
+    }
+
+    if (slots.length === 0) {
+      _syncNtpNoEmailLayout();
+      return;
+    }
+    if (slots.length === 1) {
+      const el = defs[slots[0]];
+      if (el) {
+        el.hidden = false;
+        el.classList.add('ntp-widget-slot-full');
+      }
+    } else {
+      [left, right].forEach((t, i) => {
+        if (t === 'none') return;
+        const el = defs[t];
+        if (!el) return;
+        el.hidden = false;
+        el.classList.add(i === 0 ? 'ntp-widget-slot-left' : 'ntp-widget-slot-right');
+      });
+    }
+    _syncNtpNoEmailLayout();
+  }
+
+  async function _runNtpDashboardDataLoads() {
+    let cfg = {};
+    try {
+      cfg = await window.navio.getConfig();
+    } catch {
+      cfg = {};
+    }
+    let L = _coerceNtpWidgetSlot(cfg.ntpWidgetLeft, 'inbox');
+    let R = _coerceNtpWidgetSlot(cfg.ntpWidgetRight, 'news');
+    if (L === R && L !== 'none') R = 'none';
+    const wants = new Set([L, R].filter((x) => x !== 'none'));
+
+    const tasks = [];
+    if (wants.has('news')) tasks.push(_loadWorldNews().catch(() => {}));
+    if (wants.has('inbox')) tasks.push(_loadInbox().catch(() => {}));
+    if (wants.has('stocks')) tasks.push(_loadStocksWidget().catch(() => {}));
+    else tasks.push(_prefetchStockDataForNtp().catch(() => {}));
+    if (wants.has('sports')) tasks.push(_loadSportsWidget().catch(() => {}));
+    tasks.push(_loadServicesBar().catch(() => {}));
+
+    await Promise.all(tasks);
+    await _updateSmartRow();
+    _syncNtpNoEmailLayout();
   }
 
   function _onShow() {
     _updateGreeting();
     (async () => {
-      await Promise.all([
-        _loadWorldNews().catch(() => {}),
-        _loadServicesBar().catch(() => {}),
-        _loadInbox().catch(() => {}),
-        _prefetchStockDataForNtp().catch(() => {})
-      ]);
-      await _updateSmartRow();
+      await _applyNtpDashboardWidgets();
+      await _runNtpDashboardDataLoads();
     })();
   }
 
@@ -276,6 +400,9 @@ const NTP = (() => {
         parts.push(`S&P ${a} ${Math.abs(sp.pct).toFixed(1)}%`);
       }
     }
+    const liveN = _sportsGamesSummary.filter((g) => g.live).length;
+    if (liveN > 0) parts.push(`${liveN} live game${liveN === 1 ? '' : 's'}`);
+    else if (_sportsGamesSummary.length > 0) parts.push(`${_sportsGamesSummary.length} scores`);
     el.textContent =
       parts.length > 0
         ? parts.join(' · ')
@@ -326,11 +453,13 @@ const NTP = (() => {
 
   async function _loadWorldNews() {
     const list = document.getElementById('ntp-news-list');
-    if (!list) return;
+    const nw = document.getElementById('ntp-widget-news');
+    if (!list || (nw && nw.hidden)) return;
 
-    // Try Reddit worldnews first, fallback to HackerNews
+    // Try Reddit (subreddit from Settings), fallback to HackerNews
     try {
-      const r = await fetch('https://www.reddit.com/r/worldnews/hot.json?limit=20', {
+      const sub = encodeURIComponent(_ntpNewsSubreddit || 'worldnews');
+      const r = await fetch(`https://www.reddit.com/r/${sub}/hot.json?limit=20`, {
         headers: { 'Accept': 'application/json' }
       });
       if (!r.ok) throw new Error(`Reddit ${r.status}`);
@@ -361,7 +490,7 @@ const NTP = (() => {
 
       // Update source label
       const src = document.getElementById('ntp-news-source');
-      if (src) src.textContent = 'Reddit · r/worldnews';
+      if (src) src.textContent = `Reddit · r/${_ntpNewsSubreddit}`;
 
       list.innerHTML = posts.map(p => `
         <div class="ntp-news-item" data-url="${_esc(p.url || `https://reddit.com${p.permalink}`)}">
@@ -440,8 +569,10 @@ const NTP = (() => {
 
   function _popoutWidget(widgetKey) {
     const configs = {
-      news:    { bodyId: 'ntp-news-list',   title: 'World News' },
-      inbox:   { bodyId: 'ntp-email-list',  title: 'Inbox' }
+      news:    { bodyId: 'ntp-news-list',   title: 'News' },
+      inbox:   { bodyId: 'ntp-email-list',  title: 'Inbox' },
+      stocks:  { bodyId: 'ntp-stocks-list', title: 'Markets' },
+      sports:  { bodyId: 'ntp-sports-list', title: 'Live sports' }
     };
     const cfg = configs[widgetKey];
     if (!cfg) return;
@@ -452,7 +583,7 @@ const NTP = (() => {
     // Grab relevant CSS from the page's stylesheets for the widget classes
     const styles = Array.from(document.styleSheets)
       .flatMap(s => { try { return Array.from(s.cssRules); } catch { return []; } })
-      .filter(r => r.cssText && /ntp-email|ntp-news|ntp-brief|ntp-widget-body|ntp-wx/.test(r.cssText))
+      .filter(r => r.cssText && /ntp-email|ntp-news|ntp-stock|ntp-sport|ntp-brief|ntp-widget-body|ntp-wx/.test(r.cssText))
       .map(r => r.cssText)
       .join('\n');
 
@@ -525,6 +656,107 @@ const NTP = (() => {
       }
     } catch {
       /* ignore */
+    }
+  }
+
+  function _yahooSymbolForRow(s) {
+    const sym = String(s?.symbol || '');
+    if (sym === 'GSPC') return '^GSPC';
+    if (sym === 'DJI') return '^DJI';
+    if (sym === 'IXIC') return '^IXIC';
+    return sym;
+  }
+
+  async function _loadStocksWidget() {
+    const w = document.getElementById('ntp-widget-stocks');
+    const list = document.getElementById('ntp-stocks-list');
+    if (!list || (w && w.hidden)) return;
+    list.innerHTML =
+      '<div class="ntp-widget-loading"><span></span><span></span><span></span></div>';
+    try {
+      const result = await window.navio.ntpFetchStocks();
+      if (!result || result.error || !Array.isArray(result) || !result.length) {
+        list.innerHTML = `<p class="ntp-widget-empty">${_esc(result?.error || 'Could not load quotes.')}</p>`;
+        return;
+      }
+      _stockData = result;
+      list.innerHTML = result
+        .slice(0, 14)
+        .map((s) => {
+          const ySym = _yahooSymbolForRow(s);
+          const pct = typeof s.pct === 'number' ? s.pct : 0;
+          const cls = pct >= 0 ? 'up' : 'down';
+          const sign = pct >= 0 ? '+' : '';
+          const price = s.price != null && Number.isFinite(Number(s.price)) ? Number(s.price).toFixed(2) : '—';
+          return `<div class="ntp-stock-row" data-yahoo-symbol="${_escAttr(ySym)}">
+            <div class="ntp-stock-sym">${_esc(s.symbol || '')}</div>
+            <div class="ntp-stock-name">${_esc(s.name || '')}</div>
+            <div class="ntp-stock-price">${price}</div>
+            <div class="ntp-stock-pct ${cls}">${sign}${pct.toFixed(2)}%</div>
+          </div>`;
+        })
+        .join('');
+      list.querySelectorAll('.ntp-stock-row').forEach((row) => {
+        row.addEventListener('click', () => {
+          const sym = row.dataset.yahooSymbol;
+          if (sym && typeof TabManager !== 'undefined') {
+            TabManager.createTab(`https://finance.yahoo.com/quote/${encodeURIComponent(sym)}/`);
+          }
+        });
+      });
+    } catch (e) {
+      list.innerHTML = `<p class="ntp-widget-empty">${_esc(e.message || 'Error')}</p>`;
+    }
+  }
+
+  function _espnLeaguePath(league) {
+    const L = String(league || '').toUpperCase();
+    const map = { NFL: 'nfl', NBA: 'nba', MLB: 'mlb', NHL: 'nhl', MLS: 'soccer/scoreboard' };
+    return map[L] || 'sports';
+  }
+
+  async function _loadSportsWidget() {
+    const w = document.getElementById('ntp-widget-sports');
+    const list = document.getElementById('ntp-sports-list');
+    if (!list || (w && w.hidden)) return;
+    list.innerHTML =
+      '<div class="ntp-widget-loading"><span></span><span></span><span></span></div>';
+    try {
+      const result = await window.navio.ntpFetchSports();
+      if (!result || result.error || !Array.isArray(result) || !result.length) {
+        _sportsGamesSummary = [];
+        list.innerHTML = `<p class="ntp-widget-empty">${_esc(result?.error || 'No games right now.')}</p>`;
+        return;
+      }
+      const games = result.slice(0, 22);
+      _sportsGamesSummary = games;
+      list.innerHTML = games
+        .map((g) => {
+          const live = g.live ? '<span class="ntp-sport-live">LIVE</span>' : '';
+          const hs = g.homeScore !== '' && g.homeScore != null ? g.homeScore : '—';
+          const as = g.awayScore !== '' && g.awayScore != null ? g.awayScore : '—';
+          const line = `${_esc(g.away || '')} ${as} @ ${_esc(g.home || '')} ${hs}`;
+          const st = _esc(g.status || '');
+          const path = _espnLeaguePath(g.league);
+          const espnUrl =
+            path === 'soccer/scoreboard'
+              ? 'https://www.espn.com/soccer/scoreboard/_/league/usa.1'
+              : `https://www.espn.com/${path}/scoreboard`;
+          return `<div class="ntp-sport-row" data-espn-url="${_escAttr(espnUrl)}">
+            <div><strong>${_esc(g.league || '')}</strong> · ${live}${line}</div>
+            <div class="ntp-sport-meta">${st}</div>
+          </div>`;
+        })
+        .join('');
+      list.querySelectorAll('.ntp-sport-row').forEach((row) => {
+        row.addEventListener('click', () => {
+          const u = row.dataset.espnUrl;
+          if (u && typeof TabManager !== 'undefined') TabManager.createTab(u);
+        });
+      });
+    } catch (e) {
+      _sportsGamesSummary = [];
+      list.innerHTML = `<p class="ntp-widget-empty">${_esc(e.message || 'Error')}</p>`;
     }
   }
 

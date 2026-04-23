@@ -2307,7 +2307,7 @@ body.navio-vertical-tabs .tab-group-header:hover {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-rows: auto;
-  align-items: start;
+  align-items: stretch;
   gap: clamp(8px, 2vw, 12px);
   padding: 0 clamp(12px, 3vw, 20px) 8px;
   position: relative;
@@ -2320,24 +2320,140 @@ body.navio-vertical-tabs .tab-group-header:hover {
   min-height: 0;
   min-width: 0;
 }
-/* Inbox left, World News right — compact tiles (lists scroll inside) */
-.ntp-email-widget {
+/* Dashboard slots (left / right / full width) — assigned in ntp.js from Settings */
+.ntp-widget-slot-left {
   grid-column: 1;
   grid-row: auto;
   min-width: 0;
 }
-.ntp-news-widget {
+.ntp-widget-slot-right {
   grid-column: 2;
   grid-row: auto;
   min-width: 0;
 }
-/* No email connected: hide inbox; news uses full width */
+.ntp-widget-slot-full {
+  grid-column: 1 / -1;
+  grid-row: auto;
+  min-width: 0;
+}
+.ntp-email-widget,
+.ntp-news-widget,
+.ntp-stocks-widget,
+.ntp-sports-widget {
+  min-width: 0;
+}
+/* Same outer footprint for every dashboard panel (switching slots keeps rhythm). */
+.ntp-widgets > .ntp-email-widget:not([hidden]),
+.ntp-widgets > .ntp-news-widget:not([hidden]),
+.ntp-widgets > .ntp-stocks-widget:not([hidden]),
+.ntp-widgets > .ntp-sports-widget:not([hidden]) {
+  min-height: clamp(240px, 32vh, 360px);
+  max-height: min(420px, 48vh);
+}
+/* No email connected: hide inbox; other panel uses full width */
 .ntp-widgets--no-email #ntp-widget-email {
   display: none;
 }
-.ntp-widgets--no-email .ntp-news-widget {
+.ntp-widgets--no-email .ntp-widget-slot-right,
+.ntp-widgets--no-email .ntp-widget-slot-left {
   grid-column: 1 / -1;
-  grid-row: auto;
+}
+.ntp-widgets--no-widgets {
+  display: none !important;
+}
+.ntp-widget-header-link {
+  margin-left: auto;
+  margin-right: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(125, 211, 252, 0.95);
+  text-decoration: none;
+}
+.ntp-widget-header-link:hover {
+  text-decoration: underline;
+}
+.ntp-stock-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 14px 9px 13px;
+  border-radius: 0;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.085);
+  border-left: 3px solid transparent;
+  transition: background 0.12s, border-left-color 0.12s;
+}
+.ntp-stock-row:hover {
+  background: rgba(0, 212, 255, 0.05);
+  border-left-color: rgba(0, 212, 255, 0.45);
+}
+.ntp-stock-row:last-child {
+  border-bottom: none;
+}
+.ntp-stock-sym {
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.ntp-stock-name {
+  font-size: 11px;
+  opacity: 0.65;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ntp-stock-price {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.ntp-stock-pct {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  min-width: 52px;
+  text-align: right;
+}
+.ntp-stock-pct.up {
+  color: #4ade80;
+}
+.ntp-stock-pct.down {
+  color: #fb7185;
+}
+.ntp-sport-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 14px 9px 13px;
+  border-radius: 0;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.085);
+  border-left: 3px solid transparent;
+  font-size: 12px;
+  transition: background 0.12s, border-left-color 0.12s;
+}
+.ntp-sport-row:hover {
+  background: rgba(0, 212, 255, 0.05);
+  border-left-color: rgba(0, 212, 255, 0.45);
+}
+.ntp-sport-row:last-child {
+  border-bottom: none;
+}
+.ntp-sport-meta {
+  font-size: 10px;
+  opacity: 0.55;
+  text-align: right;
+  max-width: 42%;
+}
+.ntp-sport-live {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #fb7185;
+  margin-right: 6px;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -2693,9 +2809,10 @@ body.ntp-chat-active .ntp-model-selector { margin-bottom: 6px; }
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto;
   }
-  .ntp-email-widget,
-  .ntp-news-widget {
-    grid-column: auto;
+  .ntp-widget-slot-left,
+  .ntp-widget-slot-right,
+  .ntp-widget-slot-full {
+    grid-column: 1;
     grid-row: auto;
   }
 }
@@ -2872,7 +2989,7 @@ body.ntp-chat-active .ntp-model-selector { margin-bottom: 6px; }
   padding: 6px 0;
   max-height: var(--ntp-widget-list-max-h);
   min-height: 0;
-  border-radius: 11px;
+  border-radius: 12px;
   backdrop-filter: blur(12px) saturate(1.08);
   -webkit-backdrop-filter: blur(12px) saturate(1.08);
   background:
@@ -3133,6 +3250,78 @@ body.ntp-chat-active .ntp-model-selector { margin-bottom: 6px; }
   box-shadow:
     inset 0 1px 0 rgba(200, 225, 255, 0.1),
     0 10px 30px rgba(0, 35, 90, 0.42);
+}
+
+/* Markets — same card geometry as inbox; teal accent */
+.ntp-stocks-widget .ntp-widget-header {
+  background: linear-gradient(90deg, rgba(45, 120, 118, 0.14), rgba(255, 255, 255, 0.03));
+  border-bottom-color: rgba(80, 190, 185, 0.2);
+}
+.ntp-stocks-widget .ntp-widget-header svg {
+  color: #5eead4;
+  opacity: 0.92;
+}
+.ntp-stocks-widget .ntp-widget-body {
+  position: relative;
+  z-index: 1;
+  margin: 0 10px 10px;
+  padding: 6px 0;
+  border-radius: 12px;
+  backdrop-filter: blur(12px) saturate(1.08);
+  -webkit-backdrop-filter: blur(12px) saturate(1.08);
+  background: linear-gradient(168deg, rgba(22, 48, 52, 0.62), rgba(14, 34, 40, 0.72));
+  border: 1px solid rgba(70, 185, 175, 0.2);
+  box-shadow:
+    inset 0 1px 0 rgba(190, 255, 248, 0.06),
+    0 8px 22px rgba(0, 35, 40, 0.26);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.ntp-stocks-widget:hover .ntp-widget-body {
+  border-color: rgba(95, 210, 195, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(210, 255, 248, 0.09),
+    0 10px 30px rgba(0, 50, 55, 0.4);
+}
+
+/* Live sports — same card geometry; field green accent */
+.ntp-sports-widget .ntp-widget-header {
+  background: linear-gradient(90deg, rgba(55, 130, 80, 0.14), rgba(255, 255, 255, 0.03));
+  border-bottom-color: rgba(100, 200, 130, 0.2);
+}
+.ntp-sports-widget .ntp-widget-header svg {
+  color: #86efac;
+  opacity: 0.92;
+}
+.ntp-sports-widget .ntp-widget-body {
+  position: relative;
+  z-index: 1;
+  margin: 0 10px 10px;
+  padding: 6px 0;
+  border-radius: 12px;
+  backdrop-filter: blur(12px) saturate(1.08);
+  -webkit-backdrop-filter: blur(12px) saturate(1.08);
+  background: linear-gradient(168deg, rgba(24, 52, 38, 0.62), rgba(16, 40, 28, 0.72));
+  border: 1px solid rgba(90, 190, 120, 0.2);
+  box-shadow:
+    inset 0 1px 0 rgba(200, 255, 220, 0.06),
+    0 8px 22px rgba(0, 40, 25, 0.26);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.ntp-sports-widget:hover .ntp-widget-body {
+  border-color: rgba(110, 210, 140, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(210, 255, 225, 0.09),
+    0 10px 30px rgba(0, 55, 35, 0.4);
+}
+
+/* Equal-height scroll regions: list fills the card under the header (overrides per-tile max-height). */
+.new-tab-page .ntp-widgets > .ntp-email-widget .ntp-widget-body,
+.new-tab-page .ntp-widgets > .ntp-news-widget .ntp-widget-body,
+.new-tab-page .ntp-widgets > .ntp-stocks-widget .ntp-widget-body,
+.new-tab-page .ntp-widgets > .ntp-sports-widget .ntp-widget-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
 }
 
 /* Inbox AI analysis (replaces removed AI Brief card) */

@@ -20,7 +20,7 @@ jobs:
       - run: npm test
       - run: npm run lint
 
-  build:
+  build-windows:
     needs: test
     runs-on: windows-latest
     steps:
@@ -33,5 +33,21 @@ jobs:
       - run: npm run make
       - uses: actions/upload-artifact@v4
         with:
-          name: navio-out-make
+          name: navio-windows-make
+          path: out/make/**/*
+
+  build-mac:
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run make
+      - uses: actions/upload-artifact@v4
+        with:
+          name: navio-mac-make
           path: out/make/**/*

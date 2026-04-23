@@ -371,10 +371,10 @@
             </div>
           </div>
 
-          <!-- Dashboard widgets: Inbox | World News (lists scroll inside fixed-height body) -->
-          <div class="ntp-widgets">
-            <!-- Email inbox — left, spans two rows -->
-            <div class="ntp-widget ntp-email-widget" id="ntp-widget-email">
+          <!-- Dashboard widgets: two slots, types set in Settings → General (inbox / news / stocks / sports / none) -->
+          <div class="ntp-widgets" id="ntp-widgets-root">
+            <!-- Email inbox -->
+            <div class="ntp-widget ntp-email-widget ntp-widget-slot-left" id="ntp-widget-email" data-ntp-widget-type="inbox">
               <div class="ntp-widget-header">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                 Inbox
@@ -394,13 +394,13 @@
               </div>
             </div>
 
-            <!-- World News — beside inbox, same height -->
-            <div class="ntp-widget ntp-news-widget" id="ntp-widget-news">
+            <!-- World News (Reddit) -->
+            <div class="ntp-widget ntp-news-widget ntp-widget-slot-right" id="ntp-widget-news" data-ntp-widget-type="news">
               <div class="ntp-widget-header">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                World News
+                News
                 <span class="ntp-live-badge">LIVE</span>
-                <span class="ntp-widget-source" id="ntp-news-source">Reddit · r/worldnews</span>
+                <span class="ntp-widget-source" id="ntp-news-source">Reddit</span>
                 <button class="ntp-widget-popout" data-widget="news" title="Open in new tab">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                 </button>
@@ -409,6 +409,37 @@
                 <div class="ntp-widget-loading">
                   <span></span><span></span><span></span>
                 </div>
+              </div>
+            </div>
+
+            <!-- Stock market strip -->
+            <div class="ntp-widget ntp-stocks-widget" id="ntp-widget-stocks" data-ntp-widget-type="stocks" hidden>
+              <div class="ntp-widget-header">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 12l4-4 4 4 6-6"/></svg>
+                Markets
+                <span class="ntp-widget-source" id="ntp-stocks-source">Yahoo Finance</span>
+                <button class="ntp-widget-popout" data-widget="stocks" title="Open in new tab">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </button>
+              </div>
+              <div class="ntp-widget-body" id="ntp-stocks-list">
+                <div class="ntp-widget-loading"><span></span><span></span><span></span></div>
+              </div>
+            </div>
+
+            <!-- Live scores (ESPN) -->
+            <div class="ntp-widget ntp-sports-widget" id="ntp-widget-sports" data-ntp-widget-type="sports" hidden>
+              <div class="ntp-widget-header">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>
+                Live sports
+                <span class="ntp-live-badge">LIVE</span>
+                <a href="#" class="ntp-widget-header-link" id="ntp-sports-predicta-link" title="Open sports hub">Hub</a>
+                <button class="ntp-widget-popout" data-widget="sports" title="Open in new tab">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </button>
+              </div>
+              <div class="ntp-widget-body" id="ntp-sports-list">
+                <div class="ntp-widget-loading"><span></span><span></span><span></span></div>
               </div>
             </div>
           </div>
@@ -586,7 +617,7 @@
             <label class="sr-only" for="settings-nav-search">Search settings</label>
             <input type="search" id="settings-nav-search" class="settings-nav-search" placeholder="Search settings…" autocomplete="off" spellcheck="false" />
           </div>
-          <button type="button" class="settings-nav-item active" data-panel="general" data-search="general startup home zoom downloads display translate launch" aria-current="page">
+          <button type="button" class="settings-nav-item active" data-panel="general" data-search="general startup home new tab dashboard widgets inbox gmail news reddit stocks markets sports live scores zoom downloads display translate launch" aria-current="page">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
             <span>General</span>
           </button>
@@ -637,12 +668,48 @@
               <div class="setting-row" style="margin-top:12px">
                 <label for="setting-new-tab-mode">New tab shows</label>
                 <select id="setting-new-tab-mode">
-                  <option value="home">Home — dashboard (AI, shortcuts, inbox, news)</option>
+                  <option value="home">Home — dashboard (AI, shortcuts, two panels you choose)</option>
                   <option value="chat">Chat + shortcuts — Ask Navio AI, keep Live Sports / Movies tiles</option>
                   <option value="blank">Blank — just the address bar</option>
                 </select>
               </div>
               <p class="settings-inline-hint">Chat mode keeps all your shortcut tiles but hides inbox and news widgets so the AI prompt is centered like Perplexity / ChatGPT.</p>
+              <div style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08)">
+                <h3 style="margin-bottom:8px">Home dashboard</h3>
+                <p class="settings-inline-hint">The two panels under shortcuts on the New Tab home page (not shown in Chat or Blank new-tab modes).</p>
+                <div class="setting-row">
+                  <label for="setting-ntp-widget-left">Left panel</label>
+                  <select id="setting-ntp-widget-left">
+                    <option value="inbox">Inbox (Gmail / Outlook when connected)</option>
+                    <option value="news">News (Reddit)</option>
+                    <option value="stocks">Markets (stock indices &amp; movers)</option>
+                    <option value="sports">Live sports (today's scores)</option>
+                    <option value="none">None (empty slot)</option>
+                  </select>
+                </div>
+                <div class="setting-row" style="margin-top:10px">
+                  <label for="setting-ntp-widget-right">Right panel</label>
+                  <select id="setting-ntp-widget-right">
+                    <option value="inbox">Inbox (Gmail / Outlook when connected)</option>
+                    <option value="news">News (Reddit)</option>
+                    <option value="stocks">Markets (stock indices &amp; movers)</option>
+                    <option value="sports">Live sports (today's scores)</option>
+                    <option value="none">None (empty slot)</option>
+                  </select>
+                </div>
+                <div class="setting-row" style="margin-top:10px">
+                  <label for="setting-ntp-news-subreddit">News feed (when News panel is shown)</label>
+                  <select id="setting-ntp-news-subreddit">
+                    <option value="worldnews">r/worldnews</option>
+                    <option value="news">r/news</option>
+                    <option value="technology">r/technology</option>
+                    <option value="sports">r/sports</option>
+                    <option value="business">r/business</option>
+                    <option value="science">r/science</option>
+                  </select>
+                </div>
+                <p class="settings-inline-hint">Markets data is fetched from Yahoo Finance (no key). Scores use public ESPN feeds. The sports widget &quot;Hub&quot; link uses your Predicta URL from Browser settings.</p>
+              </div>
               <label class="setting-toggle-row" style="margin-top:12px">
                 <input type="checkbox" id="setting-launch-intro" checked>
                 <span>Play launch intro video on startup</span>

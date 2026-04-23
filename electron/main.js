@@ -35,6 +35,7 @@ const { redactPII } = require('./pii-redact');
 const navioCrashReporter = require('./navio-crash-reporter');
 const { wcCanGoBack, wcCanGoForward } = require('./wc-nav-history');
 const { ensureGuestWebviewKeyboardFocus } = require('./agent-input-focus');
+const { BINARY_MAX_BYTES, shouldDownloadAndExtract, extractDriveFileText } = require('./drive-file-text');
 
 function getProfileIdFromLaunch() {
   const a = process.argv.find((x) => typeof x === 'string' && x.startsWith('--navio-profile='));
@@ -4443,7 +4444,7 @@ const toolExecutors = {
 
       const qParam = qParts.join(' and ');
       const fields = 'files(id,name,mimeType,modifiedTime,size,webViewLink,parents,description)';
-      const url = `https://www.googleapis.com/drive/v3/files?pageSize=${maxResults}&fields=${encodeURIComponent(fields)}&orderBy=${encodeURIComponent('modifiedTime desc')}&q=${encodeURIComponent(qParam)}`;
+      const url = `https://www.googleapis.com/drive/v3/files?pageSize=${maxResults}&fields=${encodeURIComponent(fields)}&orderBy=${encodeURIComponent('modifiedTime desc')}&q=${encodeURIComponent(qParam)}&supportsAllDrives=true&includeItemsFromAllDrives=true`;
 
       const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       const data = await resp.json();
@@ -4472,7 +4473,7 @@ const toolExecutors = {
         type: mimeLabels[f.mimeType] || (f.mimeType || 'file').split('/').pop(),
         modified: f.modifiedTime,
         size_bytes: f.size ? Number(f.size) : undefined,
-        url: f.webViewLink || `https://drive.google.com/file/d/${f.id}/view`,
+        url: driveNavioWebUrl(f),
         description: f.description || undefined
       }));
 
@@ -4498,7 +4499,7 @@ const toolExecutors = {
 
       // First, get file metadata to determine type
       const metaResp = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,webViewLink,modifiedTime,size`,
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,webViewLink,modifiedTime,size&supportsAllDrives=true`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const meta = await metaResp.json();
@@ -4506,12 +4507,16 @@ const toolExecutors = {
 
       const mimeType = meta.mimeType || '';
       const fileName = meta.name || fileId;
+      const driveOpenUrl =
+        meta.webViewLink ||
+        (mimeType === 'application/vnd.google-apps.folder'
+          ? `https://drive.google.com/drive/folders/${fileId}`
+          : `https://drive.google.com/file/d/${fileId}/view`);
 
       let exportMime = null;
       if (mimeType === 'application/vnd.google-apps.document') exportMime = 'text/plain';
       else if (mimeType === 'application/vnd.google-apps.spreadsheet') exportMime = 'text/csv';
       else if (mimeType === 'application/vnd.google-apps.presentation') exportMime = 'text/plain';
-      else if (mimeType === 'application/pdf') exportMime = null; // binary, skip text export
       else if (mimeType.startsWith('text/')) exportMime = null; // direct download
 
       let text = '';
@@ -4520,7 +4525,7 @@ const toolExecutors = {
       if (exportMime) {
         // Google Workspace file: export as text
         const expResp = await fetch(
-          `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent(exportMime)}`,
+          `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent(exportMime)}&supportsAllDrives=true`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         if (!expResp.ok) {
@@ -4529,10 +4534,60 @@ const toolExecutors = {
         }
         text = await expResp.text();
         note = `Exported as ${exportMime}.`;
-      } else if (mimeType.startsWith('text/') || mimeType === 'application/json') {
-        // Plain text / JSON: direct download
+      } else if (shouldDownloadAndExtract(mimeType, fileName)) {
+        const maxB = BINARY_MAX_BYTES;
+        const sizeNum = meta.size != null ? Number(meta.size) : NaN;
+        if (Number.isFinite(sizeNum) && sizeNum > maxB) {
+          return {
+            id: fileId,
+            name: fileName,
+            mime_type: mimeType,
+            url: driveOpenUrl,
+            note: `File is about ${Math.round(sizeNum / (1024 * 1024))} MB; in-app extraction is limited to ${Math.round(maxB / (1024 * 1024))} MB. Open the URL in Google Drive.`
+          };
+        }
         const dlResp = await fetch(
-          `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`,
+          `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!dlResp.ok) {
+          const err = await dlResp.text().catch(() => '');
+          return { error: `Drive file download failed: ${(err || String(dlResp.status)).slice(0, 240)}` };
+        }
+        const buf = Buffer.from(await dlResp.arrayBuffer());
+        if (buf.length > maxB) {
+          return {
+            id: fileId,
+            name: fileName,
+            mime_type: mimeType,
+            url: driveOpenUrl,
+            note: `Downloaded file exceeds ${Math.round(maxB / (1024 * 1024))} MB — open in Google Drive instead.`
+          };
+        }
+        const extracted = await extractDriveFileText({ buffer: buf, mimeType, fileName });
+        if (!extracted.ok) {
+          return {
+            id: fileId,
+            name: fileName,
+            mime_type: mimeType,
+            url: driveOpenUrl,
+            note: extracted.note
+          };
+        }
+        text = extracted.text;
+        note = extracted.note;
+      } else if (
+        mimeType.startsWith('text/') ||
+        mimeType === 'application/json' ||
+        mimeType === 'application/csv' ||
+        mimeType === 'application/xml' ||
+        mimeType === 'text/xml' ||
+        mimeType === 'application/javascript' ||
+        mimeType === 'application/x-javascript'
+      ) {
+        // Plain text / markup / JSON: direct download
+        const dlResp = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         if (!dlResp.ok) return { error: 'Drive download failed.' };
@@ -4543,8 +4598,8 @@ const toolExecutors = {
           id: fileId,
           name: fileName,
           mime_type: mimeType,
-          url: meta.webViewLink || '',
-          note: `File is binary (${mimeType}). Open the url to view it in Google Drive. Text extraction is only available for Google Docs, Sheets, Slides, and plain text files.`
+          url: driveOpenUrl,
+          note: `No in-app reader for this type (${mimeType}). Navio reads Google Docs/Sheets/Slides, PDF, Word (.doc/.docx), Excel (.xls/.xlsx), PowerPoint (.pptx), RTF, HTML, OpenDocument, EPUB (text), ZIP (file list), and common plain-text/code uploads. Open the URL in Google Drive for anything else (e.g. images, video, legacy .ppt).`
         };
       }
 
@@ -4555,7 +4610,7 @@ const toolExecutors = {
         name: fileName,
         mime_type: mimeType,
         modified: meta.modifiedTime,
-        url: meta.webViewLink || '',
+        url: driveOpenUrl,
         content: text,
         chars: text.length,
         note
@@ -4582,7 +4637,9 @@ const toolExecutors = {
         pageSize: String(maxResults),
         fields,
         orderBy: 'folder,name',
-        q: qParam
+        q: qParam,
+        supportsAllDrives: 'true',
+        includeItemsFromAllDrives: 'true'
       });
       if (pageToken) params.set('pageToken', pageToken);
 
@@ -4610,7 +4667,7 @@ const toolExecutors = {
         type: mimeLabels[f.mimeType] || (f.mimeType || 'file').split('/').pop(),
         modified: f.modifiedTime,
         size_bytes: f.size ? Number(f.size) : undefined,
-        url: f.webViewLink || `https://drive.google.com/file/d/${f.id}/view`
+        url: driveNavioWebUrl(f)
       }));
 
       return {
@@ -6646,6 +6703,20 @@ function gmailToolOAuthProviderId(args) {
   return 'google';
 }
 
+/** Open URL for a Drive file/folder when `webViewLink` is missing from the API. */
+function driveNavioWebUrl(fileLike) {
+  if (!fileLike || typeof fileLike !== 'object') return '';
+  const w = fileLike.webViewLink;
+  if (w && typeof w === 'string' && w.trim()) return w.trim();
+  const id = typeof fileLike.id === 'string' ? fileLike.id : '';
+  if (!id) return '';
+  const mt = String(fileLike.mimeType || '');
+  if (mt === 'application/vnd.google-apps.folder') {
+    return `https://drive.google.com/drive/folders/${id}`;
+  }
+  return `https://drive.google.com/file/d/${id}/view`;
+}
+
 /** Google Drive / Docs agent tools — same account slots as Gmail (`google_account`). */
 async function driveOAuthAccess(args) {
   const pid = gmailToolOAuthProviderId(args || {});
@@ -7567,7 +7638,7 @@ async function queryGoogleDrive(token, query, options = {}) {
       qParam = `trashed=false and (${parts.join(' and ')})`;
     }
   }
-  const url = `https://www.googleapis.com/drive/v3/files?pageSize=${pageSize}&fields=files(id,name,mimeType,modifiedTime,webViewLink)&orderBy=${encodeURIComponent('modifiedTime desc')}&q=${encodeURIComponent(qParam)}`;
+  const url = `https://www.googleapis.com/drive/v3/files?pageSize=${pageSize}&fields=files(id,name,mimeType,modifiedTime,webViewLink)&orderBy=${encodeURIComponent('modifiedTime desc')}&q=${encodeURIComponent(qParam)}&supportsAllDrives=true&includeItemsFromAllDrives=true`;
   const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   const data = await resp.json();
   if (!resp.ok) return { error: data.error?.message || 'Google Drive API error' };
@@ -7575,7 +7646,7 @@ async function queryGoogleDrive(token, query, options = {}) {
     name: f.name,
     type: f.mimeType?.split('.').pop() || f.mimeType,
     modified: f.modifiedTime,
-    url: f.webViewLink || ''
+    url: driveNavioWebUrl(f)
   }));
   return { results, total: results.length };
 }
@@ -8807,17 +8878,85 @@ function _pwdOrigin(url) {
   try { return new URL(url).origin; } catch { return url; }
 }
 
-ipcMain.handle('passwords-save', (_, { url, username, password }) => {
+/** Origins where we allow managed (hidden-from-UI) vault rows and silent autofill. */
+const STREMIO_MANAGED_ORIGINS = new Set([
+  'https://web.stremio.com',
+  'https://www.stremio.com',
+  'https://app.stremio.com'
+]);
+
+function _pwdOriginAllowsHiddenManaged(origin) {
+  return STREMIO_MANAGED_ORIGINS.has(origin);
+}
+
+function _pwdUpsertEntry(vault, origin, username, password, { hidden } = {}) {
+  if (!vault[origin]) vault[origin] = [];
+  const idx = vault[origin].findIndex((e) => e.username === username);
+  const entry = {
+    username,
+    password: _pwdEncrypt(password),
+    created: new Date().toISOString(),
+    ...(hidden ? { hidden: true } : {})
+  };
+  if (idx >= 0) vault[origin][idx] = entry;
+  else vault[origin].push(entry);
+}
+
+/**
+ * OEM / release pipeline: drop `oem-stremio-credentials.json` next to the app
+ * (resources/ when packaged) or in userData once; it is deleted after a successful import.
+ * Shape: { "email": "...", "password": "..." } (username also accepted).
+ */
+function maybeImportOemStremioCredentials() {
+  const candidates = [
+    path.join(process.resourcesPath || '', 'oem-stremio-credentials.json'),
+    path.join(app.getPath('userData'), 'oem-stremio-credentials.json')
+  ];
+  for (const p of candidates) {
+    if (!p || !fs.existsSync(p)) continue;
+    try {
+      const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+      const username = String(raw.email || raw.username || raw.user || '').trim();
+      const password = String(raw.password || raw.pass || '').trim();
+      if (!username || !password) {
+        console.warn('[navio] OEM Stremio file missing email or password:', p);
+        try {
+          fs.unlinkSync(p);
+        } catch {
+          /* ignore */
+        }
+        continue;
+      }
+      const origin = 'https://web.stremio.com';
+      const vault = _pwdLoad();
+      _pwdUpsertEntry(vault, origin, username, password, { hidden: true });
+      _pwdSave(vault);
+      try {
+        fs.unlinkSync(p);
+      } catch {
+        /* ignore */
+      }
+      console.log('[navio] Imported managed Stremio login (OEM file removed).');
+      return;
+    } catch (e) {
+      console.warn('[navio] OEM Stremio import failed:', p, e.message);
+    }
+  }
+}
+
+ipcMain.handle('passwords-save', (_, { url, username, password, hidden }) => {
   try {
     const vault = _pwdLoad();
     const origin = _pwdOrigin(url);
-    if (!vault[origin]) vault[origin] = [];
-    const idx = vault[origin].findIndex(e => e.username === username);
-    const entry = { username, password: _pwdEncrypt(password), created: new Date().toISOString() };
-    if (idx >= 0) vault[origin][idx] = entry; else vault[origin].push(entry);
+    if (hidden === true && !_pwdOriginAllowsHiddenManaged(origin)) {
+      return { ok: false, error: 'Managed hidden passwords are only supported for Stremio.' };
+    }
+    _pwdUpsertEntry(vault, origin, username, password, { hidden: hidden === true });
     _pwdSave(vault);
     return { ok: true };
-  } catch (e) { return { ok: false, error: e.message }; }
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 });
 
 ipcMain.handle('passwords-list', () => {
@@ -8825,10 +8964,15 @@ ipcMain.handle('passwords-list', () => {
     const vault = _pwdLoad();
     const entries = [];
     for (const [origin, list] of Object.entries(vault)) {
-      for (const e of list) entries.push({ origin, username: e.username, created: e.created });
+      for (const e of list) {
+        if (e.hidden) continue;
+        entries.push({ origin, username: e.username, created: e.created });
+      }
     }
     return { ok: true, entries };
-  } catch (e) { return { ok: false, error: e.message }; }
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 });
 
 ipcMain.handle('passwords-get', (_, { url }) => {
@@ -8836,8 +8980,17 @@ ipcMain.handle('passwords-get', (_, { url }) => {
     const vault = _pwdLoad();
     const origin = _pwdOrigin(url);
     const list = vault[origin] || [];
-    return { ok: true, entries: list.map(e => ({ username: e.username, password: _pwdDecrypt(e.password), created: e.created })) };
-  } catch (e) { return { ok: false, error: e.message }; }
+    const rows = list.map((e) => ({
+      username: e.username,
+      password: _pwdDecrypt(e.password),
+      created: e.created,
+      hidden: !!e.hidden
+    }));
+    rows.sort((a, b) => Number(!!b.hidden) - Number(!!a.hidden));
+    return { ok: true, entries: rows };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 });
 
 ipcMain.handle('passwords-delete', (_, { origin, username }) => {
@@ -8859,6 +9012,7 @@ ipcMain.handle('passwords-export-csv', () => {
     for (const [origin, list] of Object.entries(vault)) {
       const site = origin.replace(/^https?:\/\//, '');
       for (const e of list) {
+        if (e.hidden) continue;
         const pwd = _pwdDecrypt(e.password);
         rows.push(`"${site}","${origin}","${e.username.replace(/"/g, '""')}","${pwd.replace(/"/g, '""')}"`);
       }
@@ -9006,6 +9160,12 @@ app.whenReady().then(async () => {
   await clearRendererCodeCachesIfDev(app, session, fs, path);
 
   store = createStore(app.getPath('userData'));
+
+  try {
+    maybeImportOemStremioCredentials();
+  } catch (e) {
+    console.warn('[navio] OEM Stremio credential import:', e.message);
+  }
 
   try {
     navioCrashReporter.applyCrashReportingFromConfig(loadConfig());

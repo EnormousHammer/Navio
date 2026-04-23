@@ -1479,11 +1479,54 @@ const PasswordManager = (() => {
   let _pendingSave = null;  // { username, password, url }
   let _autofillWv  = null;  // active webview for autofill
   let _autofillPwd = null;  // { username, password }
+  /** Stremio: fill + submit in the guest without showing the autofill bar (password never surfaced in chrome UI). */
+  const _STREMIO_SILENT_ORIGINS = new Set([
+    'https://web.stremio.com',
+    'https://www.stremio.com',
+    'https://app.stremio.com'
+  ]);
+  let _stremioSilentTimers = [];
 
   const saveBar       = document.getElementById('pwd-save-bar');
   const autofillBar   = document.getElementById('pwd-autofill-bar');
   const saveUser      = document.getElementById('pwd-save-user');
   const autofillUser  = document.getElementById('pwd-autofill-user');
+
+  function _urlOriginStr(url) {
+    try {
+      return new URL(url).origin;
+    } catch {
+      return '';
+    }
+  }
+
+  function _isStremioSilentAutofillUrl(url) {
+    return _STREMIO_SILENT_ORIGINS.has(_urlOriginStr(url));
+  }
+
+  function _clearStremioSilentTimers() {
+    for (const t of _stremioSilentTimers) clearTimeout(t);
+    _stremioSilentTimers = [];
+  }
+
+  function _silentStremioAutofill(wv, entry) {
+    _clearStremioSilentTimers();
+    const fire = () => {
+      try {
+        wv.send('navio-autofill', {
+          username: entry.username,
+          password: entry.password,
+          autoSubmit: true
+        });
+      } catch {
+        /* guest may be gone */
+      }
+    };
+    fire();
+    _stremioSilentTimers.push(setTimeout(fire, 450));
+    _stremioSilentTimers.push(setTimeout(fire, 1400));
+    _stremioSilentTimers.push(setTimeout(fire, 3200));
+  }
 
   function _originLabel(url) {
     try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
@@ -1505,6 +1548,14 @@ const PasswordManager = (() => {
   // ── Show "Save password?" / "Replace password?" after submit ─────────────
   async function showSavePrompt({ username, password, url }, wv) {
     if (!saveBar) return;
+    if (_isStremioSilentAutofillUrl(url)) {
+      try {
+        const r = await window.navio.passwordsGet(url);
+        if (r.ok && r.entries && r.entries.some((e) => e.hidden)) return;
+      } catch {
+        /* fall through */
+      }
+    }
     let mode = 'save';
     try {
       const r = await window.navio.passwordsGet(url);
@@ -1546,11 +1597,15 @@ const PasswordManager = (() => {
 
   // ── Check if we have credentials for the current URL ──────────────────────
   async function checkAutofill(url, wv) {
-    if (!autofillBar) return;
     try {
       const r = await window.navio.passwordsGet(url);
       if (!r.ok || !r.entries.length) return;
       const entry = r.entries[0];
+      if (_isStremioSilentAutofillUrl(url)) {
+        _silentStremioAutofill(wv, entry);
+        return;
+      }
+      if (!autofillBar) return;
       _autofillWv  = wv;
       _autofillPwd = entry;
       if (autofillUser) autofillUser.textContent = entry.username;

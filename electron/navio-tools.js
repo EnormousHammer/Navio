@@ -758,12 +758,10 @@ const NAVIO_TOOLS = [
   {
     name: 'drive_get_file',
     description:
-      'Read the text content of a Google Drive file (Docs, Sheets, PDFs, plain text). ' +
-      'Returns the document text so you can read what is in it without opening a browser tab. ' +
+      'Read the text content of a Google Drive file. Returns text so you can answer from the file without opening a tab. ' +
       'Use drive_search first to get the file_id. ' +
-      'For Google Docs: returns the full document text. ' +
-      'For Sheets: returns rows as tab-separated text. ' +
-      'For PDFs: returns extracted text. ' +
+      'Supports Google Docs/Sheets/Slides (export), PDF, Word (.doc/.docx/.docm), Excel (.xls/.xlsx/.xlsm), PowerPoint (.pptx), RTF, HTML, OpenDocument (.odt/.ods/.odp), EPUB (HTML text), ZIP (lists paths), and many plain-text/code types (including .md/.csv/.json when uploaded as octet-stream). ' +
+      'Does not OCR images or read legacy .ppt, video, or proprietary binaries — use the returned url in the browser if needed. ' +
       'Requires Google OAuth.',
     parameters: {
       type: 'object',

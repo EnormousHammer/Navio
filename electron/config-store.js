@@ -89,6 +89,14 @@ const DEFAULT_CONFIG = {
   /** User-defined NTP shortcuts (array of { title, url }). Empty → fallback defaults in ntp.js. */
   ntpShortcuts: [],
   /**
+   * Home dashboard (New tab → Home): left and right panel widgets.
+   * Each: inbox | news | stocks | sports | none
+   */
+  ntpWidgetLeft: 'inbox',
+  ntpWidgetRight: 'news',
+  /** Reddit hot feed when the News widget is shown (subreddit name only, no /r/). */
+  ntpNewsSubreddit: 'worldnews',
+  /**
    * Predicta sports hub URL. Navio's AI appendix uses this for deep links (?view=betting&sport=nba&board=live).
    * Default: hosted app. Override in navio-config.json for local dev (e.g. http://localhost:5173).
    */
@@ -147,6 +155,20 @@ function loadConfig() {
   }
   const _steps = Number(merged.aiAgentMaxToolSteps);
   merged.aiAgentMaxToolSteps = Number.isFinite(_steps) ? Math.min(500, Math.max(50, Math.round(_steps))) : 300;
+
+  const WIDGET_SLOTS = new Set(['inbox', 'news', 'stocks', 'sports', 'none']);
+  for (const key of ['ntpWidgetLeft', 'ntpWidgetRight']) {
+    const w = String(merged[key] || '').trim().toLowerCase();
+    merged[key] = WIDGET_SLOTS.has(w) ? w : key === 'ntpWidgetLeft' ? 'inbox' : 'news';
+  }
+  if (merged.ntpWidgetLeft === merged.ntpWidgetRight && merged.ntpWidgetLeft !== 'none') {
+    merged.ntpWidgetRight = 'none';
+  }
+  const sub = String(merged.ntpNewsSubreddit || 'worldnews')
+    .trim()
+    .toLowerCase()
+    .replace(/^r\//, '');
+  merged.ntpNewsSubreddit = /^[a-z0-9_]{2,24}$/.test(sub) ? sub : 'worldnews';
   // Drop retired GPT-4o defaults for direct OpenAI usage (replaced by GPT-5.4 family).
   const LEGACY_OPENAI_GPT4 = new Set(['gpt-4o', 'gpt-4o-mini']);
   if (merged.aiProvider === 'openai') {

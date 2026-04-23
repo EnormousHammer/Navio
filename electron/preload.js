@@ -299,7 +299,8 @@ contextBridge.exposeInMainWorld('navio', {
   readingListMarkRead: (url)                 => ipcRenderer.invoke('reading-list-mark-read', { url }),
 
   // Password manager (safeStorage-encrypted vault)
-  passwordsSave:      (url, username, password) => ipcRenderer.invoke('passwords-save', { url, username, password }),
+  passwordsSave:      (url, username, password, hidden) =>
+    ipcRenderer.invoke('passwords-save', { url, username, password, hidden }),
   passwordsList:      ()                        => ipcRenderer.invoke('passwords-list'),
   passwordsGet:       (url)                     => ipcRenderer.invoke('passwords-get', { url }),
   passwordsDelete:    (origin, username)        => ipcRenderer.invoke('passwords-delete', { origin, username }),

@@ -36,6 +36,10 @@
     "@sentry/electron": "^5.12.0",
     "adm-zip": "^0.5.16",
     "electron-updater": "^6.6.2",
-    "imapflow": "^1.2.18"
+    "imapflow": "^1.2.18",
+    "mammoth": "^1.12.0",
+    "pdf-parse": "^1.1.4",
+    "word-extractor": "^1.0.4",
+    "xlsx": "^0.18.5"
   }
 }
