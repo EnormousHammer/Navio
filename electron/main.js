@@ -467,9 +467,9 @@ function _detectPromptBlocks(messages) {
   }
 
   const SHIPPING_URL =
-    /purolator|fedex|ups\.com|dhl\.com|tql\.com|freightquote|coyote|echo\.|ufreightcom|xpo\.com|saia\.com|estes-express|rdfs\.com|daytonfreight|rlcarriers|forwarding|broker/i;
+    /purolator|fedex|ups\.(com|ca)|dhl\.com|tql\.com|freightquote|coyote|echo\.|ufreightcom|xpo\.com|saia\.com|estes-express|rdfs\.com|daytonfreight|rlcarriers|forwarding|broker|dayross|manitoulin|mtrans\.com|odfl\.com|abf\.com|yrc\.com/i;
   const SHIPPING_WORDS =
-    /\b(ship|freight|ltl|ftl|carrier|tracking|parcel|courier|pallet|waybill|bill of lading|pickup\s*request|get\s*a\s*quote|shipping\s*(quote|rate|cost)|fedex|purolator|ups|dhl|tql|broker)\b/i;
+    /\b(ship|freight|ltl|ftl|carrier|tracking|parcel|courier|pallet|waybill|bill of lading|pickup\s*request|get\s*a\s*quote|shipping\s*(quote|rate|cost)|fedex|purolator|ups|dhl|tql|broker|day\s*&?\s*ross|dayross|manitoulin|mtrans|tql\s*freight)\b/i;
 
   const GMAIL_URL = /mail\.google\.com/i;
   const GMAIL_WORDS =
@@ -2116,7 +2116,27 @@ function releaseAiAbortController(sender, tabId = '__default__') {
   if (typeof id !== 'number') return;
   const tid = tabId != null && String(tabId).length ? String(tabId) : '__default__';
   const key = `${id}:${tid}`;
-  aiFetchAbortByKey.delete(key);
+  const ac = aiFetchAbortByKey.get(key);
+  if (!ac) {
+    aiFetchAbortByKey.delete(key);
+    return;
+  }
+  for (const [k, v] of [...aiFetchAbortByKey.entries()]) {
+    if (v === ac && k.startsWith(`${id}:`)) aiFetchAbortByKey.delete(k);
+  }
+}
+
+/** Same AbortController as `fromTabId` is also reachable as `toTabId` (e.g. solo tab id → group storage key). */
+function aliasAiAbortControllerTabId(sender, fromTabId, toTabId) {
+  const id = sender && sender.id;
+  if (typeof id !== 'number') return;
+  const fromT = fromTabId != null && String(fromTabId).length ? String(fromTabId) : '';
+  const toT = toTabId != null && String(toTabId).length ? String(toTabId) : '';
+  if (!fromT || !toT || fromT === toT) return;
+  const fromKey = `${id}:${fromT}`;
+  const toKey = `${id}:${toT}`;
+  const ac = aiFetchAbortByKey.get(fromKey);
+  if (ac) aiFetchAbortByKey.set(toKey, ac);
 }
 
 function navioGmailApiTransientError(msg) {
@@ -2596,6 +2616,15 @@ ipcMain.handle('ai-abort', async (event, payload) => {
       if (key.startsWith(`${id}:`) && ac) ac.abort();
     }
   }
+  return { ok: true };
+});
+
+ipcMain.handle('ai-abort-tab-id-alias', async (event, payload) => {
+  const id = event.sender && event.sender.id;
+  if (typeof id !== 'number') return { ok: true };
+  const fromTabId = payload && payload.fromTabId != null ? String(payload.fromTabId) : '';
+  const toTabId = payload && payload.toTabId != null ? String(payload.toTabId) : '';
+  aliasAiAbortControllerTabId(event.sender, fromTabId, toTabId);
   return { ok: true };
 });
 
@@ -4862,9 +4891,10 @@ async function executeBrowserActionInternal(wc, action, params) {
       case 'insertText': {
         const text = params.text || '';
         clipboard.writeText(text);
-        wc.sendInputEvent({ type: 'keyDown', keyCode: 'v', modifiers: ['control'] });
+        const pasteMods = process.platform === 'darwin' ? ['meta'] : ['control'];
+        wc.sendInputEvent({ type: 'keyDown', keyCode: 'v', modifiers: pasteMods });
         await new Promise((r) => setTimeout(r, 50));
-        wc.sendInputEvent({ type: 'keyUp', keyCode: 'v', modifiers: ['control'] });
+        wc.sendInputEvent({ type: 'keyUp', keyCode: 'v', modifiers: pasteMods });
         await new Promise((r) => setTimeout(r, 200));
         return { success: true };
       }
@@ -5323,8 +5353,37 @@ async function navioDeepTypeBySelector(wc, selector, text, occurrence) {
             el.focus();
             const doc = el.ownerDocument;
             if (doc.execCommand) {
-              doc.execCommand('selectAll', false, null);
-              doc.execCommand('insertText', false, text);
+              let host = '';
+              try {
+                host = (doc.location && doc.location.hostname) || '';
+              } catch (e) {
+                host = '';
+              }
+              const gmailHost = host === 'mail.google.com' || host === 'inbox.google.com';
+              const aria = (el.getAttribute('aria-label') || '').toLowerCase();
+              const gEditable = el.getAttribute('g_editable') === 'true';
+              const gmailCompose = gmailHost && (gEditable || aria.indexOf('message body') !== -1);
+              if (gmailCompose) {
+                const quote = el.querySelector('.gmail_quote');
+                const sig = el.querySelector('.gmail_signature, [data-smartmail="gmail_signature"]');
+                const boundary =
+                  quote && el.contains(quote) ? quote : sig && el.contains(sig) ? sig : null;
+                const range = doc.createRange();
+                const win = doc.defaultView;
+                range.setStart(el, 0);
+                if (boundary) {
+                  range.setEndBefore(boundary);
+                } else {
+                  range.selectNodeContents(el);
+                }
+                const sel = win.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+                doc.execCommand('insertText', false, text);
+              } else {
+                doc.execCommand('selectAll', false, null);
+                doc.execCommand('insertText', false, text);
+              }
             } else {
               el.textContent = text;
             }
@@ -5791,10 +5850,11 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
         }
         // 2. Give the page a moment to process any pending focus state
         await new Promise(r => setTimeout(r, 200));
-        // 3. Send Ctrl+V — Google Docs intercepts this and pastes with formatting
-        wc.sendInputEvent({ type: 'keyDown', keyCode: 'V', modifiers: ['control'] });
+        // 3. Paste — use Cmd+V on macOS (matches Google Docs fallback elsewhere).
+        const pasteMods = process.platform === 'darwin' ? ['meta'] : ['control'];
+        wc.sendInputEvent({ type: 'keyDown', keyCode: 'V', modifiers: pasteMods });
         await new Promise(r => setTimeout(r, 50));
-        wc.sendInputEvent({ type: 'keyUp',   keyCode: 'V', modifiers: ['control'] });
+        wc.sendInputEvent({ type: 'keyUp', keyCode: 'V', modifiers: pasteMods });
         return { success: true };
       }
 

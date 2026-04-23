@@ -17,7 +17,12 @@
  * require exporting that map across modules and risk listener duplication.
  */
 
+const fs = require('fs');
+const path = require('path');
 const { pathToFileURL } = require('url');
+
+/** Match largest assistant attachment cap (PDF path in assistant.js). */
+const READ_ATTACHMENT_MAX_BYTES = 12 * 1024 * 1024;
 
 function registerFileIpc(ipcMain, { app, shell }) {
   if (!ipcMain || !app || !shell) {
@@ -67,6 +72,37 @@ function registerFileIpc(ipcMain, { app, shell }) {
         return { ok: false, error: 'invalid path' };
       }
       return { ok: true, href: pathToFileURL(filePath).href };
+    } catch (e) {
+      return { ok: false, error: e && e.message ? e.message : String(e) };
+    }
+  });
+
+  /**
+   * Read a local file for assistant / chat attachments when the renderer's File
+   * from drag-and-drop has size 0 (common on Windows for Explorer → Chromium drops,
+   * including from Downloads) but exposes a native `path` (Electron extension).
+   */
+  ipcMain.handle('read-file-for-attachment', (_, filePath) => {
+    try {
+      if (!filePath || typeof filePath !== 'string') {
+        return { ok: false, error: 'invalid path' };
+      }
+      const resolved = path.resolve(filePath);
+      if (!fs.existsSync(resolved)) {
+        return { ok: false, error: 'path not found' };
+      }
+      const st = fs.statSync(resolved);
+      if (!st.isFile()) {
+        return { ok: false, error: 'not a file' };
+      }
+      if (st.size > READ_ATTACHMENT_MAX_BYTES) {
+        return {
+          ok: false,
+          error: `file too large (max ${Math.round(READ_ATTACHMENT_MAX_BYTES / (1024 * 1024))} MB)`
+        };
+      }
+      const buf = fs.readFileSync(resolved);
+      return { ok: true, size: buf.length, base64: buf.toString('base64') };
     } catch (e) {
       return { ok: false, error: e && e.message ? e.message : String(e) };
     }

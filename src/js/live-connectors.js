@@ -900,7 +900,7 @@ class LiveConnectorManagerClass {
   _buildStylePrompt(serviceId) {
     const def = this.LIVE_CAPABLE[serviceId] || {};
     const examples = this._data.styleMemory[serviceId]?.examples || [];
-    let p = `You are drafting a ${def.name || 'message'} reply on behalf of the user. Output ONLY the reply text — no explanation, no preamble, no "Here's a draft:" prefix.`;
+    let p = `You are drafting a ${def.name || 'message'} reply on behalf of the user. Output ONLY the reply text — no explanation, no preamble, no "Here's a draft:" prefix. Use plain sentences and line breaks only — no Markdown (no **bold**, bullets with *, or \`code\`) and no HTML; the text may be pasted into an email client.`;
 
     if (examples.length > 0) {
       p += `\n\nThe user's writing style — study these examples carefully and match their exact tone, length, greeting, and sign-off:\n`;

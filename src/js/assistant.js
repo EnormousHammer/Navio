@@ -259,6 +259,25 @@ const NAVIO_PROFILE_CHAT_KEY = '__profile__';
 /** Saved sidebar threads (Comet-style); persisted under `byKey` with this prefix. */
 const NAVIO_SIDEBAR_THREAD_PREFIX = 'sb:';
 
+/** One-line label for AI task tab groups (first line of the user request, trimmed). */
+function navioDeriveAiTaskWorkspaceName(userText, historyUserLabel) {
+  const raw = String(historyUserLabel || userText || '').trim();
+  if (!raw) return 'AI task';
+  let line =
+    raw
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find((l) => l.length > 0) || raw.slice(0, 80);
+  line = line.replace(/^#{1,6}\s+/, '');
+  line = line.replace(/^\[[^\]]{1,40}\]\s*/, '');
+  line = line.replace(/^(\*\*|__|\*|_)+/, '');
+  line = line.replace(/(\*\*|__|\*|_)+$/, '');
+  line = line.replace(/\s+/g, ' ').trim();
+  if (line.length > 52) line = `${line.slice(0, 50)}\u2026`;
+  if (!line) return 'AI task';
+  return line;
+}
+
 function navioLooksLikePrintableText(s) {
   if (!s || typeof s !== 'string') return false;
   const sample = s.slice(0, Math.min(12000, s.length));
@@ -337,6 +356,79 @@ function navioIsPdfFile(file) {
   return file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
 }
 
+/** Human-readable size for attachment chips (matches glc FileCard style). */
+function navioFormatAttachmentBytes(n) {
+  if (n == null || !(n > 0)) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/**
+ * Document “personality” for attachment UI (inspired by glc_assistant FileCard.tsx).
+ */
+function navioAttachmentDocMeta(name, kind) {
+  const n = String(name || '');
+  const ext =
+    n.lastIndexOf('.') > 0 ? n.slice(n.lastIndexOf('.') + 1).toLowerCase() : '';
+  const k = String(kind || '');
+  if (k === 'image' || /\.(png|jpe?g|gif|webp|bmp|ico|tiff?|avif|heic|heif|jxl)$/i.test(n)) {
+    return { variant: 'image', label: (ext || 'IMG').toUpperCase().slice(0, 5) };
+  }
+  if (k === 'pdf' || ext === 'pdf') return { variant: 'pdf', label: 'PDF' };
+  if (['doc', 'docx', 'rtf', 'odt'].includes(ext)) {
+    return { variant: 'word', label: ext === 'docx' ? 'DOCX' : ext.toUpperCase() };
+  }
+  if (['xlsx', 'xls', 'csv', 'ods', 'numbers'].includes(ext)) {
+    return { variant: 'excel', label: ext.toUpperCase() };
+  }
+  if (['ppt', 'pptx', 'odp', 'key'].includes(ext)) {
+    return { variant: 'ppt', label: ext === 'pptx' ? 'PPTX' : ext.toUpperCase() };
+  }
+  if (k === 'text' || ['txt', 'md', 'mdx', 'json', 'json5', 'jsonc', 'xml', 'yaml', 'yml', 'log', 'sql'].includes(ext)) {
+    return { variant: 'text', label: (ext || 'TXT').toUpperCase().slice(0, 5) };
+  }
+  if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz'].includes(ext)) {
+    return { variant: 'archive', label: ext.toUpperCase() };
+  }
+  if (
+    ['js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'py', 'rs', 'go', 'java', 'kt', 'c', 'cpp', 'h', 'css', 'html', 'htm', 'vue', 'svelte'].includes(
+      ext
+    )
+  ) {
+    return { variant: 'code', label: ext.toUpperCase().slice(0, 5) };
+  }
+  if (k === 'inline' || k === 'binary') {
+    return { variant: 'file', label: (ext || 'FILE').toUpperCase().slice(0, 5) };
+  }
+  return { variant: 'file', label: (ext || 'FILE').toUpperCase().slice(0, 5) };
+}
+
+function navioAttachmentDocIconSvg(variant) {
+  const S =
+    '<svg class="assistant-att-svg" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">';
+  switch (variant) {
+    case 'pdf':
+      return `${S}<path fill="#E53935" d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path fill="#fff" fill-opacity=".92" d="M8 17h8v1.2H8V17zm0-3h8v1.2H8V14z"/></svg>`;
+    case 'word':
+      return `${S}<path fill="#2B579A" d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><text x="12" y="16.5" text-anchor="middle" fill="#fff" font-size="10" font-weight="700" font-family="system-ui,sans-serif">W</text></svg>`;
+    case 'excel':
+      return `${S}<path fill="#217346" d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><text x="12" y="16.5" text-anchor="middle" fill="#fff" font-size="10" font-weight="700" font-family="system-ui,sans-serif">X</text></svg>`;
+    case 'ppt':
+      return `${S}<path fill="#D24726" d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><text x="12" y="16.5" text-anchor="middle" fill="#fff" font-size="9" font-weight="700" font-family="system-ui,sans-serif">P</text></svg>`;
+    case 'image':
+      return `${S}<rect x="3" y="5" width="18" height="14" rx="2" fill="#7C3AED"/><circle cx="8.5" cy="9.5" r="1.8" fill="#fff"/><path d="M3 17l5-5 4 4 3-3 6 6H3v-2z" fill="#C4B5FD"/></svg>`;
+    case 'text':
+      return `${S}<path fill="#64748B" d="M6 2h12v20H6V2zm2 4h8v1.5H8V6zm0 3.5h8V11H8V9.5zm0 3.5h5V14H8v-1z"/></svg>`;
+    case 'archive':
+      return `${S}<path fill="#D97706" d="M8 2h8v3H8V2zm-2 5h12v15a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7zm4 2v8h4V9h-4z"/></svg>`;
+    case 'code':
+      return `${S}<path fill="#0D9488" d="M8.5 7l-4 5 4 5 1.2-.9-3.3-4.1 3.3-4.1L8.5 7zm7 0l-1.2.9 3.3 4.1-3.3 4.1 1.2.9 4-5-4-5z"/><path fill="#5EEAD4" d="M13 6h-2l-2 12h2l2-12z"/></svg>`;
+    default:
+      return `${S}<path fill="#64748B" d="M8 2h8l4 4v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm1 4v10h6V6H9z"/></svg>`;
+  }
+}
+
 /** Same logic as main process — fix UTF-8 mojibake in draft bodies before display/send. */
 function navioRepairUtf8Mojibake(s) {
   if (!s || typeof s !== 'string') return s;
@@ -390,6 +482,8 @@ class AssistantManagerClass {
     this.isOpen = false;
     /** Tab ids currently running an assistant turn (each tab can have its own task in parallel). */
     this._busyTabs = new Set();
+    /** Tab group id (`grp-*`) created this tool-turn so open_tab targets stay under one named strip group. */
+    this._aiTurnWorkspaceGroupId = null;
     /** @type {Map<string, Array<{ role: string, content: unknown }>>} */
     this._conversationsByTab = new Map();
     /** @type {Promise<void> | null} */
@@ -716,7 +810,7 @@ class AssistantManagerClass {
       attachBtn.addEventListener('click', () => fileInput.click());
       fileInput.addEventListener('change', () => {
         if (fileInput.files?.length) {
-          this._addFilesFromList(fileInput.files);
+          void this._addFilesFromList(fileInput.files);
           fileInput.value = '';
         }
       });
@@ -735,7 +829,7 @@ class AssistantManagerClass {
         }
         if (files.length) {
           e.preventDefault();
-          this._addFilesFromList(files);
+          void this._addFilesFromList(files);
         }
       });
     }
@@ -755,7 +849,7 @@ class AssistantManagerClass {
         e.stopPropagation();
         area.classList.remove('assistant-input-area--drop');
         const dt = e.dataTransfer?.files;
-        if (dt?.length) this._addFilesFromList(dt);
+        if (dt?.length) void this._addFilesFromList(dt);
       });
     }
   }
@@ -1194,25 +1288,61 @@ class AssistantManagerClass {
     }
   }
 
-  _addFilesFromList(fileList) {
-    const files = Array.from(fileList || []).filter((f) => f && f.size > 0);
-    if (!files.length) return;
+  /**
+   * Windows (and some Electron drops) expose `File.path` but `size === 0` until hydrated —
+   * common when dragging from Explorer / Downloads. Rebuild a real File via main-process read.
+   */
+  async _hydrateNativeDroppedFile(file) {
+    if (!file) return null;
+    if (file.size > 0) return file;
+    const p = file.path;
+    if (typeof p !== 'string' || !p.trim() || typeof window.navio?.readFileForAttachment !== 'function') {
+      return null;
+    }
+    try {
+      const r = await window.navio.readFileForAttachment(p.trim());
+      if (!r || !r.ok || !r.base64) return null;
+      const bin = atob(r.base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return new File([bytes], file.name || 'file', { type: file.type || 'application/octet-stream' });
+    } catch {
+      return null;
+    }
+  }
+
+  async _addFilesFromList(fileList) {
+    const raw = Array.from(fileList || []).filter(
+      (f) => f && (f.size > 0 || (typeof f.path === 'string' && f.path.length > 0))
+    );
+    if (!raw.length) return;
     const row = document.getElementById('assistant-attachment-row');
     if (row) row.hidden = false;
-    for (const file of files) {
+    for (const file of raw) {
       if (this._attachmentQueue.length >= NAVIO_ASSISTANT_MAX_ATTACHMENTS) {
         this.addMessage('assistant', `Maximum ${NAVIO_ASSISTANT_MAX_ATTACHMENTS} attachments per message.`, 'error');
         break;
       }
+      const hydrated = await this._hydrateNativeDroppedFile(file);
+      const toProcess = hydrated && hydrated.size > 0 ? hydrated : null;
+      if (!toProcess) {
+        this.addMessage(
+          'assistant',
+          `Could not read "${file.name || 'file'}". Try **Attach** or drag the file again.`,
+          'error'
+        );
+        continue;
+      }
       const id = `att_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
       const entry = {
         id,
-        name: file.name || 'file',
-        status: 'loading'
+        name: toProcess.name || file.name || 'file',
+        status: 'loading',
+        bytesSize: typeof toProcess.size === 'number' ? toProcess.size : 0
       };
       this._attachmentQueue.push(entry);
       this._renderAttachmentChips();
-      this._processAttachmentFile(file, entry);
+      void this._processAttachmentFile(toProcess, entry);
     }
   }
 
@@ -1332,22 +1462,55 @@ class AssistantManagerClass {
     if (!this._attachmentQueue.length) {
       row.innerHTML = '';
       row.hidden = true;
+      row.classList.remove('assistant-attachment-row--has-docs');
       return;
     }
     row.hidden = false;
+    row.classList.add('assistant-attachment-row--has-docs');
     row.innerHTML = this._attachmentQueue
       .map((e) => {
         const safe = this._escapeHtml(e.name);
+        const meta = navioAttachmentDocMeta(e.name, e.status === 'loading' ? null : e.kind);
+        const v = meta.variant;
+        const sz = navioFormatAttachmentBytes(e.bytesSize);
+        const szHtml = sz ? `<span class="assistant-att-size">${this._escapeHtml(sz)}</span>` : '';
         if (e.status === 'loading') {
-          return `<div class="assistant-att-chip assistant-att-chip--loading" data-id="${e.id}"><span class="assistant-att-spinner"></span>${safe}</div>`;
+          const icon = navioAttachmentDocIconSvg(v);
+          return (
+            `<div class="assistant-att-chip assistant-att-chip--doc assistant-att-chip--${v} assistant-att-chip--loading assistant-att-pop-in" data-id="${e.id}" title="Loading ${safe}">` +
+            `<div class="assistant-att-doc-icon assistant-att-doc-icon--pulse">${icon}</div>` +
+            `<div class="assistant-att-doc-body">` +
+            `<span class="assistant-att-name">${safe}</span>` +
+            `<span class="assistant-att-kind-row"><span class="assistant-att-kind">${this._escapeHtml(meta.label)}</span>${szHtml}<span class="assistant-att-spinner" aria-hidden="true"></span></span>` +
+            `</div></div>`
+          );
         }
         if (e.status === 'error') {
-          return `<div class="assistant-att-chip assistant-att-chip--err" data-id="${e.id}">${safe}<span class="assistant-att-err" title="${this._escapeHtml(e.error || '')}">!</span><button type="button" class="assistant-att-remove" data-id="${e.id}" aria-label="Remove">×</button></div>`;
+          return (
+            `<div class="assistant-att-chip assistant-att-chip--doc assistant-att-chip--${v} assistant-att-chip--err assistant-att-pop-in" data-id="${e.id}">` +
+            `<div class="assistant-att-doc-icon">${navioAttachmentDocIconSvg(v)}</div>` +
+            `<div class="assistant-att-doc-body">` +
+            `<span class="assistant-att-name" title="${safe}">${safe}</span>` +
+            `<span class="assistant-att-kind-row"><span class="assistant-att-kind">Error</span></span>` +
+            `</div>` +
+            `<span class="assistant-att-err" title="${this._escapeHtml(e.error || '')}">!</span>` +
+            `<button type="button" class="assistant-att-remove" data-id="${e.id}" aria-label="Remove">×</button>` +
+            `</div>`
+          );
         }
         const thumb = e.thumb
-          ? `<img class="assistant-att-thumb" src="${e.thumb.replace(/"/g, '&quot;')}" alt="">`
-          : `<span class="assistant-att-icon" aria-hidden="true">${e.kind === 'pdf' ? 'PDF' : 'FILE'}</span>`;
-        return `<div class="assistant-att-chip" data-id="${e.id}">${thumb}<span class="assistant-att-name">${safe}</span><button type="button" class="assistant-att-remove" data-id="${e.id}" aria-label="Remove">×</button></div>`;
+          ? `<img class="assistant-att-thumb assistant-att-doc-thumb" src="${e.thumb.replace(/"/g, '&quot;')}" alt="">`
+          : `<div class="assistant-att-doc-icon">${navioAttachmentDocIconSvg(v)}</div>`;
+        return (
+          `<div class="assistant-att-chip assistant-att-chip--doc assistant-att-chip--${v} assistant-att-pop-in" data-id="${e.id}" title="${safe}">` +
+          thumb +
+          `<div class="assistant-att-doc-body">` +
+          `<span class="assistant-att-name">${safe}</span>` +
+          `<span class="assistant-att-kind-row"><span class="assistant-att-kind">${this._escapeHtml(meta.label)}</span>${szHtml}</span>` +
+          `</div>` +
+          `<button type="button" class="assistant-att-remove" data-id="${e.id}" aria-label="Remove attachment">×</button>` +
+          `</div>`
+        );
       })
       .join('');
     row.querySelectorAll('.assistant-att-remove').forEach((btn) => {
@@ -3514,6 +3677,98 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     this._syncTabStripBadge(k, busy);
   }
 
+  /**
+   * When a tab joins an AI workspace group mid-turn, solo storage keys become `g:groupId`.
+   * Keep busy state and in-flight history key aligned so send/stop and badges stay correct.
+   */
+  _migrateAssistantTurnStorageKey(oldSoloKey, groupId) {
+    const oldK = String(oldSoloKey || '');
+    const gid = String(groupId || '');
+    if (!oldK || !gid || oldK.startsWith('g:')) return;
+    const gk = `g:${gid}`;
+    if (this._busyTabs.has(oldK)) {
+      this._busyTabs.delete(oldK);
+      this._busyTabs.add(gk);
+    }
+    if (String(this._turnConversationKey || '') === oldK) {
+      this._turnConversationKey = gk;
+      try {
+        if (window.navio && typeof window.navio.aiAbortTabIdAlias === 'function') {
+          void window.navio.aiAbortTabIdAlias({ fromTabId: oldK, toTabId: gk });
+        }
+      } catch {
+        /* non-critical */
+      }
+    }
+    this._updateAssistantBusyChrome();
+    this._syncTabStripBadge(oldK, false);
+    this._syncTabStripBadge(gk, this._busyTabs.has(gk));
+  }
+
+  /**
+   * First **open_tab** in a tool turn: create a named tab group from the user message and add the
+   * browsing context tab, full-page AI tab (if any), and agent-opened tabs so one task reads as one workspace.
+   */
+  _maybeGroupTabsForAiOpenTab({ guestWv, newTab, userText, historyUserLabel, ctxTab }) {
+    try {
+      if (!newTab || typeof TabManager === 'undefined') return;
+      if (!TabManager.createGroup || !TabManager.addTabToGroup) return;
+      if (newTab.incognito) return;
+
+      const name = navioDeriveAiTaskWorkspaceName(userText, historyUserLabel);
+      let gid = this._aiTurnWorkspaceGroupId;
+      if (!gid) {
+        gid = TabManager.createGroup(name);
+        this._aiTurnWorkspaceGroupId = gid;
+
+        const tryJoin = (tab) => {
+          if (!tab || !tab.id || tab.id === newTab.id) return;
+          if (tab.incognito !== newTab.incognito) return;
+          if (!tab.url || tab.url.startsWith('about:')) return;
+          if (tab.groupId && tab.groupId !== gid) return;
+          if (TabManager.isNavioChatTabUrl?.(tab.url || '')) {
+            // Full-page Navio chat — ok to group with the task.
+          } else if (!/^https?:\/\//i.test(tab.url || '')) {
+            return;
+          }
+          const oldKey = tab.groupId ? null : String(tab.id);
+          TabManager.addTabToGroup(tab.id, gid);
+          if (oldKey) this._migrateAssistantTurnStorageKey(oldKey, gid);
+        };
+
+        const chatHost =
+          guestWv && TabManager.tabs
+            ? TabManager.tabs.find((t) => t.webview === guestWv)
+            : null;
+        const anchor =
+          (this._guestAnchoredTabId &&
+            TabManager.tabs.find((x) => String(x.id) === String(this._guestAnchoredTabId))) ||
+          ctxTab ||
+          null;
+        const anchorAlreadyGrouped = !!(anchor && anchor.groupId);
+
+        if (
+          !anchorAlreadyGrouped &&
+          anchor &&
+          anchor.id !== newTab.id &&
+          (!chatHost || anchor.id !== chatHost.id) &&
+          !TabManager.isNavioChatTabUrl?.(anchor.url || '')
+        ) {
+          tryJoin(anchor);
+        }
+        if (!anchorAlreadyGrouped && chatHost) tryJoin(chatHost);
+      }
+
+      if (newTab.groupId !== gid) {
+        const oldKey = newTab.groupId ? null : String(newTab.id);
+        TabManager.addTabToGroup(newTab.id, gid);
+        if (oldKey) this._migrateAssistantTurnStorageKey(oldKey, gid);
+      }
+    } catch (e) {
+      console.warn('[navio-assistant] AI task tab group failed', e && e.message ? e.message : e);
+    }
+  }
+
   /** Add or remove the pulsing AI-busy badge on the tab strip item(s) for the given storage key. */
   _syncTabStripBadge(storageKey, busy) {
     if (!storageKey || storageKey === '__profile__' || storageKey === '__guest__') return;
@@ -3900,8 +4155,12 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     }
 
     } finally {
+      const busyClear =
+        this._turnConversationKey != null && String(this._turnConversationKey).length
+          ? String(this._turnConversationKey)
+          : String(turnKey);
       this._turnConversationKey = null;
-      this._setTabBusy(turnKey, false);
+      this._setTabBusy(busyClear, false);
       this._updateAssistantBusyChrome();
       // Do NOT call _syncPanelToTab here: it replays from `_conversationsByTab` and can wipe the live
       // transcript (empty key / wrong-tab timing / async ordering) back to the welcome screen mid-work.
@@ -4149,8 +4408,12 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       this._guestDeliver(guestWv, { type: 'assistant', error: true, content: err.message || String(err) });
     } finally {
       this._guestChatWebview = null;
+      const busyClear =
+        this._turnConversationKey != null && String(this._turnConversationKey).length
+          ? String(this._turnConversationKey)
+          : String(guestKey);
       this._turnConversationKey = prevTurn;
-      this._setTabBusy(guestKey, false);
+      this._setTabBusy(busyClear, false);
       this._updateAssistantBusyChrome();
       if (installedSnapshot && this._attachmentsSnapshot === installedSnapshot) {
         this._attachmentsSnapshot = null;
@@ -4516,6 +4779,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         const resolved = App.resolveNavigationInput(openUrl);
         if (resolved) openUrl = resolved;
       }
+      const ctxBefore =
+        typeof TabManager !== 'undefined'
+          ? TabManager.getBrowserContextTab?.() || TabManager.getActiveTab()
+          : null;
       let labelHost = '';
       if (openUrl) {
         try {
@@ -4534,6 +4801,15 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         const tab = loadResult.tab || TabManager.getActiveTab();
         const wv = tab?.webview;
         if (tab?.id) TabManager.setAgentControlledTab?.(tab.id);
+        if (tab) {
+          this._maybeGroupTabsForAiOpenTab({
+            guestWv,
+            newTab: tab,
+            userText: text,
+            historyUserLabel,
+            ctxTab: ctxBefore
+          });
+        }
         window.navio.toolOpenTabAck({
           success: true,
           tab_id: tab?.id || '',
@@ -4976,6 +5252,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       // Guest turns: processGuestChatMessage owns _guestChatWebview lifecycle (Comet-style context).
       if (!guestWv) this._guestChatWebview = null;
       if (this._turnStartedAt != null) this._turnStartedAt = null;
+      this._aiTurnWorkspaceGroupId = null;
       if (typeof TabManager !== 'undefined') {
         if (this._takeoverMode) TabManager.setAgentControlledTab?.(TabManager.getTakeoverHighlightTabId?.() ?? null);
         else TabManager.setAgentControlledTab?.(null);

@@ -41,3 +41,84 @@ When the user wants a **quote**, **rate**, **LTL**, **FTL**, **parcel**, **palle
 ANTI-LOOP:
 - Do not **navigate** twice to the same kind of dead end without a new hypothesis.
 - If **interactive** read is thin on a logistics site, retry **filter="all"** before giving up.
+
+══════════════════════════════════════════
+CARRIER-SPECIFIC WEB UI — DO NOT MISS THESE
+══════════════════════════════════════════
+Below supplements **sections A–E** above. **Names and menus move** — always **read_page** after language toggle, login, or “Business vs personal” switch.
+
+──────────────────────────────────────────
+PUROLATOR — purolator.com / purolator.ca
+──────────────────────────────────────────
+- **National Canadian** parcel + freight; **English / French** toggle is common on **.ca** — switching language **reloads** labels; **read_page** again and assume **refs are new**.
+- **Top tasks:** **Track** (PIN/tracking), **Ship** (guest or account), **Find a location** / **Shipping locations**, **Business** / **Solutions** (freight, ecommerce, returns).
+- **Track:** PIN is **not** the same as every competitor’s “reference” field — paste exactly what the user gave. Multiple-piece shipments may return **one row per piece** or a **summary** — read all rows before saying “delivered.”
+- **Ship / quote:** **Inter** vs **Canada**, **Domestic** vs **US** — wrong **corridor** = wrong form (customs, NAFTA/USMCA data). Set **from/to country** before postal codes.
+- **Retail vs pickup:** “Drop off at **authorized shipping agent**” vs **Purolator depot** — different hours and cutoffs; read **location detail** pages.
+- **Freight / pallet** flows may live under **Business** or separate **Freight** entry — if the parcel form has no pallet fields, you are in the **wrong product** (see section B).
+
+──────────────────────────────────────────
+FEDEX — fedex.com (+ regional paths, e.g. /en-us/, /en-ca/)
+──────────────────────────────────────────
+- **Heavy regional routing** — URLs contain **locale** segments. **Do not** assume US defaults when the user is Canadian or vice versa — check **country/region** in the **header or footer** “Location” selector.
+- **Primary splits:** **Ship** (create label / get rates), **Track** (status, proof of delivery, manage delivery), **Locations**, **Rates & transit times** (sometimes separate from full **Ship** wizard), **Account / FedEx Billing Online** (logged-in flows).
+- **Ship Manager Lite vs advanced:** “Quick” ship vs **FedEx Ship Manager** / business tools — different field order and **default package types**. Match **envelope vs package vs freight**.
+- **Hold at location / redirect:** lives under **track** workflows — requires tracking number first.
+- **Dangerous goods, dry ice, alcohol** — separate declarations; if the user did not declare, **do not** silently choose DG options.
+
+──────────────────────────────────────────
+UPS — ups.com / ups.ca
+──────────────────────────────────────────
+- **Track**, **Ship** (quote + label), **Locations**, **My Choice** / **Quantum View** style **visibility** tools for account holders.
+- **Quote vs ship:** “**Calculate time and cost**” may be a **lighter** path than full **Create a shipment** — use what the user asked (estimate vs booking).
+- **Account vs guest:** logged-in flows show **saved addresses**, **payment accounts**, **defaults** — still verify **ship from** vs **ship to** every time.
+- **WorldShip** is desktop software — if the user mentions it, browser automation may not apply; clarify.
+
+──────────────────────────────────────────
+DHL — dhl.com (+ country sites dhl.de, etc.)
+──────────────────────────────────────────
+- **Express** vs **Global Forwarding / Freight** are **different businesses** on the web — **Express** = parcel/time-definite; **Forwarding** = air/ocean/LCL/FCL. Wrong portal = wrong tools.
+- **Track** by **waybill**; **ship** flows may require **account** earlier than US domestic carriers.
+- **Customs paperwork** is prominent on international — **commercial invoice**, **HS code** fields appear when corridor is international.
+
+──────────────────────────────────────────
+TQL / TQL FREIGHT — tql.com (broker, not asset-based carrier)
+──────────────────────────────────────────
+- **Third-party logistics broker** — website emphasizes **LTL** / **truckload** **quotes**, **carrier** onboarding (**TQL Carrier** / **Truckload** apps), and **shipper** sales flows — **not** the same UX as UPS parcel.
+- **Quote wizards** are often **multi-step** (commodity, class, weight, dims, **accessorials** — liftgate, residential, appointment, inside delivery). **Each step** can change later fields — **read_page** after **Next**.
+- **Loads / capacity** marketing vs **logged-in** shipper tools — if you only see blogs or **“Talk to rep”**, you may need **Sign in** or a **different URL** (shipper vs carrier portal). State clearly when the page is **lead-gen** vs **self-serve quote**.
+- **Do not invent** NMFC/freight class — ask the user or read what the **commodity lookup** tool returns.
+
+──────────────────────────────────────────
+DAY & ROSS — dayross.com (Day & Ross / Day Ross; Canadian supply chain / LTL)
+──────────────────────────────────────────
+- **LTL / supply chain** focus — **Track shipment** (often **PRO**, **BOL**, **pickup #** — naming varies), **Service centers / terminals**, **Get a quote** / **shipping** under **Business** or **Solutions**.
+- **Coverage** is **Canada-heavy** (incl. **Quebec**, **Maritimes**) — **transit** and **service type** depend on **lane**; never assume US domestic rules.
+- **French** content common — same **reload** caution as Purolator when switching language.
+- If **track** returns **exceptions** (weather, appointment, held), read **status detail** lines — do not flatten to “delayed” without reason text.
+
+──────────────────────────────────────────
+MANITOULIN TRANSPORT — manitoulintransport.com (and related MTRANS / regional branding)
+──────────────────────────────────────────
+- **Canadian LTL / freight** — **Trace / Track** tools, **service** descriptions, **terminals**, **coverage** maps or lists.
+- Lookups often by **PRO**, **Bill of lading**, or **reference** — **read the field labels**; do not put PRO into a **pickup request** form.
+- **Pickup requests** vs **quotes** vs **track** — three different flows; **header / hero** CTAs differ. **Pickup** may need **ready time**, **dock type**, **forklift**, **skid count**.
+- **Interline / partner** legs can appear in tracking — summarize **each leg** if the UI lists multiple carriers.
+
+──────────────────────────────────────────
+OTHER MAJOR CARRIERS & 3PLs (same expert rules)
+──────────────────────────────────────────
+Apply **sections A–E** plus **locale / product split** awareness for sites such as **XPO**, **ODFL**, **Saia**, **Estes**, **R+L**, **YRC / Yellow network successors**, **ArcBest**, **CFI**, **Schneider Freight**, **CH Robinson–style competitors**, **Echo**, **Coyote**, **GlobalTranz**, **Freightquote**, **uShip marketplace**, **DHL Freight** (vs DHL Express), **Amazon Shipping** (seller flows), **Canpar**, **GLS**, **Loomis**, **Intelcom** (last mile), etc.
+
+**Pattern recognition:**
+- **Track** always wants **one primary identifier** — do not paste addresses into **tracking** fields.
+- **Quote** wants **lanes + commodity + class or density + accessorials** — do not paste **tracking #** into **NMFC** / **weight** fields.
+- **“Get a rate”** on homepages often scrolls with marketing — use **read_page filter=all** and **header nav**, not only the first hero viewport.
+- **Login walls** — quote may be behind **My account**; say so instead of looping **read_page** on marketing.
+
+**Regulatory / safety (do not overstep)**
+- **Hazmat**, **oversize**, **temperature control** — if the user did not specify, **do not** select restricted options to “make the quote work.”
+- **COD, collect, third-party billing** — only if the user asked; wrong billing flags can strand freight.
+
+**Payment & booking**
+- Many sites end in **payment** or **schedule pickup** — **SCOPE & CONTROL**: do not complete purchase, **save credit card**, or **confirm pickup** unless the user explicitly asked you to finish that step. Summarize what is filled and what **one human click** remains.

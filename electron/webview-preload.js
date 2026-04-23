@@ -26,7 +26,8 @@ try {
         getConfig: () => ipcRenderer.invoke('get-config'),
         saveConfig: (partial) => ipcRenderer.invoke('save-config', partial),
         postToHost: (payload) => ipcRenderer.sendToHost('navio-chat-host', payload),
-        navioTTS: (params) => ipcRenderer.invoke('navio-tts', params)
+        navioTTS: (params) => ipcRenderer.invoke('navio-tts', params),
+        readFileForAttachment: (filePath) => ipcRenderer.invoke('read-file-for-attachment', filePath)
       });
     } catch (e) {
       console.error('[navio] navioChatTab preload bridge failed:', e && e.message ? e.message : e);

@@ -87,7 +87,8 @@ const NAVIO_TOOLS = [
     description:
       'Type text into a form field. Identify the field by "ref" (preferred) or "text" (visible label/placeholder). ' +
       'On freight/shipping forms, labels are often on separate elements — Navio resolves real label text (including aria-labelledby); use "occurrence" when two fields share the same label (e.g. 1 = pickup postal, 2 = delivery postal). ' +
-      'Gmail and similar apps use nested iframes — prefer ref from read_page on the active mail tab; Navio searches iframes automatically.',
+      'Gmail and similar apps use nested iframes — prefer ref from read_page on the active mail tab; Navio searches iframes automatically. ' +
+      'For **Gmail message body**, prefer **insert_text** with **plain text** (no Markdown/HTML); use type_text for To/Subject or short fields.',
     parameters: {
       type: 'object',
       properties: {
@@ -248,13 +249,14 @@ const NAVIO_TOOLS = [
   {
     name: 'insert_text',
     description:
-      'Paste text into the currently focused field via clipboard. Required for Google Docs/Sheets and other canvas editors where type_text does not work.',
+      'Paste text into the currently focused field via clipboard. Required for Google Docs/Sheets and other canvas editors where type_text does not work. ' +
+      'For **Gmail compose body**, paste **plain text only** (no Markdown/HTML) so the user can edit, bold, and keep their signature — Markdown→HTML is only for Google Docs.',
     parameters: {
       type: 'object',
       properties: {
         text: {
           type: 'string',
-          description: 'Text to paste. Supports markdown for Google Docs.'
+          description: 'Text to paste. Markdown is interpreted for Google Docs only; use plain text for Gmail and other mail UIs.'
         }
       },
       required: ['text']
@@ -286,6 +288,7 @@ const NAVIO_TOOLS = [
       'Open a new browser tab and optionally navigate it to a URL. Returns the new tab\'s ID. ' +
       'The tab opens in the background: the user\'s current visible tab does not change. ' +
       'Use this for parallel research across multiple sites. ' +
+      'Navio automatically puts the new tab in a **named tab group** with the browsing-context tab and full-page AI tab when this is part of the same task, so the strip stays readable. ' +
       'Same Gmail behavior as **navigate**: set **gmail_browser_takeover: true** to open a real Gmail tab when the API path is insufficient.',
     parameters: {
       type: 'object',
@@ -607,7 +610,7 @@ const NAVIO_TOOLS = [
       type: 'object',
       properties: {
         draft_id: { type: 'string', description: 'Gmail draft ID to update.' },
-        body: { type: 'string', description: 'New full plain-text body for the draft.' }
+        body: { type: 'string', description: 'New full plain-text body only (no Markdown/HTML).' }
       },
       required: ['draft_id', 'body']
     }
@@ -620,7 +623,8 @@ const NAVIO_TOOLS = [
       'and is NOT sent — the user reviews and sends it manually. ' +
       'The body you pass is stored verbatim (no signature appended by Navio). Gmail applies the user’s own signature from Gmail settings when they compose/send there. ' +
       'Write only the message text — no "Best regards", name block, or footer unless the user explicitly asked for that wording in the body. ' +
-      'Prefer this for bulk or threaded replies. If the user explicitly wants text in the Gmail compose window, use read_page + click + type_text on the Gmail tab instead. ' +
+      'Body must be **plain text** (no Markdown/HTML). ' +
+      'Prefer this for bulk or threaded replies. If the user explicitly wants text in the Gmail compose window, use read_page + click + **insert_text** (plain) on the message body. ' +
       'If one call returns an error, continue with the remaining messages unless the error is SCOPE_ERROR or not_signed_in. ' +
       'Requires Google OAuth with gmail.compose (reconnect Google in Navio Settings → Connected Apps if drafts fail).',
     parameters: {
@@ -632,7 +636,7 @@ const NAVIO_TOOLS = [
         },
         body: {
           type: 'string',
-          description: 'The plain-text body of the reply draft.'
+          description: 'Plain-text body only (no Markdown/HTML). Line breaks are fine.'
         },
         ...GMAIL_ACCOUNT_CHOICE
       },
@@ -652,7 +656,7 @@ const NAVIO_TOOLS = [
       properties: {
         to: { type: 'string', description: 'Recipient email address (To).' },
         subject: { type: 'string', description: 'Email subject line.' },
-        body: { type: 'string', description: 'Plain-text body of the draft.' },
+        body: { type: 'string', description: 'Plain-text body only (no Markdown/HTML).' },
         cc: { type: 'string', description: 'Optional Cc addresses (comma-separated).' },
         bcc: { type: 'string', description: 'Optional Bcc addresses (comma-separated).' },
         ...GMAIL_ACCOUNT_CHOICE
@@ -667,6 +671,7 @@ const NAVIO_TOOLS = [
       'Fetch an entire Gmail email thread (all messages in conversation order) by thread ID. ' +
       'Returns each message with: from, to, date, subject, body, and attachment filenames. ' +
       'Use this when you need to read the full back-and-forth of a conversation, not just the latest message. ' +
+      'Prefer this over read_page on mail.google.com for whole threads: the Gmail web UI collapses earlier messages until each row/avatar is expanded. ' +
       'Get thread_id from gmail_search results (threadId field). ' +
       'Requires Google OAuth.',
     parameters: {

@@ -32,6 +32,8 @@ const SITE_REGISTRY = [
   { key: 'notion',         urlPattern: /notion\.so|notion\.com/i,                               file: 'site-notion.txt' },
   { key: 'slack',          urlPattern: /app\.slack\.com|slack\.com/i,                           file: 'site-slack.txt' },
   { key: 'jira',           urlPattern: /atlassian\.net\/jira|jira\./i,                          file: 'site-jira.txt' },
+  { key: 'vercel',         urlPattern: /vercel\.com|\.vercel\.app/i,                             file: 'site-vercel.txt' },
+  { key: 'render',         urlPattern: /render\.com|\.onrender\.com/i,                           file: 'site-render.txt' },
 
   // Commerce
   { key: 'amazon',         urlPattern: /amazon\.(com|ca|co\.uk|de|fr|es|it|co\.jp|com\.au)/i,  file: 'site-amazon.txt' },

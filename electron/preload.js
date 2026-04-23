@@ -31,6 +31,8 @@ contextBridge.exposeInMainWorld('navio', {
   aiRequestStream: (params) => ipcRenderer.invoke('ai-request-stream', params),
   /** Abort in-flight AI for a tab (`{ tabId }`) or all tabs for this window if omitted. */
   aiAbort: (payload) => ipcRenderer.invoke('ai-abort', payload || {}),
+  /** When storage key changes mid-turn (tab joined a workspace group), map abort id so Stop still targets the same run. */
+  aiAbortTabIdAlias: (payload) => ipcRenderer.invoke('ai-abort-tab-id-alias', payload || {}),
   aiRequestWithTools: (params) => ipcRenderer.invoke('ai-request-with-tools', params),
   onToolProgress: (callback) => {
     const handler = (_, data) => callback(data);
@@ -287,6 +289,8 @@ contextBridge.exposeInMainWorld('navio', {
   openFilePath: (filePath) => ipcRenderer.invoke('open-file-path', filePath),
   /** Stable file:// URL for a local path (open downloads in a tab). */
   pathToFileUrl: (filePath) => ipcRenderer.invoke('navio-path-to-file-url', filePath),
+  /** When a dropped File has size 0 but Electron set `path` (e.g. Windows Explorer / Downloads). */
+  readFileForAttachment: (filePath) => ipcRenderer.invoke('read-file-for-attachment', filePath),
 
   // Reading List ("save for later")
   readingListAdd:      (url, title, favicon) => ipcRenderer.invoke('reading-list-add', { url, title, favicon }),

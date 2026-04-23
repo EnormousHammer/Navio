@@ -488,43 +488,93 @@ async function typeByRef(wc, refId, value) {
 
     const { object } = await wc.debugger.sendCommand('DOM.resolveNode', { backendNodeId: backendDOMNodeId });
 
-    // Focus element and select all existing content
-    await wc.debugger.sendCommand('Runtime.callFunctionOn', {
+    const prep = await wc.debugger.sendCommand('Runtime.callFunctionOn', {
       objectId: object.objectId,
       functionDeclaration: `function() {
         this.scrollIntoView({ block: 'center', behavior: 'instant' });
         this.focus();
-        if (this.select) this.select();
-        else if (this.setSelectionRange) this.setSelectionRange(0, this.value?.length ?? 0);
+        function navioDetectGmailComposeBody(el) {
+          try {
+            const doc = el.ownerDocument || document;
+            const h = (doc.location && doc.location.hostname) || '';
+            if (h !== 'mail.google.com' && h !== 'inbox.google.com') return false;
+            const editable = !!(el.isContentEditable || el.getAttribute('contenteditable') === 'true');
+            const aria = ((el.getAttribute && el.getAttribute('aria-label')) || '').toLowerCase();
+            const ge = el.getAttribute && el.getAttribute('g_editable');
+            return editable && (ge === 'true' || aria.indexOf('message body') !== -1);
+          } catch (e) {
+            return false;
+          }
+        }
+        const gmailMsg = navioDetectGmailComposeBody(this);
+        if (gmailMsg) {
+          const el = this;
+          const doc = el.ownerDocument;
+          const win = doc.defaultView;
+          const quote = el.querySelector('.gmail_quote');
+          const sig = el.querySelector('.gmail_signature, [data-smartmail="gmail_signature"]');
+          const boundary =
+            quote && el.contains(quote) ? quote : sig && el.contains(sig) ? sig : null;
+          const range = doc.createRange();
+          range.setStart(el, 0);
+          if (boundary) {
+            range.setEndBefore(boundary);
+          } else {
+            range.selectNodeContents(el);
+          }
+          const sel = win.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        } else {
+          if (this.select) this.select();
+          else if (this.setSelectionRange) this.setSelectionRange(0, this.value?.length ?? 0);
+        }
+        return { gmailMsg: !!gmailMsg };
       }`,
-      awaitPromise: false
+      returnByValue: true
     });
+    const gmailMsg = !!prep?.result?.value?.gmailMsg;
 
-    // Ctrl+A to clear existing selection in React-controlled fields
-    await wc.debugger.sendCommand('Input.dispatchKeyEvent', {
-      type: 'keyDown', key: 'a', code: 'KeyA', modifiers: 2 // Ctrl
-    });
-    await wc.debugger.sendCommand('Input.dispatchKeyEvent', {
-      type: 'keyUp', key: 'a', code: 'KeyA', modifiers: 2
-    });
+    if (!gmailMsg) {
+      await wc.debugger.sendCommand('Input.dispatchKeyEvent', {
+        type: 'keyDown',
+        key: 'a',
+        code: 'KeyA',
+        modifiers: 2
+      });
+      await wc.debugger.sendCommand('Input.dispatchKeyEvent', {
+        type: 'keyUp',
+        key: 'a',
+        code: 'KeyA',
+        modifiers: 2
+      });
+    }
 
-    // Use insertText for bulk typing (fastest), then fire React synthetic events
     await wc.debugger.sendCommand('Input.insertText', { text: value });
 
-    // Fire input + change events so React / Vue / Angular state picks up the value
-    await wc.debugger.sendCommand('Runtime.callFunctionOn', {
-      objectId: object.objectId,
-      functionDeclaration: `function() {
-        var nativeInput = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')
-          || Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
-        if (nativeInput && nativeInput.set) {
-          nativeInput.set.call(this, ${JSON.stringify(value)});
-        }
-        this.dispatchEvent(new Event('input', { bubbles: true }));
-        this.dispatchEvent(new Event('change', { bubbles: true }));
-      }`,
-      awaitPromise: false
-    });
+    if (gmailMsg) {
+      await wc.debugger.sendCommand('Runtime.callFunctionOn', {
+        objectId: object.objectId,
+        functionDeclaration: `function() {
+          this.dispatchEvent(new InputEvent('input', { bubbles: true, data: ${JSON.stringify(value)} }));
+        }`,
+        awaitPromise: false
+      });
+    } else {
+      await wc.debugger.sendCommand('Runtime.callFunctionOn', {
+        objectId: object.objectId,
+        functionDeclaration: `function() {
+          var nativeInput = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')
+            || Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+          if (nativeInput && nativeInput.set) {
+            nativeInput.set.call(this, ${JSON.stringify(value)});
+          }
+          this.dispatchEvent(new Event('input', { bubbles: true }));
+          this.dispatchEvent(new Event('change', { bubbles: true }));
+        }`,
+        awaitPromise: false
+      });
+    }
 
     // Dispatch a final key Enter-down/up to trigger form suggestions (autocomplete)
     // Only for short fields like search boxes — skip for long text
