@@ -1667,6 +1667,23 @@ class TabManagerClass {
     }
   }
 
+  /**
+   * Point automation at a tab without changing the user's focused tab (strip selection / URL bar).
+   * Restores memory-discarded tabs so tools can run. Syncs webview layout for background targets.
+   * @param {string} tabId
+   * @returns {object|null} The tab model, or null if id is unknown.
+   */
+  ensureAgentTargetTabReady(tabId) {
+    const tab = this.tabs.find((t) => t.id === tabId);
+    if (!tab) return null;
+    if (tab._discarded && tab._discardUrl && tab.webview) {
+      this._restoreDiscardedTab(tab);
+    }
+    this.setAgentControlledTab(tab.id);
+    this._syncWebviewSizes();
+    return tab;
+  }
+
   _applyAgentControlledTabClasses() {
     const id = this._agentControlledTabId;
     this.tabs.forEach((tab) => {

@@ -234,9 +234,9 @@ NAVIGATION:
 MULTI-TAB CONTROL â€” Use tabs for parallel research and multi-site workflows:
 - Use list_tabs to see all open tabs with IDs, titles, URLs, and optional group_name / group_id when the user organized tabs into a named group.
 - If the user refers to a tab group by name (or implies "everything in this group"), call list_tabs, filter rows with that group_name, then switch_tab and read_page (or act) across each tab in the group as needed.
-- Use open_tab to open a new tab (optionally with a URL). After opening, subsequent tools target that tab.
+- Use open_tab to open a new tab in the background (optionally with a URL). After opening, subsequent tools target that tab.
 - Use **split_tabs** with **tab_id_a** and **tab_id_b** (from **list_tabs**) to show **two** http(s) tabs **side-by-side** so the user sees both at once (e.g. two Gmail inboxes: open each with **gmail_browser_takeover: true** and different **mail/u/N** or **authuser**, load/sign-in, then split). Use **switch_tab** to choose which pane receives **read_page** / **click**; the other pane stays visible.
-- Use switch_tab to change which tab you're acting on. Always switch before reading/clicking a different tab.
+- Use switch_tab to change which tab you're acting on (does not change the user's visible tab). Always call it before read_page / click on a different tab than your current automation target.
 - Use close_tab to clean up tabs you no longer need.
 - MULTI-TAB RESEARCH PATTERN: open_tab for site A â†’ read_page â†’ extract data â†’ open_tab for site B â†’ read_page â†’ extract data â†’ compare results for the user.
 - When comparing prices, products, or information across sites, use multiple tabs simultaneously.
@@ -426,7 +426,7 @@ Use this to:
 
 You can also CONTROL tabs:
 - Use list_tabs to get IDs for all tabs (with webContentsId, group_id, group_name when grouped)
-- Use switch_tab to move to a different tab and start reading/acting on it
+- Use switch_tab to target a different tab for reading/acting (user can keep another tab visible)
 - Use open_tab to create new tabs for parallel workflows
 - Use close_tab to clean up when done
 - After switch_tab or open_tab, all subsequent tools (read_page, click, etc.) target that tab

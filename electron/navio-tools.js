@@ -284,6 +284,7 @@ const NAVIO_TOOLS = [
     name: 'open_tab',
     description:
       'Open a new browser tab and optionally navigate it to a URL. Returns the new tab\'s ID. ' +
+      'The tab opens in the background: the user\'s current visible tab does not change. ' +
       'Use this for parallel research across multiple sites. ' +
       'Same Gmail behavior as **navigate**: set **gmail_browser_takeover: true** to open a real Gmail tab when the API path is insufficient.',
     parameters: {
@@ -317,7 +318,8 @@ const NAVIO_TOOLS = [
   {
     name: 'switch_tab',
     description:
-      'Switch the active browser tab. Subsequent actions (click, type, read_page, etc.) will target this tab.',
+      'Target a tab for automation (click, type, read_page, etc.) without changing which tab the user is viewing. ' +
+      'The user can keep reading another tab while you work on this one.',
     parameters: {
       type: 'object',
       properties: {

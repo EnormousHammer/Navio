@@ -4526,7 +4526,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       }
       this._appendActivityStep('open_tab', `Opening new tab${openUrl ? ': ' + labelHost : ''}...`);
       try {
-        const loadResult = await TabManager.createTabAndWaitForLoad(openUrl);
+        const loadResult = await TabManager.createTabAndWaitForLoad(openUrl, { switchTo: false });
         if (!loadResult.ok) {
           window.navio.toolOpenTabAck({ success: false, error: loadResult.error || 'load failed', operationId });
           return;
@@ -4577,19 +4577,28 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const unSwitchTab = window.navio.onToolSwitchTab(async (payload) => {
       if (payload && payload.tabId != null && String(payload.tabId) !== tk) return;
       const { tab_id, operationId } = payload || {};
-      this._appendActivityStep('switch_tab', `Switching to tab ${tab_id}`);
+      this._appendActivityStep('switch_tab', `Targeting tab ${tab_id} for automation`);
       try {
-        TabManager.switchToTab(tab_id);
-        await new Promise(r => setTimeout(r, 500));
-        const tab = TabManager.getActiveTab();
-        const wv = tab?.webview;
-        if (tab?.id) TabManager.setAgentControlledTab?.(tab.id);
+        const tab =
+          typeof TabManager.ensureAgentTargetTabReady === 'function'
+            ? TabManager.ensureAgentTargetTabReady(tab_id)
+            : null;
+        if (!tab) {
+          window.navio.toolSwitchTabAck({
+            success: false,
+            error: 'Tab not found',
+            operationId
+          });
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 500));
+        const wv = tab.webview;
         window.navio.toolSwitchTabAck({
           success: true,
-          tab_id: tab?.id || '',
+          tab_id: tab.id || '',
           webContentsId: wv?.getWebContentsId?.() || null,
-          url: tab?.url || '',
-          title: tab ? TabManager.getTabDisplayTitle(tab) : '',
+          url: tab.url || '',
+          title: TabManager.getTabDisplayTitle(tab) || '',
           operationId
         });
       } catch (e) {
