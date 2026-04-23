@@ -424,7 +424,7 @@ OAuth consent screen:
   User support email:   (use the email the user provides, or ask once if not given)
   Developer contact:    (same email)
   User type:            External
-  Scopes to add:        gmail.readonly, gmail.compose, drive.readonly, calendar.readonly
+  Scopes to add:        gmail.readonly, gmail.compose, drive (read/write), documents (Google Docs API), calendar.readonly
 
 Credential creation — CRITICAL APP TYPE RULE:
   Application type:     Desktop app   ← MUST be this. NEVER select "Web application".

@@ -92,17 +92,25 @@ class ConnectorsManagerClass {
       {
         id: 'gdrive',
         name: 'Google Drive',
-        tagline: 'Search files and documents',
-        description: 'Connect Google Drive so the AI can find your files and documents. Ask "find the Q3 report" or "show recent spreadsheets."',
+        tagline: 'Search, read, and edit Drive files',
+        description:
+          'Use **Sign in with Google** in Navio (same connection as Gmail). The AI can search Drive, read Docs/Sheets as text, create files, overwrite plain-text uploads, replace Google Doc bodies, and move files to trash — after you allow Drive + Docs scopes.',
         icon: 'GD',
         logo: 'https://www.gstatic.com/images/icons/material/product/2x/drive_48dp.png',
         logoBg: '#ffffff',
         gradient: 'linear-gradient(135deg, #4285f4, #34a853)',
-        keyLabel: 'Google Access Token',
+        keyLabel: 'Google Access Token (optional)',
         keyPlaceholder: 'ya29.a0...',
-        keyHint: 'Get a token from developers.google.com/oauthplayground — select Drive API (drive.readonly scope)',
+        keyHint:
+          'Prefer **Connect** / Sign in with Google in Navio. Manual tokens need Drive + Docs scopes. If write tools fail, disconnect Google in Settings and sign in again.',
         keyLink: 'https://developers.google.com/oauthplayground/',
-        capabilities: ['Search files by name or content', 'Find Docs, Sheets, Slides', 'Locate recent files'],
+        capabilities: [
+          'Search files by name or content',
+          'Read Docs, Sheets, Slides, PDFs, text files',
+          'Create Docs, Sheets, Slides, or .txt files',
+          'Update plain-text files and full Google Doc text',
+          'Trash files (recoverable)'
+        ],
         category: 'cloud'
       },
       {

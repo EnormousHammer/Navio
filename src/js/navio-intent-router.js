@@ -13,7 +13,7 @@
  *   gmail_draft  — composing or replying to emails
  *   gmail_thread — reading a full email chain / conversation
  *   gmail_attach — reading attachment content inside an email
- *   drive        — finding, reading, listing Google Drive files
+ *   drive        — finding, reading, listing, creating, updating, trashing Google Drive files
  *   calendar     — listing or creating Google Calendar events
  *   pickup       — scheduling a carrier pickup (FedEx, Purolator, etc.)
  *   shipping     — freight/LTL/FTL quotes, carrier rates
@@ -69,7 +69,10 @@ const INTENTS = {
     /\b(my\s+(files?|documents?|sheets?|docs?)\s+(on|in)\s+(drive|google))\b/i,
     /\b(look\s+(up|for)\s+(a\s+)?(file|document)\s+(on|in)\s+(my\s+)?drive)\b/i,
     /\b(what.?s\s+in\s+(my\s+)?(drive|google\s+drive|the\s+folder))\b/i,
-    /\b(list\s+(my\s+)?(drive\s+files?|files?\s+in\s+drive))\b/i
+    /\b(list\s+(my\s+)?(drive\s+files?|files?\s+in\s+drive))\b/i,
+    /\b(create|save|upload|write|update|replace|trash|delete)\b[\s\S]{0,40}\b(drive|gdrive|google\s+doc|sheet|slides)\b/i,
+    /\b(drive|gdrive)\b[\s\S]{0,40}\b(create|save|upload|write|update|replace|trash|delete)\b/i,
+    /\b(new\s+(google\s+)?(doc|sheet|spreadsheet|slides?))\b/i
   ],
   calendar: [
     /\b(calendar|schedule|meeting|appointment|event|reminder|Google\s+meet|gcal)\b/i,
@@ -124,7 +127,8 @@ const OVERRIDE_INTENTS = {
     /\b(add\s+(to\s+)?calendar|create\s+(calendar\s+)?event|schedule\s+(a\s+)?meeting|my\s+schedule\s+(today|tomorrow))\b/i
   ],
   drive: [
-    /\b(find\s+(it\s+)?on\s+(my\s+)?drive|search\s+(my\s+)?drive|open\s+(that\s+)?file\s+(from|in)\s+drive)\b/i
+    /\b(find\s+(it\s+)?on\s+(my\s+)?drive|search\s+(my\s+)?drive|open\s+(that\s+)?file\s+(from|in)\s+drive)\b/i,
+    /\b(trash|delete)\s+(this\s+)?(file|doc|folder)\s+(from\s+)?(my\s+)?drive\b/i
   ]
 };
 
@@ -232,7 +236,17 @@ function _classify(text, opts) {
   if (signals.gmail_attach >= 2) toolHints.push('gmail_get_attachment');
   if (signals.gmail && !signals.gmail_draft) toolHints.push('gmail_search');
   if (signals.gmail_draft) toolHints.push('gmail_create_reply_draft', 'gmail_create_draft');
-  if (signals.drive) toolHints.push('drive_search', 'drive_get_file');
+  if (signals.drive) {
+    toolHints.push(
+      'drive_search',
+      'drive_get_file',
+      'drive_list_folder',
+      'drive_create_file',
+      'drive_update_google_doc',
+      'drive_update_text_file',
+      'drive_trash_file'
+    );
+  }
   if (signals.calendar) toolHints.push('calendar_list_events');
   if (signals.pickup) toolHints.push('navigate');
   if (signals.shipping) toolHints.push('navigate', 'read_page');

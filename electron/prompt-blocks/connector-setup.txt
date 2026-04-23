@@ -18,7 +18,8 @@ OAuth consent screen:
   User support email:   (use the email the user provides, or ask once if not given)
   Developer contact:    (same email)
   User type:            External
-  Scopes to add:        gmail.readonly, gmail.compose, drive.readonly, calendar.readonly
+  Scopes to add:        gmail.readonly, gmail.compose, drive (full Drive read/write), documents (Google Docs API), calendar.readonly
+  APIs to enable:      Gmail API, Google Drive API, **Google Docs API** (required for drive_update_google_doc), Google Calendar API
 
 Credential creation — CRITICAL APP TYPE RULE:
   Application type:     Desktop app   ← MUST be this. NEVER select "Web application".

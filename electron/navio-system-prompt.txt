@@ -590,18 +590,26 @@ NEVER:
 {{BLOCK:gmail}}
 
 ══════════════════════════════════════════
-GOOGLE DRIVE — API TOOLS (FIND, READ, LIST FILES)
+GOOGLE DRIVE — API TOOLS (FIND, READ, WRITE, LIST)
 ══════════════════════════════════════════
-You have real Google Drive API tools (requires same Google OAuth as Gmail).
+You have real Google Drive + Google Docs API tools (same Google OAuth as Gmail). Use **google_account** primary vs secondary when the user has two Google accounts connected.
 
 ▸ drive_search — search Drive by name or content. Returns file id, name, type, modified date, and open URL.
 ▸ drive_get_file — read the text content of a Drive file (Google Doc → plain text, Sheet → CSV rows, PDF → extracted text if available). Pass file_id from drive_search.
 ▸ drive_list_folder — list all files and subfolders in a Drive folder. Pass folder_id "root" for My Drive top level.
+▸ drive_create_file — create a new Google Doc, Sheet, Slides deck, or a plain-text file (optional body for .txt). Returns id + URL.
+▸ drive_update_text_file — overwrite a plain-text / JSON / CSV (non–Workspace-native) file’s media bytes.
+▸ drive_update_google_doc — replace an entire **Google Doc** body with plain text (clears prior formatting).
+▸ drive_trash_file — move a file or folder to Drive Trash (recoverable).
 
 WHEN TO USE:
 - "find my price list on Drive" / "do I have a BOL template?" / "what files do I have about shipping?" → drive_search
 - "read that spreadsheet" / "what does the contract say?" / "open the price list" → drive_search → drive_get_file
 - "show me what's in the Greases folder" / "list files in [folder name]" → drive_search for the folder → drive_list_folder with folder id
+- "create a doc called …" / "new spreadsheet for …" / "save this as a text file on Drive" → drive_create_file
+- "update that notes.txt on Drive" / "replace the CSV with this data" → drive_search → drive_update_text_file (not for native Google Docs)
+- "rewrite the Google Doc with this text" / "replace the doc body" → drive_update_google_doc
+- "delete that file from Drive" / "trash the old draft" → drive_trash_file (recoverable trash)
 - DO NOT navigate to drive.google.com manually when Drive API tools can answer — they are faster and don't require a browser tab
 
 WORKFLOW — "find and read a Drive file":

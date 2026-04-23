@@ -728,7 +728,7 @@ const NAVIO_TOOLS = [
       'last modified dates, and direct open links. ' +
       'Use this to find spreadsheets, docs, PDFs, folders — anything in Google Drive. ' +
       'Examples: "price list", "invoice 2026", "BOL template", "shipping manifest". ' +
-      'Requires Google OAuth (same connection as Gmail).',
+      'Requires Google OAuth (same connection as Gmail). Use **google_account** when the user’s file is on the second signed-in Google account.',
     parameters: {
       type: 'object',
       properties: {
@@ -748,7 +748,8 @@ const NAVIO_TOOLS = [
         folder_id: {
           type: 'string',
           description: 'Restrict search to a specific folder by its Drive folder ID.'
-        }
+        },
+        ...GMAIL_ACCOUNT_CHOICE
       },
       required: ['query']
     }
@@ -774,7 +775,8 @@ const NAVIO_TOOLS = [
         max_chars: {
           type: 'number',
           description: 'Max characters to return (default 40000, max 120000).'
-        }
+        },
+        ...GMAIL_ACCOUNT_CHOICE
       },
       required: ['file_id']
     }
@@ -801,9 +803,88 @@ const NAVIO_TOOLS = [
         page_token: {
           type: 'string',
           description: 'Pagination token from previous drive_list_folder result to fetch next page.'
-        }
+        },
+        ...GMAIL_ACCOUNT_CHOICE
       },
       required: ['folder_id']
+    }
+  },
+
+  {
+    name: 'drive_create_file',
+    description:
+      'Create a new file in Google Drive: an empty **Google Doc**, **Sheet**, **Slides** deck, or a **plain text** (.txt) file with optional initial content. ' +
+      'Returns the new file id and open URL. Requires Google OAuth with Drive write (reconnect Google in Settings if this fails).',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'File name (e.g. "Meeting notes", "export.csv").' },
+        kind: {
+          type: 'string',
+          enum: ['document', 'spreadsheet', 'presentation', 'text_file'],
+          description: 'What to create. **text_file** uploads UTF-8 text; native kinds start empty in Google Workspace.'
+        },
+        content: {
+          type: 'string',
+          description: 'Initial body for **text_file** only (UTF-8). Ignored for Google Doc/Sheet/Slide kinds.'
+        },
+        parent_folder_id: {
+          type: 'string',
+          description: 'Parent folder Drive id, or omit / "root" for My Drive root.'
+        },
+        ...GMAIL_ACCOUNT_CHOICE
+      },
+      required: ['name', 'kind']
+    }
+  },
+
+  {
+    name: 'drive_update_text_file',
+    description:
+      'Overwrite a **non–Google-Workspace** file on Drive (plain text, JSON, CSV, etc.) by uploading new UTF-8 content. ' +
+      'Do **not** use for native Google Docs/Sheets/Slides — use **drive_update_google_doc** for Docs. Requires Drive write OAuth.',
+    parameters: {
+      type: 'object',
+      properties: {
+        file_id: { type: 'string', description: 'Drive file id from drive_search.' },
+        content: { type: 'string', description: 'Full new file body (replaces existing bytes).' },
+        mime_type: {
+          type: 'string',
+          description: 'MIME type for the upload (default text/plain). Examples: text/csv, application/json.'
+        },
+        ...GMAIL_ACCOUNT_CHOICE
+      },
+      required: ['file_id', 'content']
+    }
+  },
+
+  {
+    name: 'drive_update_google_doc',
+    description:
+      'Replace the **entire body** of a **Google Doc** with plain text (removes prior formatting and content). ' +
+      'Get file_id from drive_search (mime Google Doc). Requires Google OAuth including **Google Docs API** enabled for the Cloud project and the Documents scope (reconnect Google in Navio after enabling).',
+    parameters: {
+      type: 'object',
+      properties: {
+        file_id: { type: 'string', description: 'Google Doc file id (same as Docs document id).' },
+        plain_text: { type: 'string', description: 'New document body as plain text.' },
+        ...GMAIL_ACCOUNT_CHOICE
+      },
+      required: ['file_id', 'plain_text']
+    }
+  },
+
+  {
+    name: 'drive_trash_file',
+    description:
+      'Move a Drive file or folder to the user’s **Trash** (recoverable). Pass file_id from drive_search. Requires Drive write OAuth.',
+    parameters: {
+      type: 'object',
+      properties: {
+        file_id: { type: 'string', description: 'Drive file or folder id to trash.' },
+        ...GMAIL_ACCOUNT_CHOICE
+      },
+      required: ['file_id']
     }
   },
 

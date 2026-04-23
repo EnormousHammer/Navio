@@ -407,6 +407,13 @@ class TabManagerClass {
     return u.includes('navio-chat-tab.html');
   }
 
+  /** True for a normal https page (not internal Navio chat). */
+  isHttpBrowsingSurface(tab) {
+    if (!tab) return false;
+    const u = tab.url || '';
+    return typeof u === 'string' && u.startsWith('http') && !this.isNavioChatTabUrl(u);
+  }
+
   /**
    * Tab used for AI tools, page extraction, and snapshots.
    * Priority: (1) agent-controlled tab (tool loop / takeover); (2) during a full-page guest
@@ -1637,16 +1644,24 @@ class TabManagerClass {
 
   /**
    * Tab that should show the “AI is controlling this tab” highlight during takeover.
-   * When the Navio AI chat tab is focused, automation targets the browsing-context tab.
+   * Prefers the agent-locked tab, then the browsing-context tab when the focused surface
+   * is chat, Home/NTP, or about:blank — so highlights match where clicks actually go.
    */
   getTakeoverHighlightTabId() {
+    const agent = this.getAgentControlledTab();
+    if (agent?.id) return agent.id;
+
     const active = this.getActiveTab();
-    const surfaceIsChat = !!(active && this.isNavioChatTabUrl?.(active.url || ''));
-    if (surfaceIsChat) {
+    const activeId = active?.id ?? null;
+    if (active && this.isNavioChatTabUrl?.(active.url || '')) {
       const ctx = this.getBrowserContextTab?.();
-      return ctx?.id ?? null;
+      return ctx?.id ?? activeId;
     }
-    return active?.id ?? null;
+    if (!this.isHttpBrowsingSurface(active)) {
+      const ctx = this.getBrowserContextTab?.();
+      if (ctx?.id) return ctx.id;
+    }
+    return activeId;
   }
 
   /**

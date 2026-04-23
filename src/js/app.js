@@ -255,7 +255,12 @@ class NavioApp {
       const srcTabIsChat = srcTab && typeof TabManager.isNavioChatTabUrl === 'function'
         ? TabManager.isNavioChatTabUrl(srcTab.url || '')
         : false;
-      if (srcTab && !srcTabIsChat) parts.push('sourceTabId=' + encodeURIComponent(srcTab.id));
+      const srcUrl = (srcTab?.url || '').trim();
+      const srcIsRealWeb =
+        /^https?:\/\//i.test(srcUrl) &&
+        !(typeof TabManager.isNavioChatTabUrl === 'function' && TabManager.isNavioChatTabUrl(srcUrl));
+      // Anchor only real web tabs — Home/NTP/blank would break browsing-context (no https URL).
+      if (srcTab && !srcTabIsChat && srcIsRealWeb) parts.push('sourceTabId=' + encodeURIComponent(srcTab.id));
       const qs = parts.length ? sep + parts.join('&') : '';
       TabManager.createTab(chatBase + qs);
       return;

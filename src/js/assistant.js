@@ -871,6 +871,9 @@ class AssistantManagerClass {
   /**
    * Assistant transcript + API history: one bucket per **ungrouped** tab, or one shared per **tab group**
    * (`g:${groupId}`). Grouped tabs share memory; everything else stays isolated.
+   *
+   * **Split view:** each tab keeps its own id until grouped — automation uses `switch_tab` / target webview;
+   * chat history still follows tab id (or group) like normal.
    */
   _storageKeyForTab(tab) {
     if (!tab) return NAVIO_PROFILE_CHAT_KEY;
@@ -5284,7 +5287,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       gmail_search: 'Gmail', gmail_get_message: 'Gmail', gmail_list_drafts: 'Drafts',
       gmail_create_draft: 'Draft', gmail_create_reply_draft: 'Reply draft',
       gmail_update_draft: 'Update draft', gmail_delete_draft: 'Delete draft',
-      gmail_send_draft: 'Send', web_search: 'Web search'
+      gmail_send_draft: 'Send',
+      drive_search: 'Drive', drive_get_file: 'Drive', drive_list_folder: 'Drive',
+      drive_create_file: 'Drive', drive_update_text_file: 'Drive', drive_update_google_doc: 'Drive',
+      drive_trash_file: 'Drive',
+      web_search: 'Web search'
     };
     const toolShown = TOOL_BADGES[tool] || this._escapeHtml(String(tool));
     const toolClass = tool === 'web_search' ? 'naa-tool naa-tool--search' : 'naa-tool';
@@ -5329,6 +5336,13 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       case 'gmail_get_message': return `Gmail: opened message`;
       case 'gmail_list_drafts': return `Gmail: ${result?.count ?? result?.drafts?.length ?? 0} draft(s)`;
       case 'gmail_create_draft': return `Gmail: new draft`;
+      case 'drive_search': return `Drive: ${result?.count ?? result?.results?.length ?? 0} file(s)`;
+      case 'drive_get_file': return `Drive: read "${result?.name || 'file'}"`;
+      case 'drive_list_folder': return `Drive: ${result?.count ?? result?.files?.length ?? 0} item(s) in folder`;
+      case 'drive_create_file': return `Drive: created "${result?.name || 'file'}"`;
+      case 'drive_update_text_file': return `Drive: updated file (${result?.bytes_written ?? 0} bytes)`;
+      case 'drive_update_google_doc': return `Drive: updated Doc (${result?.chars_written ?? 0} chars)`;
+      case 'drive_trash_file': return `Drive: moved to trash`;
       case 'web_search': {
         if (result?.error) return `Search failed: ${result.error}`;
         const cites = Array.isArray(result?.citations) ? result.citations.length : 0;
@@ -6669,6 +6683,15 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (inputArea) this.panel.insertBefore(banner, inputArea);
     }
     this._syncTakeoverTabHighlight();
+    try {
+      const tid = typeof TabManager !== 'undefined' ? TabManager.getTakeoverHighlightTabId?.() : null;
+      const aid = TabManager?.activeTabId ?? null;
+      if (tid && aid && tid !== aid && typeof TabManager.switchToTab === 'function') {
+        TabManager.switchToTab(tid);
+      }
+    } catch {
+      /* non-critical */
+    }
     // Also show the visual agent bar with the animated orb
     if (window.NavioAIBoost) {
       const bar = window.NavioAIBoost.buildAgentTakeoverBar('Agent is working...', '');
@@ -8163,6 +8186,13 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
 
   async _smartFollowUp() {
     const MAX_AUTO_STEPS = 35;
+    const turnK =
+      this._turnConversationKey != null && String(this._turnConversationKey).length
+        ? String(this._turnConversationKey)
+        : '';
+    if (turnK && this._busyTabs.has(turnK)) {
+      return;
+    }
     const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
     if (this._threadBusyForSend() || (aid && this._tabIsBusy(aid)) || this._autoFollowCount >= MAX_AUTO_STEPS) {
       if (this._autoFollowCount >= MAX_AUTO_STEPS) {
@@ -8183,6 +8213,24 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         pageInfo = `Title: ${page.title}\nURL: ${page.url}\n\nPage content:\n${(page.text || '').slice(0, 20000)}`;
       }
     } catch { /* ignore */ }
+    const looksLikeShellOrNtp =
+      !pageInfo ||
+      /\b(new\s+tab|quick\s+launch|ask\s+ai|home)\b/i.test(pageInfo.slice(0, 400)) ||
+      /navio-chat-tab\.html/i.test(pageInfo);
+    if (looksLikeShellOrNtp && typeof TabManager !== 'undefined') {
+      try {
+        const ctx = TabManager.getBrowserContextTab?.();
+        if (ctx?.webview && TabManager.isHttpBrowsingSurface?.(ctx)) {
+          const wcId = ctx.webview.getWebContentsId();
+          const alt = await window.navio.extractPageContent(wcId);
+          if (alt && !alt.error) {
+            pageInfo = `Title: ${alt.title}\nURL: ${alt.url}\n\nPage content:\n${(alt.text || '').slice(0, 20000)}`;
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
 
     if (!pageInfo) {
       this._addContinuePill('Could not read page — tell me what to do next.');
@@ -8194,9 +8242,14 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     // Append accessibility snapshot so AI uses real element labels, not guessed selectors
     const snapText = await this._getPageSnapshotText();
 
-    // Detect Google editor pages so we can give a targeted directive
+    // Detect Google editor pages so we can give a targeted directive (URL from the same pageInfo block)
     let pageUrl = '';
-    try { pageUrl = (await TabManager.getActivePageContent())?.url || ''; } catch { /* ignore */ }
+    try {
+      const m = pageInfo.match(/^URL:\s*(.+)$/m);
+      pageUrl = m ? String(m[1]).trim() : '';
+    } catch {
+      /* ignore */
+    }
     const isGoogleDoc   = /docs\.google\.com\/document/.test(pageUrl);
     const isGoogleSheet = /docs\.google\.com\/spreadsheets/.test(pageUrl);
     const googleEditorDirective = (isGoogleDoc || isGoogleSheet)
@@ -9048,7 +9101,9 @@ ${pageInfo}${snapText}`;
         /\b(google\s*drive|drive|gdrive)\b[\s\S]{0,120}\b(search|find|look\s+for|list)\b/i.test(text) ||
         /\b(what|show|list|find|where)\b[\s\S]{0,48}\b(drive|docs|sheets|slides)\b/i.test(text) ||
         (/\b(sheets?|slides?|spreadsheet|presentation)\b/i.test(text) &&
-          /\b(in|on|from)\s+(my\s+)?(google\s+)?drive\b/i.test(text));
+          /\b(in|on|from)\s+(my\s+)?(google\s+)?drive\b/i.test(text)) ||
+        /\b(create|new|save|upload|write|update|replace|trash|delete)\b[\s\S]{0,80}\b(drive|gdrive|google\s*doc|sheet|slides)\b/i.test(text) ||
+        /\b(drive|gdrive)\b[\s\S]{0,80}\b(create|new|save|upload|write|update|replace|trash|delete)\b/i.test(text);
       if (has('gdrive') && driveIntent) {
         const driveClean = (t) =>
           t

@@ -4398,8 +4398,9 @@ const toolExecutors = {
 
   async drive_search(_wc, args) {
     try {
-      const token = await getValidOAuthToken('google');
-      if (!token) return { error: 'Google Drive requires Google OAuth. Connect Google in Settings → Connected Apps.' };
+      const auth = await driveOAuthAccess(args);
+      if (auth.error) return { error: auth.error };
+      const { token } = auth;
 
       const query = (args.query || '').trim();
       if (!query) return { error: 'query is required.' };
@@ -4448,7 +4449,12 @@ const toolExecutors = {
       const data = await resp.json();
       if (!resp.ok) {
         const msg = data.error?.message || 'Google Drive API error';
-        if (/insufficient.*scope/i.test(msg)) return { error: 'SCOPE_ERROR: Drive read permission missing. Reconnect Google in Settings → Connected Apps.' };
+        if (/insufficient.*scope/i.test(msg)) {
+          return {
+            error:
+              'SCOPE_ERROR: Google Drive permission missing. Open **Settings → Connected Apps**, disconnect **Google**, and sign in again so Navio can request Drive read/write (and Docs) access.'
+          };
+        }
         return { error: msg };
       }
 
@@ -4482,8 +4488,9 @@ const toolExecutors = {
 
   async drive_get_file(_wc, args) {
     try {
-      const token = await getValidOAuthToken('google');
-      if (!token) return { error: 'Google Drive requires Google OAuth. Connect Google in Settings → Connected Apps.' };
+      const auth = await driveOAuthAccess(args);
+      if (auth.error) return { error: auth.error };
+      const { token } = auth;
 
       const fileId = (args.file_id || '').trim();
       if (!fileId) return { error: 'file_id is required.' };
@@ -4560,8 +4567,9 @@ const toolExecutors = {
 
   async drive_list_folder(_wc, args) {
     try {
-      const token = await getValidOAuthToken('google');
-      if (!token) return { error: 'Google Drive requires Google OAuth. Connect Google in Settings → Connected Apps.' };
+      const auth = await driveOAuthAccess(args);
+      if (auth.error) return { error: auth.error };
+      const { token } = auth;
 
       const folderId = (args.folder_id || 'root').trim();
       const maxResults = Math.min(Math.max(Number(args.max_results) > 0 ? Number(args.max_results) : 30, 1), 100);
@@ -4614,6 +4622,295 @@ const toolExecutors = {
       };
     } catch (e) {
       return { error: 'drive_list_folder failed: ' + e.message };
+    }
+  },
+
+  async drive_create_file(_wc, args) {
+    try {
+      const auth = await driveOAuthAccess(args);
+      if (auth.error) return { error: auth.error };
+      const { token } = auth;
+
+      const name = (args.name || '').trim();
+      if (!name) return { error: 'name is required.' };
+      const kind = String(args.kind || 'document').toLowerCase().trim();
+      const parent = (args.parent_folder_id || 'root').trim() || 'root';
+      const content = args.content != null ? String(args.content) : '';
+
+      const mimeByKind = {
+        document: 'application/vnd.google-apps.document',
+        spreadsheet: 'application/vnd.google-apps.spreadsheet',
+        presentation: 'application/vnd.google-apps.presentation',
+        text_file: 'text/plain'
+      };
+      const mimeType = mimeByKind[kind];
+      if (!mimeType) {
+        return { error: `Invalid kind "${kind}". Use document, spreadsheet, presentation, or text_file.` };
+      }
+
+      if (kind === 'text_file') {
+        const maxBytes = 4 * 1024 * 1024;
+        const buf = Buffer.from(content, 'utf8');
+        if (buf.length > maxBytes) return { error: `content too large (max ${maxBytes} bytes for text_file).` };
+        const boundary = `navio_drive_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+        const meta = JSON.stringify({
+          name,
+          mimeType: 'text/plain',
+          parents: parent === 'root' ? ['root'] : [parent]
+        });
+        const body =
+          `--${boundary}\r\n` +
+          `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+          `${meta}\r\n` +
+          `--${boundary}\r\n` +
+          `Content-Type: text/plain; charset=UTF-8\r\n\r\n` +
+          `${content}\r\n` +
+          `--${boundary}--\r\n`;
+        const resp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': `multipart/related; boundary=${boundary}`
+          },
+          body: Buffer.from(body, 'utf8')
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          const msg = data.error?.message || 'Drive create failed';
+          if (/insufficient.*scope/i.test(msg)) {
+            return {
+              error:
+                'SCOPE_ERROR: Google Drive write permission missing. Disconnect and reconnect **Google** in Settings so Drive read/write is granted.'
+            };
+          }
+          return { error: msg };
+        }
+        return {
+          id: data.id,
+          name: data.name,
+          mime_type: data.mimeType,
+          url: data.webViewLink || `https://drive.google.com/file/d/${data.id}/view`,
+          note: 'Created a new plain-text file in Drive.'
+        };
+      }
+
+      const resp = await fetch('https://www.googleapis.com/drive/v3/files?supportsAllDrives=true', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          mimeType,
+          parents: parent === 'root' ? ['root'] : [parent]
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        const msg = data.error?.message || 'Drive create failed';
+        if (/insufficient.*scope/i.test(msg)) {
+          return {
+            error:
+              'SCOPE_ERROR: Google Drive write permission missing. Disconnect and reconnect **Google** in Settings so Drive read/write is granted.'
+          };
+        }
+        return { error: msg };
+      }
+      return {
+        id: data.id,
+        name: data.name,
+        mime_type: data.mimeType,
+        url: data.webViewLink || `https://drive.google.com/file/d/${data.id}/view`,
+        note: `Created a new empty ${String(kind).replace(/_/g, ' ')} in Drive. Use drive_update_google_doc (Docs) or open the URL to edit.`
+      };
+    } catch (e) {
+      return { error: 'drive_create_file failed: ' + e.message };
+    }
+  },
+
+  async drive_update_text_file(_wc, args) {
+    try {
+      const auth = await driveOAuthAccess(args);
+      if (auth.error) return { error: auth.error };
+      const { token } = auth;
+
+      const fileId = (args.file_id || '').trim();
+      if (!fileId) return { error: 'file_id is required.' };
+      const content = args.content != null ? String(args.content) : '';
+      const mimeType = (args.mime_type || 'text/plain').trim() || 'text/plain';
+
+      const metaResp = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const meta = await metaResp.json();
+      if (!metaResp.ok) return { error: meta.error?.message || 'Drive metadata failed.' };
+      const mt = meta.mimeType || '';
+      if (
+        mt === 'application/vnd.google-apps.document' ||
+        mt === 'application/vnd.google-apps.spreadsheet' ||
+        mt === 'application/vnd.google-apps.presentation'
+      ) {
+        return {
+          error:
+            'This file is a native Google Doc/Sheet/Slide. Use **drive_update_google_doc** for Docs, or edit Sheets/Slides in the browser — binary export/import is not applied here.'
+        };
+      }
+      if (!mt.startsWith('text/') && mt !== 'application/json' && mt !== 'application/javascript') {
+        return { error: `Refusing to overwrite mime type "${mt}" via text upload. Use a text/* or application/json file.` };
+      }
+      const maxBytes = 4 * 1024 * 1024;
+      const buf = Buffer.from(content, 'utf8');
+      if (buf.length > maxBytes) return { error: `content too large (max ${maxBytes} bytes).` };
+
+      const resp = await fetch(
+        `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(fileId)}?uploadType=media&supportsAllDrives=true`,
+        {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': mimeType },
+          body: buf
+        }
+      );
+      const data = await resp.json();
+      if (!resp.ok) {
+        const msg = data.error?.message || 'Drive media update failed';
+        if (/insufficient.*scope/i.test(msg)) {
+          return {
+            error:
+              'SCOPE_ERROR: Google Drive write permission missing. Disconnect and reconnect **Google** in Settings so Drive read/write is granted.'
+          };
+        }
+        return { error: msg };
+      }
+      return {
+        id: data.id,
+        name: data.name,
+        mime_type: data.mimeType,
+        bytes_written: buf.length,
+        url: data.webViewLink || `https://drive.google.com/file/d/${data.id}/view`,
+        note: 'Replaced the file contents (media upload).'
+      };
+    } catch (e) {
+      return { error: 'drive_update_text_file failed: ' + e.message };
+    }
+  },
+
+  async drive_update_google_doc(_wc, args) {
+    try {
+      const auth = await driveOAuthAccess(args);
+      if (auth.error) return { error: auth.error };
+      const { token } = auth;
+
+      const fileId = (args.file_id || '').trim();
+      const plainText = args.plain_text != null ? String(args.plain_text) : '';
+      if (!fileId) return { error: 'file_id is required.' };
+
+      const metaResp = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=mimeType,name`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const meta = await metaResp.json();
+      if (!metaResp.ok) return { error: meta.error?.message || 'Drive metadata failed.' };
+      if (meta.mimeType !== 'application/vnd.google-apps.document') {
+        return {
+          error:
+            'drive_update_google_doc only supports Google Docs. For .txt / .csv / .json on Drive, use drive_update_text_file.'
+        };
+      }
+
+      const docResp = await fetch(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(fileId)}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const doc = await docResp.json();
+      if (!docResp.ok) {
+        const em = doc.error?.message || '';
+        return {
+          error:
+            em ||
+            'Google Docs API failed. In Google Cloud Console for this OAuth client, enable **Google Docs API**, then disconnect and reconnect Google in Navio.'
+        };
+      }
+
+      let endIndex = 1;
+      for (const el of doc.body?.content || []) {
+        if (typeof el.endIndex === 'number') endIndex = Math.max(endIndex, el.endIndex);
+      }
+
+      const requests = [];
+      if (endIndex > 2) {
+        requests.push({
+          deleteContentRange: {
+            range: {
+              startIndex: 1,
+              endIndex: endIndex - 1
+            }
+          }
+        });
+      }
+      requests.push({ insertText: { location: { index: 1 }, text: plainText } });
+
+      const patchResp = await fetch(
+        `https://docs.googleapis.com/v1/documents/${encodeURIComponent(fileId)}:batchUpdate`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests })
+        }
+      );
+      const patch = await patchResp.json();
+      if (!patchResp.ok) {
+        const msg = patch.error?.message || 'Docs batchUpdate failed';
+        if (/insufficient.*scope/i.test(msg)) {
+          return {
+            error:
+              'SCOPE_ERROR: Google Docs edit permission missing. Disconnect and reconnect **Google** in Settings so the **Documents** scope is granted.'
+          };
+        }
+        return { error: msg };
+      }
+
+      return {
+        file_id: fileId,
+        name: meta.name,
+        chars_written: plainText.length,
+        note: 'Replaced the Google Doc body with the supplied plain text (previous body and inline formatting were removed).'
+      };
+    } catch (e) {
+      return { error: 'drive_update_google_doc failed: ' + e.message };
+    }
+  },
+
+  async drive_trash_file(_wc, args) {
+    try {
+      const auth = await driveOAuthAccess(args);
+      if (auth.error) return { error: auth.error };
+      const { token } = auth;
+
+      const fileId = (args.file_id || '').trim();
+      if (!fileId) return { error: 'file_id is required.' };
+
+      const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?supportsAllDrives=true`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trashed: true })
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        const msg = data.error?.message || 'Drive trash failed';
+        if (/insufficient.*scope/i.test(msg)) {
+          return {
+            error:
+              'SCOPE_ERROR: Google Drive write permission missing. Disconnect and reconnect **Google** in Settings so Drive read/write is granted.'
+          };
+        }
+        return { error: msg };
+      }
+      return {
+        id: data.id,
+        name: data.name,
+        trashed: !!data.trashed,
+        note: 'File moved to Drive trash. The user can restore it from drive.google.com/drive/trash.'
+      };
+    } catch (e) {
+      return { error: 'drive_trash_file failed: ' + e.message };
     }
   },
 
@@ -6112,7 +6409,8 @@ const OAUTH_PROVIDERS = {
       'https://www.googleapis.com/auth/gmail.readonly',
       'https://www.googleapis.com/auth/gmail.compose',
       'https://www.googleapis.com/auth/gmail.settings.basic',
-      'https://www.googleapis.com/auth/drive.readonly',
+      'https://www.googleapis.com/auth/drive',
+      'https://www.googleapis.com/auth/documents',
       'https://www.googleapis.com/auth/calendar.readonly'
     ],
     serviceIds: ['gmail', 'gdrive', 'gcalendar'],
@@ -6136,7 +6434,8 @@ const OAUTH_PROVIDERS = {
       'https://www.googleapis.com/auth/gmail.readonly',
       'https://www.googleapis.com/auth/gmail.compose',
       'https://www.googleapis.com/auth/gmail.settings.basic',
-      'https://www.googleapis.com/auth/drive.readonly',
+      'https://www.googleapis.com/auth/drive',
+      'https://www.googleapis.com/auth/documents',
       'https://www.googleapis.com/auth/calendar.readonly'
     ],
     serviceIds: ['gmail_2'],
@@ -6345,6 +6644,21 @@ function gmailToolOAuthProviderId(args) {
   const s = String(raw == null ? 'primary' : raw).toLowerCase().trim();
   if (s === 'secondary' || s === 'second' || s === '2' || s === 'google_2' || s === 'other') return 'google_2';
   return 'google';
+}
+
+/** Google Drive / Docs agent tools — same account slots as Gmail (`google_account`). */
+async function driveOAuthAccess(args) {
+  const pid = gmailToolOAuthProviderId(args || {});
+  const token = await getValidOAuthToken(pid);
+  if (!token) {
+    return {
+      error:
+        pid === 'google_2'
+          ? 'Google Drive (second account): connect **Gmail (2nd account)** in Navio Settings, or pass google_account **primary** if the file is on the first account.'
+          : 'Google Drive requires Google OAuth. Connect Google in Settings → Connected Apps (same as Gmail). If write tools fail with a scope error, disconnect and sign in again so Drive read/write is granted.'
+    };
+  }
+  return { token, pid };
 }
 
 /**
