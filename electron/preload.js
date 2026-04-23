@@ -20,6 +20,13 @@ contextBridge.exposeInMainWorld('navio', {
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),
   getApiKeyForSettings: () => ipcRenderer.invoke('get-api-key-for-settings'),
 
+  /** Opt-in diagnostics: forwards to main Sentry only when enabled and DSN configured. */
+  reportDiagnosticsError: (payload) =>
+    ipcRenderer.invoke('navio-report-diagnostics', {
+      message: String(payload && payload.message != null ? payload.message : ''),
+      stack: payload && typeof payload.stack === 'string' ? payload.stack : ''
+    }),
+
   aiRequest: (params) => ipcRenderer.invoke('ai-request', params),
   aiRequestStream: (params) => ipcRenderer.invoke('ai-request-stream', params),
   /** Abort in-flight AI for a tab (`{ tabId }`) or all tabs for this window if omitted. */

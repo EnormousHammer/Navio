@@ -102,7 +102,10 @@ class SettingsManagerClass {
       updateStatus: document.getElementById('settings-update-status'),
       profilesListSettings: document.getElementById('profiles-list-settings'),
       profileNewId: document.getElementById('profile-new-id'),
-      profileCreateBtn: document.getElementById('btn-profile-create')
+      profileCreateBtn: document.getElementById('btn-profile-create'),
+      crashReporting: document.getElementById('setting-crash-reporting'),
+      crashReportingRow: document.getElementById('setting-crash-reporting-row'),
+      crashReportingHint: document.getElementById('setting-crash-reporting-hint')
     };
 
     this.panelIds = ['general', 'profiles', 'ai', 'appearance', 'browser', 'privacy', 'integrations', 'passwords', 'about'];
@@ -559,6 +562,17 @@ class SettingsManagerClass {
     if (this.elements.adStrictPopup) {
       this.elements.adStrictPopup.checked = this.config.adStrictPopupBlock !== false;
       this.elements.adStrictPopup.disabled = !!(this.elements.popupBlocker && !this.elements.popupBlocker.checked);
+    }
+
+    if (this.elements.crashReporting) {
+      const avail = this.config.crashReportingAvailable === true;
+      this.elements.crashReporting.disabled = !avail;
+      this.elements.crashReporting.checked = avail && !!this.config.crashReportingEnabled;
+      if (this.elements.crashReportingHint) {
+        this.elements.crashReportingHint.textContent = avail
+          ? 'When enabled, uncaught errors may be sent to our diagnostics service (Sentry). No API keys or page content are included by default.'
+          : 'Not available in this build. Set environment variable NAVIO_SENTRY_DSN before starting Navio to enable this option.';
+      }
     }
 
     this.elements.provider.value = this.config.aiProvider || 'openai';
@@ -1445,7 +1459,12 @@ class SettingsManagerClass {
       memoryRetentionDays: this.elements.memoryRetention
         ? parseInt(this.elements.memoryRetention.value, 10) || 0
         : 0,
-      syncFolderPath: String(this.config.syncFolderPath || '').trim()
+      syncFolderPath: String(this.config.syncFolderPath || '').trim(),
+      crashReportingEnabled: !!(
+        this.elements.crashReporting &&
+        this.config.crashReportingAvailable &&
+        this.elements.crashReporting.checked
+      )
     };
 
     await window.navio.saveConfig(newConfig);

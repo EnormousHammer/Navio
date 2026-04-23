@@ -4,7 +4,7 @@ const path = require('path');
 const p = path.join(__dirname, '..', 'electron', 'main.js');
 let s = fs.readFileSync(p, 'utf8');
 const cfgStart = s.indexOf('function getConfigPath()');
-const cfgEnd = s.indexOf('function redactPII');
+const cfgEnd = s.indexOf('function messageContentToPlainString');
 const cfgRepl = "const { loadConfig, saveConfig } = require('./config-store');\n\n";
 if (cfgStart < 0 || cfgEnd < 0) throw new Error('config block not found');
 s = s.slice(0, cfgStart) + cfgRepl + s.slice(cfgEnd);

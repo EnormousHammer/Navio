@@ -55,6 +55,7 @@ class NavioApp {
     this.bindNavigation();
     this.bindShortcuts();
     this.bindNewTabPage();
+    this._installDiagnosticsErrorForward();
 
     // If prelude was dismissed (aria-hidden) but body classes were left behind, unblock the shell.
     this._syncShellPreludeBodyClass();
@@ -119,6 +120,24 @@ class NavioApp {
     this._initialShellReadyScheduled = true;
     requestAnimationFrame(() => {
       void TabManager.waitForInitialShellReady();
+    });
+  }
+
+  _installDiagnosticsErrorForward() {
+    window.addEventListener('error', (ev) => {
+      const api = window.navio;
+      if (!api || typeof api.reportDiagnosticsError !== 'function') return;
+      const msg = ev.message || 'error';
+      const stack = ev.error && ev.error.stack ? String(ev.error.stack) : '';
+      void api.reportDiagnosticsError({ message: msg, stack });
+    });
+    window.addEventListener('unhandledrejection', (ev) => {
+      const api = window.navio;
+      if (!api || typeof api.reportDiagnosticsError !== 'function') return;
+      const r = ev.reason;
+      const msg = r instanceof Error ? r.message : String(r);
+      const stack = r instanceof Error && r.stack ? String(r.stack) : '';
+      void api.reportDiagnosticsError({ message: `unhandledrejection: ${msg}`, stack });
     });
   }
 

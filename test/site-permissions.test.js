@@ -7,6 +7,26 @@ const path = require('path');
 const os = require('os');
 const sitePerms = require('../electron/site-permissions');
 
+test('site-permissions get returns null for empty origin or unknown permission', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'navio-sp-'));
+  try {
+    assert.strictEqual(sitePerms.get(dir, '', 'media'), null);
+    assert.strictEqual(sitePerms.get(dir, 'https://x.test', ''), null);
+    assert.strictEqual(sitePerms.get(dir, 'https://x.test', 'notifications'), null);
+  } finally {
+    try {
+      fs.unlinkSync(path.join(dir, 'navio-site-permissions.json'));
+    } catch {
+      /* ignore */
+    }
+    try {
+      fs.rmdirSync(dir);
+    } catch {
+      /* ignore */
+    }
+  }
+});
+
 test('site-permissions get/set roundtrip', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'navio-sp-'));
   try {

@@ -46,6 +46,8 @@ const DEFAULT_CONFIG = {
   readingModeFontScale: 1,
   formAutofillAssist: true,
   onboardingComplete: false,
+  /** When true and NAVIO_SENTRY_DSN is set at runtime, send crash/diagnostic events to Sentry. */
+  crashReportingEnabled: false,
   /** When false, startup skips the full-screen intro video (after first dismiss or Settings). */
   showLaunchIntro: true,
   userName: '',
@@ -155,6 +157,7 @@ function loadConfig() {
   const key = secureConfig.getApiKey(userData);
   merged.hasApiKey = !!key;
   delete merged.apiKey;
+  delete merged.crashReportingAvailable;
   return merged;
 }
 
@@ -171,10 +174,14 @@ function saveConfig(partial) {
     }
   }
 
-  const { apiKey, hasApiKey, ...rest } = partial;
+  const rest = { ...partial };
+  delete rest.apiKey;
+  delete rest.hasApiKey;
+  delete rest.crashReportingAvailable;
   const next = { ...file, ...rest };
   delete next.apiKey;
   delete next.hasApiKey;
+  delete next.crashReportingAvailable;
   writeConfigFile(next);
 
   if (partial.theme) {

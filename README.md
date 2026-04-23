@@ -68,6 +68,13 @@ Copy the **Setup.exe** or **ZIP** to a USB drive or cloud share; each target PC 
 - **Vanilla JS** (zero-framework for speed)
 - **CSS Custom Properties** (full design system)
 
+## Development and diagnostics
+
+- **Unit tests:** `npm test`
+- **Lint (security-adjacent modules + tests):** `npm run lint`
+- **Headless smoke (launches Electron):** `npm run test:e2e` — sets `NAVIO_E2E=1` and waits for the main window to finish loading.
+- **Optional crash reporting:** set environment variable `NAVIO_SENTRY_DSN` to your Sentry DSN, then enable **Settings → Privacy → Send anonymous crash reports**. If the variable is unset, the toggle stays disabled.
+
 ## License
 
 MIT

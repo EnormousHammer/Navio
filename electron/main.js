@@ -27,6 +27,8 @@ const { getMcpTools, callMcpTool, isMcpTool, initFromConfig: initMcpFromConfig, 
 const { getSiteIntelForUrl, extractActiveUrl } = require('./navio-site-intel');
 const { initScheduler, registerSchedulerIpc, stopAll: stopAllSchedulers } = require('./navio-scheduler');
 const { shouldBlockWebPopup, isStreamingVideoOpenerOrigin } = require('./ad-block-patterns');
+const { redactPII } = require('./pii-redact');
+const navioCrashReporter = require('./navio-crash-reporter');
 const { wcCanGoBack, wcCanGoForward } = require('./wc-nav-history');
 const { ensureGuestWebviewKeyboardFocus } = require('./agent-input-focus');
 
@@ -103,19 +105,6 @@ app.on('second-instance', () => {
   mainWindow.show();
   mainWindow.focus();
 });
-
-function redactPII(text) {
-  if (!text || typeof text !== 'string') return text;
-  let t = text;
-  // Hyphenated SSN (123-45-6789)
-  t = t.replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[REDACTED-SSN]');
-  // Spaced SSN only when groups are separated by whitespace — NOT optional gaps, or 9-digit
-  // PO/SO/order IDs (e.g. 280109384) false-positive as SSN (280+10+9384).
-  t = t.replace(/\b\d{3}\s+\d{2}\s+\d{4}\b/g, '[REDACTED-SSN]');
-  // Card numbers only when 4×4 groups are separated — plain 16-digit strings match too many IDs.
-  t = t.replace(/\b\d{4}(?:[-\s]\d{4}){3}\b/g, '[REDACTED-CARD]');
-  return t;
-}
 
 function messageContentToPlainString(content) {
   if (typeof content === 'string') return content;
@@ -1235,6 +1224,20 @@ function createMainWindow() {
 
   mainWindow.loadFile(path.join(__dirname, '..', 'src', 'index.html'));
 
+  if (process.env.NAVIO_E2E === '1') {
+    mainWindow.webContents.once('did-finish-load', () => {
+      try {
+        fs.writeFileSync(
+          path.join(app.getPath('userData'), 'navio-e2e-ready'),
+          String(Date.now()),
+          'utf8'
+        );
+      } catch (e) {
+        console.error('[navio] e2e ready flag write failed:', e && e.message ? e.message : String(e));
+      }
+    });
+  }
+
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
     console.error(
       '[navio] render-process-gone:',
@@ -1290,7 +1293,13 @@ ipcMain.on('navio-shell-log', (_, message) => {
   console.log(typeof message === 'string' ? message : String(message));
 });
 
-ipcMain.handle('get-config', () => loadConfig());
+ipcMain.handle('get-config', () => {
+  const c = loadConfig();
+  return {
+    ...c,
+    crashReportingAvailable: navioCrashReporter.isCrashReportingAvailable()
+  };
+});
 ipcMain.handle('navio-internal-chat-page-url', () => {
   try {
     const p = path.join(__dirname, '..', 'src', 'pages', 'navio-chat-tab.html');
@@ -1304,7 +1313,21 @@ ipcMain.handle('save-config', (event, partial) => {
   if (partial && Object.prototype.hasOwnProperty.call(partial, 'theme')) {
     navioSyncAllGuestWebAutoDarkMode();
   }
+  try {
+    navioCrashReporter.applyCrashReportingFromConfig(loadConfig());
+  } catch (_) {
+    /* ignore */
+  }
   return true;
+});
+
+let _navioDiagReportLast = 0;
+ipcMain.handle('navio-report-diagnostics', (_event, payload) => {
+  if (!payload || typeof payload.message !== 'string') return { ok: false, reason: 'bad-payload' };
+  const now = Date.now();
+  if (now - _navioDiagReportLast < 4000) return { ok: false, reason: 'rate' };
+  _navioDiagReportLast = now;
+  return navioCrashReporter.captureRendererDiagnostics(payload);
 });
 
 // Wires electron-updater listeners exactly once per session. Safe to call
@@ -8534,6 +8557,12 @@ app.whenReady().then(async () => {
 
   store = createStore(app.getPath('userData'));
 
+  try {
+    navioCrashReporter.applyCrashReportingFromConfig(loadConfig());
+  } catch (_) {
+    /* ignore */
+  }
+
   setupSessionInfrastructure({
     app,
     getMainWindow: () => mainWindow,
@@ -8576,6 +8605,14 @@ app.whenReady().then(async () => {
   }
 }).catch((err) => {
   console.error('[navio] whenReady failed:', err);
+});
+
+app.on('before-quit', () => {
+  try {
+    navioCrashReporter.shutdownSentry();
+  } catch (_) {
+    /* ignore */
+  }
 });
 
 app.on('window-all-closed', () => {
