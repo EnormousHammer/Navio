@@ -121,6 +121,35 @@ const NTP = (() => {
     },
   };
 
+  /**
+   * Config may be a long page URL or accidentally duplicated. Always take `origin` only,
+   * then set query in `_buildPredictaNtpGameUrl` — avoids `…vercel.app/https://…` bad joins.
+   */
+  function _predictaOriginFromConfigValue(raw) {
+    const fallback = 'https://predicta-bet.vercel.app';
+    const t = String(raw == null ? '' : raw).trim();
+    if (!t) return fallback;
+    try {
+      return new URL(/^https?:\/\//i.test(t) ? t : `https://${t}`).origin;
+    } catch {
+      return fallback;
+    }
+  }
+
+  /** One canonical `https://…/?view=betting&sport=…&board=…&event=…` for NTP game rows. */
+  function _buildPredictaNtpGameUrl(configPredictaRaw, sport, board, eventId) {
+    const u = new URL(_predictaOriginFromConfigValue(configPredictaRaw));
+    u.pathname = '/';
+    u.search = '';
+    u.hash = '';
+    u.searchParams.set('view', 'betting');
+    u.searchParams.set('sport', (String(sport || 'nba').trim() || 'nba'));
+    u.searchParams.set('board', (String(board || 'all-games').trim() || 'all-games'));
+    const ev = String(eventId == null ? '' : eventId).trim();
+    if (ev) u.searchParams.set('event', ev);
+    return u.toString();
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────
 
   /** Bottom ticker removed — keep reserve at 0 so webviews / NTP use full height. */
@@ -362,10 +391,10 @@ const NTP = (() => {
       .replace(/^r\//, '');
     _ntpNewsSubreddit = /^[a-z0-9_]{2,24}$/.test(sub) ? sub : 'worldnews';
 
-    const pred = String(cfg.predictaBaseUrl || 'https://predicta-bet.vercel.app').trim() || 'https://predicta-bet.vercel.app/';
+    const predOrigin = _predictaOriginFromConfigValue(cfg.predictaBaseUrl);
     const hub = document.getElementById('ntp-sports-predicta-link');
     if (hub) {
-      hub.dataset.navioHref = pred.replace(/\/+$/, '') + '/';
+      hub.dataset.navioHref = `${predOrigin}/`;
     }
 
     const defs = {
@@ -1018,27 +1047,15 @@ const NTP = (() => {
           const sport = (row.dataset.navioPredictaSport || 'nba').trim() || 'nba';
           const board = (row.dataset.navioPredictaBoard || 'all-games').trim() || 'all-games';
           const event = (row.dataset.navioPredictaEvent || '').trim();
-          const params = new URLSearchParams();
-          params.set('view', 'betting');
-          params.set('sport', sport);
-          params.set('board', board);
-          if (event) params.set('event', event);
-          const buildUrl = (base) => {
-            const b = String(base || 'https://predicta-bet.vercel.app')
-              .trim()
-              .replace(/\/+$/, '');
-            return `${b || 'https://predicta-bet.vercel.app'}/?${params.toString()}`;
-          };
           void (async () => {
-            let base = 'https://predicta-bet.vercel.app';
+            let raw = '';
             try {
               const c = await window.navio.getConfig();
-              const p = (c && c.predictaBaseUrl) || '';
-              if (p) base = String(p).trim();
+              raw = (c && c.predictaBaseUrl) || '';
             } catch {
-              /* use default */
+              /* default origin inside _buildPredictaNtpGameUrl */
             }
-            TabManager.createTab(buildUrl(base));
+            TabManager.createTab(_buildPredictaNtpGameUrl(raw, sport, board, event));
           })();
         });
       });
