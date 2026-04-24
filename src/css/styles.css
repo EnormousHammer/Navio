@@ -6995,6 +6995,11 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   z-index: 2000;
 }
 
+/* Above `.assistant-panel` (5000) so Settings is usable while the AI sidecar is open. */
+#settings-modal.modal-overlay {
+  z-index: 5500;
+}
+
 .modal-overlay.visible { display: flex; }
 
 .modal-overlay > .modal {

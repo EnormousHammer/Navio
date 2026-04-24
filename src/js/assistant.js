@@ -4252,9 +4252,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   handleGuestChatHostMessage(tab, guestWv, payload) {
     if (!payload || !guestWv) return;
 
-    // ── Comet-style anchoring: tie this chat to a specific web tab ─────────
+    // Ignore anchorTab: full-page AI is not tied to a browsing tab (see App.openAssistantInTab).
     if (payload.action === 'anchorTab') {
-      this._guestAnchoredTabId = payload.tabId || null;
+      this._guestAnchoredTabId = null;
       return;
     }
     // Push the existing sidebar conversation for the anchored tab to the chat page
@@ -4481,20 +4481,21 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const messages = [{ role: 'system', content: this.systemPrompt }];
     if (typeof TabManager !== 'undefined') {
       const surface = TabManager.getActiveTab();
-      const browserTab = TabManager.getBrowserContextTab?.() || surface;
       const onChatSurface = !!(surface && TabManager.isNavioChatTabUrl?.(surface.url || ''));
       if (onChatSurface) {
         messages.push({
           role: 'system',
           content:
-            '[Interface]\nThe user is in the **Navio AI** full-page tab. Browsing context is the page they last used (see [Browsing context tab]), not the leftmost tab.'
+            '[Interface]\nThe user is in **Navio AI** (full-page chat). For mail and message links, use **Gmail / Google accounts in Navio Settings** — not assumptions from other browsing tabs. Use `list_tabs` when they ask to work on a specific open page.'
         });
-      }
-      if (browserTab && browserTab.url && !browserTab.url.startsWith('about:')) {
-        messages.push({
-          role: 'system',
-          content: `[Browsing context tab]${browserTab.id === surface?.id ? ' (focused)' : ''}\nTab id: ${browserTab.id}\nTitle: ${TabManager.getTabDisplayTitle(browserTab) || '(untitled)'}\nURL: ${browserTab.url}`
-        });
+      } else {
+        const browserTab = TabManager.getBrowserContextTab?.() || surface;
+        if (browserTab && browserTab.url && !browserTab.url.startsWith('about:')) {
+          messages.push({
+            role: 'system',
+            content: `[Browsing context tab]${browserTab.id === surface?.id ? ' (focused)' : ''}\nTab id: ${browserTab.id}\nTitle: ${TabManager.getTabDisplayTitle(browserTab) || '(untitled)'}\nURL: ${browserTab.url}`
+          });
+        }
       }
       const allTabs = TabManager.tabs.filter((t) => t.url && !t.url.startsWith('about:')).slice(0, 20);
       if (allTabs.length > 0) {
@@ -4643,17 +4644,23 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const mailBackendPreferred = await this._gmailApiMailBackendPreferred(text, config);
     const activeUrl = typeof TabManager !== 'undefined' ? TabManager.getActiveTab()?.url || '' : '';
 
+    /** Full-page guest host or Navio AI tab focused: do not inject another tab’s URL/page as context “sources”. */
+    let skipBrowsingSurfaceContext = !!guestWv;
     if (typeof TabManager !== 'undefined') {
       const surface = TabManager.getActiveTab();
+      if (surface && TabManager.isNavioChatTabUrl?.(surface.url || '')) skipBrowsingSurfaceContext = true;
+    }
+    if (skipBrowsingSurfaceContext) {
+      messages.push({
+        role: 'system',
+        content:
+          '[Interface]\nThe user is in **Navio AI** (full-page chat or the sidebar assistant). ' +
+          'For **mail, inbox, and message links**, treat **Gmail / Google accounts connected in Navio Settings** as the source of truth — not other browsing tabs or history. ' +
+          'Use browser tools (and `list_tabs`) only when they clearly ask to open or work on a specific site.'
+      });
+    } else if (typeof TabManager !== 'undefined') {
+      const surface = TabManager.getActiveTab();
       const browserTab = TabManager.getBrowserContextTab?.() || surface;
-      const onChatSurface = !!(surface && TabManager.isNavioChatTabUrl?.(surface.url || ''));
-      if (onChatSurface) {
-        messages.push({
-          role: 'system',
-          content:
-            '[Interface]\nThe user is in the **Navio AI** full-page tab. Browser tools operate on the **browsing context tab** — the page they last used before chat (or their focused http tab), not an arbitrary tab. Use list_tabs if unsure.'
-        });
-      }
       if (browserTab && browserTab.url && !browserTab.url.startsWith('about:')) {
         messages.push({
           role: 'system',
@@ -4670,10 +4677,12 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     this._maybePushNonMailTaskFocus(messages, text);
     await this._maybePushMailBackendOnlyPolicy(messages, text, config, mailBackendPreferred);
     await this._maybePushGoogleAccountsPolicy(messages, { isQuickAction: false, userText: text });
-    // Page context scope (selection/excerpt/full) — still useful for non-browsing queries
-    const ctxMsg = await this.buildPageContextSystemMessage(config, false, {
-      skipGmailPageExcerpt: mailBackendPreferred
-    });
+    // Page context scope — skip on AI surfaces so excerpts are not tied to a background browsing tab.
+    const ctxMsg = skipBrowsingSurfaceContext
+      ? null
+      : await this.buildPageContextSystemMessage(config, false, {
+          skipGmailPageExcerpt: mailBackendPreferred
+        });
     if (ctxMsg) messages.push(ctxMsg);
 
     // Email hint (skip when Gmail API path is preferred — avoid nudging the model toward the web UI)
@@ -6102,6 +6111,52 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       : '';
   }
 
+  /** Gmail `authuser=0` means “first browser session”, not a mailbox — strip so we can substitute a real email. */
+  _gmailAuthuserIsNumericIndex(v) {
+    const s = String(v || '').trim();
+    return !!s && /^\d+$/.test(s);
+  }
+
+  _gmailAuthuserLooksLikeEmail(v) {
+    const s = String(v || '').trim();
+    return s.includes('@') && !/\s/.test(s);
+  }
+
+  /**
+   * Remove numeric-only `authuser` from mail.google.com URLs (it tracks browser multi-login order,
+   * which does not match Navio’s OAuth primary/secondary or the mailbox that fetched a message).
+   */
+  _stripNumericGmailAuthuser(href) {
+    const s = String(href || '').trim();
+    if (!/^https?:\/\/mail\.google\.com/i.test(s)) return s;
+    try {
+      const u = new URL(s);
+      const v = u.searchParams.get('authuser');
+      if (v != null && this._gmailAuthuserIsNumericIndex(v)) {
+        u.searchParams.delete('authuser');
+        return u.href;
+      }
+    } catch {
+      /* keep */
+    }
+    return s;
+  }
+
+  /**
+   * Best mailbox address for a Gmail link: ref from API (authEmail), connector serviceId, or From header.
+   * Never infer from `/mail/u/N/` alone — N is browser session order when several accounts are signed in.
+   */
+  _resolveGmailAuthEmailForRef(msgId, ref) {
+    const pri = (this._gmailOAuthPrimaryEmail || '').trim();
+    const sec = (this._gmailOAuthSecondaryEmail || '').trim();
+    if (ref && typeof ref.authEmail === 'string' && ref.authEmail.includes('@')) {
+      return String(ref.authEmail).trim();
+    }
+    if (ref?.serviceId === 'gmail_2' && sec) return sec;
+    if (ref?.serviceId === 'gmail' && pri) return pri;
+    return pri || sec || '';
+  }
+
   /**
    * Extract Gmail message id from a mail.google.com href (fragment may be inbox/id, search/…, etc.).
    */
@@ -6193,38 +6248,35 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const h = String(href || '').trim();
     if (!h || !/^https?:\/\/mail\.google\.com/i.test(h)) return h;
     try {
-      const u = new URL(h);
+      const work = this._stripNumericGmailAuthuser(h);
+      const u = new URL(work);
       if (!/^mail\.google\.com$/i.test(u.hostname)) return h;
-      if (u.searchParams.get('authuser')) return h;
-      const frag = (u.hash || '').replace(/^#/, '');
-      const segs = frag.split('/').filter(Boolean);
-      const msgId = (segs[segs.length - 1] || '').split('?')[0];
+      const existingAu = (u.searchParams.get('authuser') || '').trim();
+      if (this._gmailAuthuserLooksLikeEmail(existingAu)) return u.href;
+      const msgId = this._resolveGmailMessageIdFromMailUrl(work);
       if (!msgId) return h;
-      if (!this._emailRefs?.has?.(msgId) && !/^[a-fA-F0-9]{10,}$/.test(msgId)) return h;
-      const um = h.match(/\/mail\/u\/(\d+)\//);
+      const looksHex = /^[a-fA-F0-9]{10,}$/.test(msgId);
+      if (!this._emailRefs?.has?.(msgId) && !looksHex) return h;
+      const um = work.match(/\/mail\/u\/(\d+)\//);
       const pathSlot = um ? parseInt(um[1], 10) || 0 : 0;
       const ref = this._emailRefs?.get?.(msgId);
-      let authEmail = ref && ref.authEmail ? String(ref.authEmail).trim() : '';
-      if (!authEmail || !authEmail.includes('@')) {
-        const pri = (this._gmailOAuthPrimaryEmail || '').trim();
-        const sec = (this._gmailOAuthSecondaryEmail || '').trim();
-        if (pathSlot >= 1 && sec) authEmail = sec;
-        else authEmail = pri || sec;
-      }
+      const authEmail = this._resolveGmailAuthEmailForRef(msgId, ref);
       if (!authEmail.includes('@')) return h;
-      return this._gmailWebInboxUrl(msgId, ref?.gmailUSlot != null ? ref.gmailUSlot : pathSlot, authEmail) || h;
+      const slot = ref?.gmailUSlot != null ? ref.gmailUSlot : pathSlot;
+      return this._gmailWebInboxUrl(msgId, slot, authEmail) || h;
     } catch {
       return h;
     }
   }
 
   /**
-   * Open Gmail / Drive / Workspace via AccountChooser + continue=(target URL with `authuser=`).
-   * Avoids the first browser Google login hijacking the tab when the connector uses another mailbox.
+   * When we know the mailbox email, open Gmail/Drive directly with `?authuser=<email>` so the correct
+   * account loads even if many Gmail sessions exist in the browser (numeric `/mail/u/N/` is not reliable).
+   * AccountChooser is only a fallback when no email can be resolved.
    */
   _gmailAccountChooserTabUrl(anyHref) {
     try {
-      const raw = String(anyHref || '').trim();
+      const raw = this._stripNumericGmailAuthuser(String(anyHref || '').trim());
       const u = new URL(raw);
       const host = u.hostname.toLowerCase();
       const isMail = /^mail\.google\.com$/i.test(host);
@@ -6232,22 +6284,22 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (!isMail && !isWorkspace) return raw;
 
       let email = (u.searchParams.get('authuser') || '').trim();
-      if (!email.includes('@') && isMail) {
-        const um = raw.match(/\/mail\/u\/(\d+)\//);
-        const pathSlot = um ? parseInt(um[1], 10) || 0 : 0;
+      if (!this._gmailAuthuserLooksLikeEmail(email) && isMail) {
+        const msgId = this._resolveGmailMessageIdFromMailUrl(raw);
+        const ref = msgId ? this._emailRefs?.get?.(msgId) : null;
+        email = this._resolveGmailAuthEmailForRef(msgId, ref);
+      }
+      if (!this._gmailAuthuserLooksLikeEmail(email)) {
         const pri = (this._gmailOAuthPrimaryEmail || '').trim();
         const sec = (this._gmailOAuthSecondaryEmail || '').trim();
-        if (pathSlot >= 1 && sec) email = sec;
-        else email = pri || sec;
+        email = pri || sec || '';
       }
-      if (!email.includes('@')) {
-        const pri = (this._gmailOAuthPrimaryEmail || '').trim();
-        const sec = (this._gmailOAuthSecondaryEmail || '').trim();
-        email = pri || sec;
-      }
-      if (!email.includes('@')) return raw;
+      if (!this._gmailAuthuserLooksLikeEmail(email)) return raw;
       const inner = new URL(raw);
       inner.searchParams.set('authuser', email);
+      if (isMail) {
+        return inner.href;
+      }
       return (
         'https://accounts.google.com/AccountChooser?Email=' +
         encodeURIComponent(email) +
@@ -6266,23 +6318,29 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     url = this._ensureGmailSourceLinkHref(url);
     url = this._ensureDriveDocsSheetsSlidesSourceHref(url);
     let tabUrl = url;
-    if (/^https?:\/\/mail\.google\.com/i.test(url) || /^https:\/\/(drive|docs|sheets|slides)\.google\.com/i.test(url)) {
+    if (/^https?:\/\/mail\.google\.com/i.test(url)) {
+      try {
+        const u = new URL(url);
+        const au = (u.searchParams.get('authuser') || '').trim();
+        if (!this._gmailAuthuserLooksLikeEmail(au)) {
+          tabUrl = this._gmailAccountChooserTabUrl(url);
+        }
+      } catch {
+        tabUrl = this._gmailAccountChooserTabUrl(url);
+      }
+    } else if (/^https:\/\/(drive|docs|sheets|slides)\.google\.com/i.test(url)) {
       tabUrl = this._gmailAccountChooserTabUrl(url);
     }
     const tabOpts = { switchTo: opts.switchTo !== false };
     try {
       if (typeof TabManager !== 'undefined' && typeof TabManager.createTab === 'function') {
         TabManager.createTab(tabUrl, tabOpts);
-      } else {
-        window.open(tabUrl, '_blank');
+        return;
       }
     } catch {
-      try {
-        window.open(tabUrl, '_blank');
-      } catch {
-        /* ignore */
-      }
+      /* ignore */
     }
+    console.warn('[navio-assistant] Cannot open URL in-tab (TabManager unavailable):', tabUrl);
   }
 
   _resolveGmailMessageIdFromMailUrl(href) {
@@ -6923,15 +6981,16 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (!anchors.length) return html;
     let changed = false;
     anchors.forEach((a) => {
-      const href = a.getAttribute('href') || '';
-      if (!href) return;
+      const href0 = a.getAttribute('href') || '';
+      if (!href0) return;
+      const href = this._stripNumericGmailAuthuser(href0);
       let msgId = null;
       let pathSlot = 0;
       try {
         const u = new URL(href);
         if (!/^mail\.google\.com$/i.test(u.hostname)) return;
-        // Don't re-rewrite a URL that already targets a specific account.
-        if (u.searchParams.get('authuser')) return;
+        const au = (u.searchParams.get('authuser') || '').trim();
+        if (this._gmailAuthuserLooksLikeEmail(au)) return;
         const um = href.match(/\/mail\/u\/(\d+)\//);
         if (um) pathSlot = parseInt(um[1], 10) || 0;
         const frag = (u.hash || '').replace(/^#/, '');
@@ -6943,17 +7002,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       }
       if (!msgId) return;
       const ref = refs?.get?.(msgId);
-      let authEmail = ref && ref.authEmail ? String(ref.authEmail).trim() : '';
-      let slot = ref && ref.gmailUSlot != null ? ref.gmailUSlot : pathSlot;
-      if (!authEmail || !authEmail.includes('@')) {
-        const pri = (this._gmailOAuthPrimaryEmail || '').trim();
-        const sec = (this._gmailOAuthSecondaryEmail || '').trim();
-        if (pathSlot >= 1 && sec) authEmail = sec;
-        else authEmail = pri || sec;
-      }
+      const authEmail = this._resolveGmailAuthEmailForRef(msgId, ref);
+      const slot = ref && ref.gmailUSlot != null ? ref.gmailUSlot : pathSlot;
       if (!authEmail || !authEmail.includes('@')) return;
       const fixed = this._gmailWebInboxUrl(msgId, slot, authEmail);
-      if (fixed && fixed !== href) {
+      if (fixed && fixed !== href0) {
         a.setAttribute('href', fixed);
         a.setAttribute('data-navio-authuser', '1');
         changed = true;
@@ -8358,10 +8411,17 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       return;
     }
 
-    const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
+    const wv =
+      typeof TabManager !== 'undefined'
+        ? fromTakeover
+          ? TabManager.getBrowserTargetWebview?.() || TabManager.getActiveWebview()
+          : TabManager.getActiveWebview()
+        : null;
     if (!wv) {
       card.classList.add('bac-error');
-      if (btns) btns.innerHTML = '<span class="bac-status">No active tab</span>';
+      if (btns) {
+        btns.innerHTML = `<span class="bac-status">${fromTakeover ? 'No automation tab — open a page tab or switch back from AI chat.' : 'No active tab'}</span>`;
+      }
       return;
     }
 

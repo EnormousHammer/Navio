@@ -3819,24 +3819,11 @@
     updateCharCount();
     setBusy(false);
     try {
-      // ── Comet-style: read sourceTabId and anchor this chat to it ──────────
-      var bootParams = new URLSearchParams(window.location.search || '');
-      var sourceTabId = bootParams.get('sourceTabId') || '';
       var initialText = getInitialPromptFromSearch(window.location.search || '');
-
-      // Clean the URL (remove both initial and sourceTabId params)
+      // Strip query params from the address bar (e.g. initial=); do not anchor to a browsing tab.
       if (window.location.search) stripInitialFromUrl();
 
-      if (sourceTabId) {
-        // Tell AssistantManager which tab this chat is anchored to
-        post({ action: 'anchorTab', tabId: sourceTabId });
-        // Request existing conversation history for that tab
-        post({ action: 'requestHistory', tabId: sourceTabId });
-      }
-
       if (initialText) {
-        // Delay slightly when there's a sourceTabId so historyLoad arrives first
-        var delay = sourceTabId ? 700 : 0;
         setTimeout(function () {
           var raw = initialText.trim();
           if (raw.indexOf('>>') === 0) {
@@ -3845,7 +3832,7 @@
             var sendText = raw.indexOf('?') === 0 ? raw.slice(1).trim() : raw;
             if (sendText) send(sendText);
           }
-        }, delay);
+        }, 0);
       }
     } catch { /* ignore */ }
     updateLayoutMode();

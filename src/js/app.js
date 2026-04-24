@@ -250,17 +250,8 @@ class NavioApp {
       const sep = chatBase.includes('?') ? '&' : '?';
       const parts = [];
       if (raw) parts.push('initial=' + encodeURIComponent(raw));
-      // Pass the source tab ID so the chat can anchor to it and share history
-      const srcTab = TabManager.getActiveTab?.();
-      const srcTabIsChat = srcTab && typeof TabManager.isNavioChatTabUrl === 'function'
-        ? TabManager.isNavioChatTabUrl(srcTab.url || '')
-        : false;
-      const srcUrl = (srcTab?.url || '').trim();
-      const srcIsRealWeb =
-        /^https?:\/\//i.test(srcUrl) &&
-        !(typeof TabManager.isNavioChatTabUrl === 'function' && TabManager.isNavioChatTabUrl(srcUrl));
-      // Anchor only real web tabs — Home/NTP/blank would break browsing-context (no https URL).
-      if (srcTab && !srcTabIsChat && srcIsRealWeb) parts.push('sourceTabId=' + encodeURIComponent(srcTab.id));
+      // Do not pass sourceTabId: full-page AI stays separate from whichever browsing tab was
+      // active (no shared transcript bucket, no anchoring getBrowserContextTab to that tab).
       const qs = parts.length ? sep + parts.join('&') : '';
       TabManager.createTab(chatBase + qs);
       return;

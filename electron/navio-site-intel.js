@@ -23,6 +23,7 @@ const SITE_PACKS_DIR = path.join(__dirname, 'prompt-blocks');
  */
 const SITE_REGISTRY = [
   // Google sub-services (must come before generic google.com)
+  { key: 'google-drive',   urlPattern: /drive\.google\.com/i,                                    file: 'site-google-drive.txt' },
   { key: 'google-docs',    urlPattern: /docs\.google\.com/i,                                     file: 'site-google-docs.txt' },
   { key: 'google-flights', urlPattern: /google\.com\/travel\/flights/i,                          file: 'site-google-flights.txt' },
   { key: 'google-maps',    urlPattern: /google\.com\/maps/i,                                     file: 'site-google-maps.txt' },

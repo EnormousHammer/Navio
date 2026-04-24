@@ -1680,6 +1680,16 @@ class TabManagerClass {
         inline: 'nearest'
       });
     }
+    // Takeover mode: always show the tab receiving clicks/navigation (user may still be on AI chat).
+    if (
+      next &&
+      typeof AssistantManager !== 'undefined' &&
+      AssistantManager._takeoverMode &&
+      next !== this.activeTabId &&
+      typeof this.switchToTab === 'function'
+    ) {
+      this.switchToTab(next);
+    }
   }
 
   /**
