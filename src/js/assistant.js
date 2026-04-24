@@ -594,7 +594,7 @@ class AssistantManagerClass {
         e.stopPropagation();
         // Ctrl/Cmd-click: new tab in background (same as browser). Middle-click handled in auxclick.
         const switchTo = !(e.ctrlKey || e.metaKey);
-        this._openAssistantExternalUrl(href, { switchTo });
+        void this._openAssistantExternalUrl(href, { switchTo });
       };
       // Capture: run before Chromium/Electron default for target=_blank on <a> (avoids extra BrowserWindow).
       this.messagesEl.addEventListener('click', _delegateAssistantLink, true);
@@ -610,7 +610,7 @@ class AssistantManagerClass {
           if (!/^https?:\/\//i.test(href)) return;
           e.preventDefault();
           e.stopPropagation();
-          this._openAssistantExternalUrl(href, { switchTo: false });
+          void this._openAssistantExternalUrl(href, { switchTo: false });
         },
         true
       );
@@ -4314,7 +4314,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (url && /^https?:\/\//i.test(url)) {
         try {
           const bg = !!payload.background;
-          this._openAssistantExternalUrl(url, { switchTo: !bg });
+          void this._openAssistantExternalUrl(url, { switchTo: !bg });
         } catch {
           /* ignore */
         }
@@ -6311,9 +6311,15 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     }
   }
 
-  _openAssistantExternalUrl(href, opts = {}) {
+  async _openAssistantExternalUrl(href, opts = {}) {
     let url = String(href || '').trim();
     if (!url) return;
+    try {
+      const oauthSt = (await window.navio.oauthStatus()) || {};
+      this._syncGmailOAuthEmailCacheFromStatus(oauthSt);
+    } catch {
+      /* ignore — link still opens with existing cache */
+    }
     url = this._unwrapGoogleRedirectUrl(url);
     url = this._ensureGmailSourceLinkHref(url);
     url = this._ensureDriveDocsSheetsSlidesSourceHref(url);
@@ -6597,7 +6603,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const u = String(url || '').trim();
     if (!u || !/^https?:\/\//i.test(u)) return;
     try {
-      this._openAssistantExternalUrl(u);
+      void this._openAssistantExternalUrl(u);
     } catch {
       /* ignore */
     }
@@ -7687,7 +7693,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         const inner = email.includes('@')
           ? `https://mail.google.com/mail/u/0/?authuser=${encodeURIComponent(email)}#drafts`
           : 'https://mail.google.com/mail/u/0/#drafts';
-        this._openAssistantExternalUrl(inner);
+        void this._openAssistantExternalUrl(inner);
       });
 
       const toggleBtn = card.querySelector('.gdc-toggle');

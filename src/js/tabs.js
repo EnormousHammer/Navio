@@ -1667,6 +1667,9 @@ class TabManagerClass {
   /**
    * Show which tab is receiving automated clicks/navigation. Pass null to clear.
    * Updates tab strip + webview outline classes.
+   * During takeover, does not change the focused tab — automation targets webContents by id
+   * (Comet-style: user can stay on chat or another tab). Initial focus is optional in
+   * `AssistantManager.enableTakeover()` when a one-time switch is desired.
    */
   setAgentControlledTab(tabId) {
     const next = tabId || null;
@@ -1679,16 +1682,6 @@ class TabManagerClass {
         block: 'nearest',
         inline: 'nearest'
       });
-    }
-    // Takeover mode: always show the tab receiving clicks/navigation (user may still be on AI chat).
-    if (
-      next &&
-      typeof AssistantManager !== 'undefined' &&
-      AssistantManager._takeoverMode &&
-      next !== this.activeTabId &&
-      typeof this.switchToTab === 'function'
-    ) {
-      this.switchToTab(next);
     }
   }
 

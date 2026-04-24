@@ -1213,21 +1213,53 @@ class SettingsManagerClass {
         const key       = btn.dataset.key;
         const secretKey = btn.dataset.secretKey || '';
         const provider  = btn.dataset.provider;
-        const input     = container.querySelector(`input[data-key="${key}"]`);
-        const secretInput = secretKey ? container.querySelector(`input[data-key="${secretKey}"]`) : null;
+        // Must scope to this row: google + google_2 share the same configKey/secretKey;
+        // container.querySelector would always read the first row and could wipe the secret
+        // when saving from the "2nd account" row (empty password field on the first row).
+        const row = btn.closest('.oauth-provider-row');
+        const input = row?.querySelector(`input[data-key="${key}"]`);
+        const secretInput = secretKey ? row?.querySelector(`input[data-key="${secretKey}"]`) : null;
         const val       = (input?.value || '').trim();
         const secretVal = secretInput ? (secretInput.value || '').trim() : '';
         btn.disabled    = true;
         btn.textContent = 'Saving…';
         try {
           const savePayload = { [key]: val };
-          if (secretKey) savePayload[secretKey] = secretVal;
+          if (secretKey) {
+            const existingSecret = (this.config[secretKey] || '').trim();
+            if (secretVal) {
+              savePayload[secretKey] = secretVal;
+            } else if (!existingSecret) {
+              savePayload[secretKey] = '';
+            }
+            // else: omit secretKey — blank password fields are normal; avoid wiping the
+            // stored secret when saving Client ID from the duplicate Google / Google (2nd) row.
+          }
           await window.navio.saveConfig(savePayload);
-          this.config[key] = val;
-          if (secretKey) this.config[secretKey] = secretVal;
+          try {
+            const merged = await window.navio.getConfig();
+            Object.assign(this.config, merged);
+          } catch {
+            this.config[key] = val;
+            if (secretKey && Object.prototype.hasOwnProperty.call(savePayload, secretKey)) {
+              this.config[secretKey] = savePayload[secretKey];
+            }
+          }
+          // Keep duplicate rows (same configKey, e.g. Google + Google 2nd) in sync in the DOM.
+          container.querySelectorAll(`input[data-key="${key}"]`).forEach((el) => {
+            el.value = (this.config[key] || '').trim();
+          });
+          if (secretKey && secretVal) {
+            container.querySelectorAll(`input[data-key="${secretKey}"]`).forEach((el) => {
+              el.value = secretVal;
+            });
+          }
 
-          // Only open sign-in if both Client ID and Client Secret (if required) are present
-          const readyToSignIn = val && (!secretKey || secretVal);
+          // Open sign-in when Client ID is set and either a new secret was entered, a secret
+          // already exists on disk (blank password fields are normal), or no secret is required.
+          const secretOnDisk = secretKey ? String(this.config[secretKey] || '').trim() : '';
+          const readyToSignIn =
+            !!val && (!secretKey || !!secretVal || !!secretOnDisk);
           if (readyToSignIn) {
             // Client ID (+ Secret) saved — immediately open the OAuth sign-in popup.
             btn.textContent = 'Signing in…';
@@ -1246,9 +1278,9 @@ class SettingsManagerClass {
               setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 3000);
             } else if (result && result.ok) {
               btn.textContent = `✓ Connected as ${result.email || result.name || 'account'}`;
-              const row = btn.closest('.oauth-provider-row');
+              const providerRow = btn.closest('.oauth-provider-row');
               // Remove any previous error
-              row.querySelector('.oauth-signin-error')?.remove();
+              providerRow?.querySelector('.oauth-signin-error')?.remove();
               setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 4000);
             } else {
               btn.textContent = '✓ Saved';
@@ -1318,9 +1350,12 @@ class SettingsManagerClass {
 
     } else {
       // ── Disconnected state — show Connect button if a Client ID is saved ──
-      const container = document.getElementById('oauth-client-id-fields');
-      const clientIdInput = container?.querySelector(`input[data-key="${p.configKey}"]`);
-      const hasClientId = !!(clientIdInput?.value?.trim() || this.config[p.configKey]);
+      const row = statusEl.closest('.oauth-provider-row');
+      const clientIdInput = row?.querySelector(`input[data-key="${p.configKey}"]`);
+      const hasClientId = !!(
+        (clientIdInput?.value || '').trim() ||
+        (this.config[p.configKey] || '').trim()
+      );
 
       if (hasClientId) {
         statusEl.innerHTML = `
