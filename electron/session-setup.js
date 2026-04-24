@@ -912,6 +912,15 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   regShortcut('CommandOrControl+Shift+B', 'bookmarks-panel');
   regShortcut('CommandOrControl+J', 'downloads-panel');
   regShortcut('CommandOrControl+Shift+I', 'devtools-active-tab');
+  // Find in page + zoom: shell document key handlers do not run when a <webview> is focused, so
+  // we register OS-level accelerators while the window is focused (see focus/_registerAll above).
+  regShortcut('CommandOrControl+f', 'find-in-page');
+  regShortcut('CommandOrControl+0', 'zoom-reset');
+  regShortcut('CommandOrControl+-', 'zoom-out');
+  regShortcut('CommandOrControl+Plus', 'zoom-in');
+  regShortcut('CommandOrControl+=', 'zoom-in');
+  regShortcut('CommandOrControl+numadd', 'zoom-in');
+  regShortcut('CommandOrControl+numsub', 'zoom-out');
 
   regShortcut('CommandOrControl+R', 'reload');
   regShortcut('CommandOrControl+Shift+R', 'hard-reload');

@@ -564,12 +564,17 @@
 
     let lastWc = null;
     let lastQ = '';
+    let lastOpenFindAt = 0;
 
     function activeWv() {
       return typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
     }
 
     function openFind() {
+      const now = Date.now();
+      // OS `globalShortcut` and shell `document` keydown can both open find (e.g. omnibox focus).
+      if (now - lastOpenFindAt < 80) return;
+      lastOpenFindAt = now;
       const wv = activeWv();
       if (!wv || !wv.getWebContentsId) return;
       lastWc = wv.getWebContentsId();
@@ -631,6 +636,8 @@
         }
       });
     }
+
+    window.__navioOpenFindInPage = openFind;
   }
 
   function bindPrintZoomFullscreen() {

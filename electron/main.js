@@ -804,6 +804,7 @@ function buildPredictaAppendix(cfg) {
   if (!base || !/^https?:\/\//i.test(base)) return '';
   const exBetting = `${base}/?view=betting&sport=nba&board=all-games`;
   const exLive = `${base}/?view=betting&sport=nba&board=live`;
+  const exOpenGame = `${base}/?view=betting&sport=nba&board=live&event=ESPN_EVENT_ID`;
   const exNews = `${base}/?view=news`;
   const exCal = `${base}/?view=calendar`;
   return (
@@ -813,7 +814,8 @@ function buildPredictaAppendix(cfg) {
     '- **view** — main area: `betting` (Games: live scoreboards, box scores, team stats, streams), `calendar` (schedule), `news` (feed), `dashboard`, `live`, `draftkings`, `multi-source`, `tracker`, `calculator`.\n' +
     '- **sport** (when `view` is `betting` or omitted): nfl, nba, mlb, nhl, ufc, raf, boxing, cfb, cbb, wnba, epl, laliga, seriea, bundesliga, ligue1, mls, ucl, uel, all\n' +
     '- **board** (Games sub-tab): `all-games` | `schedule` | `standings` | `live` (aliases: `games`, `tab=games` → all-games).\n' +
-    `- Examples: NBA games board \`${exBetting}\` · NBA live board \`${exLive}\` · News \`${exNews}\` · Schedule \`${exCal}\`\n` +
+    '- **event** (optional) — ESPN scoreboard `event` id: opens that matchup (stream, box score). Same id as in site.api URLs.\n' +
+    `- Examples: NBA games \`${exBetting}\` · live board \`${exLive}\` · open one game \`${exOpenGame}\` · News \`${exNews}\` · Schedule \`${exCal}\`\n` +
     '- For **[FOLLOWUP]** object chips on sports turns, **prefer these Predicta URLs** before generic ESPN. If the tab fails to load, suggest checking the site or setting **predictaBaseUrl** in navio-config.json (e.g. `http://localhost:5173` for local Predicta).\n' +
     '---\n'
   );
@@ -1048,12 +1050,23 @@ function installNavioGuestZoomShortcutForward() {
     if (!input || input.type !== 'keyDown') return null;
     if (!(input.control || input.meta)) return null;
     if (input.alt) return null;
-    const key = input.key || '';
-    const code = input.code || '';
-    if (key === '0') return 'zoom-reset';
-    if (key === '-' || key === '_' || code === 'NumpadSubtract') return 'zoom-out';
-    if (key === '=' || key === '+' || code === 'NumpadAdd') return 'zoom-in';
-    if (code === 'Equal' && input.shift) return 'zoom-in';
+    const key = String(input.key || '');
+    const code = String(input.code || '');
+    // Windows/layout variants: `key` may be "Minus" / "Equal"; `code` is more stable (Minus, Equal, …).
+    if (key === '0' || code === 'Digit0' || code === 'Numpad0') return 'zoom-reset';
+    if (
+      key === '-' ||
+      key === '_' ||
+      key === 'Minus' ||
+      key === 'Subtract' ||
+      code === 'Minus' ||
+      code === 'NumpadSubtract'
+    ) {
+      return 'zoom-out';
+    }
+    if (key === '+' || key === '=' || key === 'Plus' || key === 'Equal' || code === 'NumpadAdd' || code === 'Equal') {
+      return 'zoom-in';
+    }
     return null;
   };
 
@@ -1068,6 +1081,43 @@ function installNavioGuestZoomShortcutForward() {
       if (!action) return;
       event.preventDefault();
       sendZoomShortcut(action);
+    });
+  });
+}
+
+/**
+ * Guest <webview> focus: shell `document` never receives Ctrl/Cmd+F, so the find bar never opens.
+ * Forward like zoom / assistant, and let the main renderer open our find-in-page UI.
+ */
+function installNavioGuestFindShortcutForward() {
+  const sendFind = () => {
+    try {
+      const mw = mainWindow;
+      if (mw && !mw.isDestroyed()) {
+        mw.webContents.send('shortcut', 'find-in-page');
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const isFindInPage = (input) => {
+    if (!input || input.type !== 'keyDown') return false;
+    const key = String(input.key || '').toLowerCase();
+    if (key !== 'f') return false;
+    return !!(input.control || input.meta) && !input.alt;
+  };
+
+  app.on('web-contents-created', (_event, wc) => {
+    try {
+      if (typeof wc.getType !== 'function' || wc.getType() !== 'webview') return;
+    } catch {
+      return;
+    }
+    wc.on('before-input-event', (event, input) => {
+      if (!isFindInPage(input)) return;
+      event.preventDefault();
+      sendFind();
     });
   });
 }
@@ -8459,6 +8509,7 @@ ipcMain.handle('ntp-sports', async () => {
         const startTimeEt = _ntpEspnStartTimeEt(ev);
         return {
           league: id,
+          eventId: ev.id != null && ev.id !== '' ? String(ev.id) : '',
           home: homeAb,
           homeScore: home?.score ?? '',
           away: awayAb,
@@ -9512,6 +9563,7 @@ app.whenReady().then(async () => {
   installNavioWebviewGuestPopupRouting();
   installNavioGuestAssistantShortcutForward();
   installNavioGuestZoomShortcutForward();
+  installNavioGuestFindShortcutForward();
 
   createMainWindow();
 

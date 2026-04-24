@@ -972,7 +972,12 @@ ${badgeHtml(it.badge)}
     };
 
     /** Guest <webview> forwards zoom keys via IPC — same behavior as shell keydown in ui-shell-extras. */
+    let _lastNavioZoomApplyAt = 0;
     const applyNavioZoomShortcut = (kind) => {
+      const now = Date.now();
+      // Guest before-input + globalShortcut can both fire; avoid double-step zoom.
+      if (now - _lastNavioZoomApplyAt < 100) return;
+      _lastNavioZoomApplyAt = now;
       if (typeof TabManager === 'undefined') return;
       const ntp = document.getElementById('new-tab-page');
       const ntpActive = !!(ntp && ntp.classList.contains('active'));
@@ -1051,6 +1056,15 @@ ${badgeHtml(it.badge)}
           break;
         case 'zoom-reset':
           applyNavioZoomShortcut('reset');
+          break;
+        case 'find-in-page':
+          try {
+            if (typeof window.__navioOpenFindInPage === 'function') {
+              window.__navioOpenFindInPage();
+            }
+          } catch {
+            /* ignore */
+          }
           break;
         case 'toggle-connectors':
           if (typeof ConnectorsManager !== 'undefined') {

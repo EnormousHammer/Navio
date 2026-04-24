@@ -2826,10 +2826,11 @@ body.ntp-blank-mode .ntp-widget-pickers {
 .ntp-stock-pct.down {
   color: #fb7185;
 }
-/* Sports list: grow in tile, rows share vertical space; content centered (no wide left/right gap). */
+/* Sports list: one block per game; scroll inside the card (rows must NOT use flex-grow or they collapse and overlap). */
 #ntp-sports-list {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   flex: 1 1 auto;
   width: 100%;
   min-height: min(220px, 34vh);
@@ -2845,7 +2846,7 @@ body.ntp-blank-mode .ntp-widget-pickers {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  flex: 1 1 0;
+  flex: 0 0 auto;
   min-height: 0;
   gap: 6px;
   padding: 12px 10px 14px;

@@ -913,6 +913,13 @@ const NTP = (() => {
     return map[L] || 'sports';
   }
 
+  /** Maps NTP `league` (NFL, NBA, …) → Predicta `sport` query id (nfl, nba, …). */
+  function _leagueToPredictaSportId(league) {
+    const L = String(league || '').toUpperCase();
+    const map = { NFL: 'nfl', NBA: 'nba', MLB: 'mlb', NHL: 'nhl', MLS: 'mls' };
+    return map[L] || 'nba';
+  }
+
   /** ESPN `team.logo` URLs (same field Predicta uses via `espnCompetitorLogoHref`) — no Predicta runtime dependency. */
   function _ntpSportLogoHtml(url, abbr) {
     const u = String(url || '').trim();
@@ -936,7 +943,17 @@ const NTP = (() => {
         list.innerHTML = `<p class="ntp-widget-empty">${_esc(result?.error || 'No games right now.')}</p>`;
         return;
       }
-      const games = result.slice(0, 22);
+      const games = [...result]
+        .sort((a, b) => {
+          const liveA = Boolean(a && a.live);
+          const liveB = Boolean(b && b.live);
+          if (liveA !== liveB) return liveA ? -1 : 1;
+          const finalA = Boolean(a && a.final);
+          const finalB = Boolean(b && b.final);
+          if (finalA !== finalB) return finalA ? 1 : -1;
+          return 0;
+        })
+        .slice(0, 22);
       _sportsGamesSummary = games;
       list.innerHTML = games
         .map((g) => {
@@ -957,16 +974,13 @@ const NTP = (() => {
           const timeEt = g.startTimeEt
             ? `<div class="ntp-sport-et">${_esc(g.startTimeEt)} <span class="ntp-sport-et-label">(ET)</span></div>`
             : '';
-          const path = _espnLeaguePath(g.league);
-          const espnUrl =
-            path === 'soccer/scoreboard'
-              ? 'https://www.espn.com/soccer/scoreboard/_/league/usa.1'
-              : `https://www.espn.com/${path}/scoreboard`;
+          const predSport = _leagueToPredictaSportId(g.league);
+          const evId = g.eventId != null && g.eventId !== '' ? String(g.eventId) : '';
           const rowCls = g.live ? 'ntp-sport-row ntp-sport-row--live' : 'ntp-sport-row';
           const statusLine = st
             ? `<div class="ntp-sport-statusline">${st}</div>`
             : '';
-          return `<div class="${rowCls}" data-espn-url="${_escAttr(espnUrl)}">
+          return `<div class="${rowCls}" data-navio-predicta-sport="${_escAttr(predSport)}" data-navio-predicta-event="${_escAttr(evId)}" data-navio-predicta-board="${g.live ? 'live' : 'all-games'}">
             <div class="ntp-sport-main">
               <div class="ntp-sport-scoreline">
                 <span class="ntp-sport-side ntp-sport-side--away">
@@ -1000,8 +1014,32 @@ const NTP = (() => {
       });
       list.querySelectorAll('.ntp-sport-row').forEach((row) => {
         row.addEventListener('click', () => {
-          const u = row.dataset.espnUrl;
-          if (u && typeof TabManager !== 'undefined') TabManager.createTab(u);
+          if (typeof TabManager === 'undefined') return;
+          const sport = (row.dataset.navioPredictaSport || 'nba').trim() || 'nba';
+          const board = (row.dataset.navioPredictaBoard || 'all-games').trim() || 'all-games';
+          const event = (row.dataset.navioPredictaEvent || '').trim();
+          const params = new URLSearchParams();
+          params.set('view', 'betting');
+          params.set('sport', sport);
+          params.set('board', board);
+          if (event) params.set('event', event);
+          const buildUrl = (base) => {
+            const b = String(base || 'https://predicta-bet.vercel.app')
+              .trim()
+              .replace(/\/+$/, '');
+            return `${b || 'https://predicta-bet.vercel.app'}/?${params.toString()}`;
+          };
+          void (async () => {
+            let base = 'https://predicta-bet.vercel.app';
+            try {
+              const c = await window.navio.getConfig();
+              const p = (c && c.predictaBaseUrl) || '';
+              if (p) base = String(p).trim();
+            } catch {
+              /* use default */
+            }
+            TabManager.createTab(buildUrl(base));
+          })();
         });
       });
     } catch (e) {
