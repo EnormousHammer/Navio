@@ -5,10 +5,10 @@
  *  • Greeting + live clock
  *  • Connected services status bar (IMAP email counts)
  *  • World News (Reddit — subreddit configurable)
- *  • Stock quotes (IPC) — optional Markets widget + smart row
+ *  • Markets: Yahoo Finance quotes (IPC) + smart row / AI context
  *  • Live scores (ESPN via main IPC) — optional widget
  *  • Inbox widget — unread emails from IMAP Gmail/Outlook
- *  • Dashboard: two columns; each column Inbox / News / Markets / Sports or Off (chips under panels + Settings defaults)
+ *  • Dashboard: two columns (default Markets | Live sports); chips + Settings: Inbox / News / Markets / Sports or Off
  *  • "Draft All" button — triggers batch email drafting
  */
 
@@ -164,7 +164,7 @@ const NTP = (() => {
     });
     const ntp = document.getElementById('new-tab-page');
     if (ntp) observer.observe(ntp, { attributes: true, attributeFilter: ['class'] });
-    if (ntp?.classList.contains('active')) {
+    if (ntp?.classList?.contains('active')) {
       _ntpVisible = true;
       requestAnimationFrame(() => _applyTickerBottomReserve());
       _applyNewTabMode();
@@ -173,13 +173,17 @@ const NTP = (() => {
 
     // Hydrate config-driven NTP preferences (shortcuts)
     void _hydrateNtpPreferences();
-    void _applyNtpDashboardWidgets();
+    // When the new tab is already active, `_onShow()` runs `apply` + data loads — avoid a second
+    // concurrent `_applyNtpDashboardWidgets()` here (it raced loads and could leave widgets stuck).
+    if (!ntp?.classList?.contains('active')) {
+      void _applyNtpDashboardWidgets();
+    }
 
     document.addEventListener('navio-config-saved', () => {
       void (async () => {
         await _applyNtpDashboardWidgets();
         const ntp = document.getElementById('new-tab-page');
-        if (ntp?.classList.contains('active')) await _runNtpDashboardDataLoads();
+        if (ntp?.classList?.contains('active')) await _runNtpDashboardDataLoads();
       })();
     });
 
@@ -222,7 +226,8 @@ const NTP = (() => {
           b.classList.toggle('active', b.dataset.mode === 'search');
         });
       }
-      if (mode === 'home') void _applyNtpDashboardWidgets();
+      /* Do not call `_applyNtpDashboardWidgets()` here — it races `_onShow()` / `navio-config-saved`
+         and could leave Markets / Live sports stuck on the loading state. Layout is applied there. */
     } catch {
       /* config unavailable → fall back to default home */
     }
@@ -239,11 +244,11 @@ const NTP = (() => {
   }
 
   function _ntpDedupeWidgetSlots(left, right) {
-    let L = _coerceNtpWidgetSlot(left, 'inbox');
-    let R = _coerceNtpWidgetSlot(right, 'news');
+    let L = _coerceNtpWidgetSlot(left, 'stocks');
+    let R = _coerceNtpWidgetSlot(right, 'sports');
     if (L === R && L !== 'none') {
       const alt = ['inbox', 'news', 'stocks', 'sports'].find((t) => t !== L);
-      R = alt || 'news';
+      R = alt || 'sports';
     }
     return { left: L, right: R };
   }
@@ -278,8 +283,8 @@ const NTP = (() => {
       } catch {
         cfg = {};
       }
-      let L = _coerceNtpWidgetSlot(cfg.ntpWidgetLeft, 'inbox');
-      let R = _coerceNtpWidgetSlot(cfg.ntpWidgetRight, 'news');
+      let L = _coerceNtpWidgetSlot(cfg.ntpWidgetLeft, 'stocks');
+      let R = _coerceNtpWidgetSlot(cfg.ntpWidgetRight, 'sports');
       if (slot === 'left') {
         if (newT !== 'none' && newT === R) R = L;
         L = newT;
@@ -403,12 +408,12 @@ const NTP = (() => {
     const wants = new Set([L, R].filter((x) => x !== 'none'));
 
     const tasks = [];
-    if (wants.has('news')) tasks.push(_loadWorldNews().catch(() => {}));
-    if (wants.has('inbox')) tasks.push(_loadInbox().catch(() => {}));
-    if (wants.has('stocks')) tasks.push(_loadStocksWidget().catch(() => {}));
-    else tasks.push(_prefetchStockDataForNtp().catch(() => {}));
-    if (wants.has('sports')) tasks.push(_loadSportsWidget().catch(() => {}));
-    tasks.push(_loadServicesBar().catch(() => {}));
+    if (wants.has('news')) tasks.push(_loadWorldNews().catch((e) => console.warn('[ntp] news', e)));
+    if (wants.has('inbox')) tasks.push(_loadInbox().catch((e) => console.warn('[ntp] inbox', e)));
+    if (wants.has('stocks')) tasks.push(_loadStocksWidget().catch((e) => console.warn('[ntp] stocks', e)));
+    else tasks.push(_prefetchStockDataForNtp().catch((e) => console.warn('[ntp] stocks prefetch', e)));
+    if (wants.has('sports')) tasks.push(_loadSportsWidget().catch((e) => console.warn('[ntp] sports', e)));
+    tasks.push(_loadServicesBar().catch((e) => console.warn('[ntp] services', e)));
 
     await Promise.all(tasks);
     await _updateSmartRow();
@@ -518,6 +523,79 @@ const NTP = (() => {
 
   // ── World News (Reddit r/worldnews — free, CORS-open JSON API) ─────────────
 
+  /** Reddit JSON often includes `&amp;` in image URLs; decode before using in src. */
+  function _decodeUrlEntities(u) {
+    return String(u || '')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"');
+  }
+
+  /** Escape for double-quoted HTML attributes (e.g. img src). */
+  function _escAttr(s) {
+    return _decodeUrlEntities(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  const _REDDIT_BAD_THUMBS = new Set(['self', 'default', 'nsfw', 'spoiler', 'image', '']);
+
+  /** Best-effort preview image for a link post (preview.redd.it / external-preview, etc.). */
+  function _redditPostThumbUrl(p) {
+    if (!p || typeof p !== 'object') return '';
+
+    const fromPreview = () => {
+      const img0 = p.preview?.images?.[0];
+      if (!img0) return '';
+      const src = _decodeUrlEntities(img0.source?.url || '').trim();
+      if (/^https?:\/\//i.test(src)) return src;
+      const resolutions = (img0.resolutions || []).slice();
+      resolutions.sort((a, b) => (b.width || 0) - (a.width || 0));
+      for (const r of resolutions) {
+        const u = _decodeUrlEntities(r.url || '').trim();
+        if (/^https?:\/\//i.test(u)) return u;
+      }
+      return '';
+    };
+
+    const fromThumb = () => {
+      const t = _decodeUrlEntities(String(p.thumbnail || '').trim());
+      if (!t || _REDDIT_BAD_THUMBS.has(t.toLowerCase())) return '';
+      if (/^https?:\/\//i.test(t)) return t;
+      return '';
+    };
+
+    const fromDirectImageLink = () => {
+      const u = String(p.url || '').trim();
+      if (!/^https?:\/\//i.test(u)) return '';
+      if (!/\.(jpe?g|png|gif|webp)(\?|#|$)/i.test(u)) return '';
+      return u;
+    };
+
+    return fromPreview() || fromThumb() || fromDirectImageLink() || '';
+  }
+
+  function _bindNewsThumbFallbacks(root) {
+    if (!root) return;
+    root.querySelectorAll('.ntp-news-thumb').forEach((img) => {
+      img.addEventListener(
+        'error',
+        () => {
+          const wrap = img.closest('.ntp-news-thumb-wrap');
+          img.removeAttribute('src');
+          if (wrap) {
+            wrap.classList.add('ntp-news-thumb-wrap--empty');
+            wrap.classList.remove('ntp-news-thumb-wrap--photo');
+          }
+        },
+        { once: true }
+      );
+    });
+  }
+
   async function _loadWorldNews() {
     const list = document.getElementById('ntp-news-list');
     const nw = document.getElementById('ntp-widget-news');
@@ -527,7 +605,10 @@ const NTP = (() => {
     try {
       const sub = encodeURIComponent(_ntpNewsSubreddit || 'worldnews');
       const r = await fetch(`https://www.reddit.com/r/${sub}/hot.json?limit=20`, {
-        headers: { 'Accept': 'application/json' }
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'NavioBrowser/1.0 (Electron; new-tab news widget)'
+        }
       });
       if (!r.ok) throw new Error(`Reddit ${r.status}`);
       const data = await r.json();
@@ -559,17 +640,28 @@ const NTP = (() => {
       const src = document.getElementById('ntp-news-source');
       if (src) src.textContent = `Reddit · r/${_ntpNewsSubreddit}`;
 
-      list.innerHTML = posts.map(p => `
-        <div class="ntp-news-item" data-url="${_esc(p.url || `https://reddit.com${p.permalink}`)}">
-          <div class="ntp-news-category">${_esc(p.link_flair_text || 'World')}</div>
-          <div class="ntp-news-title">${_esc(p.title)}</div>
-          <div class="ntp-news-meta">
-            <span>▲ ${(p.score || 0).toLocaleString()}</span>
-            <span>${p.num_comments || 0} comments</span>
-            <span>${_domain(p.url)}</span>
+      list.innerHTML = posts.map((p) => {
+        const thumb = _redditPostThumbUrl(p);
+        const itemUrl = p.url || `https://reddit.com${p.permalink}`;
+        const thumbWrap = thumb
+          ? `<div class="ntp-news-thumb-wrap ntp-news-thumb-wrap--photo"><img class="ntp-news-thumb" src="${_escAttr(thumb)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" /></div>`
+          : '<div class="ntp-news-thumb-wrap ntp-news-thumb-wrap--empty" aria-hidden="true"></div>';
+        return `
+        <div class="ntp-news-item" data-url="${_escAttr(itemUrl)}">
+          ${thumbWrap}
+          <div class="ntp-news-body">
+            <div class="ntp-news-category">${_esc(p.link_flair_text || 'World')}</div>
+            <div class="ntp-news-title">${_esc(p.title)}</div>
+            <div class="ntp-news-meta">
+              <span>▲ ${(p.score || 0).toLocaleString()}</span>
+              <span>${p.num_comments || 0} comments</span>
+              <span>${_esc(_domain(p.url))}</span>
+            </div>
           </div>
-        </div>
-      `).join('');
+        </div>`;
+      }).join('');
+
+      _bindNewsThumbFallbacks(list);
 
       list.querySelectorAll('.ntp-news-item').forEach(item => {
         item.addEventListener('click', () => {
@@ -599,17 +691,22 @@ const NTP = (() => {
           return;
         }
 
-        list.innerHTML = valid.map(s => `
-          <div class="ntp-news-item" data-url="${s.url || `https://news.ycombinator.com/item?id=${s.id}`}">
-            <div class="ntp-news-category">Tech</div>
-            <div class="ntp-news-title">${_esc(s.title)}</div>
-            <div class="ntp-news-meta">
-              <span>${s.score || 0} pts</span>
-              <span>${s.descendants || 0} comments</span>
-              <span>${_domain(s.url)}</span>
+        list.innerHTML = valid.map((s) => {
+          const itemUrl = s.url || `https://news.ycombinator.com/item?id=${s.id}`;
+          return `
+          <div class="ntp-news-item" data-url="${_escAttr(itemUrl)}">
+            <div class="ntp-news-thumb-wrap ntp-news-thumb-wrap--empty" aria-hidden="true"></div>
+            <div class="ntp-news-body">
+              <div class="ntp-news-category">Tech</div>
+              <div class="ntp-news-title">${_esc(s.title)}</div>
+              <div class="ntp-news-meta">
+                <span>${s.score || 0} pts</span>
+                <span>${s.descendants || 0} comments</span>
+                <span>${_esc(_domain(s.url))}</span>
+              </div>
             </div>
-          </div>
-        `).join('');
+          </div>`;
+        }).join('');
 
         list.querySelectorAll('.ntp-news-item').forEach(item => {
           item.addEventListener('click', () => {
@@ -650,7 +747,7 @@ const NTP = (() => {
     // Grab relevant CSS from the page's stylesheets for the widget classes
     const styles = Array.from(document.styleSheets)
       .flatMap(s => { try { return Array.from(s.cssRules); } catch { return []; } })
-      .filter(r => r.cssText && /ntp-email|ntp-news|ntp-stock|ntp-sport|ntp-brief|ntp-widget-body|ntp-wx/.test(r.cssText))
+      .filter(r => r.cssText && /ntp-email|ntp-news|ntp-news-body|ntp-news-thumb|ntp-stock|ntp-sport|ntp-brief|ntp-widget-body|ntp-wx/.test(r.cssText))
       .map(r => r.cssText)
       .join('\n');
 
@@ -714,10 +811,24 @@ const NTP = (() => {
     } catch {}
   }
 
+  /** IPC safety net: main process fetch should time out, but never leave the NTP spinner hanging. */
+  async function _invokeNtpRpc(fn, timeoutMs) {
+    const ms = Math.max(8000, timeoutMs || 22000);
+    let timer;
+    const timeout = new Promise((_, rej) => {
+      timer = setTimeout(() => rej(new Error('Request timed out')), ms);
+    });
+    try {
+      return await Promise.race([fn(), timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   // Stock quotes for smart row / AI context (bottom ticker removed)
   async function _prefetchStockDataForNtp() {
     try {
-      const result = await window.navio.ntpFetchStocks();
+      const result = await _invokeNtpRpc(() => window.navio.ntpFetchStocks(), 22000);
       if (result && !result.error && Array.isArray(result) && result.length) {
         _stockData = result;
       }
@@ -738,10 +849,12 @@ const NTP = (() => {
     const w = document.getElementById('ntp-widget-stocks');
     const list = document.getElementById('ntp-stocks-list');
     if (!list || (w && w.hidden)) return;
+    const srcLabel = document.getElementById('ntp-stocks-source');
+    if (srcLabel) srcLabel.textContent = 'Yahoo Finance';
     list.innerHTML =
       '<div class="ntp-widget-loading"><span></span><span></span><span></span></div>';
     try {
-      const result = await window.navio.ntpFetchStocks();
+      const result = await _invokeNtpRpc(() => window.navio.ntpFetchStocks(), 22000);
       if (!result || result.error || !Array.isArray(result) || !result.length) {
         list.innerHTML = `<p class="ntp-widget-empty">${_esc(result?.error || 'Could not load quotes.')}</p>`;
         return;
@@ -789,7 +902,7 @@ const NTP = (() => {
     list.innerHTML =
       '<div class="ntp-widget-loading"><span></span><span></span><span></span></div>';
     try {
-      const result = await window.navio.ntpFetchSports();
+      const result = await _invokeNtpRpc(() => window.navio.ntpFetchSports(), 22000);
       if (!result || result.error || !Array.isArray(result) || !result.length) {
         _sportsGamesSummary = [];
         list.innerHTML = `<p class="ntp-widget-empty">${_esc(result?.error || 'No games right now.')}</p>`;

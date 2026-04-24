@@ -886,6 +886,35 @@ const NAVIO_TOOLS = [
     }
   },
 
+  {
+    name: 'save_local_file',
+    description:
+      'Save **content to a file on the user’s PC** via a system Save dialog. Use when they ask for a **.txt**, **.md**, or **Word .docx** file (draft, notes, letter, report body as plain text). ' +
+      '**docx** stores plain text only (paragraphs and line breaks; no rich formatting). Prefer **drive_create_file** when they want the file in **Google Drive** instead. ' +
+      'If the user cancels the dialog, report that politely and do not retry unless they ask.',
+    parameters: {
+      type: 'object',
+      properties: {
+        content: {
+          type: 'string',
+          description: 'Full file body as UTF-8 text (for .docx this becomes Word paragraphs; line breaks preserved).'
+        },
+        default_filename: {
+          type: 'string',
+          description:
+            'Suggested file name including extension, e.g. `notes.txt`, `summary.md`, `letter.docx`. Shown in the save dialog; the user may change it.'
+        },
+        format: {
+          type: 'string',
+          enum: ['text', 'markdown', 'word_docx'],
+          description:
+            'Used when the chosen path has **no** extension: **text** → .txt, **markdown** → .md, **word_docx** → .docx. If the path already ends in .txt / .md / .docx, this is ignored.'
+        }
+      },
+      required: ['content']
+    }
+  },
+
   // ── Google Calendar tools ───────────────────────────────────────────────────
   {
     name: 'calendar_list_events',

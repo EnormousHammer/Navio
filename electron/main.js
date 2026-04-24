@@ -3601,6 +3601,71 @@ async function captureFullPageScreenshotTiles(wc) {
   }
 }
 
+const SAVE_LOCAL_FILE_MAX_CHARS = 1_800_000;
+const AdmZipLocalSave = require('adm-zip');
+
+function navioEscapeXmlForDocx(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Minimal OOXML package: plain text → paragraphs (Word opens without external styles). */
+function navioPlainTextToDocxBuffer(text) {
+  const lines = String(text).replace(/\r\n/g, '\n').split('\n');
+  const paras = lines
+    .map((line) => `<w:p><w:r><w:t xml:space="preserve">${navioEscapeXmlForDocx(line)}</w:t></w:r></w:p>`)
+    .join('');
+  const documentXml =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+    '<w:body>' +
+    paras +
+    '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/>' +
+    '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/>' +
+    '</w:sectPr></w:body></w:document>';
+  const contentTypes =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+    '</Types>';
+  const rels =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+    '</Relationships>';
+  const wordRels =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>';
+  const zip = new AdmZipLocalSave();
+  zip.addFile('[Content_Types].xml', Buffer.from(contentTypes, 'utf8'));
+  zip.addFile('_rels/.rels', Buffer.from(rels, 'utf8'));
+  zip.addFile('word/_rels/document.xml.rels', Buffer.from(wordRels, 'utf8'));
+  zip.addFile('word/document.xml', Buffer.from(documentXml, 'utf8'));
+  return zip.toBuffer();
+}
+
+function navioSaveDialogParentWindow(wc) {
+  try {
+    if (wc && typeof wc.isDestroyed === 'function' && !wc.isDestroyed()) {
+      const bw = BrowserWindow.fromWebContents(wc);
+      if (bw && typeof bw.isDestroyed === 'function' && !bw.isDestroyed()) return bw;
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (mainWindow && typeof mainWindow.isDestroyed === 'function' && !mainWindow.isDestroyed()) return mainWindow;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 const toolExecutors = {
   async read_page(wc, args) {
     try {
@@ -4968,6 +5033,81 @@ const toolExecutors = {
       };
     } catch (e) {
       return { error: 'drive_trash_file failed: ' + e.message };
+    }
+  },
+
+  async save_local_file(wc, args) {
+    const raw = args && args.content != null ? String(args.content) : '';
+    if (!raw.length && raw !== '') {
+      return { error: 'save_local_file requires `content` (string).' };
+    }
+    if (raw.length > SAVE_LOCAL_FILE_MAX_CHARS) {
+      return {
+        error: `Content too large for save_local_file (max ${SAVE_LOCAL_FILE_MAX_CHARS} characters). Split into smaller files or summarize first.`
+      };
+    }
+    const hint = (args && args.format) || '';
+    const fmt = hint === 'markdown' || hint === 'word_docx' || hint === 'text' ? hint : 'text';
+    let defaultPath = (args && args.default_filename != null ? String(args.default_filename) : '').trim();
+    if (defaultPath && !/\.(txt|md|docx)$/i.test(defaultPath)) {
+      const ext = fmt === 'markdown' ? '.md' : fmt === 'word_docx' ? '.docx' : '.txt';
+      defaultPath = defaultPath.replace(/[/\\]+$/g, '') + ext;
+    }
+    if (!defaultPath) {
+      defaultPath = fmt === 'markdown' ? 'document.md' : fmt === 'word_docx' ? 'document.docx' : 'document.txt';
+    }
+    const parentWin = navioSaveDialogParentWindow(wc);
+    let picked;
+    try {
+      picked = await dialog.showSaveDialog(parentWin || undefined, {
+        title: 'Save file',
+        defaultPath,
+        filters: [
+          { name: 'Text', extensions: ['txt'] },
+          { name: 'Markdown', extensions: ['md'] },
+          { name: 'Word Document', extensions: ['docx'] }
+        ],
+        properties: ['createDirectory', 'showOverwriteWarning']
+      });
+    } catch (e) {
+      return { error: 'save_local_file: dialog failed: ' + e.message };
+    }
+    if (picked.canceled || !picked.filePath) {
+      return { canceled: true, note: 'User cancelled the save dialog — nothing was written.' };
+    }
+    const filePath = path.normalize(picked.filePath);
+    const ext = (path.extname(filePath) || '').toLowerCase();
+    let useExt = ext;
+    if (!useExt) {
+      useExt = fmt === 'markdown' ? '.md' : fmt === 'word_docx' ? '.docx' : '.txt';
+    }
+    const outPath = ext ? filePath : filePath + useExt;
+    if (/\.doc$/i.test(outPath) && !/\.docx$/i.test(outPath)) {
+      return {
+        error:
+          'Legacy .doc (binary) is not supported. Choose **.docx** in the save dialog (or pass default_filename ending in .docx).'
+      };
+    }
+    try {
+      if (/\.docx$/i.test(outPath)) {
+        const buf = navioPlainTextToDocxBuffer(raw);
+        fs.writeFileSync(outPath, buf);
+        return {
+          path: outPath,
+          format: 'docx',
+          bytes_written: buf.length,
+          note: 'Saved as Word (.docx) with plain text only (paragraphs / line breaks).'
+        };
+      }
+      fs.writeFileSync(outPath, raw, 'utf8');
+      return {
+        path: outPath,
+        format: /\.md$/i.test(outPath) ? 'markdown' : 'text',
+        bytes_written: Buffer.byteLength(raw, 'utf8'),
+        note: 'File saved on disk.'
+      };
+    } catch (e) {
+      return { error: 'save_local_file: write failed: ' + e.message };
     }
   },
 
@@ -8085,17 +8225,40 @@ ipcMain.handle('imap-trash-message', async (event, { serviceId, uid }) => {
   } catch (e) { return { error: e.message }; }
 });
 
-// ── NTP: Stock market data (fetched from main process — no CORS) ──────────
+// ── NTP: Stock quotes (main process — no CORS) — Markets widget + smart row / AI context ──
 // query1.finance.yahoo.com/v8/finance/chart works without crumb or cookies.
 ipcMain.handle('ntp-stocks', async () => {
   const symbols = ['^GSPC', '^DJI', '^IXIC', 'AAPL', 'GOOGL', 'MSFT', 'NVDA', 'TSLA', 'BTC-USD', 'ETH-USD'];
   const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+  const yahooHeaders = {
+    'User-Agent': UA,
+    Accept: 'application/json',
+    Referer: 'https://finance.yahoo.com/'
+  };
+  const fetchYahooChart = async (sym) => {
+    const encoded = encodeURIComponent(sym);
+    const urls = [
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=2d`,
+      `https://query2.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=2d`
+    ];
+    let lastErr = null;
+    for (const url of urls) {
+      try {
+        const r = await fetch(url, { headers: yahooHeaders, signal: AbortSignal.timeout(14000) });
+        if (!r.ok) {
+          lastErr = new Error(`HTTP ${r.status}`);
+          continue;
+        }
+        return r.json();
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw lastErr || new Error('Yahoo chart fetch failed');
+  };
   try {
     const results = await Promise.allSettled(symbols.map(async sym => {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=2d`;
-      const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept': 'application/json' } });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const data = await r.json();
+      const data = await fetchYahooChart(sym);
       const meta = data?.chart?.result?.[0]?.meta;
       if (!meta) throw new Error('No meta');
       const price = meta.regularMarketPrice ?? meta.chartPreviousClose ?? null;
@@ -8111,7 +8274,13 @@ ipcMain.handle('ntp-stocks', async () => {
       };
     }));
     const good = results.filter(r => r.status === 'fulfilled' && r.value?.price != null).map(r => r.value);
-    return good.length > 0 ? good : { error: 'No data returned' };
+    if (good.length > 0) return good;
+    const failed = results.filter(r => r.status === 'rejected');
+    if (failed.length === results.length) {
+      const msg = failed[0]?.reason?.message || '';
+      return { error: msg ? `Markets: ${msg}` : 'Could not load quotes (network).' };
+    }
+    return { error: 'No data returned' };
   } catch (e) {
     return { error: e.message };
   }
@@ -8129,7 +8298,10 @@ ipcMain.handle('ntp-sports', async () => {
   ];
   try {
     const results = await Promise.allSettled(leagues.map(async ({ id, url }) => {
-      const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept': 'application/json' } });
+      const r = await fetch(url, {
+        headers: { 'User-Agent': UA, Accept: 'application/json' },
+        signal: AbortSignal.timeout(14000)
+      });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
       const events = (data?.events || []).slice(0, 6);
@@ -8140,11 +8312,13 @@ ipcMain.handle('ntp-sports', async () => {
         const away = teams.find(t => t.homeAway === 'away');
         const stateType = comp?.status?.type?.state || 'pre';
         const statusText = comp?.status?.type?.shortDetail || comp?.status?.type?.description || '';
+        const homeAb = home?.team?.abbreviation || home?.team?.shortDisplayName || '';
+        const awayAb = away?.team?.abbreviation || away?.team?.shortDisplayName || '';
         return {
           league: id,
-          home: home?.team?.abbreviation || '',
+          home: homeAb,
           homeScore: home?.score ?? '',
-          away: away?.team?.abbreviation || '',
+          away: awayAb,
           awayScore: away?.score ?? '',
           status: statusText,
           live: stateType === 'in',
@@ -8156,7 +8330,14 @@ ipcMain.handle('ntp-sports', async () => {
       .filter(r => r.status === 'fulfilled')
       .flatMap(r => r.value)
       .filter(g => g.home && g.away);
-    return games.length > 0 ? games : { error: 'No games scheduled today' };
+    if (games.length > 0) return games;
+    const fulfilled = results.filter(r => r.status === 'fulfilled').length;
+    const rejected = results.filter(r => r.status === 'rejected').length;
+    if (fulfilled === 0 && rejected > 0) {
+      const msg = results.find(r => r.status === 'rejected')?.reason?.message || '';
+      return { error: msg ? `Scores: ${msg}` : 'Could not reach ESPN. Check your connection.' };
+    }
+    return { error: 'No games listed right now.' };
   } catch (e) {
     return { error: e.message };
   }

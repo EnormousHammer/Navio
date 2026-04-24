@@ -22,7 +22,7 @@ const DEFAULT_CONFIG = {
   startupMode: 'new-tab',
   /**
    * What Ctrl+T (and links opened into a new tab without a URL) show:
-   *   'home' — full dashboard: AI search, shortcuts, inbox, news widgets (default).
+   *   'home' — full dashboard: AI search, shortcuts, Markets + Live sports by default (chips / Settings for Inbox or News).
    *   'chat' — chat-first: large AI prompt + keep shortcut tiles (Live Sports, Movies, etc.), hide widgets.
    *   'blank' — empty page; users land straight in the omnibox.
    */
@@ -92,8 +92,8 @@ const DEFAULT_CONFIG = {
    * Home dashboard (New tab → Home): left and right panel widgets.
    * Each: inbox | news | stocks | sports | none
    */
-  ntpWidgetLeft: 'inbox',
-  ntpWidgetRight: 'news',
+  ntpWidgetLeft: 'stocks',
+  ntpWidgetRight: 'sports',
   /** Reddit hot feed when the News widget is shown (subreddit name only, no /r/). */
   ntpNewsSubreddit: 'worldnews',
   /**
@@ -159,7 +159,7 @@ function loadConfig() {
   const WIDGET_SLOTS = new Set(['inbox', 'news', 'stocks', 'sports', 'none']);
   for (const key of ['ntpWidgetLeft', 'ntpWidgetRight']) {
     const w = String(merged[key] || '').trim().toLowerCase();
-    merged[key] = WIDGET_SLOTS.has(w) ? w : key === 'ntpWidgetLeft' ? 'inbox' : 'news';
+    merged[key] = WIDGET_SLOTS.has(w) ? w : key === 'ntpWidgetLeft' ? 'stocks' : 'sports';
   }
   if (merged.ntpWidgetLeft === merged.ntpWidgetRight && merged.ntpWidgetLeft !== 'none') {
     const alt = ['inbox', 'news', 'stocks', 'sports'].find((t) => t !== merged.ntpWidgetLeft);

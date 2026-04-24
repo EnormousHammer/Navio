@@ -502,12 +502,12 @@ class SettingsManagerClass {
     }
     const WOPTS = ['inbox', 'news', 'stocks', 'sports', 'none'];
     if (this.elements.ntpWidgetLeft) {
-      const v = String(this.config.ntpWidgetLeft || 'inbox').toLowerCase();
-      this.elements.ntpWidgetLeft.value = WOPTS.includes(v) ? v : 'inbox';
+      const v = String(this.config.ntpWidgetLeft || 'stocks').toLowerCase();
+      this.elements.ntpWidgetLeft.value = WOPTS.includes(v) ? v : 'stocks';
     }
     if (this.elements.ntpWidgetRight) {
-      const v = String(this.config.ntpWidgetRight || 'news').toLowerCase();
-      this.elements.ntpWidgetRight.value = WOPTS.includes(v) ? v : 'news';
+      const v = String(this.config.ntpWidgetRight || 'sports').toLowerCase();
+      this.elements.ntpWidgetRight.value = WOPTS.includes(v) ? v : 'sports';
     }
     if (this.elements.ntpNewsSubreddit) {
       const sub = String(this.config.ntpNewsSubreddit || 'worldnews')
@@ -1454,11 +1454,11 @@ class SettingsManagerClass {
       })(),
       ntpWidgetLeft: (() => {
         const v = this.elements.ntpWidgetLeft ? String(this.elements.ntpWidgetLeft.value || '').trim() : '';
-        return ['inbox', 'news', 'stocks', 'sports', 'none'].includes(v) ? v : 'inbox';
+        return ['inbox', 'news', 'stocks', 'sports', 'none'].includes(v) ? v : 'stocks';
       })(),
       ntpWidgetRight: (() => {
         const v = this.elements.ntpWidgetRight ? String(this.elements.ntpWidgetRight.value || '').trim() : '';
-        return ['inbox', 'news', 'stocks', 'sports', 'none'].includes(v) ? v : 'news';
+        return ['inbox', 'news', 'stocks', 'sports', 'none'].includes(v) ? v : 'sports';
       })(),
       ntpNewsSubreddit: (() => {
         const raw = this.elements.ntpNewsSubreddit ? String(this.elements.ntpNewsSubreddit.value || '').trim() : '';

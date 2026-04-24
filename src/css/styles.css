@@ -2935,6 +2935,11 @@ body.ntp-chat-active .ntp-model-selector { margin-bottom: 6px; }
     0 0 0 1px rgba(0, 0, 0, 0.35),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
+/* Author `display:flex` wins over UA `[hidden]` — without this, hidden tiles stay visible and
+   loaders skip them (`w.hidden`), leaving eternal spinners. */
+.ntp-widget[hidden] {
+  display: none !important;
+}
 /* Gradient accent line — subtle, not nightclub neon */
 .ntp-widget::before {
   content: '';
@@ -3482,6 +3487,31 @@ body.ntp-chat-active .ntp-model-selector { margin-bottom: 6px; }
 }
 
 /* ── News items ─────────────────────────────────────────────────────── */
+.ntp-news-body {
+  flex: 1;
+  min-width: 0;
+}
+.ntp-news-thumb-wrap {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.ntp-news-thumb-wrap--empty {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0.02) 100%);
+}
+.ntp-news-thumb-wrap--photo {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.ntp-news-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 .ntp-news-title {
   font-size: 13px;
   font-weight: 600;
@@ -3686,7 +3716,10 @@ body.ntp-chat-active .ntp-model-selector { margin-bottom: 6px; }
   margin-bottom: 3px;
 }
 .ntp-news-item {
-  padding: 9px 14px 9px 13px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px 10px 12px;
   border-bottom: 1px solid rgba(255,255,255,0.085);
   cursor: pointer;
   transition: background 0.12s, border-left-color 0.12s;
@@ -4735,7 +4768,7 @@ button.ntp-ticker-sport--stream:focus-visible {
   display: flex;
   flex-direction: column;
   transition: width 350ms cubic-bezier(0.32, 0.72, 0, 1);
-  /* Above guest <webview> / reading list (1200) / modal shells (2000); below NTP ticker (9999) & workspace/palette/prelude (10030+). Panel is a direct <body> child so it isn’t trapped under #app. */
+  /* Above guest <webview> / reading list (1200); below full-window modals (Connectors hub 100010+, Settings 100011+). */
   z-index: 5000;
   /* Softer blur keeps sidecar type sharper than heavy glass (still reads “premium”). */
   backdrop-filter: blur(14px) saturate(1.1);
@@ -7073,12 +7106,8 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  z-index: 2000;
-}
-
-/* Above `.assistant-panel` (5000) so Settings is usable while the AI sidecar is open. */
-#settings-modal.modal-overlay {
-  z-index: 5500;
+  /* Above assistant (5000), shell overlays (12k), and nav dropdowns (~100k) so Settings is never buried. */
+  z-index: 100011;
 }
 
 .modal-overlay.visible { display: flex; }
@@ -7126,7 +7155,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   width: min(920px, calc(100vw - 32px));
   max-width: min(920px, calc(100vw - 32px));
   /* Leave room for overlay padding + titlebar so the header is never clipped */
-  max-height: min(800px, max(240px, calc(100vh - 48px)));
+  max-height: min(800px, max(240px, calc(100dvh - 48px)));
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg), 0 0 0 1px rgba(0, 216, 255, 0.06);
   min-height: 0;
@@ -7363,6 +7392,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   overflow-y: auto;
   padding: 24px 28px 28px;
   min-width: 0;
+  min-height: 0;
   scrollbar-width: thin;
 }
 
@@ -7891,24 +7921,36 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 
 .connectors-hub-overlay {
   position: fixed;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
+  inset: 0;
+  box-sizing: border-box;
   background: var(--overlay-bg);
   backdrop-filter: blur(12px);
   display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
+  z-index: 100010;
+  -webkit-app-region: no-drag;
 }
 
 .connectors-hub-overlay.active {
   display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: max(12px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px))
+    max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.connectors-hub-overlay.active .connectors-hub {
+  margin-top: auto;
+  margin-bottom: auto;
+  flex-shrink: 0;
 }
 
 .connectors-hub {
   width: 90%;
   max-width: 1100px;
-  max-height: 85vh;
+  max-height: min(85vh, calc(100dvh - 32px));
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -7917,6 +7959,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   flex-direction: column;
   animation: modal-in 250ms var(--ease);
   overflow: hidden;
+  min-height: 0;
 }
 
 .connectors-hub-header {
@@ -8025,6 +8068,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   flex: 1;
   overflow-y: auto;
   padding: 20px 22px 22px;
+  min-height: 0;
 }
 
 .connectors-category-group {
@@ -8589,13 +8633,26 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 .conn-modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 9000;
+  box-sizing: border-box;
+  z-index: 100012;
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(6px);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  padding: max(12px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px))
+    max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  -webkit-app-region: no-drag;
   animation: fade-in 180ms ease;
+}
+
+.conn-modal-overlay .conn-modal {
+  margin-top: auto;
+  margin-bottom: auto;
+  flex-shrink: 0;
 }
 
 .conn-modal {
@@ -9717,7 +9774,7 @@ body.onboarding-active #app {
 .command-palette-overlay {
   position: fixed;
   inset: 0;
-  z-index: 10040;
+  z-index: 100014;
   background: var(--overlay-bg);
   display: none;
   align-items: flex-start;
@@ -11771,16 +11828,30 @@ button:focus-visible,
 .live-settings-modal {
   position: fixed;
   inset: 0;
-  z-index: 10000;
+  box-sizing: border-box;
+  z-index: 100013;
   display: none;
-  align-items: center;
-  justify-content: center;
   background: rgba(8, 12, 24, 0.72);
   backdrop-filter: blur(6px);
+  -webkit-app-region: no-drag;
 }
 .live-draft-modal.active,
 .live-settings-modal.active {
   display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: max(12px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px))
+    max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.live-draft-modal.active .live-modal-panel,
+.live-settings-modal.active .live-settings-panel {
+  margin-top: auto;
+  margin-bottom: auto;
+  flex-shrink: 0;
 }
 
 /* ── Draft modal ─────────────────────────────────────────────────────────── */
@@ -11789,7 +11860,7 @@ button:focus-visible,
   border: 1px solid var(--glass-border);
   border-radius: 18px;
   width: min(560px, calc(100vw - 40px));
-  max-height: calc(100vh - 80px);
+  max-height: min(calc(100vh - 80px), calc(100dvh - 48px));
   display: flex;
   flex-direction: column;
   box-shadow: 0 24px 64px rgba(0,0,0,0.55), 0 0 0 1px rgba(0,216,255,0.06);
@@ -12127,7 +12198,7 @@ button:focus-visible,
   border: 1px solid var(--glass-border);
   border-radius: 18px;
   width: min(520px, calc(100vw - 40px));
-  max-height: calc(100vh - 60px);
+  max-height: min(calc(100vh - 60px), calc(100dvh - 48px));
   display: flex;
   flex-direction: column;
   box-shadow: 0 24px 64px rgba(0,0,0,0.55);

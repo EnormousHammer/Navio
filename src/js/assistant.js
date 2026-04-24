@@ -5367,6 +5367,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       drive_update_text_file: 'Drive',
       drive_update_google_doc: 'Drive',
       drive_trash_file: 'Drive',
+      save_local_file: 'Save file',
       calendar_list_events: 'Calendar',
       calendar_create_event: 'Calendar',
       web_search: 'Web'
@@ -5461,6 +5462,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       case 'drive_update_text_file': return `Drive: updated file (${result?.bytes_written ?? 0} bytes)`;
       case 'drive_update_google_doc': return `Drive: updated Doc (${result?.chars_written ?? 0} chars)`;
       case 'drive_trash_file': return `Drive: moved to trash`;
+      case 'save_local_file': {
+        if (result?.canceled) return 'Save cancelled (no file written)';
+        if (result?.path) return `Saved: ${result.path}`;
+        return 'Saved file';
+      }
       case 'web_search': {
         if (result?.error) return `Search failed: ${result.error}`;
         const cites = Array.isArray(result?.citations) ? result.citations.length : 0;

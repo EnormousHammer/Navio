@@ -1158,6 +1158,12 @@
 }
 .new-tab-page .ntp-news-item {
   padding: 6px 10px 6px 9px;
+  gap: 8px;
+}
+.new-tab-page .ntp-news-thumb-wrap {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
 }
 .new-tab-page .ntp-news-title {
   font-size: 12px;
