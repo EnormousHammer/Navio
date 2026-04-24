@@ -963,6 +963,9 @@ const NTP = (() => {
               ? 'https://www.espn.com/soccer/scoreboard/_/league/usa.1'
               : `https://www.espn.com/${path}/scoreboard`;
           const rowCls = g.live ? 'ntp-sport-row ntp-sport-row--live' : 'ntp-sport-row';
+          const statusLine = st
+            ? `<div class="ntp-sport-statusline">${st}</div>`
+            : '';
           return `<div class="${rowCls}" data-espn-url="${_escAttr(espnUrl)}">
             <div class="ntp-sport-main">
               <div class="ntp-sport-scoreline">
@@ -978,10 +981,10 @@ const NTP = (() => {
                   ${_ntpSportLogoHtml(homeLogo, g.home)}
                 </span>
               </div>
+              ${statusLine}
               <div class="ntp-sport-league-line">${phase}<strong>${_esc(g.league || '')}</strong>${livePulse ? ` · ${livePulse}` : ''}</div>
               ${timeEt}
             </div>
-            <div class="ntp-sport-meta">${st}</div>
           </div>`;
         })
         .join('');

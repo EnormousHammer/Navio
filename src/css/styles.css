@@ -2523,17 +2523,35 @@ body.ntp-blank-mode .ntp-widget-pickers {
 .ntp-stock-pct.down {
   color: #fb7185;
 }
+/* Sports list: grow in tile, rows share vertical space; content centered (no wide left/right gap). */
+#ntp-sports-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: min(220px, 34vh);
+  padding: 6px 8px 10px;
+  box-sizing: border-box;
+}
+#ntp-sports-list:has(> .ntp-widget-empty),
+#ntp-sports-list:has(> .ntp-widget-loading) {
+  justify-content: center;
+}
 .ntp-sport-row {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 14px 10px 13px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 0;
+  min-height: 0;
+  gap: 6px;
+  padding: 12px 10px 14px;
   border-radius: 0;
   cursor: pointer;
   border-bottom: 1px solid rgba(255, 255, 255, 0.085);
   border-left: 3px solid transparent;
   font-size: 12px;
+  text-align: center;
   transition: background 0.12s, border-left-color 0.12s;
 }
 .ntp-sport-row--live {
@@ -2554,8 +2572,8 @@ body.ntp-blank-mode .ntp-widget-pickers {
 .ntp-sport-meta {
   font-size: 10px;
   opacity: 0.55;
-  text-align: right;
-  max-width: 42%;
+  text-align: center;
+  max-width: 100%;
 }
 .ntp-sport-live {
   display: inline-block;
@@ -2566,17 +2584,37 @@ body.ntp-blank-mode .ntp-widget-pickers {
   margin-right: 6px;
 }
 .ntp-sport-main {
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
-  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
 }
 .ntp-sport-scoreline {
   display: flex;
   align-items: center;
-  flex-wrap: nowrap;
-  gap: 6px;
-  font-size: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.02em;
+}
+.ntp-sport-statusline {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(200, 220, 245, 0.72);
+  margin-top: 2px;
+  line-height: 1.35;
+  max-width: 95%;
+}
+.ntp-sport-row--live .ntp-sport-statusline {
+  color: rgba(254, 202, 202, 0.95);
 }
 .ntp-sport-side {
   display: inline-flex;
@@ -2596,7 +2634,7 @@ body.ntp-blank-mode .ntp-widget-pickers {
   flex-shrink: 0;
 }
 .ntp-sport-ab {
-  max-width: 5.5rem;
+  max-width: 7rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2628,14 +2666,16 @@ body.ntp-blank-mode .ntp-widget-pickers {
   flex-shrink: 0;
 }
 .ntp-sport-league-line {
-  margin-top: 4px;
+  margin-top: 2px;
   font-size: 10px;
   opacity: 0.72;
   letter-spacing: 0.04em;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  width: 100%;
 }
 .ntp-sport-phase {
   font-size: 9px;
@@ -2669,23 +2709,19 @@ body.ntp-blank-mode .ntp-widget-pickers {
   }
 }
 .ntp-sport-et {
-  margin-top: 5px;
+  margin-top: 4px;
   font-size: 10px;
   font-weight: 500;
   color: rgba(226, 232, 248, 0.62);
   letter-spacing: 0.02em;
+  width: 100%;
+  line-height: 1.4;
 }
 .ntp-sport-et-label {
   font-size: 9px;
   opacity: 0.65;
   font-weight: 600;
 }
-.ntp-sport-row .ntp-sport-meta {
-  align-self: flex-start;
-  padding-top: 2px;
-  max-width: 38%;
-}
-
 /* ────────────────────────────────────────────────────────────────────────────
    New Tab Mode — 'chat' and 'blank' (Settings → General → New tab shows)
    ──────────────────────────────────────────────────────────────────────────── */

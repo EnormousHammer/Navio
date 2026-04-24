@@ -971,6 +971,24 @@ ${badgeHtml(it.badge)}
       fn();
     };
 
+    /** Guest <webview> forwards zoom keys via IPC — same behavior as shell keydown in ui-shell-extras. */
+    const applyNavioZoomShortcut = (kind) => {
+      if (typeof TabManager === 'undefined') return;
+      const ntp = document.getElementById('new-tab-page');
+      const ntpActive = !!(ntp && ntp.classList.contains('active'));
+      const step = 0.1;
+      if (ntpActive && typeof window.__navioGetNtpZoom === 'function' && typeof window.__navioSetNtpZoom === 'function') {
+        const cur = window.__navioGetNtpZoom();
+        if (kind === 'reset') window.__navioSetNtpZoom(1);
+        else if (kind === 'in') window.__navioSetNtpZoom(cur + step);
+        else window.__navioSetNtpZoom(cur - step);
+        return;
+      }
+      if (kind === 'reset') TabManager.setActiveTabZoomFactor(null);
+      else if (kind === 'in') TabManager.zoomActiveTabBy(0.1);
+      else TabManager.zoomActiveTabBy(-0.1);
+    };
+
     window.navio.onShortcut((action) => {
       switch (action) {
         case 'new-tab':
@@ -1024,6 +1042,15 @@ ${badgeHtml(it.badge)}
               AssistantManager.toggle();
             }
           });
+          break;
+        case 'zoom-in':
+          applyNavioZoomShortcut('in');
+          break;
+        case 'zoom-out':
+          applyNavioZoomShortcut('out');
+          break;
+        case 'zoom-reset':
+          applyNavioZoomShortcut('reset');
           break;
         case 'toggle-connectors':
           if (typeof ConnectorsManager !== 'undefined') {

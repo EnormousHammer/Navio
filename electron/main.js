@@ -981,6 +981,7 @@ function navioPopupDimsFromFeatures(feat) {
 const navioGuestWindowOpenBound = new WeakSet();
 let navioWebviewGuestPopupRoutingInstalled = false;
 let navioGuestAssistantShortcutForwardInstalled = false;
+let navioGuestZoomShortcutForwardInstalled = false;
 
 /**
  * When a page tab (<webview>) has focus, Ctrl/Cmd+Shift+A does not reach the shell
@@ -1019,6 +1020,54 @@ function installNavioGuestAssistantShortcutForward() {
       if (!isAssistantAccelerator(input)) return;
       event.preventDefault();
       sendToggleAssistantShortcut();
+    });
+  });
+}
+
+/**
+ * When a page tab (<webview>) has focus, Ctrl/Cmd +/−/0 do not reach the shell
+ * renderer, so page zoom never updates. Forward the same shortcuts to the main
+ * window (renderer applies TabManager zoom or NTP zoom, matching the omnibox path).
+ */
+function installNavioGuestZoomShortcutForward() {
+  if (navioGuestZoomShortcutForwardInstalled) return;
+  navioGuestZoomShortcutForwardInstalled = true;
+
+  const sendZoomShortcut = (action) => {
+    try {
+      const mw = mainWindow;
+      if (mw && !mw.isDestroyed()) {
+        mw.webContents.send('shortcut', action);
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const classifyZoomShortcut = (input) => {
+    if (!input || input.type !== 'keyDown') return null;
+    if (!(input.control || input.meta)) return null;
+    if (input.alt) return null;
+    const key = input.key || '';
+    const code = input.code || '';
+    if (key === '0') return 'zoom-reset';
+    if (key === '-' || key === '_' || code === 'NumpadSubtract') return 'zoom-out';
+    if (key === '=' || key === '+' || code === 'NumpadAdd') return 'zoom-in';
+    if (code === 'Equal' && input.shift) return 'zoom-in';
+    return null;
+  };
+
+  app.on('web-contents-created', (_event, wc) => {
+    try {
+      if (typeof wc.getType !== 'function' || wc.getType() !== 'webview') return;
+    } catch {
+      return;
+    }
+    wc.on('before-input-event', (event, input) => {
+      const action = classifyZoomShortcut(input);
+      if (!action) return;
+      event.preventDefault();
+      sendZoomShortcut(action);
     });
   });
 }
@@ -6827,12 +6876,16 @@ async function getValidOAuthToken(providerId) {
   const map = loadOAuthTokens();
   const entry = map[providerId];
   if (!entry) return null;
+  let token;
   // If not expired or no expiry set, return current token
   if (!entry.expiresAt || Date.now() < entry.expiresAt) {
-    return decryptOAuthToken(entry.access);
+    token = decryptOAuthToken(entry.access);
+  } else {
+    token = await refreshOAuthToken(providerId);
   }
-  // Expired — try to refresh
-  return await refreshOAuthToken(providerId);
+  if (!token) return null;
+  await backfillGoogleOAuthProfileIfMissing(providerId);
+  return token;
 }
 
 /** Gmail agent tools: primary Google vs second-account slot (google_2). */
@@ -6976,7 +7029,8 @@ async function resolveGmailToolToken(args) {
 // Fetch user profile info after connecting (Google, Microsoft, GitHub, etc.)
 async function fetchOAuthUserInfo(providerId, accessToken) {
   try {
-    if (providerId === 'google') {
+    // Second Gmail slot uses providerId `google_2` — same userinfo endpoint as primary.
+    if (providerId === 'google' || providerId === 'google_2') {
       const r = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
         headers: { Authorization: `Bearer ${accessToken}` }
       });
@@ -7006,6 +7060,31 @@ async function fetchOAuthUserInfo(providerId, accessToken) {
     }
   } catch {}
   return { email: '', name: '', avatar: '' };
+}
+
+/**
+ * Older builds never called userinfo for `google_2`, so tokens lacked `email`.
+ * Without it, Gmail web URLs cannot use `?authuser=<email>` and fall back to `/u/1/`,
+ * which follows browser sign-in order (often the wrong inbox).
+ */
+async function backfillGoogleOAuthProfileIfMissing(providerId) {
+  if (providerId !== 'google' && providerId !== 'google_2') return;
+  const map = loadOAuthTokens();
+  const entry = map[providerId];
+  if (!entry) return;
+  if (String(entry.email || '').includes('@')) return;
+  const token = decryptOAuthToken(entry.access);
+  if (!token) return;
+  const info = await fetchOAuthUserInfo(providerId, token);
+  const em = String(info.email || '').trim();
+  if (!em.includes('@')) return;
+  map[providerId] = {
+    ...entry,
+    email: em,
+    name: info.name || entry.name || '',
+    avatar: info.avatar || entry.avatar || ''
+  };
+  saveOAuthTokens(map);
 }
 
 // ── IPC: oauth-connect ────────────────────────────────────────────────────
@@ -7219,8 +7298,10 @@ ipcMain.handle('oauth-disconnect', (event, { providerId }) => {
 // ── IPC: oauth-status ─────────────────────────────────────────────────────
 // Returns which providers are connected + display info (email, avatar).
 // Never exposes actual tokens.
-ipcMain.handle('oauth-status', () => {
+ipcMain.handle('oauth-status', async () => {
   try {
+    await backfillGoogleOAuthProfileIfMissing('google');
+    await backfillGoogleOAuthProfileIfMissing('google_2');
     const map = loadOAuthTokens();
     const result = {};
     for (const [id, entry] of Object.entries(map)) {
@@ -9417,6 +9498,7 @@ app.whenReady().then(async () => {
 
   installNavioWebviewGuestPopupRouting();
   installNavioGuestAssistantShortcutForward();
+  installNavioGuestZoomShortcutForward();
 
   createMainWindow();
 
