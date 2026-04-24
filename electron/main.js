@@ -8287,6 +8287,49 @@ ipcMain.handle('ntp-stocks', async () => {
 });
 
 // ── NTP: Sports scores (ESPN unofficial API — free, no key required) ──────
+// Team logos: `competitor.team.logo` (Predicta `espnCompetitorLogoHref`). Season slug/type → phase label; kickoff → America/New_York.
+
+function _ntpEspnSeasonPhaseLabel(ev) {
+  const s = ev && ev.season;
+  if (!s || typeof s !== 'object') return '';
+  const slug = typeof s.slug === 'string' ? s.slug.toLowerCase() : '';
+  const typeObj = s.type && typeof s.type === 'object' ? s.type : null;
+  const abbrev = typeof typeObj?.abbreviation === 'string' ? typeObj.abbreviation.toLowerCase() : '';
+  const typeName = typeof typeObj?.name === 'string' ? typeObj.name.toLowerCase() : '';
+  const hay = `${slug} ${abbrev} ${typeName}`;
+  if (hay.includes('preseason') || hay.includes('pre season') || abbrev === 'pre') return 'Preseason';
+  if (hay.includes('playoff') || hay.includes('postseason') || abbrev === 'pst' || typeName.includes('playoff')) return 'Playoffs';
+  if (hay.includes('final') || hay.includes('championship') || hay.includes('world-series')) return 'Finals';
+  if (hay.includes('regular') || abbrev === 'reg' || typeName.includes('regular')) return 'Regular season';
+  const tid = typeObj?.id;
+  if (tid === 1 || tid === '1') return 'Preseason';
+  if (tid === 2 || tid === '2') return 'Regular season';
+  if (tid === 3 || tid === '3') return 'Playoffs';
+  if (typeObj?.name) return String(typeObj.name);
+  return '';
+}
+
+function _ntpEspnStartTimeEt(ev) {
+  const comp = ev?.competitions?.[0];
+  const iso = comp?.date || comp?.startDate || ev?.date;
+  if (!iso || typeof iso !== 'string') return '';
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short'
+    });
+  } catch {
+    return '';
+  }
+}
+
 ipcMain.handle('ntp-sports', async () => {
   const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
   const leagues = [
@@ -8311,16 +8354,27 @@ ipcMain.handle('ntp-sports', async () => {
         const home = teams.find(t => t.homeAway === 'home');
         const away = teams.find(t => t.homeAway === 'away');
         const stateType = comp?.status?.type?.state || 'pre';
-        const statusText = comp?.status?.type?.shortDetail || comp?.status?.type?.description || '';
+        const st = comp?.status?.type || {};
+        const statusText = st.shortDetail || st.description || '';
+        const statusDetail = typeof st.detail === 'string' ? st.detail : '';
         const homeAb = home?.team?.abbreviation || home?.team?.shortDisplayName || '';
         const awayAb = away?.team?.abbreviation || away?.team?.shortDisplayName || '';
+        const homeLogo = typeof home?.team?.logo === 'string' ? home.team.logo : '';
+        const awayLogo = typeof away?.team?.logo === 'string' ? away.team.logo : '';
+        const seasonPhase = _ntpEspnSeasonPhaseLabel(ev);
+        const startTimeEt = _ntpEspnStartTimeEt(ev);
         return {
           league: id,
           home: homeAb,
           homeScore: home?.score ?? '',
           away: awayAb,
           awayScore: away?.score ?? '',
+          homeLogo,
+          awayLogo,
           status: statusText,
+          statusDetail,
+          seasonPhase,
+          startTimeEt,
           live: stateType === 'in',
           final: stateType === 'post',
         };

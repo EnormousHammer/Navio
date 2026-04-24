@@ -89,8 +89,8 @@ const DEFAULT_CONFIG = {
   /** User-defined NTP shortcuts (array of { title, url }). Empty → fallback defaults in ntp.js. */
   ntpShortcuts: [],
   /**
-   * Home dashboard (2×2): top row then bottom row. Each: inbox | news | stocks | sports | none
-   * Legacy ntpWidgetLeft / ntpWidgetRight in saved config are migrated on load if quad keys absent.
+   * Home dashboard (2×2): TL = mail, TR = news, BL = markets, BR = live sports.
+   * Each: inbox | news | stocks | sports | none. Legacy Left/Right migrated if quad keys absent.
    */
   ntpWidgetTL: 'inbox',
   ntpWidgetTR: 'news',
@@ -200,6 +200,11 @@ function loadConfig() {
       merged[key] = v;
     }
   })();
+  /* Prefer Reddit news top-right and ESPN sports bottom-right (common mistaken swap). */
+  if (merged.ntpWidgetTR === 'sports' && merged.ntpWidgetBR === 'news') {
+    merged.ntpWidgetTR = 'news';
+    merged.ntpWidgetBR = 'sports';
+  }
   const sub = String(merged.ntpNewsSubreddit || 'worldnews')
     .trim()
     .toLowerCase()

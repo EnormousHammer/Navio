@@ -6,7 +6,7 @@
  *  • Connected services status bar (IMAP email counts)
  *  • World News (Reddit — subreddit configurable)
  *  • Markets: TradingView embed; Yahoo quotes (IPC) for smart row / AI when prefetched
- *  • Live scores (ESPN via main IPC) — optional slot in the 2×2 grid
+ *  • Live scores (ESPN via main IPC) — team logos from ESPN `team.logo` (Predicta-style); optional 2×2 slot
  *  • Inbox widget — unread emails from IMAP Gmail/Outlook
  *  • Dashboard: 2×2 grid (default Inbox | News over Markets | Live sports); chips + Settings per corner
  *  • "Draft All" button — triggers batch email drafting
@@ -774,7 +774,7 @@ const NTP = (() => {
     // Grab relevant CSS from the page's stylesheets for the widget classes
     const styles = Array.from(document.styleSheets)
       .flatMap(s => { try { return Array.from(s.cssRules); } catch { return []; } })
-      .filter(r => r.cssText && /ntp-email|ntp-news|ntp-news-body|ntp-news-thumb|ntp-stock|ntp-sport|ntp-brief|ntp-widget-body|ntp-wx/.test(r.cssText))
+      .filter(r => r.cssText && /ntp-email|ntp-news|ntp-news-body|ntp-news-thumb|ntp-stock|ntp-sport|ntp-sport-logo|ntp-sport-phase|ntp-sport-et|ntp-sport-live-pulse|ntp-brief|ntp-widget-body|ntp-wx/.test(r.cssText))
       .map(r => r.cssText)
       .join('\n');
 
@@ -881,7 +881,7 @@ const NTP = (() => {
     const list = document.getElementById('ntp-stocks-list');
     if (!list || (w && w.hidden)) return;
     const srcLabel = document.getElementById('ntp-stocks-source');
-    if (srcLabel) srcLabel.textContent = 'TradingView';
+    if (srcLabel) srcLabel.textContent = 'Markets';
     list.innerHTML =
       '<div class="ntp-widget-loading"><span></span><span></span><span></span></div>';
     try {
@@ -913,6 +913,16 @@ const NTP = (() => {
     return map[L] || 'sports';
   }
 
+  /** ESPN `team.logo` URLs (same field Predicta uses via `espnCompetitorLogoHref`) — no Predicta runtime dependency. */
+  function _ntpSportLogoHtml(url, abbr) {
+    const u = String(url || '').trim();
+    if (!/^https?:\/\//i.test(u)) {
+      const ch = _esc(String(abbr || '?').slice(0, 2).toUpperCase());
+      return `<span class="ntp-sport-logo-fallback" aria-hidden="true">${ch}</span>`;
+    }
+    return `<img class="ntp-sport-logo" src="${_escAttr(u)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />`;
+  }
+
   async function _loadSportsWidget() {
     const w = document.getElementById('ntp-widget-sports');
     const list = document.getElementById('ntp-sports-list');
@@ -930,22 +940,61 @@ const NTP = (() => {
       _sportsGamesSummary = games;
       list.innerHTML = games
         .map((g) => {
-          const live = g.live ? '<span class="ntp-sport-live">LIVE</span>' : '';
+          const livePulse = g.live
+            ? '<span class="ntp-sport-live-pulse" aria-label="Live">LIVE</span>'
+            : '';
+          const phase = g.seasonPhase
+            ? `<span class="ntp-sport-phase">${_esc(g.seasonPhase)}</span>`
+            : '';
           const hs = g.homeScore !== '' && g.homeScore != null ? g.homeScore : '—';
           const as = g.awayScore !== '' && g.awayScore != null ? g.awayScore : '—';
-          const line = `${_esc(g.away || '')} ${as} @ ${_esc(g.home || '')} ${hs}`;
-          const st = _esc(g.status || '');
+          const awayLogo = g.awayLogo;
+          const homeLogo = g.homeLogo;
+          const awayAb = _esc(g.away || '');
+          const homeAb = _esc(g.home || '');
+          const metaBits = [g.status, g.statusDetail].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i);
+          const st = _esc(metaBits.join(' · '));
+          const timeEt = g.startTimeEt
+            ? `<div class="ntp-sport-et">${_esc(g.startTimeEt)} <span class="ntp-sport-et-label">(ET)</span></div>`
+            : '';
           const path = _espnLeaguePath(g.league);
           const espnUrl =
             path === 'soccer/scoreboard'
               ? 'https://www.espn.com/soccer/scoreboard/_/league/usa.1'
               : `https://www.espn.com/${path}/scoreboard`;
-          return `<div class="ntp-sport-row" data-espn-url="${_escAttr(espnUrl)}">
-            <div><strong>${_esc(g.league || '')}</strong> · ${live}${line}</div>
+          const rowCls = g.live ? 'ntp-sport-row ntp-sport-row--live' : 'ntp-sport-row';
+          return `<div class="${rowCls}" data-espn-url="${_escAttr(espnUrl)}">
+            <div class="ntp-sport-main">
+              <div class="ntp-sport-scoreline">
+                <span class="ntp-sport-side ntp-sport-side--away">
+                  ${_ntpSportLogoHtml(awayLogo, g.away)}
+                  <span class="ntp-sport-ab">${awayAb}</span>
+                  <span class="ntp-sport-num">${as}</span>
+                </span>
+                <span class="ntp-sport-at">@</span>
+                <span class="ntp-sport-side ntp-sport-side--home">
+                  <span class="ntp-sport-num">${hs}</span>
+                  <span class="ntp-sport-ab">${homeAb}</span>
+                  ${_ntpSportLogoHtml(homeLogo, g.home)}
+                </span>
+              </div>
+              <div class="ntp-sport-league-line">${phase}<strong>${_esc(g.league || '')}</strong>${livePulse ? ` · ${livePulse}` : ''}</div>
+              ${timeEt}
+            </div>
             <div class="ntp-sport-meta">${st}</div>
           </div>`;
         })
         .join('');
+      list.querySelectorAll('.ntp-sport-logo').forEach((img) => {
+        img.addEventListener('error', () => {
+          const ab = (img.closest('.ntp-sport-side')?.querySelector('.ntp-sport-ab')?.textContent || '?').slice(0, 2);
+          const sp = document.createElement('span');
+          sp.className = 'ntp-sport-logo-fallback';
+          sp.setAttribute('aria-hidden', 'true');
+          sp.textContent = ab.toUpperCase() || '?';
+          img.replaceWith(sp);
+        });
+      });
       list.querySelectorAll('.ntp-sport-row').forEach((row) => {
         row.addEventListener('click', () => {
           const u = row.dataset.espnUrl;

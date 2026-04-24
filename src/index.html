@@ -416,8 +416,8 @@
             <div class="ntp-widget ntp-stocks-widget" id="ntp-widget-stocks" data-ntp-widget-type="stocks" hidden>
               <div class="ntp-widget-header">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 12l4-4 4 4 6-6"/></svg>
-                Markets
-                <span class="ntp-widget-source" id="ntp-stocks-source">TradingView</span>
+                TradingView
+                <span class="ntp-widget-source" id="ntp-stocks-source">Markets</span>
                 <button class="ntp-widget-popout" data-widget="stocks" title="Open in new tab">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                 </button>
@@ -744,13 +744,13 @@
               <p class="settings-inline-hint">Chat mode keeps all your shortcut tiles but hides inbox and news widgets so the AI prompt is centered like Perplexity / ChatGPT.</p>
               <div style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08)">
                 <h3 style="margin-bottom:8px">Home dashboard</h3>
-                <p class="settings-inline-hint">Home shows a 2×2 grid under shortcuts (top row, then bottom row). Each corner is chosen on Home with the chip row or here. The same widget type cannot appear twice; duplicates become Off. Hidden in Chat or Blank new-tab modes.</p>
+                <p class="settings-inline-hint">Home shows a 2×2 grid under shortcuts: mail top-left, news top-right, markets bottom-left, live sports bottom-right (defaults). Each corner is chosen on Home with the chip row or here. The same widget type cannot appear twice; duplicates become Off. Hidden in Chat or Blank new-tab modes.</p>
                 <div class="setting-row">
                   <label for="setting-ntp-widget-tl">Top left</label>
                   <select id="setting-ntp-widget-tl">
                     <option value="inbox">Inbox (Gmail / Outlook when connected)</option>
                     <option value="news">News (Reddit)</option>
-                    <option value="stocks">Markets (TradingView)</option>
+                    <option value="stocks">TradingView (markets)</option>
                     <option value="sports">Live sports (today's scores)</option>
                     <option value="none">None (empty slot)</option>
                   </select>
@@ -760,7 +760,7 @@
                   <select id="setting-ntp-widget-tr">
                     <option value="inbox">Inbox (Gmail / Outlook when connected)</option>
                     <option value="news">News (Reddit)</option>
-                    <option value="stocks">Markets (TradingView)</option>
+                    <option value="stocks">TradingView (markets)</option>
                     <option value="sports">Live sports (today's scores)</option>
                     <option value="none">None (empty slot)</option>
                   </select>
@@ -770,7 +770,7 @@
                   <select id="setting-ntp-widget-bl">
                     <option value="inbox">Inbox (Gmail / Outlook when connected)</option>
                     <option value="news">News (Reddit)</option>
-                    <option value="stocks">Markets (TradingView)</option>
+                    <option value="stocks">TradingView (markets)</option>
                     <option value="sports">Live sports (today's scores)</option>
                     <option value="none">None (empty slot)</option>
                   </select>
@@ -780,7 +780,7 @@
                   <select id="setting-ntp-widget-br">
                     <option value="inbox">Inbox (Gmail / Outlook when connected)</option>
                     <option value="news">News (Reddit)</option>
-                    <option value="stocks">Markets (TradingView)</option>
+                    <option value="stocks">TradingView (markets)</option>
                     <option value="sports">Live sports (today's scores)</option>
                     <option value="none">None (empty slot)</option>
                   </select>
