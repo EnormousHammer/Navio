@@ -2307,7 +2307,7 @@ body.navio-vertical-tabs .tab-group-header:hover {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-rows: auto;
-  align-items: stretch;
+  align-items: start;
   gap: clamp(8px, 2vw, 12px);
   padding: 0 clamp(12px, 3vw, 20px) 8px;
   position: relative;
@@ -2341,14 +2341,6 @@ body.navio-vertical-tabs .tab-group-header:hover {
 .ntp-stocks-widget,
 .ntp-sports-widget {
   min-width: 0;
-}
-/* Same outer footprint for every dashboard panel (switching slots keeps rhythm). */
-.ntp-widgets > .ntp-email-widget:not([hidden]),
-.ntp-widgets > .ntp-news-widget:not([hidden]),
-.ntp-widgets > .ntp-stocks-widget:not([hidden]),
-.ntp-widgets > .ntp-sports-widget:not([hidden]) {
-  min-height: clamp(240px, 32vh, 360px);
-  max-height: min(420px, 48vh);
 }
 /* No email connected: hide inbox; other panel uses full width */
 .ntp-widgets--no-email #ntp-widget-email {
@@ -3314,14 +3306,11 @@ body.ntp-chat-active .ntp-model-selector { margin-bottom: 6px; }
     0 10px 30px rgba(0, 55, 35, 0.4);
 }
 
-/* Equal-height scroll regions: list fills the card under the header (overrides per-tile max-height). */
-.new-tab-page .ntp-widgets > .ntp-email-widget .ntp-widget-body,
-.new-tab-page .ntp-widgets > .ntp-news-widget .ntp-widget-body,
+/* Markets / sports: cap list height like inbox & news (scroll inside tile). */
 .new-tab-page .ntp-widgets > .ntp-stocks-widget .ntp-widget-body,
 .new-tab-page .ntp-widgets > .ntp-sports-widget .ntp-widget-body {
-  flex: 1 1 auto;
+  max-height: var(--ntp-widget-list-max-h);
   min-height: 0;
-  max-height: none;
 }
 
 /* Inbox AI analysis (replaces removed AI Brief card) */
