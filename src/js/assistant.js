@@ -951,6 +951,29 @@ class AssistantManagerClass {
     return NAVIO_PROFILE_CHAT_KEY;
   }
 
+  /**
+   * Before the user sends from the sidebar, ensure the visible transcript matches the **active tab’s**
+   * storage bucket (what `_conversationKey()` will use). Tab switches can leave `_panelDisplayTabId`
+   * stale (e.g. sync skipped while another tab’s turn was in flight), which made the UI show one thread
+   * while the model read `recentHistory` from another.
+   */
+  _realignPanelHistoryToActiveTab() {
+    if (this._sidebarThreadKey) return;
+    if (typeof TabManager === 'undefined' || !TabManager.activeTabId) {
+      this._panelDisplayTabId = null;
+      return;
+    }
+    const aid = String(TabManager.activeTabId);
+    const prev = this._panelDisplayTabId;
+    const oldSk = prev != null && String(prev) !== '' ? this._storageKeyForTabId(String(prev)) : null;
+    this._panelDisplayTabId = aid;
+    const newSk = this._storageKeyForTabId(aid);
+    if (oldSk !== newSk) {
+      this._ensureConversationEntry(newSk);
+      this._renderDomFromHistoryKey(newSk);
+    }
+  }
+
   _panelDisplayStorageKey() {
     if (this._panelDisplayTabId == null || this._panelDisplayTabId === '') return null;
     return this._storageKeyForTabId(this._panelDisplayTabId);
@@ -3483,11 +3506,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     // `addMessage` is gated by `_panelShowsTurnDom()` vs `_panelDisplayTabId`. That id can go stale
     // (e.g. tab switch edge cases, "This tab" vs saved thread) so the composer clears but bubbles never render.
     if (!this._sidebarThreadKey) {
-      if (typeof TabManager !== 'undefined' && TabManager.activeTabId) {
-        this._panelDisplayTabId = String(TabManager.activeTabId);
-      } else {
-        this._panelDisplayTabId = null;
-      }
+      this._realignPanelHistoryToActiveTab();
     }
     const text = this.inputEl.value.trim();
     const hasReadyAttachments = this._attachmentQueue.some((a) => a.status === 'ready');
@@ -3568,6 +3587,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
     if (this._threadBusyForSend() || (aid && this._tabIsBusy(aid))) return;
     if (!this.isOpen) this.open();
+    this._realignPanelHistoryToActiveTab();
 
     if (action === 'all-tabs') {
       await this.handleQuickActionAllTabs();
@@ -3725,6 +3745,13 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     else this._busyTabs.delete(k);
     this._updateAssistantBusyChrome();
     this._syncTabStripBadge(k, busy);
+    try {
+      if (typeof TabManager !== 'undefined' && typeof TabManager.refreshNavioActivityBadge === 'function') {
+        TabManager.refreshNavioActivityBadge();
+      }
+    } catch {
+      /* ignore */
+    }
   }
 
   /**
@@ -4149,7 +4176,16 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           'Skip entirely for: instant single-tool answers, pure question responses, or when asking the user a clarifying question.'
       });
     }
-    const recentHistory = this._currentHistory().slice(-72);
+    const histKey = String(this._turnConversationKey || this._conversationKey());
+    this._ensureConversationEntry(histKey);
+    const recentHistory = (this._conversationsByTab.get(histKey) || [])
+      .slice(-72)
+      .filter((m) => {
+        if (m.role === 'system' && typeof m.content === 'string' && m.content.startsWith('[Page elements')) {
+          return false;
+        }
+        return true;
+      });
     messages.push(...recentHistory);
     this._maybePushAttachmentSystemHint(messages);
     const userContent = this._buildAttachmentPayloadForApi(text);
@@ -4763,8 +4799,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       });
     }
 
-    // Conversation history (skip stale page snapshots)
-    const recentHistory = this._currentHistory()
+    // Conversation history (skip stale page snapshots). Read by explicit **turn** storage key so an async
+    // gap cannot accidentally use `_currentHistory()` with a key that no longer matches the user’s turn.
+    const historyKey = String(this._turnConversationKey || this._conversationKey());
+    this._ensureConversationEntry(historyKey);
+    const recentHistory = (this._conversationsByTab.get(historyKey) || [])
       .slice(-72)
       .filter(m => {
         if (m.role === 'system' && typeof m.content === 'string' && m.content.startsWith('[Page elements')) return false;
@@ -7283,6 +7322,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       this.addMessage('assistant', 'No loaded pages found in open tabs.');
       return;
     }
+    this._realignPanelHistoryToActiveTab();
     const blob = parts.join('\n\n---\n\n').slice(0, 80000);
     this.addMessage('user', 'Summarize / compare all open tabs');
     await this.processMessage(
