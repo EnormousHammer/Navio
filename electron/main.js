@@ -7134,9 +7134,21 @@ ipcMain.handle('oauth-connect', async (event, { providerId }) => {
     params.set('token_access_type', 'offline');
   }
 
+  // Google: second connector must not reuse the OAuth popup's Google cookies from the
+  // primary connect — otherwise the same account is authorized twice and Settings shows
+  // duplicate emails. Ephemeral session + account picker fixes that.
+  if (providerId === 'google' || providerId === 'google_2') {
+    params.set('access_type', 'offline');
+    if (providerId === 'google_2') {
+      params.set('prompt', 'select_account');
+    }
+  }
+
   const authUrl = `${provider.authUrl}?${params.toString()}`;
 
   return new Promise((resolve) => {
+    const google2OAuthPartition =
+      providerId === 'google_2' ? `oauth_google_2:${crypto.randomBytes(10).toString('hex')}` : '';
     const authWin = new BrowserWindow({
       width: 500,
       height: 680,
@@ -7147,7 +7159,8 @@ ipcMain.handle('oauth-connect', async (event, { providerId }) => {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
-        sandbox: false  // Google sign-in requires web APIs that Electron sandbox blocks
+        sandbox: false, // Google sign-in requires web APIs that Electron sandbox blocks
+        ...(google2OAuthPartition ? { session: session.fromPartition(google2OAuthPartition) } : {})
       }
     });
 
