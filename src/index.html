@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <!-- CSP is intentionally broad (unsafe-eval/inline, connect-src *) for the Electron shell, assistant, and OAuth flows; narrowing it tends to break in-app features. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data: https:; media-src 'self' file: blob: data:; connect-src *;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data: https:; media-src 'self' file: blob: data:; connect-src *; frame-src 'self' blob: https://www.tradingview-widget.com https://*.tradingview.com https://www.tradingview.com;">
   <title>Navio</title>
   <link rel="stylesheet" href="css/styles.css">
   <link rel="stylesheet" href="css/parts/polish.css">
@@ -371,10 +371,10 @@
             </div>
           </div>
 
-          <!-- Dashboard: always two columns — panel type per column (chips under the row + Settings defaults). -->
+          <!-- Dashboard: 2×2 grid — top row + bottom row (chips + Settings). -->
           <div class="ntp-widgets" id="ntp-widgets-root">
             <!-- Email inbox -->
-            <div class="ntp-widget ntp-email-widget ntp-widget-slot-left" id="ntp-widget-email" data-ntp-widget-type="inbox">
+            <div class="ntp-widget ntp-email-widget" id="ntp-widget-email" data-ntp-widget-type="inbox" hidden>
               <div class="ntp-widget-header">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                 Inbox
@@ -395,7 +395,7 @@
             </div>
 
             <!-- World News (Reddit) -->
-            <div class="ntp-widget ntp-news-widget ntp-widget-slot-right" id="ntp-widget-news" data-ntp-widget-type="news">
+            <div class="ntp-widget ntp-news-widget" id="ntp-widget-news" data-ntp-widget-type="news" hidden>
               <div class="ntp-widget-header">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                 News
@@ -417,7 +417,7 @@
               <div class="ntp-widget-header">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 12l4-4 4 4 6-6"/></svg>
                 Markets
-                <span class="ntp-widget-source" id="ntp-stocks-source">Yahoo Finance</span>
+                <span class="ntp-widget-source" id="ntp-stocks-source">TradingView</span>
                 <button class="ntp-widget-popout" data-widget="stocks" title="Open in new tab">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                 </button>
@@ -443,39 +443,71 @@
               </div>
             </div>
 
-            <div class="ntp-widget ntp-widget-slot-empty" id="ntp-widget-slot-empty-left" hidden>
+            <div class="ntp-widget ntp-widget-slot-empty" id="ntp-widget-slot-empty-tl" hidden>
               <div class="ntp-widget-slot-empty-inner">
                 <p class="ntp-widget-slot-empty-title">Panel off</p>
-                <p class="ntp-widget-slot-empty-hint">Turn this column on with the chips below (Inbox, News, Markets, or Sports).</p>
+                <p class="ntp-widget-slot-empty-hint">Choose Inbox, News, Markets, or Sports for this slot below.</p>
               </div>
             </div>
-            <div class="ntp-widget ntp-widget-slot-empty" id="ntp-widget-slot-empty-right" hidden>
+            <div class="ntp-widget ntp-widget-slot-empty" id="ntp-widget-slot-empty-tr" hidden>
               <div class="ntp-widget-slot-empty-inner">
                 <p class="ntp-widget-slot-empty-title">Panel off</p>
-                <p class="ntp-widget-slot-empty-hint">Turn this column on with the chips below (Inbox, News, Markets, or Sports).</p>
+                <p class="ntp-widget-slot-empty-hint">Choose Inbox, News, Markets, or Sports for this slot below.</p>
+              </div>
+            </div>
+            <div class="ntp-widget ntp-widget-slot-empty" id="ntp-widget-slot-empty-bl" hidden>
+              <div class="ntp-widget-slot-empty-inner">
+                <p class="ntp-widget-slot-empty-title">Panel off</p>
+                <p class="ntp-widget-slot-empty-hint">Choose Inbox, News, Markets, or Sports for this slot below.</p>
+              </div>
+            </div>
+            <div class="ntp-widget ntp-widget-slot-empty" id="ntp-widget-slot-empty-br" hidden>
+              <div class="ntp-widget-slot-empty-inner">
+                <p class="ntp-widget-slot-empty-title">Panel off</p>
+                <p class="ntp-widget-slot-empty-hint">Choose Inbox, News, Markets, or Sports for this slot below.</p>
               </div>
             </div>
           </div>
 
           <div class="ntp-widget-pickers" id="ntp-widget-pickers" aria-label="Choose what each home panel shows">
-            <div class="ntp-widget-picker" data-slot="left" role="group" aria-label="Left column panel">
-              <span class="ntp-widget-picker-label">Left column</span>
+            <div class="ntp-widget-picker" data-slot="tl" role="group" aria-label="Top left panel">
+              <span class="ntp-widget-picker-label">Top left</span>
               <div class="ntp-widget-picker-btns">
-                <button type="button" class="ntp-widget-picker-btn" data-slot="left" data-type="inbox">Inbox</button>
-                <button type="button" class="ntp-widget-picker-btn" data-slot="left" data-type="news">News</button>
-                <button type="button" class="ntp-widget-picker-btn" data-slot="left" data-type="stocks">Markets</button>
-                <button type="button" class="ntp-widget-picker-btn" data-slot="left" data-type="sports">Sports</button>
-                <button type="button" class="ntp-widget-picker-btn ntp-widget-picker-btn--off" data-slot="left" data-type="none">Off</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="tl" data-type="inbox">Inbox</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="tl" data-type="news">News</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="tl" data-type="stocks">Markets</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="tl" data-type="sports">Sports</button>
+                <button type="button" class="ntp-widget-picker-btn ntp-widget-picker-btn--off" data-slot="tl" data-type="none">Off</button>
               </div>
             </div>
-            <div class="ntp-widget-picker" data-slot="right" role="group" aria-label="Right column panel">
-              <span class="ntp-widget-picker-label">Right column</span>
+            <div class="ntp-widget-picker" data-slot="tr" role="group" aria-label="Top right panel">
+              <span class="ntp-widget-picker-label">Top right</span>
               <div class="ntp-widget-picker-btns">
-                <button type="button" class="ntp-widget-picker-btn" data-slot="right" data-type="inbox">Inbox</button>
-                <button type="button" class="ntp-widget-picker-btn" data-slot="right" data-type="news">News</button>
-                <button type="button" class="ntp-widget-picker-btn" data-slot="right" data-type="stocks">Markets</button>
-                <button type="button" class="ntp-widget-picker-btn" data-slot="right" data-type="sports">Sports</button>
-                <button type="button" class="ntp-widget-picker-btn ntp-widget-picker-btn--off" data-slot="right" data-type="none">Off</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="tr" data-type="inbox">Inbox</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="tr" data-type="news">News</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="tr" data-type="stocks">Markets</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="tr" data-type="sports">Sports</button>
+                <button type="button" class="ntp-widget-picker-btn ntp-widget-picker-btn--off" data-slot="tr" data-type="none">Off</button>
+              </div>
+            </div>
+            <div class="ntp-widget-picker" data-slot="bl" role="group" aria-label="Bottom left panel">
+              <span class="ntp-widget-picker-label">Bottom left</span>
+              <div class="ntp-widget-picker-btns">
+                <button type="button" class="ntp-widget-picker-btn" data-slot="bl" data-type="inbox">Inbox</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="bl" data-type="news">News</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="bl" data-type="stocks">Markets</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="bl" data-type="sports">Sports</button>
+                <button type="button" class="ntp-widget-picker-btn ntp-widget-picker-btn--off" data-slot="bl" data-type="none">Off</button>
+              </div>
+            </div>
+            <div class="ntp-widget-picker" data-slot="br" role="group" aria-label="Bottom right panel">
+              <span class="ntp-widget-picker-label">Bottom right</span>
+              <div class="ntp-widget-picker-btns">
+                <button type="button" class="ntp-widget-picker-btn" data-slot="br" data-type="inbox">Inbox</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="br" data-type="news">News</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="br" data-type="stocks">Markets</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="br" data-type="sports">Sports</button>
+                <button type="button" class="ntp-widget-picker-btn ntp-widget-picker-btn--off" data-slot="br" data-type="none">Off</button>
               </div>
             </div>
           </div>
@@ -704,7 +736,7 @@
               <div class="setting-row" style="margin-top:12px">
                 <label for="setting-new-tab-mode">New tab shows</label>
                 <select id="setting-new-tab-mode">
-                  <option value="home">Home — dashboard (AI, shortcuts, two panels you choose)</option>
+                  <option value="home">Home — dashboard (AI, shortcuts, 2×2 widget grid)</option>
                   <option value="chat">Chat + shortcuts — Ask Navio AI, keep Live Sports / Movies tiles</option>
                   <option value="blank">Blank — just the address bar</option>
                 </select>
@@ -712,23 +744,43 @@
               <p class="settings-inline-hint">Chat mode keeps all your shortcut tiles but hides inbox and news widgets so the AI prompt is centered like Perplexity / ChatGPT.</p>
               <div style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08)">
                 <h3 style="margin-bottom:8px">Home dashboard</h3>
-                <p class="settings-inline-hint">Home always shows two columns under shortcuts. Switch each column from the chip row under the panels on Home (or set defaults here). Hidden in Chat or Blank new-tab modes.</p>
+                <p class="settings-inline-hint">Home shows a 2×2 grid under shortcuts (top row, then bottom row). Each corner is chosen on Home with the chip row or here. The same widget type cannot appear twice; duplicates become Off. Hidden in Chat or Blank new-tab modes.</p>
                 <div class="setting-row">
-                  <label for="setting-ntp-widget-left">Left panel</label>
-                  <select id="setting-ntp-widget-left">
+                  <label for="setting-ntp-widget-tl">Top left</label>
+                  <select id="setting-ntp-widget-tl">
                     <option value="inbox">Inbox (Gmail / Outlook when connected)</option>
                     <option value="news">News (Reddit)</option>
-                    <option value="stocks">Markets (indices &amp; movers)</option>
+                    <option value="stocks">Markets (TradingView)</option>
                     <option value="sports">Live sports (today's scores)</option>
                     <option value="none">None (empty slot)</option>
                   </select>
                 </div>
                 <div class="setting-row" style="margin-top:10px">
-                  <label for="setting-ntp-widget-right">Right panel</label>
-                  <select id="setting-ntp-widget-right">
+                  <label for="setting-ntp-widget-tr">Top right</label>
+                  <select id="setting-ntp-widget-tr">
                     <option value="inbox">Inbox (Gmail / Outlook when connected)</option>
                     <option value="news">News (Reddit)</option>
-                    <option value="stocks">Markets (indices &amp; movers)</option>
+                    <option value="stocks">Markets (TradingView)</option>
+                    <option value="sports">Live sports (today's scores)</option>
+                    <option value="none">None (empty slot)</option>
+                  </select>
+                </div>
+                <div class="setting-row" style="margin-top:10px">
+                  <label for="setting-ntp-widget-bl">Bottom left</label>
+                  <select id="setting-ntp-widget-bl">
+                    <option value="inbox">Inbox (Gmail / Outlook when connected)</option>
+                    <option value="news">News (Reddit)</option>
+                    <option value="stocks">Markets (TradingView)</option>
+                    <option value="sports">Live sports (today's scores)</option>
+                    <option value="none">None (empty slot)</option>
+                  </select>
+                </div>
+                <div class="setting-row" style="margin-top:10px">
+                  <label for="setting-ntp-widget-br">Bottom right</label>
+                  <select id="setting-ntp-widget-br">
+                    <option value="inbox">Inbox (Gmail / Outlook when connected)</option>
+                    <option value="news">News (Reddit)</option>
+                    <option value="stocks">Markets (TradingView)</option>
                     <option value="sports">Live sports (today's scores)</option>
                     <option value="none">None (empty slot)</option>
                   </select>
@@ -744,7 +796,7 @@
                     <option value="science">r/science</option>
                   </select>
                 </div>
-                <p class="settings-inline-hint">Default home shows Markets and Live sports; use the chip row on Home or the menus here for Inbox or News. Markets quotes use Yahoo Finance (no key). Scores use public ESPN feeds. The sports &quot;Hub&quot; link uses your Predicta URL from Browser settings.</p>
+                <p class="settings-inline-hint">Default layout is Inbox and News on top, Markets (TradingView embed) and Live sports on the bottom. The footer index line may still use background Yahoo quotes when available. Scores use public ESPN feeds. The sports &quot;Hub&quot; link uses your Predicta URL from Browser settings.</p>
               </div>
               <label class="setting-toggle-row" style="margin-top:12px">
                 <input type="checkbox" id="setting-launch-intro" checked>

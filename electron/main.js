@@ -8225,7 +8225,7 @@ ipcMain.handle('imap-trash-message', async (event, { serviceId, uid }) => {
   } catch (e) { return { error: e.message }; }
 });
 
-// ── NTP: Stock quotes (main process — no CORS) — Markets widget + smart row / AI context ──
+// ── NTP: Stock quotes (main process — no CORS) — smart row / AI; Markets tile uses TradingView embed in renderer ──
 // query1.finance.yahoo.com/v8/finance/chart works without crumb or cookies.
 ipcMain.handle('ntp-stocks', async () => {
   const symbols = ['^GSPC', '^DJI', '^IXIC', 'AAPL', 'GOOGL', 'MSFT', 'NVDA', 'TSLA', 'BTC-USD', 'ETH-USD'];

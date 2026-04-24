@@ -5,10 +5,10 @@
  *  • Greeting + live clock
  *  • Connected services status bar (IMAP email counts)
  *  • World News (Reddit — subreddit configurable)
- *  • Markets: Yahoo Finance quotes (IPC) + smart row / AI context
- *  • Live scores (ESPN via main IPC) — optional widget
+ *  • Markets: TradingView embed; Yahoo quotes (IPC) for smart row / AI when prefetched
+ *  • Live scores (ESPN via main IPC) — optional slot in the 2×2 grid
  *  • Inbox widget — unread emails from IMAP Gmail/Outlook
- *  • Dashboard: two columns (default Markets | Live sports); chips + Settings: Inbox / News / Markets / Sports or Off
+ *  • Dashboard: 2×2 grid (default Inbox | News over Markets | Live sports); chips + Settings per corner
  *  • "Draft All" button — triggers batch email drafting
  */
 
@@ -23,6 +23,8 @@ const NTP = (() => {
   let _sportsGamesSummary = [];
 
   const NTP_WIDGET_TYPES = new Set(['inbox', 'news', 'stocks', 'sports', 'none']);
+  /** Home dashboard 2×2 grid slot ids (matches `ntpWidgetTL` config keys without prefix). */
+  const NTP_GRID_SLOTS = ['tl', 'tr', 'bl', 'br'];
 
   // ── NTP Chat state ────────────────────────────────────────────────────────
   let _ntpChatMessages  = [];   // current in-memory thread: [{role,content}]
@@ -243,22 +245,49 @@ const NTP = (() => {
     if (root) root.classList.remove('ntp-widgets--no-email');
   }
 
-  function _ntpDedupeWidgetSlots(left, right) {
-    let L = _coerceNtpWidgetSlot(left, 'stocks');
-    let R = _coerceNtpWidgetSlot(right, 'sports');
-    if (L === R && L !== 'none') {
-      const alt = ['inbox', 'news', 'stocks', 'sports'].find((t) => t !== L);
-      R = alt || 'sports';
-    }
-    return { left: L, right: R };
+  function _stripWidgetGridSlotClasses(el) {
+    if (!el) return;
+    el.classList.remove(
+      'ntp-widget-slot-tl',
+      'ntp-widget-slot-tr',
+      'ntp-widget-slot-bl',
+      'ntp-widget-slot-br',
+      'ntp-widget-slot-left',
+      'ntp-widget-slot-right',
+      'ntp-widget-slot-full'
+    );
   }
 
-  function _updateWidgetPickerUI(left, right) {
-    const { left: L, right: R } = _ntpDedupeWidgetSlots(left, right);
+  function _ntpQuadFromConfig(cfg) {
+    const c = cfg || {};
+    return {
+      tl: _coerceNtpWidgetSlot(c.ntpWidgetTL, 'inbox'),
+      tr: _coerceNtpWidgetSlot(c.ntpWidgetTR, 'news'),
+      bl: _coerceNtpWidgetSlot(c.ntpWidgetBL, 'stocks'),
+      br: _coerceNtpWidgetSlot(c.ntpWidgetBR, 'sports')
+    };
+  }
+
+  /** Same rule as main-process loadConfig: each non-none widget type at most once (TL→TR→BL→BR). */
+  function _ntpDedupeQuadClient(q) {
+    const used = new Set();
+    const out = {};
+    for (const k of NTP_GRID_SLOTS) {
+      let v = _coerceNtpWidgetSlot(q[k], 'none');
+      if (v !== 'none' && used.has(v)) v = 'none';
+      if (v !== 'none') used.add(v);
+      out[k] = v;
+    }
+    return out;
+  }
+
+  function _updateWidgetPickerUI(quad) {
+    const Q = _ntpDedupeQuadClient(quad);
     document.querySelectorAll('.ntp-widget-picker-btn').forEach((btn) => {
       const slot = btn.getAttribute('data-slot');
       const type = btn.getAttribute('data-type');
-      const cur = slot === 'right' ? R : L;
+      if (!slot || !NTP_GRID_SLOTS.includes(slot)) return;
+      const cur = Q[slot];
       const on = cur === type;
       btn.classList.toggle('active', on);
       btn.setAttribute('aria-pressed', on ? 'true' : 'false');
@@ -275,7 +304,7 @@ const NTP = (() => {
       e.preventDefault();
       const slot = btn.getAttribute('data-slot');
       const rawType = btn.getAttribute('data-type');
-      if (slot !== 'left' && slot !== 'right') return;
+      if (!slot || !NTP_GRID_SLOTS.includes(slot)) return;
       const newT = _coerceNtpWidgetSlot(rawType, 'none');
       let cfg = {};
       try {
@@ -283,26 +312,20 @@ const NTP = (() => {
       } catch {
         cfg = {};
       }
-      let L = _coerceNtpWidgetSlot(cfg.ntpWidgetLeft, 'stocks');
-      let R = _coerceNtpWidgetSlot(cfg.ntpWidgetRight, 'sports');
-      if (slot === 'left') {
-        if (newT !== 'none' && newT === R) R = L;
-        L = newT;
-      } else {
-        if (newT !== 'none' && newT === L) L = R;
-        R = newT;
-      }
-      const deduped = _ntpDedupeWidgetSlots(L, R);
-      L = deduped.left;
-      R = deduped.right;
+      const rawQ = _ntpQuadFromConfig(cfg);
+      rawQ[slot] = newT;
+      const Q = _ntpDedupeQuadClient(rawQ);
       try {
-        await window.navio.saveConfig({ ntpWidgetLeft: L, ntpWidgetRight: R });
+        await window.navio.saveConfig({
+          ntpWidgetTL: Q.tl,
+          ntpWidgetTR: Q.tr,
+          ntpWidgetBL: Q.bl,
+          ntpWidgetBR: Q.br
+        });
       } catch {
         /* ignore */
       }
-      document.dispatchEvent(
-        new CustomEvent('navio-config-saved', { detail: { ntpWidgetLeft: L, ntpWidgetRight: R } })
-      );
+      document.dispatchEvent(new CustomEvent('navio-config-saved', { detail: { ...Q } }));
     });
   }
 
@@ -331,9 +354,7 @@ const NTP = (() => {
     } catch {
       cfg = {};
     }
-    const deduped = _ntpDedupeWidgetSlots(cfg.ntpWidgetLeft, cfg.ntpWidgetRight);
-    const left = deduped.left;
-    const right = deduped.right;
+    const Q = _ntpDedupeQuadClient(_ntpQuadFromConfig(cfg));
 
     const sub = String(cfg.ntpNewsSubreddit || 'worldnews')
       .trim()
@@ -353,47 +374,48 @@ const NTP = (() => {
       stocks: document.getElementById('ntp-widget-stocks'),
       sports: document.getElementById('ntp-widget-sports')
     };
-    const emptyL = document.getElementById('ntp-widget-slot-empty-left');
-    const emptyR = document.getElementById('ntp-widget-slot-empty-right');
+    const empties = {
+      tl: document.getElementById('ntp-widget-slot-empty-tl'),
+      tr: document.getElementById('ntp-widget-slot-empty-tr'),
+      bl: document.getElementById('ntp-widget-slot-empty-bl'),
+      br: document.getElementById('ntp-widget-slot-empty-br')
+    };
 
     root.classList.remove('ntp-widgets--no-widgets');
 
     for (const t of ['inbox', 'news', 'stocks', 'sports']) {
       const el = defs[t];
       if (!el) continue;
-      el.classList.remove('ntp-widget-slot-left', 'ntp-widget-slot-right', 'ntp-widget-slot-full');
+      _stripWidgetGridSlotClasses(el);
       el.hidden = true;
     }
-    if (emptyL) {
-      emptyL.hidden = true;
-      emptyL.classList.remove('ntp-widget-slot-left', 'ntp-widget-slot-right', 'ntp-widget-slot-full');
-    }
-    if (emptyR) {
-      emptyR.hidden = true;
-      emptyR.classList.remove('ntp-widget-slot-left', 'ntp-widget-slot-right', 'ntp-widget-slot-full');
+    for (const sk of NTP_GRID_SLOTS) {
+      const e = empties[sk];
+      if (e) {
+        e.hidden = true;
+        _stripWidgetGridSlotClasses(e);
+      }
     }
 
-    const place = (type, column) => {
-      const slotCls = column === 'left' ? 'ntp-widget-slot-left' : 'ntp-widget-slot-right';
+    for (const sk of NTP_GRID_SLOTS) {
+      const type = Q[sk];
+      const slotCls = `ntp-widget-slot-${sk}`;
       if (type === 'none') {
-        const e = column === 'left' ? emptyL : emptyR;
+        const e = empties[sk];
         if (e) {
           e.hidden = false;
           e.classList.add(slotCls);
         }
-        return;
+      } else {
+        const el = defs[type];
+        if (el) {
+          el.hidden = false;
+          el.classList.add(slotCls);
+        }
       }
-      const el = defs[type];
-      if (el) {
-        el.hidden = false;
-        el.classList.add(slotCls);
-      }
-    };
+    }
 
-    place(left, 'left');
-    place(right, 'right');
-
-    _updateWidgetPickerUI(left, right);
+    _updateWidgetPickerUI(Q);
     _syncNtpNoEmailLayout();
   }
 
@@ -404,8 +426,8 @@ const NTP = (() => {
     } catch {
       cfg = {};
     }
-    const { left: L, right: R } = _ntpDedupeWidgetSlots(cfg.ntpWidgetLeft, cfg.ntpWidgetRight);
-    const wants = new Set([L, R].filter((x) => x !== 'none'));
+    const Q = _ntpDedupeQuadClient(_ntpQuadFromConfig(cfg));
+    const wants = new Set(NTP_GRID_SLOTS.map((k) => Q[k]).filter((x) => x !== 'none'));
 
     const tasks = [];
     if (wants.has('news')) tasks.push(_loadWorldNews().catch((e) => console.warn('[ntp] news', e)));
@@ -732,10 +754,15 @@ const NTP = (() => {
   }
 
   function _popoutWidget(widgetKey) {
+    if (widgetKey === 'stocks') {
+      if (typeof TabManager !== 'undefined') {
+        TabManager.createTab('https://www.tradingview.com/markets/');
+      }
+      return;
+    }
     const configs = {
       news:    { bodyId: 'ntp-news-list',   title: 'News' },
       inbox:   { bodyId: 'ntp-email-list',  title: 'Inbox' },
-      stocks:  { bodyId: 'ntp-stocks-list', title: 'Markets' },
       sports:  { bodyId: 'ntp-sports-list', title: 'Live sports' }
     };
     const cfg = configs[widgetKey];
@@ -837,12 +864,16 @@ const NTP = (() => {
     }
   }
 
-  function _yahooSymbolForRow(s) {
-    const sym = String(s?.symbol || '');
-    if (sym === 'GSPC') return '^GSPC';
-    if (sym === 'DJI') return '^DJI';
-    if (sym === 'IXIC') return '^IXIC';
-    return sym;
+  function _tradingViewMarketOverviewSrc() {
+    const opts = {
+      colorTheme: 'dark',
+      dateRange: '1D',
+      showChart: true,
+      locale: 'en',
+      autosize: true
+    };
+    const hash = encodeURIComponent(JSON.stringify(opts));
+    return `https://www.tradingview-widget.com/embed-widget/market-overview/?locale=en#${hash}`;
   }
 
   async function _loadStocksWidget() {
@@ -850,40 +881,27 @@ const NTP = (() => {
     const list = document.getElementById('ntp-stocks-list');
     if (!list || (w && w.hidden)) return;
     const srcLabel = document.getElementById('ntp-stocks-source');
-    if (srcLabel) srcLabel.textContent = 'Yahoo Finance';
+    if (srcLabel) srcLabel.textContent = 'TradingView';
     list.innerHTML =
       '<div class="ntp-widget-loading"><span></span><span></span><span></span></div>';
     try {
-      const result = await _invokeNtpRpc(() => window.navio.ntpFetchStocks(), 22000);
-      if (!result || result.error || !Array.isArray(result) || !result.length) {
-        list.innerHTML = `<p class="ntp-widget-empty">${_esc(result?.error || 'Could not load quotes.')}</p>`;
-        return;
-      }
-      _stockData = result;
-      list.innerHTML = result
-        .slice(0, 14)
-        .map((s) => {
-          const ySym = _yahooSymbolForRow(s);
-          const pct = typeof s.pct === 'number' ? s.pct : 0;
-          const cls = pct >= 0 ? 'up' : 'down';
-          const sign = pct >= 0 ? '+' : '';
-          const price = s.price != null && Number.isFinite(Number(s.price)) ? Number(s.price).toFixed(2) : '—';
-          return `<div class="ntp-stock-row" data-yahoo-symbol="${_escAttr(ySym)}">
-            <div class="ntp-stock-sym">${_esc(s.symbol || '')}</div>
-            <div class="ntp-stock-name">${_esc(s.name || '')}</div>
-            <div class="ntp-stock-price">${price}</div>
-            <div class="ntp-stock-pct ${cls}">${sign}${pct.toFixed(2)}%</div>
-          </div>`;
+      const src = _tradingViewMarketOverviewSrc();
+      list.innerHTML = `<div class="ntp-tv-wrap">
+        <iframe class="ntp-tv-iframe"
+          title="TradingView market overview"
+          src="${src}"
+          frameborder="0"
+          allowtransparency="true"
+          scrolling="no"
+          allow="clipboard-write; fullscreen"
+          referrerpolicy="no-referrer-when-downgrade"
+        ></iframe>
+      </div>`;
+      _prefetchStockDataForNtp()
+        .then(() => {
+          _updateSmartRow().catch(() => {});
         })
-        .join('');
-      list.querySelectorAll('.ntp-stock-row').forEach((row) => {
-        row.addEventListener('click', () => {
-          const sym = row.dataset.yahooSymbol;
-          if (sym && typeof TabManager !== 'undefined') {
-            TabManager.createTab(`https://finance.yahoo.com/quote/${encodeURIComponent(sym)}/`);
-          }
-        });
-      });
+        .catch(() => {});
     } catch (e) {
       list.innerHTML = `<p class="ntp-widget-empty">${_esc(e.message || 'Error')}</p>`;
     }

@@ -89,11 +89,13 @@ const DEFAULT_CONFIG = {
   /** User-defined NTP shortcuts (array of { title, url }). Empty → fallback defaults in ntp.js. */
   ntpShortcuts: [],
   /**
-   * Home dashboard (New tab → Home): left and right panel widgets.
-   * Each: inbox | news | stocks | sports | none
+   * Home dashboard (2×2): top row then bottom row. Each: inbox | news | stocks | sports | none
+   * Legacy ntpWidgetLeft / ntpWidgetRight in saved config are migrated on load if quad keys absent.
    */
-  ntpWidgetLeft: 'stocks',
-  ntpWidgetRight: 'sports',
+  ntpWidgetTL: 'inbox',
+  ntpWidgetTR: 'news',
+  ntpWidgetBL: 'stocks',
+  ntpWidgetBR: 'sports',
   /** Reddit hot feed when the News widget is shown (subreddit name only, no /r/). */
   ntpNewsSubreddit: 'worldnews',
   /**
@@ -157,14 +159,47 @@ function loadConfig() {
   merged.aiAgentMaxToolSteps = Number.isFinite(_steps) ? Math.min(500, Math.max(50, Math.round(_steps))) : 300;
 
   const WIDGET_SLOTS = new Set(['inbox', 'news', 'stocks', 'sports', 'none']);
-  for (const key of ['ntpWidgetLeft', 'ntpWidgetRight']) {
+  const QUAD_KEYS = ['ntpWidgetTL', 'ntpWidgetTR', 'ntpWidgetBL', 'ntpWidgetBR'];
+  const hasQuad = QUAD_KEYS.some((k) => Object.prototype.hasOwnProperty.call(file, k));
+  if (!hasQuad) {
+    const coerceLegacy = (v, fb) => {
+      const w = String(v || '').trim().toLowerCase();
+      return WIDGET_SLOTS.has(w) ? w : fb;
+    };
+    let L = coerceLegacy(merged.ntpWidgetLeft, 'inbox');
+    let R = coerceLegacy(merged.ntpWidgetRight, 'news');
+    if (L === R && L !== 'none') {
+      const alt = ['inbox', 'news', 'stocks', 'sports'].find((t) => t !== L);
+      R = alt || 'news';
+    }
+    const used = new Set([L, R].filter((x) => x !== 'none'));
+    const fillNext = () => {
+      for (const t of ['stocks', 'sports', 'inbox', 'news', 'none']) {
+        if (!used.has(t)) {
+          used.add(t);
+          return t;
+        }
+      }
+      return 'none';
+    };
+    merged.ntpWidgetTL = L;
+    merged.ntpWidgetTR = R;
+    merged.ntpWidgetBL = fillNext();
+    merged.ntpWidgetBR = fillNext();
+  }
+  for (const key of QUAD_KEYS) {
     const w = String(merged[key] || '').trim().toLowerCase();
-    merged[key] = WIDGET_SLOTS.has(w) ? w : key === 'ntpWidgetLeft' ? 'stocks' : 'sports';
+    merged[key] = WIDGET_SLOTS.has(w) ? w : key.endsWith('TL') ? 'inbox' : key.endsWith('TR') ? 'news' : key.endsWith('BL') ? 'stocks' : 'sports';
   }
-  if (merged.ntpWidgetLeft === merged.ntpWidgetRight && merged.ntpWidgetLeft !== 'none') {
-    const alt = ['inbox', 'news', 'stocks', 'sports'].find((t) => t !== merged.ntpWidgetLeft);
-    merged.ntpWidgetRight = alt || 'news';
-  }
+  (function dedupeNtpQuad() {
+    const used = new Set();
+    for (const key of QUAD_KEYS) {
+      let v = merged[key];
+      if (v !== 'none' && used.has(v)) v = 'none';
+      if (v !== 'none') used.add(v);
+      merged[key] = v;
+    }
+  })();
   const sub = String(merged.ntpNewsSubreddit || 'worldnews')
     .trim()
     .toLowerCase()
