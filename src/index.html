@@ -371,7 +371,7 @@
             </div>
           </div>
 
-          <!-- Dashboard widgets: two slots, types set in Settings → General (inbox / news / stocks / sports / none) -->
+          <!-- Dashboard: always two columns — panel type per column (chips under the row + Settings defaults). -->
           <div class="ntp-widgets" id="ntp-widgets-root">
             <!-- Email inbox -->
             <div class="ntp-widget ntp-email-widget ntp-widget-slot-left" id="ntp-widget-email" data-ntp-widget-type="inbox">
@@ -440,6 +440,42 @@
               </div>
               <div class="ntp-widget-body" id="ntp-sports-list">
                 <div class="ntp-widget-loading"><span></span><span></span><span></span></div>
+              </div>
+            </div>
+
+            <div class="ntp-widget ntp-widget-slot-empty" id="ntp-widget-slot-empty-left" hidden>
+              <div class="ntp-widget-slot-empty-inner">
+                <p class="ntp-widget-slot-empty-title">Panel off</p>
+                <p class="ntp-widget-slot-empty-hint">Turn this column on with the chips below (Inbox, News, Markets, or Sports).</p>
+              </div>
+            </div>
+            <div class="ntp-widget ntp-widget-slot-empty" id="ntp-widget-slot-empty-right" hidden>
+              <div class="ntp-widget-slot-empty-inner">
+                <p class="ntp-widget-slot-empty-title">Panel off</p>
+                <p class="ntp-widget-slot-empty-hint">Turn this column on with the chips below (Inbox, News, Markets, or Sports).</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="ntp-widget-pickers" id="ntp-widget-pickers" aria-label="Choose what each home panel shows">
+            <div class="ntp-widget-picker" data-slot="left" role="group" aria-label="Left column panel">
+              <span class="ntp-widget-picker-label">Left column</span>
+              <div class="ntp-widget-picker-btns">
+                <button type="button" class="ntp-widget-picker-btn" data-slot="left" data-type="inbox">Inbox</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="left" data-type="news">News</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="left" data-type="stocks">Markets</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="left" data-type="sports">Sports</button>
+                <button type="button" class="ntp-widget-picker-btn ntp-widget-picker-btn--off" data-slot="left" data-type="none">Off</button>
+              </div>
+            </div>
+            <div class="ntp-widget-picker" data-slot="right" role="group" aria-label="Right column panel">
+              <span class="ntp-widget-picker-label">Right column</span>
+              <div class="ntp-widget-picker-btns">
+                <button type="button" class="ntp-widget-picker-btn" data-slot="right" data-type="inbox">Inbox</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="right" data-type="news">News</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="right" data-type="stocks">Markets</button>
+                <button type="button" class="ntp-widget-picker-btn" data-slot="right" data-type="sports">Sports</button>
+                <button type="button" class="ntp-widget-picker-btn ntp-widget-picker-btn--off" data-slot="right" data-type="none">Off</button>
               </div>
             </div>
           </div>
@@ -676,7 +712,7 @@
               <p class="settings-inline-hint">Chat mode keeps all your shortcut tiles but hides inbox and news widgets so the AI prompt is centered like Perplexity / ChatGPT.</p>
               <div style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08)">
                 <h3 style="margin-bottom:8px">Home dashboard</h3>
-                <p class="settings-inline-hint">The two panels under shortcuts on the New Tab home page (not shown in Chat or Blank new-tab modes).</p>
+                <p class="settings-inline-hint">Home always shows two columns under shortcuts. Switch each column from the chip row under the panels on Home (or set defaults here). Hidden in Chat or Blank new-tab modes.</p>
                 <div class="setting-row">
                   <label for="setting-ntp-widget-left">Left panel</label>
                   <select id="setting-ntp-widget-left">

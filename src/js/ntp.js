@@ -8,7 +8,7 @@
  *  • Stock quotes (IPC) — optional Markets widget + smart row
  *  • Live scores (ESPN via main IPC) — optional widget
  *  • Inbox widget — unread emails from IMAP Gmail/Outlook
- *  • Dashboard slots configurable in Settings (left / right panel)
+ *  • Dashboard: two columns; each column Inbox / News / Markets / Sports or Off (chips under panels + Settings defaults)
  *  • "Draft All" button — triggers batch email drafting
  */
 
@@ -145,6 +145,7 @@ const NTP = (() => {
     _bindNtpChatPanel();
     _bindDimSlider();
     _bindSportsPredictaLink();
+    _bindWidgetSlotPickers();
     _bindNtpCitationSourceLinks();
 
     _applyTickerBottomReserve();
@@ -231,18 +232,73 @@ const NTP = (() => {
     window.__navioApplyNewTabMode = _applyNewTabMode;
   }
 
-  /** When inbox shows the connect prompt (.ntp-email-empty), hide the inbox tile and widen the other panel. */
+  /** Legacy hook: inbox “connect” state no longer collapses the grid (two columns stay). */
   function _syncNtpNoEmailLayout() {
     const root = document.getElementById('ntp-widgets-root') || document.querySelector('.ntp-widgets');
-    const emailW = document.getElementById('ntp-widget-email');
-    const list = document.getElementById('ntp-email-list');
-    if (!root) return;
-    if (!emailW || emailW.hidden) {
-      root.classList.remove('ntp-widgets--no-email');
-      return;
+    if (root) root.classList.remove('ntp-widgets--no-email');
+  }
+
+  function _ntpDedupeWidgetSlots(left, right) {
+    let L = _coerceNtpWidgetSlot(left, 'inbox');
+    let R = _coerceNtpWidgetSlot(right, 'news');
+    if (L === R && L !== 'none') {
+      const alt = ['inbox', 'news', 'stocks', 'sports'].find((t) => t !== L);
+      R = alt || 'news';
     }
-    const noEmail = !!(list && list.querySelector('.ntp-email-empty'));
-    root.classList.toggle('ntp-widgets--no-email', noEmail);
+    return { left: L, right: R };
+  }
+
+  function _updateWidgetPickerUI(left, right) {
+    const { left: L, right: R } = _ntpDedupeWidgetSlots(left, right);
+    document.querySelectorAll('.ntp-widget-picker-btn').forEach((btn) => {
+      const slot = btn.getAttribute('data-slot');
+      const type = btn.getAttribute('data-type');
+      const cur = slot === 'right' ? R : L;
+      const on = cur === type;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+
+  function _bindWidgetSlotPickers() {
+    const bar = document.getElementById('ntp-widget-pickers');
+    if (!bar || bar.dataset.navioPickerBound === '1') return;
+    bar.dataset.navioPickerBound = '1';
+    bar.addEventListener('click', async (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest('.ntp-widget-picker-btn') : null;
+      if (!btn || !bar.contains(btn)) return;
+      e.preventDefault();
+      const slot = btn.getAttribute('data-slot');
+      const rawType = btn.getAttribute('data-type');
+      if (slot !== 'left' && slot !== 'right') return;
+      const newT = _coerceNtpWidgetSlot(rawType, 'none');
+      let cfg = {};
+      try {
+        cfg = await window.navio.getConfig();
+      } catch {
+        cfg = {};
+      }
+      let L = _coerceNtpWidgetSlot(cfg.ntpWidgetLeft, 'inbox');
+      let R = _coerceNtpWidgetSlot(cfg.ntpWidgetRight, 'news');
+      if (slot === 'left') {
+        if (newT !== 'none' && newT === R) R = L;
+        L = newT;
+      } else {
+        if (newT !== 'none' && newT === L) L = R;
+        R = newT;
+      }
+      const deduped = _ntpDedupeWidgetSlots(L, R);
+      L = deduped.left;
+      R = deduped.right;
+      try {
+        await window.navio.saveConfig({ ntpWidgetLeft: L, ntpWidgetRight: R });
+      } catch {
+        /* ignore */
+      }
+      document.dispatchEvent(
+        new CustomEvent('navio-config-saved', { detail: { ntpWidgetLeft: L, ntpWidgetRight: R } })
+      );
+    });
   }
 
   function _coerceNtpWidgetSlot(v, fallback) {
@@ -270,9 +326,9 @@ const NTP = (() => {
     } catch {
       cfg = {};
     }
-    let left = _coerceNtpWidgetSlot(cfg.ntpWidgetLeft, 'inbox');
-    let right = _coerceNtpWidgetSlot(cfg.ntpWidgetRight, 'news');
-    if (left === right && left !== 'none') right = 'none';
+    const deduped = _ntpDedupeWidgetSlots(cfg.ntpWidgetLeft, cfg.ntpWidgetRight);
+    const left = deduped.left;
+    const right = deduped.right;
 
     const sub = String(cfg.ntpNewsSubreddit || 'worldnews')
       .trim()
@@ -292,8 +348,10 @@ const NTP = (() => {
       stocks: document.getElementById('ntp-widget-stocks'),
       sports: document.getElementById('ntp-widget-sports')
     };
-    const slots = [left, right].filter((x) => x !== 'none');
-    root.classList.toggle('ntp-widgets--no-widgets', slots.length === 0);
+    const emptyL = document.getElementById('ntp-widget-slot-empty-left');
+    const emptyR = document.getElementById('ntp-widget-slot-empty-right');
+
+    root.classList.remove('ntp-widgets--no-widgets');
 
     for (const t of ['inbox', 'news', 'stocks', 'sports']) {
       const el = defs[t];
@@ -301,26 +359,36 @@ const NTP = (() => {
       el.classList.remove('ntp-widget-slot-left', 'ntp-widget-slot-right', 'ntp-widget-slot-full');
       el.hidden = true;
     }
-
-    if (slots.length === 0) {
-      _syncNtpNoEmailLayout();
-      return;
+    if (emptyL) {
+      emptyL.hidden = true;
+      emptyL.classList.remove('ntp-widget-slot-left', 'ntp-widget-slot-right', 'ntp-widget-slot-full');
     }
-    if (slots.length === 1) {
-      const el = defs[slots[0]];
+    if (emptyR) {
+      emptyR.hidden = true;
+      emptyR.classList.remove('ntp-widget-slot-left', 'ntp-widget-slot-right', 'ntp-widget-slot-full');
+    }
+
+    const place = (type, column) => {
+      const slotCls = column === 'left' ? 'ntp-widget-slot-left' : 'ntp-widget-slot-right';
+      if (type === 'none') {
+        const e = column === 'left' ? emptyL : emptyR;
+        if (e) {
+          e.hidden = false;
+          e.classList.add(slotCls);
+        }
+        return;
+      }
+      const el = defs[type];
       if (el) {
         el.hidden = false;
-        el.classList.add('ntp-widget-slot-full');
+        el.classList.add(slotCls);
       }
-    } else {
-      [left, right].forEach((t, i) => {
-        if (t === 'none') return;
-        const el = defs[t];
-        if (!el) return;
-        el.hidden = false;
-        el.classList.add(i === 0 ? 'ntp-widget-slot-left' : 'ntp-widget-slot-right');
-      });
-    }
+    };
+
+    place(left, 'left');
+    place(right, 'right');
+
+    _updateWidgetPickerUI(left, right);
     _syncNtpNoEmailLayout();
   }
 
@@ -331,9 +399,7 @@ const NTP = (() => {
     } catch {
       cfg = {};
     }
-    let L = _coerceNtpWidgetSlot(cfg.ntpWidgetLeft, 'inbox');
-    let R = _coerceNtpWidgetSlot(cfg.ntpWidgetRight, 'news');
-    if (L === R && L !== 'none') R = 'none';
+    const { left: L, right: R } = _ntpDedupeWidgetSlots(cfg.ntpWidgetLeft, cfg.ntpWidgetRight);
     const wants = new Set([L, R].filter((x) => x !== 'none'));
 
     const tasks = [];
@@ -2926,7 +2992,7 @@ const NTP = (() => {
     let currentModel = '';
     try {
       const cfg = await window.navio.getConfig();
-      currentModel = cfg.model || '';
+      currentModel = cfg.aiModel || cfg.model || '';
     } catch {}
 
     const updateLabel = (val) => {
@@ -2944,7 +3010,11 @@ const NTP = (() => {
       dropdown.querySelectorAll('.ntp-model-option').forEach(opt => {
         opt.addEventListener('click', async () => {
           const val = opt.dataset.value;
-          try { await window.navio.setConfig({ model: val }); } catch {}
+          try {
+            await window.navio.saveConfig({ aiModel: val });
+          } catch {
+            /* ignore */
+          }
           currentModel = val;
           updateLabel(val);
           renderDropdown(val);

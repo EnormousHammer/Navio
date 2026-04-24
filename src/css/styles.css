@@ -2342,17 +2342,106 @@ body.navio-vertical-tabs .tab-group-header:hover {
 .ntp-sports-widget {
   min-width: 0;
 }
-/* No email connected: hide inbox; other panel uses full width */
-.ntp-widgets--no-email #ntp-widget-email {
-  display: none;
+
+/* Off column — keeps the two-column grid */
+.ntp-widget-slot-empty {
+  background: rgba(12, 16, 26, 0.35);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  min-height: 0;
+  align-self: start;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
-.ntp-widgets--no-email .ntp-widget-slot-right,
-.ntp-widgets--no-email .ntp-widget-slot-left {
-  grid-column: 1 / -1;
+.ntp-widget-slot-empty-inner {
+  text-align: center;
+  padding: clamp(16px, 3vh, 28px) 14px;
+  max-width: 260px;
 }
-.ntp-widgets--no-widgets {
+.ntp-widget-slot-empty-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(226, 232, 248, 0.88);
+}
+.ntp-widget-slot-empty-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(226, 232, 248, 0.52);
+}
+
+/* Under the two panels: pick Inbox / News / Markets / Sports per column */
+.ntp-widget-pickers {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(8px, 2vw, 12px);
+  max-width: 1420px;
+  width: 100%;
+  margin: 0 auto 6px;
+  padding: 0 clamp(12px, 3vw, 20px) 4px;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 1;
+}
+.ntp-widget-picker {
+  padding: 8px 10px 10px;
+  border-radius: 12px;
+  background: rgba(8, 10, 18, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.ntp-widget-picker-label {
+  display: block;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 248, 0.45);
+  margin-bottom: 8px;
+}
+.ntp-widget-picker-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.ntp-widget-picker-btn {
+  font-family: var(--font-sans);
+  border-radius: 8px;
+  padding: 5px 11px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.22);
+  color: rgba(226, 232, 248, 0.72);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.ntp-widget-picker-btn:hover {
+  border-color: rgba(125, 211, 252, 0.35);
+  color: #e8ecf4;
+}
+.ntp-widget-picker-btn.active {
+  border-color: rgba(0, 216, 255, 0.45);
+  background: rgba(0, 216, 255, 0.12);
+  color: #7dd3fc;
+}
+.ntp-widget-picker-btn--off {
+  color: rgba(226, 232, 248, 0.45);
+}
+.ntp-widget-picker-btn--off.active {
+  color: rgba(226, 232, 248, 0.55);
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+}
+body.ntp-chat-mode .ntp-widget-pickers,
+body.ntp-blank-mode .ntp-widget-pickers {
   display: none !important;
 }
+
 .ntp-widget-header-link {
   margin-left: auto;
   margin-right: 4px;
@@ -2806,6 +2895,9 @@ body.ntp-chat-active .ntp-model-selector { margin-bottom: 6px; }
   .ntp-widget-slot-full {
     grid-column: 1;
     grid-row: auto;
+  }
+  .ntp-widget-pickers {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 @media (max-width: 480px) {

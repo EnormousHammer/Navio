@@ -162,7 +162,8 @@ function loadConfig() {
     merged[key] = WIDGET_SLOTS.has(w) ? w : key === 'ntpWidgetLeft' ? 'inbox' : 'news';
   }
   if (merged.ntpWidgetLeft === merged.ntpWidgetRight && merged.ntpWidgetLeft !== 'none') {
-    merged.ntpWidgetRight = 'none';
+    const alt = ['inbox', 'news', 'stocks', 'sports'].find((t) => t !== merged.ntpWidgetLeft);
+    merged.ntpWidgetRight = alt || 'news';
   }
   const sub = String(merged.ntpNewsSubreddit || 'worldnews')
     .trim()
