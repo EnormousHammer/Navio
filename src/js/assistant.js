@@ -832,8 +832,12 @@ class AssistantManagerClass {
       });
     }
 
-    window.addEventListener('navio-tabs-changed', () => {
+    window.addEventListener('navio-tabs-changed', (e) => {
       try {
+        const r = e && e.detail && e.detail.reason;
+        // `onActiveTabChanged` already refreshes the list for normal tab switches; re-rendering
+        // here too doubled DOM work and caused noticeable jank when switching grouped tabs.
+        if (r === 'switch-tab' && !this._sidebarThreadKey) return;
         this._renderSidebarSessionList();
       } catch {
         /* ignore */

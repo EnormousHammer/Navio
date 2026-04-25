@@ -1015,11 +1015,13 @@ ${badgeHtml(it.badge)}
         if (kind === 'reset') window.__navioSetNtpZoom(1);
         else if (kind === 'in') window.__navioSetNtpZoom(cur + step);
         else window.__navioSetNtpZoom(cur - step);
+        if (typeof window.__navioFlashZoomPopup === 'function') window.__navioFlashZoomPopup();
         return;
       }
       if (kind === 'reset') TabManager.setActiveTabZoomFactor(null);
       else if (kind === 'in') TabManager.zoomActiveTabBy(0.1);
       else TabManager.zoomActiveTabBy(-0.1);
+      if (typeof window.__navioFlashZoomPopup === 'function') window.__navioFlashZoomPopup();
     };
 
     window.navio.onShortcut((action) => {

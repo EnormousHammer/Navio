@@ -676,7 +676,7 @@
   color: var(--text-primary);
 }
 
-/* Zoom popup panel */
+/* Zoom popup panel — must respect HTML [hidden]; plain display:flex would override UA hidden and leave the HUD visible. */
 .zoom-popup {
   position: fixed;
   z-index: 9000;
@@ -684,11 +684,16 @@
   border: 1px solid var(--border, rgba(255,255,255,0.1));
   border-radius: var(--radius, 10px);
   box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-  display: flex;
   align-items: center;
   padding: 6px 8px;
   gap: 4px;
   user-select: none;
+}
+.zoom-popup[hidden] {
+  display: none !important;
+}
+.zoom-popup:not([hidden]) {
+  display: flex;
 }
 .zoom-popup-step {
   width: 28px;

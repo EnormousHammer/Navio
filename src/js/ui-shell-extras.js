@@ -651,6 +651,24 @@
     const outBtn = document.getElementById('zoom-popup-out');
     if (!trigger || !popup) return;
 
+    let hideTimer = null;
+    const ZOOM_POPUP_MS = 1000;
+
+    function clearHideTimer() {
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+    }
+
+    function scheduleHide(ms = ZOOM_POPUP_MS) {
+      clearHideTimer();
+      hideTimer = setTimeout(() => {
+        hideTimer = null;
+        closePopup();
+      }, ms);
+    }
+
     function currentZoomFactor() {
       if (isNtpActive()) return getNtpZoom() || 1;
       const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
@@ -660,6 +678,18 @@
 
     function refreshPopupPct() {
       if (pctBtn) pctBtn.textContent = `${Math.round(currentZoomFactor() * 100)}%`;
+    }
+
+    function positionPopupUnderTrigger() {
+      refreshPopupPct();
+      const rect = trigger.getBoundingClientRect();
+      const popupW = 148;
+      let left = rect.left + rect.width / 2 - popupW / 2;
+      left = Math.max(8, Math.min(left, window.innerWidth - popupW - 8));
+      const top = rect.bottom + 6;
+      popup.style.left = `${left}px`;
+      popup.style.top = `${top}px`;
+      popup.style.width = `${popupW}px`;
     }
 
     function applyZoomStep(delta) {
@@ -679,41 +709,53 @@
       closePopup();
     }
 
-    function openPopup() {
-      refreshPopupPct();
-      const rect = trigger.getBoundingClientRect();
-      popup.style.top = `${rect.bottom + 6}px`;
-      const popupW = 148;
-      let left = rect.left + rect.width / 2 - popupW / 2;
-      left = Math.max(8, Math.min(left, window.innerWidth - popupW - 8));
-      popup.style.left = `${left}px`;
-      popup.style.width = `${popupW}px`;
+    /** Show HUD anchored to the magnifying-glass button (call before removing [hidden]). */
+    function showPopup() {
+      positionPopupUnderTrigger();
       popup.hidden = false;
       trigger.setAttribute('aria-expanded', 'true');
     }
 
     function closePopup() {
+      clearHideTimer();
       popup.hidden = true;
       trigger.setAttribute('aria-expanded', 'false');
     }
 
+    /** Brief zoom HUD under the toolbar icon — keyboard shortcuts and programmatic zoom feedback. */
+    window.__navioFlashZoomPopup = () => {
+      showPopup();
+      scheduleHide(ZOOM_POPUP_MS);
+    };
+
     trigger.addEventListener('click', (e) => {
       e.stopPropagation();
-      popup.hidden ? openPopup() : closePopup();
+      showPopup();
+      scheduleHide(ZOOM_POPUP_MS);
+    });
+
+    window.addEventListener('resize', () => {
+      if (!popup.hidden) positionPopupUnderTrigger();
     });
 
     document.addEventListener('click', (e) => {
-      if (!popup.hidden && !popup.contains(e.target) && e.target !== trigger) closePopup();
+      if (popup.hidden) return;
+      if (popup.contains(e.target) || e.target === trigger) return;
+      closePopup();
     });
 
     document.addEventListener('keydown', (e) => {
-      if (!popup.hidden && e.key === 'Escape') { closePopup(); trigger.focus(); }
+      if (!popup.hidden && e.key === 'Escape') {
+        closePopup();
+        trigger.focus();
+      }
     });
 
     if (inBtn) {
       inBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         applyZoomStep(0.1);
+        scheduleHide(ZOOM_POPUP_MS);
       });
     }
 
@@ -721,6 +763,7 @@
       outBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         applyZoomStep(-0.1);
+        scheduleHide(ZOOM_POPUP_MS);
       });
     }
 
@@ -730,6 +773,9 @@
         resetZoom();
       });
     }
+
+    /* Start closed — [hidden] + CSS must fully suppress the panel. */
+    closePopup();
   }
 
   function bindPrintZoomFullscreen() {
@@ -767,6 +813,7 @@
           setNtpZoom(nextZoom);
           syncNewTabSurfaceZoom();
           updateUrlZoomLabel();
+          if (typeof window.__navioFlashZoomPopup === 'function') window.__navioFlashZoomPopup();
           return;
         }
         if (!wv || typeof TabManager === 'undefined' || !TabManager.zoomActiveTabBy) return;
@@ -774,6 +821,7 @@
         if (zoomReset) TabManager.setActiveTabZoomFactor(null);
         else if (zoomIn) TabManager.zoomActiveTabBy(0.1);
         else TabManager.zoomActiveTabBy(-0.1);
+        if (typeof window.__navioFlashZoomPopup === 'function') window.__navioFlashZoomPopup();
         return;
       }
       if (e.key === 'F11') {

@@ -1369,12 +1369,16 @@ class TabManagerClass {
       }
     }
 
-    // Ensure the newly active tab chip is always visible in the tab strip
-    // (covers keyboard navigation, Ctrl+Tab, etc. where no click happens).
+    // Keep the active tab chip in view — use instant scroll so rapid switches (e.g. within a group)
+    // feel as snappy as Chrome; smooth scrolling reads as lag on every click.
     requestAnimationFrame(() => {
       const activeEl = document.getElementById(`tabitem-${id}`);
       if (activeEl) {
-        activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+        try {
+          activeEl.scrollIntoView({ behavior: 'instant', block: 'nearest', inline: 'nearest' });
+        } catch {
+          activeEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
       }
     });
 
@@ -1758,11 +1762,15 @@ class TabManagerClass {
     this._agentControlledTabId = next;
     this._applyAgentControlledTabClasses();
     if (next && next !== prev) {
-      document.getElementById(`tabitem-${next}`)?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-        inline: 'nearest'
-      });
+      try {
+        document.getElementById(`tabitem-${next}`)?.scrollIntoView({
+          behavior: 'instant',
+          block: 'nearest',
+          inline: 'nearest'
+        });
+      } catch {
+        document.getElementById(`tabitem-${next}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
     }
   }
 
@@ -2491,7 +2499,11 @@ class TabManagerClass {
     this._appendNodeToTabList(el);
 
     requestAnimationFrame(() => {
-      el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      try {
+        el.scrollIntoView({ behavior: 'instant', block: 'nearest', inline: 'nearest' });
+      } catch {
+        el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
     });
   }
 
