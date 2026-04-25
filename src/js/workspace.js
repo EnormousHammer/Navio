@@ -24,6 +24,47 @@ class WorkspaceManagerClass {
     document.getElementById('workspace-add-project')?.addEventListener('click', () => this.addProject());
     document.getElementById('workspace-draft-tasks')?.addEventListener('click', () => this.draftTasksFromPage());
 
+    document.getElementById('workspace-task-input')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        void this.addTask();
+      }
+    });
+    document.getElementById('workspace-project-input')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        void this.addProject();
+      }
+    });
+
+    this.body?.addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-ws-fill]');
+      if (!chip || !this.body?.contains(chip)) return;
+      const kind = chip.getAttribute('data-ws-fill');
+      const val = chip.getAttribute('data-ws-value') || '';
+      if (kind === 'note') {
+        const ta = document.getElementById('workspace-quick-note');
+        if (ta) {
+          ta.value = val;
+          ta.focus();
+        }
+      } else if (kind === 'task') {
+        const inp = document.getElementById('workspace-task-input');
+        if (inp) {
+          inp.value = val;
+          inp.focus();
+          inp.select();
+        }
+      } else if (kind === 'project') {
+        const inp = document.getElementById('workspace-project-input');
+        if (inp) {
+          inp.value = val;
+          inp.focus();
+          inp.select();
+        }
+      }
+    });
+
     document.getElementById('btn-workspace')?.addEventListener('click', () => this.toggle());
   }
 
@@ -70,9 +111,18 @@ class WorkspaceManagerClass {
     }
 
     if (this.projectList) {
-      this.projectList.innerHTML = (w.projects || [])
-        .map((p) => `<div style="padding:6px 0;border-bottom:1px solid var(--border)">${escapeHtml(p.name)}</div>`)
-        .join('') || '<span style="opacity:.5">No projects yet.</span>';
+      const proj = w.projects || [];
+      const folderSvg =
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+      this.projectList.innerHTML =
+        proj.length === 0
+          ? '<span class="workspace-notes-empty">No projects yet.</span>'
+          : proj
+            .map(
+              (p) =>
+                `<div class="workspace-project-card" role="listitem">${folderSvg}<span>${escapeHtml(p.name)}</span></div>`
+            )
+            .join('');
     }
 
     if (this.notesList) {

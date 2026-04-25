@@ -4,6 +4,7 @@ const { app, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const secureConfig = require('./secure-config');
+const { inferAiProviderFromApiKey, coerceModelsForProvider } = require('./infer-ai-provider');
 
 function getConfigPath() {
   return path.join(app.getPath('userData'), 'navio-config.json');
@@ -221,6 +222,49 @@ function loadConfig() {
   merged.hasApiKey = !!key;
   delete merged.apiKey;
   delete merged.crashReportingAvailable;
+
+  // Self-heal: stored key shape vs wrong aiProvider (e.g. OpenAI key with Anthropic selected).
+  if (
+    key &&
+    typeof key === 'string' &&
+    key.trim().length >= 8 &&
+    merged.aiProvider !== 'custom' &&
+    merged.aiProvider !== 'ollama'
+  ) {
+    const inferred = inferAiProviderFromApiKey(key);
+    if (inferred && inferred !== merged.aiProvider) {
+      merged.aiProvider = inferred;
+      const coerced = coerceModelsForProvider(inferred, merged.aiModel, merged.aiPlannerModel);
+      merged.aiModel = coerced.aiModel;
+      merged.aiPlannerModel = coerced.aiPlannerModel;
+      try {
+        const disk = readConfigFile();
+        disk.aiProvider = merged.aiProvider;
+        disk.aiModel = merged.aiModel;
+        disk.aiPlannerModel = merged.aiPlannerModel;
+        delete disk.apiKey;
+        writeConfigFile(disk);
+      } catch (_) {
+        /* ignore disk errors */
+      }
+    } else if (inferred === merged.aiProvider) {
+      const coerced = coerceModelsForProvider(inferred, merged.aiModel, merged.aiPlannerModel);
+      if (coerced.aiModel !== merged.aiModel || coerced.aiPlannerModel !== merged.aiPlannerModel) {
+        merged.aiModel = coerced.aiModel;
+        merged.aiPlannerModel = coerced.aiPlannerModel;
+        try {
+          const disk = readConfigFile();
+          disk.aiModel = merged.aiModel;
+          disk.aiPlannerModel = merged.aiPlannerModel;
+          delete disk.apiKey;
+          writeConfigFile(disk);
+        } catch (_) {
+          /* ignore */
+        }
+      }
+    }
+  }
+
   return merged;
 }
 
@@ -245,6 +289,24 @@ function saveConfig(partial) {
   delete next.apiKey;
   delete next.hasApiKey;
   delete next.crashReportingAvailable;
+
+  // When the user saves a non-trivial API key, align provider (and models) with key shape.
+  // Never override custom endpoint or Ollama — those are intentional modes.
+  if (
+    Object.prototype.hasOwnProperty.call(partial, 'apiKey') &&
+    typeof partial.apiKey === 'string' &&
+    partial.apiKey.trim().length >= 8
+  ) {
+    const inferred = inferAiProviderFromApiKey(partial.apiKey.trim());
+    const prov = next.aiProvider || 'openai';
+    if (inferred && prov !== 'custom' && prov !== 'ollama') {
+      next.aiProvider = inferred;
+      const coerced = coerceModelsForProvider(inferred, next.aiModel, next.aiPlannerModel);
+      next.aiModel = coerced.aiModel;
+      next.aiPlannerModel = coerced.aiPlannerModel;
+    }
+  }
+
   writeConfigFile(next);
 
   if (partial.theme) {

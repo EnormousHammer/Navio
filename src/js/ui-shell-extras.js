@@ -202,7 +202,11 @@
       btn.appendChild(timeEl);
 
       btn.addEventListener('click', () => {
-        if (typeof TabManager !== 'undefined' && e.url) TabManager.navigateActive(e.url);
+        if (typeof TabManager !== 'undefined' && e.url && TabManager.navigateFromShellLink) {
+          TabManager.navigateFromShellLink(e.url);
+        } else if (typeof TabManager !== 'undefined' && e.url) {
+          TabManager.navigateActive(e.url);
+        }
         const overlay = document.getElementById('history-overlay');
         if (overlay) overlay.hidden = true;
       });
@@ -259,7 +263,11 @@
       main.textContent = b.title || b.url || 'Untitled';
       row.querySelector('.bookmark-overlay-section').textContent = b._section || '';
       main.addEventListener('click', () => {
-        if (typeof TabManager !== 'undefined' && b.url) TabManager.navigateActive(b.url);
+        if (typeof TabManager !== 'undefined' && b.url && TabManager.navigateFromShellLink) {
+          TabManager.navigateFromShellLink(b.url);
+        } else if (typeof TabManager !== 'undefined' && b.url) {
+          TabManager.navigateActive(b.url);
+        }
         const overlay = document.getElementById('bookmarks-overlay');
         if (overlay) overlay.hidden = true;
       });
@@ -448,6 +456,82 @@
   }
   window.__navioToggleBookmarkBar = toggleBookmarkBar;
 
+  function bindBrowserMenu() {
+    const trigger = document.getElementById('btn-browser-menu');
+    const menu = document.getElementById('browser-menu-popup');
+    if (!trigger || !menu || trigger._navioBrowserMenuBound) return;
+    trigger._navioBrowserMenuBound = true;
+
+    function positionMenu() {
+      const rect = trigger.getBoundingClientRect();
+      const mw = menu.offsetWidth || 240;
+      let left = rect.right - mw;
+      left = Math.max(8, Math.min(left, window.innerWidth - mw - 8));
+      const top = rect.bottom + 6;
+      menu.style.left = `${left}px`;
+      menu.style.top = `${top}px`;
+    }
+
+    function closeMenu() {
+      menu.hidden = true;
+      trigger.setAttribute('aria-expanded', 'false');
+    }
+
+    function openMenu() {
+      menu.hidden = false;
+      trigger.setAttribute('aria-expanded', 'true');
+      positionMenu();
+    }
+
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (menu.hidden) openMenu();
+      else closeMenu();
+    });
+
+    menu.addEventListener('click', (e) => {
+      const item = e.target.closest('[data-menu]');
+      if (!item) return;
+      const act = item.getAttribute('data-menu');
+      closeMenu();
+      switch (act) {
+        case 'new-tab':
+          if (typeof TabManager !== 'undefined') TabManager.createTab();
+          break;
+        case 'bookmarks':
+          window.__navioOpenBookmarksOverlay?.();
+          break;
+        case 'history':
+          window.__navioOpenHistoryOverlay?.();
+          break;
+        case 'downloads':
+          window.__navioToggleDownloadsDrawer?.();
+          break;
+        case 'settings':
+          if (typeof SettingsManager !== 'undefined' && typeof SettingsManager.open === 'function') {
+            SettingsManager.open();
+          }
+          break;
+        default:
+          break;
+      }
+    });
+
+    document.addEventListener('mousedown', (e) => {
+      if (menu.hidden) return;
+      if (trigger.contains(e.target) || menu.contains(e.target)) return;
+      closeMenu();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !menu.hidden) closeMenu();
+    });
+
+    window.addEventListener('resize', () => {
+      if (!menu.hidden) positionMenu();
+    });
+  }
+
   async function initBookmarkBar() {
     const bar = document.getElementById('bookmark-bar');
     if (!bar || !window.navio.bookmarksGet) return;
@@ -527,7 +611,12 @@
         a.appendChild(label);
 
         a.addEventListener('click', () => {
-          if (typeof TabManager !== 'undefined') TabManager.navigateActive(b.url);
+          if (isFolder || !b.url) return;
+          if (typeof TabManager !== 'undefined' && TabManager.navigateFromShellLink) {
+            TabManager.navigateFromShellLink(b.url);
+          } else if (typeof TabManager !== 'undefined') {
+            TabManager.navigateActive(b.url);
+          }
         });
         bar.appendChild(a);
       });
@@ -1672,6 +1761,7 @@
         }
       });
     }
+    bindBrowserMenu();
     initBookmarkBar();
     bindBookmarkBarToggle();
     bindFindInPage();

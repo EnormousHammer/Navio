@@ -881,13 +881,15 @@ ${badgeHtml(it.badge)}
   navigateTo(input) {
     const url = this.resolveNavigationInput(input);
     if (!url || typeof TabManager === 'undefined') return;
-
+    if (typeof TabManager.navigateFromShellLink === 'function') {
+      TabManager.navigateFromShellLink(url);
+      return;
+    }
     const wv = TabManager.getActiveWebview();
     if (!wv) {
       TabManager.createTab(url);
       return;
     }
-
     TabManager.navigateActive(url);
   }
 
@@ -1046,6 +1048,13 @@ ${badgeHtml(it.badge)}
           break;
         case 'bookmarks-panel':
           window.__navioOpenBookmarksOverlay?.();
+          break;
+        case 'open-settings':
+          runDedupedShortcut('open-settings', () => {
+            if (typeof SettingsManager !== 'undefined' && typeof SettingsManager.open === 'function') {
+              SettingsManager.open();
+            }
+          });
           break;
         case 'downloads-panel':
           window.__navioToggleDownloadsDrawer?.();
@@ -1252,6 +1261,14 @@ ${badgeHtml(it.badge)}
       if (k === 'b' && e.shiftKey) {
         e.preventDefault();
         window.__navioOpenBookmarksOverlay?.();
+      }
+      if ((e.key === ',' || e.code === 'Comma') && !e.shiftKey) {
+        e.preventDefault();
+        runDedupedShortcut('open-settings', () => {
+          if (typeof SettingsManager !== 'undefined' && typeof SettingsManager.open === 'function') {
+            SettingsManager.open();
+          }
+        });
       }
       if (k === 'o' && e.shiftKey) {
         e.preventDefault();
@@ -1463,7 +1480,10 @@ const ReadingListManager = (() => {
     el.querySelectorAll('.rl-item-title').forEach(titleEl => {
       titleEl.addEventListener('click', async () => {
         const url = titleEl.closest('.rl-item').dataset.url;
-        if (url && typeof TabManager !== 'undefined') TabManager.navigateActive(url);
+        if (url && typeof TabManager !== 'undefined') {
+          if (typeof TabManager.navigateFromShellLink === 'function') TabManager.navigateFromShellLink(url);
+          else TabManager.navigateActive(url);
+        }
         await window.navio.readingListMarkRead(url);
         close();
         refresh();

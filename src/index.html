@@ -160,8 +160,21 @@
               <circle cx="15" cy="9" r="1" fill="currentColor"/>
             </svg>
           </button>
-          <button class="nav-btn" id="btn-settings" title="Settings">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <div class="nav-browser-menu-wrap">
+            <button type="button" class="nav-btn" id="btn-browser-menu" title="Menu — new tab, bookmarks, history, settings" aria-haspopup="menu" aria-expanded="false" aria-controls="browser-menu-popup">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+            </button>
+            <div id="browser-menu-popup" class="browser-menu-popup" hidden role="menu" aria-label="Browser menu">
+              <button type="button" class="browser-menu-item" role="menuitem" data-menu="new-tab">New tab <span class="browser-menu-kbd">Ctrl+T</span></button>
+              <button type="button" class="browser-menu-item" role="menuitem" data-menu="bookmarks">Bookmarks <span class="browser-menu-kbd">Ctrl+Shift+B</span></button>
+              <button type="button" class="browser-menu-item" role="menuitem" data-menu="history">History <span class="browser-menu-kbd">Ctrl+H</span></button>
+              <button type="button" class="browser-menu-item" role="menuitem" data-menu="downloads">Downloads <span class="browser-menu-kbd">Ctrl+J</span></button>
+              <div class="browser-menu-sep" role="separator" aria-hidden="true"></div>
+              <button type="button" class="browser-menu-item" role="menuitem" data-menu="settings">Settings <span class="browser-menu-kbd">Ctrl+,</span></button>
+            </div>
+          </div>
+          <button type="button" class="nav-btn" id="btn-settings" title="Settings (Ctrl+,)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           </button>
         </div>
       </nav>
@@ -647,35 +660,71 @@
   <div id="workspace-overlay" class="workspace-overlay" aria-hidden="true">
     <div class="workspace-panel">
       <div class="workspace-header">
-        <h3 style="font-size:16px;margin:0">Workspace</h3>
+        <div class="workspace-header-text">
+          <span class="workspace-header-badge" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+          </span>
+          <div>
+            <h3 class="workspace-title">Workspace</h3>
+            <p class="workspace-subtitle">Notes, tasks, and projects for this profile</p>
+          </div>
+        </div>
         <button type="button" class="icon-btn" id="workspace-close" title="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <div class="workspace-body" id="workspace-body">
-        <div class="workspace-section">
-          <h4>Quick capture</h4>
-          <textarea id="workspace-quick-note" rows="3" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-deep);color:inherit;font-family:inherit;font-size:13px" placeholder="Note tied to this tab…"></textarea>
-          <button type="button" class="btn btn-primary" id="workspace-save-note" style="margin-top:8px">Save note</button>
+        <div class="workspace-section workspace-section--capture">
+          <h4 class="workspace-section-title">
+            <span class="workspace-section-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span>
+            Quick capture
+          </h4>
+          <p class="workspace-section-lead">Save a note linked to the tab you have open. Tap an example to fill the box, then edit and save.</p>
+          <div class="workspace-chip-row" role="group" aria-label="Example notes">
+            <button type="button" class="workspace-chip" data-ws-fill="note" data-ws-value="Follow up on this page tomorrow">Follow-up</button>
+            <button type="button" class="workspace-chip" data-ws-fill="note" data-ws-value="Key quote or stat to remember">Quote / stat</button>
+            <button type="button" class="workspace-chip" data-ws-fill="note" data-ws-value="Question for the team about this doc">Team question</button>
+          </div>
+          <textarea id="workspace-quick-note" class="workspace-textarea" rows="3" placeholder="Note tied to this tab…"></textarea>
+          <button type="button" class="btn btn-primary workspace-save-note-btn" id="workspace-save-note">Save note</button>
         </div>
-        <div class="workspace-section">
-          <h4>Tasks</h4>
-          <div style="display:flex;gap:8px;margin-bottom:10px">
-            <input type="text" id="workspace-task-input" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg-deep);color:inherit" placeholder="New task">
+        <div class="workspace-section workspace-section--tasks">
+          <h4 class="workspace-section-title">
+            <span class="workspace-section-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+            Tasks
+          </h4>
+          <div class="workspace-chip-row" role="group" aria-label="Example tasks">
+            <button type="button" class="workspace-chip" data-ws-fill="task" data-ws-value="Read section 2 and summarize">Read &amp; summarize</button>
+            <button type="button" class="workspace-chip" data-ws-fill="task" data-ws-value="Send recap email after meeting">Send recap</button>
+            <button type="button" class="workspace-chip" data-ws-fill="task" data-ws-value="Book 30 min for design review">Schedule review</button>
+          </div>
+          <div class="workspace-input-row">
+            <input type="text" id="workspace-task-input" class="workspace-input" placeholder="New task — press Enter to add" autocomplete="off">
             <button type="button" class="btn btn-secondary" id="workspace-add-task">Add</button>
           </div>
-          <button type="button" class="btn btn-secondary" id="workspace-draft-tasks" style="margin-bottom:12px;font-size:12px">Draft tasks from page (AI)</button>
-          <div id="workspace-task-list"></div>
+          <button type="button" class="btn btn-secondary workspace-ai-row" id="workspace-draft-tasks">Draft tasks from page (AI)</button>
+          <div id="workspace-task-list" class="workspace-task-list"></div>
         </div>
-        <div class="workspace-section">
-          <h4>Projects</h4>
-          <div style="display:flex;gap:8px">
-            <input type="text" id="workspace-project-input" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg-deep);color:inherit" placeholder="Project name">
+        <div class="workspace-section workspace-section--projects">
+          <h4 class="workspace-section-title">
+            <span class="workspace-section-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
+            Projects
+          </h4>
+          <div class="workspace-chip-row" role="group" aria-label="Example projects">
+            <button type="button" class="workspace-chip" data-ws-fill="project" data-ws-value="Website refresh">Website refresh</button>
+            <button type="button" class="workspace-chip" data-ws-fill="project" data-ws-value="Q2 planning">Q2 planning</button>
+            <button type="button" class="workspace-chip" data-ws-fill="project" data-ws-value="Research notes">Research notes</button>
+          </div>
+          <div class="workspace-input-row">
+            <input type="text" id="workspace-project-input" class="workspace-input" placeholder="Project name — Enter to add" autocomplete="off">
             <button type="button" class="btn btn-secondary" id="workspace-add-project">Add</button>
           </div>
-          <div id="workspace-project-list" style="margin-top:10px;font-size:13px;color:var(--text-secondary)"></div>
+          <div id="workspace-project-list" class="workspace-project-list"></div>
         </div>
-        <div class="workspace-section">
-          <h4>Saved notes</h4>
-          <div id="workspace-notes-list"></div>
+        <div class="workspace-section workspace-section--notes">
+          <h4 class="workspace-section-title">
+            <span class="workspace-section-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>
+            Saved notes
+          </h4>
+          <div id="workspace-notes-list" class="workspace-notes-list"></div>
         </div>
       </div>
     </div>

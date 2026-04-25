@@ -902,6 +902,7 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   regShortcut('CommandOrControl+Shift+O', 'tab-search');
   regShortcut('CommandOrControl+Shift+E', 'tab-search');
   regShortcut('CommandOrControl+Shift+B', 'bookmarks-panel');
+  regShortcut('CommandOrControl+,', 'open-settings');
   regShortcut('CommandOrControl+J', 'downloads-panel');
   regShortcut('CommandOrControl+Shift+I', 'devtools-active-tab');
   // Find in page + zoom: shell document key handlers do not run when a <webview> is focused, so

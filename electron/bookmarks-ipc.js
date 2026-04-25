@@ -34,11 +34,13 @@ function saveBookmarks(userData, data) {
 function registerBookmarksIpc(ipcMain, { app, loadConfig }) {
   ipcMain.handle('bookmarks-get', () => loadBookmarks(app.getPath('userData')));
 
-  ipcMain.handle('bookmarks-add', (_, { title, url, folderId, toBar }) => {
+  ipcMain.handle('bookmarks-add', (_, { title, url, folderId, toBar, favicon }) => {
     const userData = app.getPath('userData');
     const data = loadBookmarks(userData);
     const id = crypto.randomBytes(8).toString('hex');
-    const entry = { id, title: title || url, url, favicon: '', createdAt: Date.now() };
+    let fav = typeof favicon === 'string' ? favicon.trim().slice(0, 2048) : '';
+    if (fav && !/^https?:\/\//i.test(fav) && !/^data:image\//i.test(fav)) fav = '';
+    const entry = { id, title: title || url, url, favicon: fav, createdAt: Date.now() };
     if (toBar) {
       data.bar.push(entry);
     } else if (folderId) {

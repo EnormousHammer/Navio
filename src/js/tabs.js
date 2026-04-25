@@ -593,6 +593,34 @@ class TabManagerClass {
   }
 
   /**
+   * Open a URL from shell UI (bookmark bar, bookmarks manager, history, omnibox).
+   * When the focused tab is the full-page AI chat surface, load in the browsing-context tab
+   * and switch to it — same idea as `navigateForAgentAndWaitForLoad`, without the wait.
+   */
+  navigateFromShellLink(resolvedUrl) {
+    if (!resolvedUrl) return false;
+    const active = this.getActiveTab();
+    if (!active || !active.webview) {
+      this.createTab(resolvedUrl);
+      return true;
+    }
+    const u = active.url || '';
+    if (!this.isNavioChatTabUrl(u)) {
+      return this.navigateActive(resolvedUrl);
+    }
+    this.ensureBrowserContextTab();
+    const ctx = this.getBrowserContextTab();
+    if (!ctx || !ctx.webview) {
+      this.createTab(resolvedUrl);
+      return true;
+    }
+    if (ctx.id !== active.id) {
+      this.switchToTab(ctx.id);
+    }
+    return this.navigateTab(ctx, resolvedUrl);
+  }
+
+  /**
    * Agent navigation: load in the tab the AI is driving, not necessarily the user's focused tab.
    * When `_agentControlledTabId` is set (tool loop / takeover), URLs load there so the user can
    * switch tabs freely while automation continues in the background.

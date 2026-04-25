@@ -3400,16 +3400,65 @@ const NTP = (() => {
   }
 
   // ── NTP Model Selector ────────────────────────────────────────────────────
+  // Lists match Settings → AI per provider so the NTP picker only shows models
+  // that work with the user’s configured provider (and thus their API key).
 
-  const _NTP_KNOWN_MODELS = [
-    { label: 'GPT-4o',         value: 'gpt-4o',            provider: 'openai' },
-    { label: 'GPT-4o mini',    value: 'gpt-4o-mini',       provider: 'openai' },
-    { label: 'o3',             value: 'o3',                 provider: 'openai' },
-    { label: 'Claude Opus 4',  value: 'claude-opus-4-5',   provider: 'anthropic' },
-    { label: 'Claude Sonnet 4',value: 'claude-sonnet-4-5', provider: 'anthropic' },
-    { label: 'Gemini 2.5 Pro', value: 'gemini-2.5-pro',    provider: 'google' },
-    { label: 'Gemini 2.5 Flash',value:'gemini-2.5-flash',  provider: 'google' },
-  ];
+  const _NTP_MODEL_DEFAULTS = {
+    openai: 'gpt-5.4',
+    anthropic: 'claude-opus-4-5',
+    google: 'gemini-2.0-flash',
+    ollama: 'llama3.2'
+  };
+
+  const _NTP_MODELS_BY_PROVIDER = {
+    openai: [
+      { label: 'GPT-5.4', value: 'gpt-5.4' },
+      { label: 'GPT-5.4 Mini', value: 'gpt-5.4-mini' },
+      { label: 'GPT-5.4 Nano', value: 'gpt-5.4-nano' },
+      { label: 'GPT-5', value: 'gpt-5' },
+      { label: 'GPT-5 Mini', value: 'gpt-5-mini' },
+      { label: 'o3', value: 'o3' },
+      { label: 'o3 Mini', value: 'o3-mini' },
+      { label: 'o4 Mini', value: 'o4-mini' },
+      { label: 'o1', value: 'o1' },
+      { label: 'o1 Mini', value: 'o1-mini' }
+    ],
+    anthropic: [
+      { label: 'Claude Opus 4.5', value: 'claude-opus-4-5' },
+      { label: 'Claude Sonnet 4.5', value: 'claude-sonnet-4-5' },
+      { label: 'Claude Haiku 4.5', value: 'claude-haiku-4-5' },
+      { label: 'Claude 3.5 Sonnet', value: 'claude-3-5-sonnet-20241022' }
+    ],
+    google: [
+      { label: 'Gemini 2.5 Pro', value: 'gemini-2.5-pro' },
+      { label: 'Gemini 2.5 Flash', value: 'gemini-2.5-flash' },
+      { label: 'Gemini 2.0 Flash', value: 'gemini-2.0-flash' },
+      { label: 'Gemini 2.0 Flash-Lite', value: 'gemini-2.0-flash-lite' },
+      { label: 'Gemini 1.5 Pro', value: 'gemini-1.5-pro' },
+      { label: 'Gemini 1.5 Flash', value: 'gemini-1.5-flash' }
+    ],
+    ollama: [
+      { label: 'llama3.2', value: 'llama3.2' },
+      { label: 'llama3.1', value: 'llama3.1' },
+      { label: 'mistral', value: 'mistral' },
+      { label: 'qwen2.5', value: 'qwen2.5' },
+      { label: 'phi4', value: 'phi4' },
+      { label: 'gemma3', value: 'gemma3' },
+      { label: 'deepseek-r1', value: 'deepseek-r1' }
+    ]
+  };
+
+  function _ntpModelsForProvider(provider, savedModel) {
+    const p =
+      provider && Object.prototype.hasOwnProperty.call(_NTP_MODELS_BY_PROVIDER, provider)
+        ? provider
+        : 'openai';
+    const base = (_NTP_MODELS_BY_PROVIDER[p] || []).map((m) => ({ ...m }));
+    if (savedModel && !base.some((m) => m.value === savedModel)) {
+      base.unshift({ label: savedModel, value: savedModel });
+    }
+    return base;
+  }
 
   async function _bindNtpModelSelector() {
     const btn      = document.getElementById('ntp-model-btn');
@@ -3417,26 +3466,47 @@ const NTP = (() => {
     const dropdown = document.getElementById('ntp-model-dropdown');
     if (!btn || !dropdown) return;
 
-    // Load current model from config
     let currentModel = '';
+    let aiProvider = 'openai';
     try {
       const cfg = await window.navio.getConfig();
       currentModel = cfg.aiModel || cfg.model || '';
-    } catch {}
+      aiProvider = cfg.aiProvider || 'openai';
+    } catch { /* keep defaults */ }
+
+    const defaultForProvider = _NTP_MODEL_DEFAULTS[aiProvider] || _NTP_MODEL_DEFAULTS.openai;
+    const highlightModel = currentModel || defaultForProvider;
+
+    const models = _ntpModelsForProvider(aiProvider, currentModel);
 
     const updateLabel = (val) => {
-      const m = _NTP_KNOWN_MODELS.find(m => m.value === val);
+      const m = models.find((x) => x.value === val);
       if (label) label.textContent = m ? m.label : (val || 'AI');
     };
-    updateLabel(currentModel);
+    updateLabel(highlightModel);
 
-    // Build dropdown items
-    const renderDropdown = (current) => {
-      dropdown.innerHTML = _NTP_KNOWN_MODELS.map(m => `
-        <button class="ntp-model-option${m.value === current ? ' active' : ''}" type="button" data-value="${m.value}">
+    // Custom endpoint: model id is edited in Settings (may not match preset list).
+    if (aiProvider === 'custom') {
+      btn.disabled = true;
+      btn.title = 'Model is set in Settings → AI (custom endpoint).';
+      dropdown.innerHTML = '';
+      dropdown.hidden = true;
+      return;
+    }
+
+    btn.disabled = false;
+    btn.title = 'Switch AI model';
+
+    const renderDropdown = (highlight) => {
+      dropdown.innerHTML = models
+        .map(
+          (m) => `
+        <button class="ntp-model-option${m.value === highlight ? ' active' : ''}" type="button" data-value="${_ntpEsc(m.value)}">
           ${_ntpEsc(m.label)}
-        </button>`).join('');
-      dropdown.querySelectorAll('.ntp-model-option').forEach(opt => {
+        </button>`
+        )
+        .join('');
+      dropdown.querySelectorAll('.ntp-model-option').forEach((opt) => {
         opt.addEventListener('click', async () => {
           const val = opt.dataset.value;
           try {
@@ -3451,13 +3521,15 @@ const NTP = (() => {
         });
       });
     };
-    renderDropdown(currentModel);
+    renderDropdown(currentModel || highlightModel);
 
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       dropdown.hidden = !dropdown.hidden;
     });
-    document.addEventListener('click', () => { dropdown.hidden = true; });
+    document.addEventListener('click', () => {
+      dropdown.hidden = true;
+    });
   }
 
   // ── Background dim slider ─────────────────────────────────────────────────

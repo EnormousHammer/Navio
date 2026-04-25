@@ -376,6 +376,7 @@ body.shell-prelude-active.shell-prelude-in .shell-prelude {
 
 /* Dismissed splash must never sit above the shell and eat clicks */
 #shell-prelude[aria-hidden='true'] {
+  display: none !important;
   pointer-events: none !important;
 }
 
@@ -10411,7 +10412,7 @@ body.onboarding-active #app {
 
 .workspace-panel {
   width: 100%;
-  max-width: 640px;
+  max-width: 720px;
   max-height: 85vh;
   background: var(--bg-surface);
   border: 1px solid var(--border);

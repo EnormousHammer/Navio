@@ -192,6 +192,12 @@ class SettingsManagerClass {
       input.type = input.type === 'password' ? 'text' : 'password';
     });
 
+    this._inferKeyDebounce = null;
+    this.elements.apiKey.addEventListener('input', () => {
+      if (this._inferKeyDebounce) clearTimeout(this._inferKeyDebounce);
+      this._inferKeyDebounce = setTimeout(() => this._maybeInferProviderFromKeyField(), 400);
+    });
+
     this.elements.themeOptions.querySelectorAll('.theme-option').forEach((btn) => {
       btn.addEventListener('click', () => {
         this.elements.themeOptions.querySelectorAll('.theme-option').forEach((b) => b.classList.remove('active'));
@@ -756,6 +762,27 @@ class SettingsManagerClass {
     } catch {
       el.textContent = '';
     }
+  }
+
+  /**
+   * While typing an API key, switch Provider to match recognizable key shapes
+   * (OpenAI sk-…, Anthropic sk-ant-…, Google AIza…). Skipped for custom / Ollama.
+   */
+  async _maybeInferProviderFromKeyField() {
+    if (!window.navio || typeof window.navio.inferAiProviderFromApiKey !== 'function') return;
+    const raw = this.elements.apiKey.value.trim();
+    if (raw.length < 12) return;
+    const prov = this.elements.provider.value;
+    if (prov === 'custom' || prov === 'ollama') return;
+    let inferred;
+    try {
+      inferred = await window.navio.inferAiProviderFromApiKey(raw);
+    } catch {
+      return;
+    }
+    if (!inferred || inferred === prov) return;
+    this.elements.provider.value = inferred;
+    this.elements.provider.dispatchEvent(new Event('change'));
   }
 
   updateModelOptions() {
@@ -1548,7 +1575,6 @@ class SettingsManagerClass {
     };
 
     await window.navio.saveConfig(newConfig);
-    document.dispatchEvent(new CustomEvent('navio-config-saved', { detail: newConfig }));
 
     if (syncPhraseInput.length >= 4 && window.navio.syncSavePassphrase) {
       const pr = await window.navio.syncSavePassphrase({ passphrase: syncPhraseInput });
@@ -1559,6 +1585,7 @@ class SettingsManagerClass {
     if (this.elements.syncPassphrase) this.elements.syncPassphrase.value = '';
 
     this.config = { ...(await window.navio.getConfig()) };
+    document.dispatchEvent(new CustomEvent('navio-config-saved', { detail: this.config }));
 
     if (newConfig.syncEnabled && window.navio.syncRunNow) {
       try {

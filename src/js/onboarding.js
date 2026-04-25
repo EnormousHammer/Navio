@@ -77,9 +77,12 @@ class OnboardingManager {
     });
 
     const apiKeyInput = document.getElementById('ob-api-key');
+    this._obInferTimer = null;
     apiKeyInput.addEventListener('input', () => {
       this.apiKey = apiKeyInput.value.trim();
       document.getElementById('ob-ai-next').disabled = this.apiKey.length < 8;
+      if (this._obInferTimer) clearTimeout(this._obInferTimer);
+      this._obInferTimer = setTimeout(() => this._maybeInferOnboardingProvider(), 400);
     });
 
     document.getElementById('ob-btn-launch').addEventListener('click', () => this.launch());
@@ -193,6 +196,19 @@ class OnboardingManager {
     } catch (e) { /* proceed anyway */ }
 
     this.goTo(3);
+  }
+
+  async _maybeInferOnboardingProvider() {
+    if (!this.apiKey || this.apiKey.length < 12) return;
+    if (!window.navio || typeof window.navio.inferAiProviderFromApiKey !== 'function') return;
+    let inferred;
+    try {
+      inferred = await window.navio.inferAiProviderFromApiKey(this.apiKey);
+    } catch {
+      return;
+    }
+    if (!inferred || this.selectedProvider === inferred) return;
+    this.selectProvider(inferred);
   }
 
   selectProvider(provider) {

@@ -166,14 +166,20 @@ const LaunchIntro = {
 
     await new Promise((r) => requestAnimationFrame(r));
 
+    /* Dismiss prelude before optional intro video. If getIntroVideoUrl IPC never returns,
+       we must not leave the splash covering the shell (onboarding or first tab). */
+    await this._revealShellNow();
+
     let url = null;
     try {
-      url = await window.navio.getIntroVideoUrl();
+      const p = window.navio.getIntroVideoUrl();
+      url = await Promise.race([
+        p,
+        new Promise((resolve) => setTimeout(() => resolve(null), 5000))
+      ]);
     } catch (e) {
       url = null;
     }
-
-    await this._revealShellNow();
 
     if (url) {
       await this._playVideo(url);

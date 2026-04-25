@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('navio', {
   getInternalChatPageUrl: () => ipcRenderer.invoke('navio-internal-chat-page-url'),
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),
   getApiKeyForSettings: () => ipcRenderer.invoke('get-api-key-for-settings'),
+  /** Returns 'openai' | 'anthropic' | 'google' | null from common key prefixes. */
+  inferAiProviderFromApiKey: (key) => ipcRenderer.invoke('infer-ai-provider-from-key', key),
 
   /** Opt-in diagnostics: forwards to main Sentry only when enabled and DSN configured. */
   reportDiagnosticsError: (payload) =>

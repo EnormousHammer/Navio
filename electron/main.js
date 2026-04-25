@@ -1641,6 +1641,11 @@ ipcMain.handle('get-api-key-for-settings', () => {
   return secureConfig.getApiKey(app.getPath('userData'));
 });
 
+ipcMain.handle('infer-ai-provider-from-key', (_, key) => {
+  const { inferAiProviderFromApiKey } = require('./infer-ai-provider');
+  return inferAiProviderFromApiKey(typeof key === 'string' ? key : '');
+});
+
 ipcMain.handle('get-intro-video-url', () => {
   try {
     const cfg = loadConfig();
