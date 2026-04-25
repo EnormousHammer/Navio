@@ -31,7 +31,6 @@ class SettingsManagerClass {
       ntpWidgetBL: document.getElementById('setting-ntp-widget-bl'),
       ntpWidgetBR: document.getElementById('setting-ntp-widget-br'),
       ntpNewsSubreddit: document.getElementById('setting-ntp-news-subreddit'),
-      launchIntro: document.getElementById('setting-launch-intro'),
       downloadAskWhere: document.getElementById('setting-download-ask-where'),
       downloadRevealInFolder: document.getElementById('setting-download-reveal'),
       tabDiscardIdleMinutes: document.getElementById('setting-tab-discard'),
@@ -1504,7 +1503,7 @@ class SettingsManagerClass {
         const allowed = ['worldnews', 'news', 'technology', 'sports', 'business', 'science'];
         return allowed.includes(sub) ? sub : 'worldnews';
       })(),
-      showLaunchIntro: !!(this.elements.launchIntro && this.elements.launchIntro.checked),
+      showLaunchIntro: false,
       downloadAskWhere: !!(this.elements.downloadAskWhere && this.elements.downloadAskWhere.checked),
       downloadRevealInFolder: !!(this.elements.downloadRevealInFolder && this.elements.downloadRevealInFolder.checked),
       tabDiscardIdleMinutes: this.elements.tabDiscardIdleMinutes

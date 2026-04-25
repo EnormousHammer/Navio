@@ -1923,7 +1923,9 @@ body.navio-vertical-tabs .tab-group-header:hover {
   align-items: center;
   padding: 6px clamp(10px, 3vw, 22px) 0;
   position: relative;
-  z-index: 1;
+  /* Above .ntp-shortcuts / .ntp-widgets (both z-index:1) so the model dropdown
+     can extend over the clock row without painting underneath it. */
+  z-index: 2;
   flex: 0 0 auto;
   width: 100%;
   max-width: 100%;
@@ -3043,6 +3045,8 @@ body.ntp-chat-active .ntp-model-selector { margin-bottom: 6px; }
   justify-content: center;
   margin-bottom: 10px;
   position: relative;
+  z-index: 1;
+  isolation: isolate;
 }
 .ntp-model-btn {
   display: inline-flex;
@@ -3065,13 +3069,14 @@ body.ntp-chat-active .ntp-model-selector { margin-bottom: 6px; }
   top: calc(100% + 6px);
   left: 50%;
   transform: translateX(-50%);
-  background: #1e2330;
-  border: 1px solid rgba(255,255,255,0.1);
+  background: rgb(24, 28, 40);
+  border: 1px solid rgba(255,255,255,0.12);
   border-radius: 10px;
   padding: 4px;
   min-width: 180px;
-  z-index: 200;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  z-index: 50;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(0,0,0,0.35);
+  isolation: isolate;
 }
 .ntp-model-dropdown[hidden] { display: none; }
 .ntp-model-option {

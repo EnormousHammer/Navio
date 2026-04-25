@@ -21,37 +21,12 @@ class NavioApp {
     this.applyLayoutFromConfig(this.config);
 
     const isFirstRun = await Onboarding.checkFirstRun();
-
-    if (typeof LaunchIntro !== 'undefined') {
-      try {
-        await LaunchIntro.playIfAvailable({
-          /* Returning users only — first run finishes onboarding first, then onOnboardingComplete → startBrowser */
-          preloadBrowser: !isFirstRun ? () => this.startBrowser() : null
-        });
-      } catch (e) {
-        console.warn('[Navio] Launch intro failed:', e);
-        LaunchIntro._stripPrelude();
-      } finally {
-        if (this._sessionStarted) this._finishInitialShellReady();
-      }
-      this.config = await window.navio.getConfig();
-    } else {
-      /* launch-intro.js missing — body still has shell-prelude-active from HTML; that sets #app to pointer-events:none */
-      const sp = document.getElementById('shell-prelude');
-      document.body.classList.remove(
-        'shell-prelude-active',
-        'shell-prelude-in',
-        'shell-browser-reveal',
-        'shell-prelude-fading',
-        'launch-intro-active'
-      );
-      if (sp) {
-        sp.classList.remove('shell-prelude-exiting');
-        sp.setAttribute('aria-hidden', 'true');
-        sp.style.removeProperty('pointer-events');
-      }
-      if (this._sessionStarted) this._finishInitialShellReady();
+    /* Returning users: open first tab immediately. First run: onboarding → onOnboardingComplete → startBrowser. */
+    if (!isFirstRun) {
+      await this.startBrowser();
     }
+    if (this._sessionStarted) this._finishInitialShellReady();
+    this.config = await window.navio.getConfig();
 
     this.bindThemeToggle();
     this.bindWindowControls();
@@ -60,17 +35,7 @@ class NavioApp {
     this.bindNewTabPage();
     this._installDiagnosticsErrorForward();
 
-    // If prelude was dismissed (aria-hidden) but body classes were left behind, unblock the shell.
     this._syncShellPreludeBodyClass();
-
-    // If LaunchIntro did not run startBrowser (e.g. intro error, or no LaunchIntro), still open a tab for returning users.
-    // First-run: onboarding → onOnboardingComplete() → startBrowser().
-    if (!isFirstRun && !this._sessionStarted) {
-      void this.startBrowser();
-    }
-    if (typeof LaunchIntro === 'undefined' && this._sessionStarted) {
-      this._finishInitialShellReady();
-    }
   }
 
   async onOnboardingComplete() {
@@ -98,7 +63,6 @@ class NavioApp {
     } else {
       TabManager.createTab();
     }
-    /* waitForInitialShellReady deferred until after prelude fade — avoids layout work competing with the transition */
   }
 
   /** Drop stale shell-prelude-active / shell-prelude-in when #shell-prelude is already dismissed. */

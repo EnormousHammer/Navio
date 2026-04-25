@@ -9,26 +9,7 @@
   <link rel="stylesheet" href="css/styles.css">
   <link rel="stylesheet" href="css/parts/polish.css">
 </head>
-<body data-theme="dark" class="shell-prelude-active">
-
-  <!-- Branded startup (always): covers chrome below title bar until JS fades it — no empty webview flash -->
-  <div id="shell-prelude" class="shell-prelude" aria-hidden="false" role="presentation">
-    <div class="shell-prelude-inner">
-      <div class="shell-prelude-orb" aria-hidden="true">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/>
-        </svg>
-      </div>
-      <div class="shell-prelude-title">Navio</div>
-      <p class="shell-prelude-tag">Your intelligent browser</p>
-    </div>
-  </div>
-
-  <!-- Optional full-window launch video (after prelude; see js/launch-intro.js, Settings) -->
-  <div id="launch-intro" class="launch-intro" aria-hidden="true">
-    <video id="launch-intro-video" class="launch-intro-video" playsinline preload="metadata"></video>
-    <button type="button" id="launch-intro-skip" class="launch-intro-skip">Skip</button>
-  </div>
+<body data-theme="dark">
 
   <!-- Single top band: tabs + window controls (Comet/Chrome-style — tabs are the top row) -->
   <div id="top-chrome" class="top-chrome">
@@ -856,11 +837,6 @@
                 </div>
                 <p class="settings-inline-hint">Default layout is Inbox and News on top, Markets (TradingView embed) and Live sports on the bottom. The footer index line may still use background Yahoo quotes when available. Scores use public ESPN feeds. The sports &quot;Hub&quot; link uses your Predicta URL from Browser settings.</p>
               </div>
-              <label class="setting-toggle-row" style="margin-top:12px">
-                <input type="checkbox" id="setting-launch-intro" checked>
-                <span>Play launch intro video on startup</span>
-              </label>
-              <p class="settings-inline-hint">Skipping the video or pressing Esc also turns this off until you enable it here again.</p>
             </div>
             <div class="settings-section">
               <h3>Display</h3>
@@ -1803,7 +1779,6 @@
     </aside>
 
   <script src="js/onboarding.js"></script>
-  <script src="js/launch-intro.js"></script>
   <script src="js/email-assistant.js"></script>
   <script src="js/navio-tts-voice-catalog.js"></script>
   <script src="js/tabs.js"></script>
