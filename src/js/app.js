@@ -1522,13 +1522,34 @@ const ReadingListManager = (() => {
   }
 
   async function saveCurrent() {
-    if (typeof TabManager === 'undefined') return;
-    const tab = TabManager.getActiveTab();
-    if (!tab?.url || tab.url === 'about:blank') {
-      _showAppToast('No page to save', 'error'); return;
+    if (typeof TabManager === 'undefined') {
+      _showAppToast('Browser is still starting — try again in a moment.', 'warning');
+      return;
     }
+    const tab = TabManager.getActiveTab();
+    const url = tab?.url ? String(tab.url).trim() : '';
+    const isHttp =
+      url &&
+      url !== 'about:blank' &&
+      /^https?:\/\//i.test(url) &&
+      !(typeof TabManager.isNavioChatTabUrl === 'function' && TabManager.isNavioChatTabUrl(url));
+
+    // Home / NTP leaves `tab.url` empty — still open the list so the click clearly does something.
+    if (!isHttp) {
+      open();
+      await refresh();
+      if (!url || url === 'about:blank') {
+        _showAppToast('Open a website to add it to Read Later.', 'info');
+      } else if (typeof TabManager.isNavioChatTabUrl === 'function' && TabManager.isNavioChatTabUrl(url)) {
+        _showAppToast('Switch to a normal web tab to save it for later.', 'info');
+      } else {
+        _showAppToast('Only http(s) pages can be saved for later.', 'info');
+      }
+      return;
+    }
+
     const r = await window.navio.readingListAdd(
-      tab.url,
+      url,
       TabManager.getTabDisplayTitle(tab),
       tab.favicon
     ).catch(() => null);

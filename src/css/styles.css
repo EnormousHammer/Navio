@@ -2013,9 +2013,15 @@ body.navio-vertical-tabs .tab-group-header:hover {
   margin-left: 2px;
   padding-left: 10px;
   border-left: 1px solid var(--border);
+  -webkit-app-region: no-drag;
 }
 .nav-actions .nav-btn {
   border-radius: 9px;
+}
+/* Read Later / zoom cluster: ensure clicks aren’t eaten by frameless-window drag hit-testing */
+#btn-read-later,
+#btn-zoom-menu {
+  -webkit-app-region: no-drag;
 }
 
 /* ============================================
