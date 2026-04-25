@@ -6908,7 +6908,8 @@ async function refreshOAuthToken(providerId) {
     const res = await fetch(provider.tokenUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params.toString()
+      body: params.toString(),
+      signal: AbortSignal.timeout(25000)
     });
     const data = await res.json();
     if (data.access_token) {
@@ -6934,7 +6935,9 @@ async function getValidOAuthToken(providerId) {
     token = await refreshOAuthToken(providerId);
   }
   if (!token) return null;
-  await backfillGoogleOAuthProfileIfMissing(providerId);
+  // Never block the token path (NTP Inbox, Gmail API, tools) on profile backfill.
+  // Backfill runs in the background; next load may have email for `?authuser=`.
+  void backfillGoogleOAuthProfileIfMissing(providerId).catch(() => {});
   return token;
 }
 
@@ -7082,14 +7085,16 @@ async function fetchOAuthUserInfo(providerId, accessToken) {
     // Second Gmail slot uses providerId `google_2` — same userinfo endpoint as primary.
     if (providerId === 'google' || providerId === 'google_2') {
       const r = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-        headers: { Authorization: `Bearer ${accessToken}` }
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(12000)
       });
       const d = await r.json();
       return { email: d.email || '', name: d.name || '', avatar: d.picture || '' };
     }
     if (providerId === 'microsoft') {
       const r = await fetch('https://graph.microsoft.com/v1.0/me', {
-        headers: { Authorization: `Bearer ${accessToken}` }
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(12000)
       });
       const d = await r.json();
       return { email: d.mail || d.userPrincipalName || '', name: d.displayName || '', avatar: '' };
@@ -7363,8 +7368,9 @@ ipcMain.handle('oauth-disconnect', (event, { providerId }) => {
 // Never exposes actual tokens.
 ipcMain.handle('oauth-status', async () => {
   try {
-    await backfillGoogleOAuthProfileIfMissing('google');
-    await backfillGoogleOAuthProfileIfMissing('google_2');
+    // Do not await — was blocking the NTP and Settings on slow/failed userinfo fetches.
+    void backfillGoogleOAuthProfileIfMissing('google').catch(() => {});
+    void backfillGoogleOAuthProfileIfMissing('google_2').catch(() => {});
     const map = loadOAuthTokens();
     const result = {};
     for (const [id, entry] of Object.entries(map)) {
@@ -8591,10 +8597,10 @@ ipcMain.handle('ntp-gmail-inbox', async () => {
     const token = await getValidOAuthToken('google');
     if (!token) return { error: navioGmailNotConnectedMessage('google') };
 
-    // Fetch inbox message IDs
+    // Fetch inbox message IDs (bound network wait — otherwise NTP spins forever on hung TLS/DNS)
     const listResp = await fetch(
       'https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds=INBOX&maxResults=15',
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(22000) }
     );
     const listData = await listResp.json();
     if (!listResp.ok) return { error: listData.error?.message || 'Gmail API error' };
@@ -8606,7 +8612,7 @@ ipcMain.handle('ntp-gmail-inbox', async () => {
         try {
           const r = await fetch(
             `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
-            { headers: { Authorization: `Bearer ${token}` } }
+            { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(14000) }
           );
           const d = await r.json();
           const headers = d.payload?.headers || [];
@@ -8631,7 +8637,12 @@ ipcMain.handle('ntp-gmail-inbox', async () => {
     const unreadCount = messages.filter(m => m.unread).length;
     return { messages, unreadCount };
   } catch (e) {
-    return { error: e.message };
+    const isAbort = e && (e.name === 'AbortError' || e.message === 'The operation was aborted');
+    return {
+      error: isAbort
+        ? 'Gmail request timed out. Check your connection or sign in to Google again in Settings → Connectors.'
+        : e.message
+    };
   }
 });
 

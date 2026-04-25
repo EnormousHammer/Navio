@@ -659,7 +659,8 @@ const NTP = (() => {
         headers: {
           Accept: 'application/json',
           'User-Agent': 'NavioBrowser/1.0 (Electron; new-tab news widget)'
-        }
+        },
+        signal: AbortSignal.timeout(22000)
       });
       if (!r.ok) throw new Error(`Reddit ${r.status}`);
       const data = await r.json();
@@ -867,7 +868,11 @@ const NTP = (() => {
     } catch {}
   }
 
-  /** IPC safety net: main process fetch should time out, but never leave the NTP spinner hanging. */
+  /**
+   * IPC safety net: any handler that can hit the network in the main process must either use
+   * `AbortSignal` there or be wrapped here, so the NTP never shows an infinite widget spinner.
+   * Also see: non-blocking Google profile backfill in `getValidOAuthToken` / `oauth-status`.
+   */
   async function _invokeNtpRpc(fn, timeoutMs) {
     const ms = Math.max(8000, timeoutMs || 22000);
     let timer;
@@ -894,12 +899,27 @@ const NTP = (() => {
   }
 
   function _tradingViewMarketOverviewSrc() {
+    // TradingView requires at least one `tabs` group with `symbols` or the embed can stay blank.
     const opts = {
       colorTheme: 'dark',
       dateRange: '1D',
       showChart: true,
       locale: 'en',
-      autosize: true
+      autosize: true,
+      isTransparent: false,
+      showSymbolLogo: true,
+      tabs: [
+        {
+          title: 'Futures / indices',
+          symbols: [
+            { s: 'CME:ES1!', d: 'S&P 500' },
+            { s: 'CME:NQ1!', d: 'Nasdaq' },
+            { s: 'CME:YM1!', d: 'Dow' },
+            { s: 'TVC:US10Y', d: 'US 10Y' }
+          ],
+          originalTitle: 'Futures / indices'
+        }
+      ]
     };
     const hash = encodeURIComponent(JSON.stringify(opts));
     return `https://www.tradingview-widget.com/embed-widget/market-overview/?locale=en#${hash}`;
@@ -1177,20 +1197,36 @@ const NTP = (() => {
       } else {
         let googleConnected = false;
         try {
-          const oauthSt = await window.navio.oauthStatus();
+          const oauthSt =
+            (await _invokeNtpRpc(() => window.navio.oauthStatus(), 12000)) || {};
           googleConnected = !!(oauthSt && oauthSt.google && oauthSt.google.connected);
         } catch {
           /* ignore */
         }
         if (googleConnected) {
-          const r = await window.navio.ntpGmailInbox().catch(() => ({}));
+          let r = {};
+          try {
+            r = (await _invokeNtpRpc(() => window.navio.ntpGmailInbox(), 25000)) || {};
+          } catch {
+            r = {};
+          }
           if (r && r.messages && r.messages.length) rows = r.messages;
         }
         if (rows.length === 0) {
-          const imapSt = await window.navio.imapStatus().catch(() => ({}));
+          let imapSt = {};
+          try {
+            imapSt = (await _invokeNtpRpc(() => window.navio.imapStatus(), 10000)) || {};
+          } catch {
+            imapSt = {};
+          }
           for (const svcId of Object.keys(imapSt || {})) {
             if (!imapSt[svcId] || !imapSt[svcId].connected) continue;
-            const r = await window.navio.imapGetUnread(svcId, 12).catch(() => ({}));
+            let r = {};
+            try {
+              r = (await _invokeNtpRpc(() => window.navio.imapGetUnread(svcId, 12), 35000)) || {};
+            } catch {
+              r = {};
+            }
             if (r && r.messages && r.messages.length) {
               rows = r.messages.map((m) => ({
                 subject: m.subject,
@@ -1855,7 +1891,12 @@ const NTP = (() => {
     bar.innerHTML = '';
 
     try {
-      const imapSt = await window.navio.imapStatus();
+      let imapSt = {};
+      try {
+        imapSt = (await _invokeNtpRpc(() => window.navio.imapStatus(), 10000)) || {};
+      } catch {
+        imapSt = {};
+      }
       const pills = [];
 
       const SVC_FAVICON = {
@@ -1886,13 +1927,15 @@ const NTP = (() => {
       }
 
       for (const svcId of Object.keys(imapSt || {})) {
-        window.navio.imapGetUnread(svcId, 1).then(r => {
-          const countEl = document.getElementById(`ntp-svc-count-${svcId}`);
-          if (countEl && r?.unreadCount > 0) {
-            countEl.textContent = r.unreadCount;
-            countEl.style.display = 'inline-flex';
-          }
-        }).catch(() => {});
+        _invokeNtpRpc(() => window.navio.imapGetUnread(svcId, 1), 15000)
+          .then((r) => {
+            const countEl = document.getElementById(`ntp-svc-count-${svcId}`);
+            if (countEl && r?.unreadCount > 0) {
+              countEl.textContent = r.unreadCount;
+              countEl.style.display = 'inline-flex';
+            }
+          })
+          .catch(() => {});
       }
     } catch {}
   }
@@ -1912,7 +1955,12 @@ const NTP = (() => {
     }
 
     try {
-      const imapSt = await window.navio.imapStatus();
+      let imapSt = {};
+      try {
+        imapSt = (await _invokeNtpRpc(() => window.navio.imapStatus(), 10000)) || {};
+      } catch {
+        imapSt = {};
+      }
       const connectedServices = Object.keys(imapSt || {});
 
       // ── Check OAuth Google connection first ───────────────────────────────
@@ -1922,19 +1970,27 @@ const NTP = (() => {
       // a non-connector account the user is just signed into in the browser).
       let _ntpOauthSt = {};
       try {
-        _ntpOauthSt = (await window.navio.oauthStatus()) || {};
+        _ntpOauthSt = (await _invokeNtpRpc(() => window.navio.oauthStatus(), 12000)) || {};
         googleAlreadyConnected = !!(_ntpOauthSt?.google?.connected);
-      } catch {}
+      } catch {
+        _ntpOauthSt = {};
+        googleAlreadyConnected = false;
+      }
 
       if (googleAlreadyConnected) {
         // Signed in via Google OAuth — read inbox from Gmail API
         emailList.innerHTML = '<div class="ntp-widget-loading"><span></span><span></span><span></span></div>';
-        const gmailResult = await window.navio.ntpGmailInbox();
+        const gmailResult = await _invokeNtpRpc(() => window.navio.ntpGmailInbox(), 28000);
         if (gmailResult?.error && String(gmailResult.error).startsWith('not_signed_in')) {
           // Token was invalidated, fall through to sign-in prompt
           googleAlreadyConnected = false;
         } else if (gmailResult?.error) {
-          emailList.innerHTML = `<p class="ntp-widget-empty">Gmail error: ${_esc(gmailResult.error)}</p>`;
+          const ge = String(gmailResult.error || '');
+          const hint =
+            /timed out|timeout/i.test(ge)
+              ? ' (network or sign-in is slow—try <strong>Connectors</strong> and sign in to Google again.)'
+              : '';
+          emailList.innerHTML = `<p class="ntp-widget-empty">Gmail error: ${_esc(ge)}${hint}</p>`;
           return;
         } else {
           const messages  = gmailResult?.messages || [];
@@ -2058,7 +2114,10 @@ const NTP = (() => {
       emailList.innerHTML = '<div class="ntp-widget-loading"><span></span><span></span><span></span></div>';
 
       const svcId = connectedServices[0];
-      const result = await window.navio.imapGetUnread(svcId, 10);
+      const result = await _invokeNtpRpc(
+        () => window.navio.imapGetUnread(svcId, 10),
+        35000
+      );
 
       if (result?.error) {
         emailList.innerHTML = `<p class="ntp-widget-empty">Could not load inbox: ${_esc(result.error)}</p>`;
