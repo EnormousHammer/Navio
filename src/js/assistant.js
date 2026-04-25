@@ -179,6 +179,47 @@ const NAVIO_ASSISTANT_AUTO_TTS_START_DELAY_MS = 2500;
 const NAVIO_VOICE_TTS_FIRST_CHUNK = 320;
 /** Voice-conversation TTS: max chars per subsequent chunk (pipelined while previous plays). */
 const NAVIO_VOICE_TTS_CHUNK_MAX = 520;
+/** Brief delay after the user stops speaking before the first “thinking” line (avoids clipping the tail of their audio). */
+const NAVIO_VOICE_CONV_THINKING_NUDGE_DELAY_MS = 420;
+/** Minimum gap between spoken tool-progress / reasoning nudges in voice conversation (ms). */
+const NAVIO_VOICE_CONV_PROGRESS_TTS_MIN_GAP_MS = 4200;
+/** If nothing was spoken this long during an agent run, say a short professional hold line (voice conv only). */
+const NAVIO_VOICE_CONV_HOLD_SILENCE_MS = 7800;
+/** How often we check for that awkward silence (ms). */
+const NAVIO_VOICE_CONV_HOLD_POLL_MS = 3200;
+
+let _navioVcHoldPhraseIx = 0;
+const NAVIO_VOICE_CONV_HOLD_PHRASES = [
+  'Still with you — this step is taking a little longer than usual.',
+  'Thanks for waiting — I am still working through it.',
+  'One more moment while I finish this part.',
+  'Almost there — sorting the details now.',
+  'Bear with me — I am narrowing in on the answer.'
+];
+
+function navioNextVoiceConvHoldPhrase() {
+  const a = NAVIO_VOICE_CONV_HOLD_PHRASES;
+  const s = a[_navioVcHoldPhraseIx % a.length];
+  _navioVcHoldPhraseIx++;
+  return s;
+}
+
+let _navioVcOpenPhraseIx = 0;
+const NAVIO_VOICE_CONV_OPEN_PHRASES = [
+  'One moment — I am on it.',
+  'Got it — working that through now.',
+  'Understood — give me just a second here.'
+];
+
+/** First spoken line after the user’s request (voice conversation); YouTube / transcript asks get a tailored opener. */
+function navioVoiceConvOpenPhraseForText(userText) {
+  const t = String(userText || '');
+  if (/\b(youtube|youtu\.be)\b/i.test(t) || /\b(transcript|captions?|timestamps?|chapters?|video)\b/i.test(t)) {
+    return 'One moment — I am scanning the video and timeline for what you asked about.';
+  }
+  const a = NAVIO_VOICE_CONV_OPEN_PHRASES;
+  return a[_navioVcOpenPhraseIx++ % a.length];
+}
 
 /**
  * Split assistant speech into chunks at natural breaks for low-latency TTS playback.
@@ -719,6 +760,10 @@ class AssistantManagerClass {
     this._voiceConvFlashTimer = null;
     /** Throttle optional spoken tool-progress updates in voice conversation (ms since epoch). */
     this._voiceConvProgressTtsAt = 0;
+    /** Invalidates delayed “thinking” / hold-speech timers across agent runs. */
+    this._vcThinkingAudioGen = 0;
+    this._vcThinkingFirstTimer = null;
+    this._vcThinkingHoldTimer = null;
     this._ttsSessionId = 0;
     /** Pending setTimeout for delayed auto read-aloud / voice reply (cleared on stop or new reply). */
     this._autoTtsStartTimer = null;
@@ -2992,6 +3037,49 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     await this._speakText(s, null, { speed: 0.91, workNudge: true, humanPace: true });
   }
 
+  _clearVoiceConvThinkingTimers() {
+    if (this._vcThinkingFirstTimer) {
+      try {
+        clearTimeout(this._vcThinkingFirstTimer);
+      } catch {
+        /* ignore */
+      }
+      this._vcThinkingFirstTimer = null;
+    }
+    if (this._vcThinkingHoldTimer) {
+      try {
+        clearInterval(this._vcThinkingHoldTimer);
+      } catch {
+        /* ignore */
+      }
+      this._vcThinkingHoldTimer = null;
+    }
+  }
+
+  /**
+   * While the tool loop runs in voice conversation, speak a short opener and occasional
+   * hold lines so long searches (e.g. transcripts) are not silent.
+   * @param {string} userText
+   * @param {number} vcSoundRun - captured from `_vcThinkingAudioGen` when this run arms timers
+   */
+  _armVoiceConvThinkingFillers(userText, vcSoundRun) {
+    if (!this._voiceConvActive || vcSoundRun !== this._vcThinkingAudioGen) return;
+    this._voiceConvProgressTtsAt = Date.now();
+    this._vcThinkingFirstTimer = setTimeout(() => {
+      this._vcThinkingFirstTimer = null;
+      if (!this._voiceConvActive || vcSoundRun !== this._vcThinkingAudioGen) return;
+      void this._speakVoiceConvWorkNudge(navioVoiceConvOpenPhraseForText(userText));
+      this._voiceConvProgressTtsAt = Date.now();
+    }, NAVIO_VOICE_CONV_THINKING_NUDGE_DELAY_MS);
+    this._vcThinkingHoldTimer = setInterval(() => {
+      if (!this._voiceConvActive || vcSoundRun !== this._vcThinkingAudioGen) return;
+      const idle = Date.now() - (this._voiceConvProgressTtsAt || 0);
+      if (idle < NAVIO_VOICE_CONV_HOLD_SILENCE_MS) return;
+      void this._speakVoiceConvWorkNudge(navioNextVoiceConvHoldPhrase());
+      this._voiceConvProgressTtsAt = Date.now();
+    }, NAVIO_VOICE_CONV_HOLD_POLL_MS);
+  }
+
   /** Show / hide the persistent TTS active bar above the input area. */
   _setTTSBarVisible(visible, label = 'Reading aloud…') {
     // During voice conversation we hide the duplicate "reading" chrome on **show** only;
@@ -5073,10 +5161,25 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           this._guestDeliver(guestWv, { type: 'preWorkBubble', text: snippet });
         }
         if (this._voiceConvActive) {
+          this._voiceConvProgressTtsAt = Date.now();
           void this._speakVoiceConvWorkNudge(snippet);
         }
       } else {
         this._appendActivityStep('thinking', text.slice(0, 200) + (text.length > 200 ? '...' : ''));
+        if (this._voiceConvActive && snippet.length > 12) {
+          const now = Date.now();
+          if (now - (this._voiceConvProgressTtsAt || 0) >= NAVIO_VOICE_CONV_PROGRESS_TTS_MIN_GAP_MS) {
+            const forSpeech = this._prepareSpeechText(this._stripMarkdown(snippet))
+              .replace(/\s+/g, ' ')
+              .trim();
+            const short =
+              forSpeech.length > 130 ? `${forSpeech.slice(0, 127).trim()}...` : forSpeech;
+            if (short.length > 12) {
+              this._voiceConvProgressTtsAt = now;
+              void this._speakVoiceConvWorkNudge(short);
+            }
+          }
+        }
       }
     });
 
@@ -5180,7 +5283,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         String(label).length < 130
       ) {
         const now = Date.now();
-        if (now - (this._voiceConvProgressTtsAt || 0) > 6200) {
+        if (now - (this._voiceConvProgressTtsAt || 0) >= NAVIO_VOICE_CONV_PROGRESS_TTS_MIN_GAP_MS) {
           this._voiceConvProgressTtsAt = now;
           void this._speakVoiceConvWorkNudge(String(label));
         }
@@ -5222,6 +5325,12 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         wait++;
       }
       TabManager.setAgentControlledTab?.(TabManager.findTabIdForWebview?.(toolWv));
+    }
+    this._clearVoiceConvThinkingTimers();
+    this._vcThinkingAudioGen = (this._vcThinkingAudioGen | 0) + 1;
+    const vcSoundRun = this._vcThinkingAudioGen;
+    if (this._voiceConvActive) {
+      this._armVoiceConvThinkingFillers(text, vcSoundRun);
     }
     this._turnStartedAt = performance.now();
     const response = await window.navio.aiRequestWithTools({
@@ -5348,6 +5457,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       });
     }
     } finally {
+      this._clearVoiceConvThinkingTimers();
+      this._vcThinkingAudioGen = (this._vcThinkingAudioGen | 0) + 1;
       // Guest turns: processGuestChatMessage owns _guestChatWebview lifecycle (Comet-style context).
       if (!guestWv) this._guestChatWebview = null;
       if (this._turnStartedAt != null) this._turnStartedAt = null;
