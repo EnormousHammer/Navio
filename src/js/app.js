@@ -1459,7 +1459,7 @@ const ReadingListManager = (() => {
     const el = _list();
     if (!el) return;
     if (!list.length) {
-      el.innerHTML = '<p class="rl-empty">No saved pages yet.<br>Click the bookmark icon while browsing to save a page.</p>';
+      el.innerHTML = '<p class="rl-empty">No saved pages yet.<br>Use the <strong>Read Later</strong> inbox button in the toolbar (next to zoom) to save the current page.</p>';
       return;
     }
     el.innerHTML = list.map(e => `
