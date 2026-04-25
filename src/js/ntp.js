@@ -22,6 +22,10 @@ const NTP = (() => {
   /** @type {Array<{ league: string, home: string, away: string, status: string, live?: boolean }>} */
   let _sportsGamesSummary = [];
 
+  const STREAMED_PK_MATCHES_TTL_MS = 45000;
+  /** Cached `streamedPkApi('matches/…')` lists — short TTL to keep live boards fresh without spamming the API. */
+  const _streamedPkMatchesCache = new Map();
+
   const NTP_WIDGET_TYPES = new Set(['inbox', 'news', 'stocks', 'sports', 'none']);
   /** Home dashboard 2×2 grid slot ids (matches `ntpWidgetTL` config keys without prefix). */
   const NTP_GRID_SLOTS = ['tl', 'tr', 'bl', 'br'];
@@ -886,6 +890,98 @@ const NTP = (() => {
     }
   }
 
+  /** ESPN league id → streamed.pk `matches/{slug}` (see `streamedPkApi` in preload). */
+  function _leagueToStreamedPkMatchesSlug(league) {
+    const L = String(league || '').toUpperCase();
+    const map = { NFL: 'american-football', NBA: 'basketball', MLB: 'baseball', NHL: 'hockey', MLS: 'football' };
+    return map[L] || '';
+  }
+
+  function _normTeamTok(s) {
+    return String(s || '')
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+  }
+
+  function _streamedPkNameLooseEq(apiFragment, espnName) {
+    const A = _normTeamTok(apiFragment);
+    const B = _normTeamTok(espnName);
+    if (!A || !B) return false;
+    return A.includes(B) || B.includes(A);
+  }
+
+  function _streamedPkRowMatchesTeams(m, awayEspn, homeEspn) {
+    const title = _normTeamTok(m.title || '');
+    const a = _normTeamTok(awayEspn);
+    const h = _normTeamTok(homeEspn);
+    if (a.length < 2 || h.length < 2) return false;
+    if (title && title.includes(a) && title.includes(h)) return true;
+    const ta = m.teams?.away?.name;
+    const th = m.teams?.home?.name;
+    if (ta && th) {
+      if (_streamedPkNameLooseEq(ta, awayEspn) && _streamedPkNameLooseEq(th, homeEspn)) return true;
+      if (_streamedPkNameLooseEq(ta, homeEspn) && _streamedPkNameLooseEq(th, awayEspn)) return true;
+    }
+    return false;
+  }
+
+  function _streamedPkPickMatchForGame(matches, awayName, homeName) {
+    if (!Array.isArray(matches)) return null;
+    for (const m of matches) {
+      if (m && _streamedPkRowMatchesTeams(m, awayName, homeName)) return m;
+    }
+    return null;
+  }
+
+  async function _getStreamedPkMatchesList(slug) {
+    const path = 'matches/' + slug;
+    const now = Date.now();
+    const cached = _streamedPkMatchesCache.get(path);
+    if (cached && now - cached.t < STREAMED_PK_MATCHES_TTL_MS) return cached.list;
+    const res = await _invokeNtpRpc(() => window.navio.streamedPkApi(path), 22000);
+    if (!res || res.error || !res.ok || !Array.isArray(res.data)) return null;
+    _streamedPkMatchesCache.set(path, { t: now, list: res.data });
+    return res.data;
+  }
+
+  function _streamedPkSortSources(sources) {
+    const rank = { delta: 0, admin: 1, echo: 2, golf: 3 };
+    const arr = Array.isArray(sources) ? [...sources] : [];
+    return arr.sort((x, y) => (rank[String(x.source)] ?? 99) - (rank[String(y.source)] ?? 99));
+  }
+
+  async function _embedUrlFromStreamedPkMatch(match) {
+    const sources = _streamedPkSortSources(match.sources);
+    for (const s of sources) {
+      const src = String(s.source || '').trim();
+      const sid = String(s.id || '').trim();
+      if (!src || !sid) continue;
+      const path = 'stream/' + src + '/' + sid;
+      const res = await _invokeNtpRpc(() => window.navio.streamedPkApi(path), 20000);
+      if (!res || !res.ok || !Array.isArray(res.data)) continue;
+      const withEmbed = res.data.filter(
+        (x) => x && typeof x.embedUrl === 'string' && /^https?:\/\//i.test(x.embedUrl)
+      );
+      if (!withEmbed.length) continue;
+      const hd = withEmbed.find((x) => x.hd);
+      return (hd || withEmbed[0]).embedUrl;
+    }
+    return '';
+  }
+
+  async function _tryResolveStreamedPkWatchUrl(league, awayName, homeName) {
+    if (typeof window.navio.streamedPkApi !== 'function') return '';
+    const slug = _leagueToStreamedPkMatchesSlug(league);
+    if (!slug) return '';
+    const matches = await _getStreamedPkMatchesList(slug);
+    const picked = _streamedPkPickMatchForGame(matches, awayName, homeName);
+    if (!picked) return '';
+    return _embedUrlFromStreamedPkMatch(picked);
+  }
+
   // Stock quotes for smart row / AI context (bottom ticker removed)
   async function _prefetchStockDataForNtp() {
     try {
@@ -899,27 +995,48 @@ const NTP = (() => {
   }
 
   function _tradingViewMarketOverviewSrc() {
-    // TradingView requires at least one `tabs` group with `symbols` or the embed can stay blank.
+    // Must match TradingView’s published embed JSON (see widget-docs market-overview demos).
+    // Avoid ad‑hoc keys (`dateRange`, `autosize`, `originalTitle`) and CME `!` contracts
+    // — they often show “No data here yet” in the free embed; use FOREXCOM/INDEX symbology.
     const opts = {
-      colorTheme: 'dark',
-      dateRange: '1D',
-      showChart: true,
-      locale: 'en',
-      autosize: true,
-      isTransparent: false,
-      showSymbolLogo: true,
+      title: 'Markets',
       tabs: [
         {
-          title: 'Futures / indices',
+          title: 'US & Canada',
+          title_raw: 'US & Canada',
           symbols: [
-            { s: 'CME:ES1!', d: 'S&P 500' },
-            { s: 'CME:NQ1!', d: 'Nasdaq' },
-            { s: 'CME:YM1!', d: 'Dow' },
-            { s: 'TVC:US10Y', d: 'US 10Y' }
-          ],
-          originalTitle: 'Futures / indices'
+            { s: 'FOREXCOM:SPXUSD', d: 'S&P 500' },
+            { s: 'FOREXCOM:NSXUSD', d: 'US 100' },
+            { s: 'INDEX:DXY', d: 'U.S. Dollar Index' },
+            { s: 'FOREXCOM:DJI', d: 'Dow 30' }
+          ]
+        },
+        {
+          title: 'Europe',
+          title_raw: 'Europe',
+          symbols: [
+            { s: 'INDEX:SX5E', d: 'Euro Stoxx 50' },
+            { s: 'FOREXCOM:UKXGBP', d: 'UK 100' },
+            { s: 'INDEX:DEU40', d: 'DAX' }
+          ]
         }
-      ]
+      ],
+      width: '100%',
+      height: '100%',
+      showChart: true,
+      showFloatingTooltip: false,
+      locale: 'en',
+      plotLineColorGrowing: 'rgba(0, 200, 255, 0.9)',
+      plotLineColorFalling: 'rgba(255, 120, 140, 0.95)',
+      belowLineFillColorGrowing: 'rgba(0, 200, 255, 0.12)',
+      belowLineFillColorFalling: 'rgba(255, 120, 140, 0.12)',
+      belowLineFillColorGrowingBottom: 'rgba(0, 200, 255, 0)',
+      belowLineFillColorFallingBottom: 'rgba(255, 120, 140, 0)',
+      gridLineColor: 'rgba(240, 243, 250, 0.08)',
+      scaleFontColor: 'rgba(200, 205, 220, 0.9)',
+      showSymbolLogo: true,
+      symbolActiveColor: 'rgba(0, 200, 255, 0.16)',
+      colorTheme: 'dark'
     };
     const hash = encodeURIComponent(JSON.stringify(opts));
     return `https://www.tradingview-widget.com/embed-widget/market-overview/?locale=en#${hash}`;
@@ -1025,11 +1142,15 @@ const NTP = (() => {
             : '';
           const predSport = _leagueToPredictaSportId(g.league);
           const evId = g.eventId != null && g.eventId !== '' ? String(g.eventId) : '';
+          const awayNm =
+            g.awayName != null && String(g.awayName).trim() !== '' ? String(g.awayName).trim() : String(g.away || '');
+          const homeNm =
+            g.homeName != null && String(g.homeName).trim() !== '' ? String(g.homeName).trim() : String(g.home || '');
           const rowCls = g.live ? 'ntp-sport-row ntp-sport-row--live' : 'ntp-sport-row';
           const statusLine = st
             ? `<div class="ntp-sport-statusline">${st}</div>`
             : '';
-          return `<div class="${rowCls}" data-navio-predicta-sport="${_escAttr(predSport)}" data-navio-predicta-event="${_escAttr(evId)}" data-navio-predicta-board="${g.live ? 'live' : 'all-games'}">
+          return `<div class="${rowCls}" data-navio-league="${_escAttr(g.league || '')}" data-navio-away-name="${_escAttr(awayNm)}" data-navio-home-name="${_escAttr(homeNm)}" data-navio-predicta-sport="${_escAttr(predSport)}" data-navio-predicta-event="${_escAttr(evId)}" data-navio-predicta-board="${g.live ? 'live' : 'all-games'}">
             <div class="ntp-sport-main">
               <div class="ntp-sport-scoreline">
                 <span class="ntp-sport-side ntp-sport-side--away">
@@ -1067,7 +1188,18 @@ const NTP = (() => {
           const sport = (row.dataset.navioPredictaSport || 'nba').trim() || 'nba';
           const board = (row.dataset.navioPredictaBoard || 'all-games').trim() || 'all-games';
           const event = (row.dataset.navioPredictaEvent || '').trim();
+          const isLive = row.classList.contains('ntp-sport-row--live');
+          const league = (row.dataset.navioLeague || '').trim();
+          const awayName = (row.dataset.navioAwayName || '').trim();
+          const homeName = (row.dataset.navioHomeName || '').trim();
           void (async () => {
+            if (isLive) {
+              const watch = await _tryResolveStreamedPkWatchUrl(league, awayName, homeName);
+              if (watch) {
+                TabManager.createTab(watch);
+                return;
+              }
+            }
             let raw = '';
             try {
               const c = await window.navio.getConfig();

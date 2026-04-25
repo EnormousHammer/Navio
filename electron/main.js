@@ -8509,6 +8509,14 @@ ipcMain.handle('ntp-sports', async () => {
         const statusDetail = typeof st.detail === 'string' ? st.detail : '';
         const homeAb = home?.team?.abbreviation || home?.team?.shortDisplayName || '';
         const awayAb = away?.team?.abbreviation || away?.team?.shortDisplayName || '';
+        const homeName =
+          (typeof home?.team?.displayName === 'string' && home.team.displayName.trim()) ||
+          (typeof home?.team?.shortDisplayName === 'string' && home.team.shortDisplayName.trim()) ||
+          homeAb;
+        const awayName =
+          (typeof away?.team?.displayName === 'string' && away.team.displayName.trim()) ||
+          (typeof away?.team?.shortDisplayName === 'string' && away.team.shortDisplayName.trim()) ||
+          awayAb;
         const homeLogo = typeof home?.team?.logo === 'string' ? home.team.logo : '';
         const awayLogo = typeof away?.team?.logo === 'string' ? away.team.logo : '';
         const seasonPhase = _ntpEspnSeasonPhaseLabel(ev);
@@ -8517,8 +8525,10 @@ ipcMain.handle('ntp-sports', async () => {
           league: id,
           eventId: ev.id != null && ev.id !== '' ? String(ev.id) : '',
           home: homeAb,
+          homeName,
           homeScore: home?.score ?? '',
           away: awayAb,
+          awayName,
           awayScore: away?.score ?? '',
           homeLogo,
           awayLogo,
