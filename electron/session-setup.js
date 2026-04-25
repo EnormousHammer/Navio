@@ -187,6 +187,10 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
       .trim();
     ses.setUserAgent(ua);
 
+    if (typeof ses.setSpellCheckerLanguages === 'function') {
+      ses.setSpellCheckerLanguages(['en-US']);
+    }
+
     ses.webRequest.onHeadersReceived({ urls: ['*://*/*'] }, (details, callback) => {
       const headers = details.responseHeaders || {};
       const drop = [

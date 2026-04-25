@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, shell, dialog, Menu, MenuItem, globalShortcut, nativeTheme, clipboard, webContents: electronWebContents } = require('electron');
+const { app, BrowserWindow, ipcMain, session, shell, dialog, Menu, MenuItem, globalShortcut, nativeTheme, clipboard, net, webContents: electronWebContents } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -9492,7 +9492,17 @@ ipcMain.handle('show-webview-context-menu', (event, { webContentsId, x, y, param
     };
 
     if (params.selectionText) {
+      const selText = params.selectionText.trim();
       menu.append(new MenuItem({ label: 'Copy', role: 'copy', click: () => wc.copy() }));
+      if (selText.length > 0) {
+        const preview = selText.length > 40 ? selText.slice(0, 40) + '…' : selText;
+        const cfg = loadConfig();
+        const se = cfg.searchEngine || 'https://www.google.com/search?q=';
+        menu.append(new MenuItem({
+          label: `Search for "${preview}"`,
+          click: () => openInNewTabPayload(se + encodeURIComponent(selText.slice(0, 500)))
+        }));
+      }
       menu.append(new MenuItem({ type: 'separator' }));
     }
     if (params.isEditable) {
@@ -9517,6 +9527,14 @@ ipcMain.handle('show-webview-context-menu', (event, { webContentsId, x, y, param
       menu.append(new MenuItem({
         label: 'Open Image in New Tab',
         click: () => openInNewTabPayload(params.srcURL)
+      }));
+      menu.append(new MenuItem({
+        label: 'Copy Image',
+        click: () => { try { wc.copyImageAt(x, y); } catch { clipboard.writeText(params.srcURL); } }
+      }));
+      menu.append(new MenuItem({
+        label: 'Save Image As…',
+        click: () => { try { wc.downloadURL(params.srcURL); } catch { /* ignore */ } }
       }));
       menu.append(new MenuItem({ type: 'separator' }));
     }
@@ -9549,6 +9567,44 @@ ipcMain.handle('show-webview-context-menu', (event, { webContentsId, x, y, param
       label: 'Print…',
       click: () => wc.print({ silent: false, printBackground: true })
     }));
+
+    try {
+      const srcUrl = wc.getURL();
+      if (/^https?:\/\//i.test(srcUrl)) {
+        menu.append(new MenuItem({
+          label: 'View Page Source',
+          click: () => openInNewTabPayload(`view-source:${srcUrl}`)
+        }));
+      }
+    } catch { /* ignore */ }
+
+    try {
+      const curZoom = wc.getZoomFactor();
+      const zoomSub = new Menu();
+      zoomSub.append(new MenuItem({
+        label: 'Zoom In',
+        click: () => {
+          wc.setZoomFactor(Math.min(3, curZoom + 0.1));
+          mainWindow.webContents.send('shortcut', 'refresh-zoom-label');
+        }
+      }));
+      zoomSub.append(new MenuItem({
+        label: 'Zoom Out',
+        click: () => {
+          wc.setZoomFactor(Math.max(0.25, curZoom - 0.1));
+          mainWindow.webContents.send('shortcut', 'refresh-zoom-label');
+        }
+      }));
+      zoomSub.append(new MenuItem({
+        label: `Reset Zoom (${Math.round(curZoom * 100)}%)`,
+        click: () => {
+          wc.setZoomFactor(1);
+          mainWindow.webContents.send('shortcut', 'refresh-zoom-label');
+        }
+      }));
+      menu.append(new MenuItem({ label: 'Zoom', submenu: zoomSub }));
+    } catch { /* ignore */ }
+
     menu.append(new MenuItem({ type: 'separator' }));
     menu.append(new MenuItem({ label: 'Inspect Element', click: () => wc.openDevTools({ mode: 'detach' }) }));
 
@@ -9601,6 +9657,30 @@ app.whenReady().then(async () => {
 
   registerAgentPlanIpc(ipcMain, { store });
   registerMcpIpc(ipcMain, loadConfig, saveConfig);
+
+  ipcMain.handle('search-suggestions', async (_, { q, searchEngine }) => {
+    if (!q || q.length < 2) return [];
+    try {
+      const se = String(searchEngine || '').toLowerCase();
+      let apiUrl;
+      if (se.includes('bing.com')) {
+        apiUrl = `https://api.bing.com/qsonhs.aspx?q=${encodeURIComponent(q)}`;
+      } else if (se.includes('duckduckgo.com')) {
+        apiUrl = `https://ac.duckduckgo.com/ac/?q=${encodeURIComponent(q)}&type=list`;
+      } else {
+        apiUrl = `https://suggestqueries.google.com/complete/search?client=firefox&q=${encodeURIComponent(q)}`;
+      }
+      const res = await net.fetch(apiUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      const suggestions = Array.isArray(data[1]) ? data[1] : [];
+      return suggestions.slice(0, 6).map(s => String(s));
+    } catch {
+      return [];
+    }
+  });
   registerSchedulerIpc(ipcMain);
 
   // Initialize MCP connections from persisted config

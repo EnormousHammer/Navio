@@ -793,6 +793,15 @@ class TabManagerClass {
       const desc = reasonMap[reason] || 'The page stopped responding.';
       this._scheduleWebviewCrashPage(wv, desc, tab.url || '', reason);
     };
+    wv.addEventListener('media-started-playing', () => {
+      tab.isPlaying = true;
+      this._updateTabAudioUI(tab.id);
+    });
+    wv.addEventListener('media-paused', () => {
+      tab.isPlaying = false;
+      this._updateTabAudioUI(tab.id);
+    });
+
     wv.addEventListener('render-process-gone', onGuestGone);
     // Legacy fallback (older Electron) — harmless to register both.
     wv.addEventListener('crashed', () => onGuestGone({ reason: 'crashed' }));
@@ -1087,6 +1096,16 @@ class TabManagerClass {
 </div></body></html>`;
   }
 
+  /** True when the built-in Home / new-tab surface is visible (no guest webview zoom target). */
+  _isNewTabSurfaceActive() {
+    try {
+      const ntp = document.getElementById('new-tab-page');
+      return !!(ntp && ntp.classList.contains('active'));
+    } catch {
+      return false;
+    }
+  }
+
   applyZoomToWebview(wv) {
     if (!wv) return;
     const tab = this.tabs.find((t) => t.webview === wv);
@@ -1123,6 +1142,20 @@ class TabManagerClass {
    */
   setActiveTabZoomFactor(nextFactor) {
     const tab = this.getActiveTab();
+    if (this._isNewTabSurfaceActive() && typeof window.__navioSetNtpZoom === 'function') {
+      if (nextFactor == null) {
+        window.__navioSetNtpZoom(1);
+      } else {
+        window.__navioSetNtpZoom(nextFactor);
+      }
+      if (typeof window.__navioSyncNewTabSurfaceZoom === 'function') {
+        window.__navioSyncNewTabSurfaceZoom();
+      }
+      if (typeof window.__navioUpdateZoomLabel === 'function') {
+        window.__navioUpdateZoomLabel();
+      }
+      return;
+    }
     const wv = this.getActiveWebview();
     if (!tab || !wv) return;
     if (nextFactor == null) {
@@ -1142,6 +1175,18 @@ class TabManagerClass {
 
   /** Step zoom for the active tab (used by Ctrl/Cmd +/−). */
   zoomActiveTabBy(delta) {
+    if (
+      this._isNewTabSurfaceActive() &&
+      typeof window.__navioGetNtpZoom === 'function' &&
+      typeof window.__navioSetNtpZoom === 'function'
+    ) {
+      const cur = window.__navioGetNtpZoom() || 1;
+      window.__navioSetNtpZoom(cur + delta);
+      if (typeof window.__navioUpdateZoomLabel === 'function') {
+        window.__navioUpdateZoomLabel();
+      }
+      return;
+    }
     const wv = this.getActiveWebview();
     if (!wv) return;
     let cur = 1;
@@ -2510,6 +2555,50 @@ class TabManagerClass {
     }
   }
 
+  _updateTabAudioUI(tabId) {
+    const tab = this.tabs.find(t => t.id === tabId);
+    const el = document.getElementById(`tabitem-${tabId}`);
+    if (!el || !tab) return;
+
+    el.classList.toggle('tab-playing', !!tab.isPlaying);
+
+    let audioBtn = el.querySelector('.tab-audio-btn');
+    if (tab.isPlaying || tab.isMuted) {
+      if (!audioBtn) {
+        audioBtn = document.createElement('button');
+        audioBtn.className = 'tab-audio-btn';
+        audioBtn.type = 'button';
+        audioBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this._muteTab(tabId);
+        });
+        const closeBtn = el.querySelector('.tab-close');
+        if (closeBtn) el.insertBefore(audioBtn, closeBtn);
+        else el.appendChild(audioBtn);
+      }
+      audioBtn.title = tab.isMuted ? 'Unmute tab' : 'Mute tab';
+      audioBtn.innerHTML = tab.isMuted
+        ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3z"/><line x1="23" y1="9" x2="17" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="17" y1="9" x2="23" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`
+        : `<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/><path d="M19 12c0-3.04-1.73-5.64-4.25-6.97v13.94C17.27 17.64 19 15.04 19 12z" opacity=".5"/></svg>`;
+    } else {
+      audioBtn?.remove();
+    }
+  }
+
+  _muteTab(tabId) {
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab || !tab.webview) return;
+    try {
+      tab.isMuted = !tab.isMuted;
+      if (typeof tab.webview.setAudioMuted === 'function') {
+        tab.webview.setAudioMuted(tab.isMuted);
+      }
+      this._updateTabAudioUI(tabId);
+    } catch (e) {
+      console.warn('[Navio] mute tab error', e);
+    }
+  }
+
   updateContextTitle(tab) {
     const contextEl = document.getElementById('context-page-title');
     if (contextEl) {
@@ -2794,40 +2883,186 @@ class TabManagerClass {
     this._hideTabContextMenu();
     const group = this.groups[groupId];
     if (!group) return;
-    const menu = document.createElement('div');
-    menu.id = 'tab-ctx-menu';
-    menu.className = 'tab-ctx-menu';
-    menu.innerHTML = `
-      <div class="tcm-label" style="color:${group.color}">${this.escapeHtml(group.name)}</div>
-      <div class="tcm-sep"></div>
-      <button class="tcm-item" data-action="rename-group">Rename group</button>
-      <button class="tcm-item tcm-danger" data-action="ungroup-all">Ungroup all tabs</button>
-      <button class="tcm-item tcm-danger" data-action="close-group">Close all tabs in group</button>
-    `;
+    const memberCount = this.tabs.filter(t => t.groupId === groupId).length;
+    const items = [
+      { kind: 'item', action: '__group-header', label: group.name, disabled: true, dotColor: group.color },
+      { kind: 'sep' },
+      { kind: 'item', action: 'rename-group', label: 'Rename group…',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' },
+      { kind: 'submenu', id: 'recolor', label: 'Change color',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12.5" r="2.5"/><path d="M12 22a10 10 0 1 1 10-10c0 2.21-1.79 4-4 4h-1a3 3 0 0 0-2 5 1 1 0 0 1-1 1z"/></svg>' },
+      { kind: 'item', action: 'toggle-collapse', label: group.collapsed ? 'Expand group' : 'Collapse group',
+        icon: group.collapsed
+          ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'
+          : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>' },
+      { kind: 'sep' },
+      { kind: 'item', action: 'ungroup-all', label: `Ungroup ${memberCount} tab${memberCount === 1 ? '' : 's'}`,
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>' },
+      { kind: 'item', action: 'close-group', label: `Close ${memberCount} tab${memberCount === 1 ? '' : 's'}`,
+        danger: true,
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' }
+    ];
+    const menu = this._buildMenu(items);
     document.body.appendChild(menu);
-    menu.style.left = `${Math.min(x, window.innerWidth - 230)}px`;
-    menu.style.top  = `${Math.min(y, window.innerHeight - 140)}px`;
-    menu.querySelectorAll('[data-action]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        if (btn.dataset.action === 'ungroup-all') {
-          this.tabs
-            .filter((t) => t.groupId === groupId)
-            .forEach((t) => this.removeTabFromGroup(t.id, false, true));
-          delete this.groups[groupId];
-          this._reRenderTabList();
-        } else if (btn.dataset.action === 'close-group') {
-          [...this.tabs.filter(t => t.groupId === groupId)].forEach(t => this.closeTab(t.id));
-        } else if (btn.dataset.action === 'rename-group') {
-          const name = window.prompt('Group name:', group.name);
-          if (name?.trim()) { group.name = name.trim(); this._reRenderTabList(); }
-        }
-        this._hideTabContextMenu();
-      });
+    this._positionMenu(menu, x, y);
+
+    this._wireMenuActions(menu, (act) => {
+      if (act === 'ungroup-all') {
+        this.tabs.filter(t => t.groupId === groupId).forEach(t => this.removeTabFromGroup(t.id, false, true));
+        delete this.groups[groupId];
+        this._reRenderTabList();
+      } else if (act === 'close-group') {
+        [...this.tabs.filter(t => t.groupId === groupId)].forEach(t => this.closeTab(t.id));
+      } else if (act === 'rename-group') {
+        const name = window.prompt('Group name:', group.name);
+        if (name?.trim()) { group.name = name.trim(); this._reRenderTabList(); }
+      } else if (act === 'toggle-collapse') {
+        group.collapsed = !group.collapsed;
+        this._reRenderTabList();
+      }
+      this._hideTabContextMenu();
     });
-    const closeOutside = (e) => {
-      if (!menu.contains(e.target)) { this._hideTabContextMenu(); document.removeEventListener('mousedown', closeOutside); }
-    };
-    setTimeout(() => document.addEventListener('mousedown', closeOutside), 10);
+
+    // Wire the recolor submenu
+    menu.querySelectorAll('[data-submenu="recolor"]').forEach(btn => {
+      const open = () => {
+        document.querySelectorAll('.tab-ctx-submenu').forEach(el => el.remove());
+        const sub = document.createElement('div');
+        sub.className = 'tab-ctx-menu tab-ctx-submenu';
+        sub.innerHTML = `
+          <div class="tcm-label">Group color</div>
+          <div class="tcm-color-picker tcm-color-picker-grid">
+            ${this._GROUP_COLORS.map(c => `<button class="tcm-color-dot${c === group.color ? ' selected' : ''}" data-color="${c}" style="background:${c};color:${c}" title="${c}" type="button"></button>`).join('')}
+          </div>
+        `;
+        document.body.appendChild(sub);
+        const r = btn.getBoundingClientRect();
+        const w = sub.offsetWidth || 220;
+        const h = sub.scrollHeight || 80;
+        let left = r.right + 4;
+        if (left + w + 8 > window.innerWidth) left = Math.max(8, r.left - w - 4);
+        let top = Math.min(r.top - 4, window.innerHeight - h - 8);
+        sub.style.left = `${left}px`;
+        sub.style.top = `${Math.max(8, top)}px`;
+        sub.querySelectorAll('.tcm-color-dot').forEach(dot => {
+          dot.addEventListener('click', (e) => {
+            e.stopPropagation();
+            group.color = dot.dataset.color;
+            this._reRenderTabList();
+            this._hideTabContextMenu();
+          });
+        });
+      };
+      btn.addEventListener('click', (e) => { e.stopPropagation(); open(); });
+      let t = null;
+      btn.addEventListener('mouseenter', () => { clearTimeout(t); t = setTimeout(open, 120); });
+      btn.addEventListener('mouseleave', () => clearTimeout(t));
+    });
+
+    this._installMenuOutsideClose(menu);
+  }
+
+  // ── Tab actions used by the context menu (kept tiny and additive) ───────
+
+  /** Reload a specific tab by id (without changing focus). */
+  reloadTabById(tabId, ignoreCache = false) {
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab || !tab.webview) return;
+    try {
+      if (ignoreCache && typeof tab.webview.reloadIgnoringCache === 'function') {
+        tab.webview.reloadIgnoringCache();
+      } else {
+        tab.webview.reload();
+      }
+    } catch {
+      try { tab.webview.reload(); } catch { /* ignore */ }
+    }
+  }
+
+  /** Open a duplicate of a tab next to the original (Chrome-style "Duplicate"). */
+  duplicateTab(tabId) {
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab) return;
+    const url = (tab.url || '').trim();
+    if (!url || !url.startsWith('http')) {
+      if (typeof _showAppToast === 'function') _showAppToast('Nothing to duplicate.', 'warning');
+      return;
+    }
+    try {
+      this.createTab(url, { incognito: !!tab.incognito, switchTo: true });
+    } catch (e) {
+      console.warn('[Navio] duplicateTab error', e);
+    }
+  }
+
+  /** Copy a tab's URL to the clipboard with a small confirmation toast. */
+  async copyTabUrl(tabId) {
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab) return;
+    const url = (tab.url || '').trim();
+    if (!url) return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        ta.style.cssText = 'position:fixed;top:-9999px;opacity:0';
+        document.body.appendChild(ta);
+        ta.focus(); ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      if (typeof _showAppToast === 'function') _showAppToast('Link copied', 'success');
+    } catch {
+      if (typeof _showAppToast === 'function') _showAppToast('Could not copy link', 'error');
+    }
+  }
+
+  /** Bookmark a tab to the bookmarks bar (mirrors the URL-bar star). */
+  async bookmarkTabAction(tabId) {
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab || !tab.url || !tab.url.startsWith('http')) {
+      if (typeof _showAppToast === 'function') _showAppToast('Only http(s) pages can be bookmarked.', 'warning');
+      return;
+    }
+    try {
+      await window.navio.bookmarksAdd({
+        title: this.getTabDisplayTitle(tab),
+        url: tab.url,
+        favicon: tab.favicon,
+        toBar: true
+      });
+      window.dispatchEvent(new Event('bookmarks-changed'));
+      if (typeof _showAppToast === 'function') _showAppToast('Bookmark added', 'success');
+    } catch {
+      if (typeof _showAppToast === 'function') _showAppToast('Could not add bookmark', 'error');
+    }
+  }
+
+  /** Close every tab except the given one (skip pinned tabs to match Chrome). */
+  closeOtherTabs(tabId) {
+    const ids = this.tabs.filter(t => t.id !== tabId && !t.pinned).map(t => t.id);
+    for (const id of ids) {
+      try { this.closeTab(id); } catch { /* ignore */ }
+    }
+  }
+
+  /** Close every tab to the right of the given one in the strip (skip pinned). */
+  closeTabsToTheRight(tabId) {
+    const idx = this.tabs.findIndex(t => t.id === tabId);
+    if (idx < 0) return;
+    const ids = this.tabs.slice(idx + 1).filter(t => !t.pinned).map(t => t.id);
+    for (const id of ids) {
+      try { this.closeTab(id); } catch { /* ignore */ }
+    }
+  }
+
+  /** True if there are tabs to the right of `tabId` that aren't pinned. */
+  hasUnpinnedTabsToRight(tabId) {
+    const idx = this.tabs.findIndex(t => t.id === tabId);
+    if (idx < 0) return false;
+    return this.tabs.slice(idx + 1).some(t => !t.pinned);
   }
 
   // ── Tab Context Menu ───────────────────────────────────────────────────
@@ -2839,26 +3074,6 @@ class TabManagerClass {
 
     const existingGroups = Object.values(this.groups);
     const currentGroupId = tab.groupId || null;
-
-    const colorDots = this._GROUP_COLORS.map((c, i) =>
-      `<button class="tcm-color-dot${i === 0 ? ' selected' : ''}" data-color="${c}" style="background:${c};color:${c}" title="${c}"></button>`
-    ).join('');
-
-    const groupItems = existingGroups.length ? `
-      <div class="tcm-label">Add to group</div>
-      ${existingGroups.map(g => `
-        <button class="tcm-item${currentGroupId === g.id ? ' tcm-active' : ''}" data-action="add-to-group" data-gid="${g.id}">
-          <span class="tcm-dot" style="background:${g.color}"></span>${this.escapeHtml(g.name)}
-        </button>`).join('')}
-      <div class="tcm-sep"></div>` : '';
-
-    const removeItem = currentGroupId ? `
-      <button class="tcm-item" data-action="remove-from-group">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
-        Remove from group
-      </button>
-      <div class="tcm-sep"></div>` : '';
-
     const otherTabs = this.tabs.filter(t => t.id !== tabId);
     const splitOk = (ot) => {
       if (this.isNavioChatTabUrl(ot.url || '')) return false;
@@ -2866,138 +3081,308 @@ class TabManagerClass {
       if (!u.startsWith('http')) return false;
       return !!tab.incognito === !!ot.incognito;
     };
-    const maxPair = 16;
-    const pairSection = otherTabs.length
-      ? `<div class="tcm-label">Group with another tab</div>
-      ${otherTabs.slice(0, maxPair).map(ot => `
-        <button class="tcm-item" data-action="new-group-with-tab" data-other-id="${ot.id}">
-          <span class="tcm-dot" style="background:#64748b"></span>${this.escapeHtml(this.getTabDisplayTitle(ot))}
-        </button>`).join('')}
-      ${otherTabs.length > maxPair ? `<div class="tcm-label">${otherTabs.length - maxPair} more tabs — use “Add to group” below</div>` : ''}
-      <div class="tcm-sep"></div>`
-      : '';
-
-    const pinLabel = tab.pinned ? 'Unpin tab' : 'Pin tab';
-
-    const splitSwap = tab.splitPartnerId
-      ? `<button class="tcm-item" data-action="swap-split">Swap left / right</button>`
-      : '';
-    const splitExit = tab.splitPartnerId
-      ? `<button class="tcm-item" data-action="unsplit-tab">Exit split view</button>`
-      : '';
-
     const splitCandidates = otherTabs.filter(splitOk);
-    const splitPickMax = 16;
-    const splitWithList = !tab.splitPartnerId && splitCandidates.length
-      ? `<div class="tcm-label">Split view (side-by-side)</div>
-      <div class="tcm-hint">Puts both pages in one tab group, like Chrome.</div>
-      ${splitCandidates.slice(0, splitPickMax).map((ot) => `
-        <button class="tcm-item" data-action="split-with" data-other-id="${ot.id}">
-          With: ${this.escapeHtml(this.getTabDisplayTitle(ot))}
-        </button>`).join('')}
-      ${splitCandidates.length > splitPickMax ? `<div class="tcm-label">${splitCandidates.length - splitPickMax} more eligible tabs…</div>` : ''}`
-      : '';
 
-    const menu = document.createElement('div');
-    menu.id = 'tab-ctx-menu';
-    menu.className = 'tab-ctx-menu';
-    menu.innerHTML = `
-      <button class="tcm-item" data-action="rename-tab">Rename tab…</button>
-      ${tab.customTitle ? '<button class="tcm-item" data-action="clear-tab-name">Use page title</button>' : ''}
-      <div class="tcm-sep"></div>
-      <button class="tcm-item" data-action="toggle-pin">${pinLabel}</button>
-      <div class="tcm-sep"></div>
-      ${splitSwap}
-      ${splitExit}
-      ${splitWithList ? `${splitWithList}<div class="tcm-sep"></div>` : ''}
-      ${pairSection}
-      ${removeItem}
-      ${groupItems}
-      <div class="tcm-label">New group</div>
-      <div class="tcm-ng-row">
-        <div class="tcm-color-picker">${colorDots}</div>
-        <input class="tcm-ng-input" id="tcm-ng-name" placeholder="Group name…" value="Group ${existingGroups.length + 1}" maxlength="20">
-        <button class="tcm-ng-btn" id="tcm-ng-create">Create</button>
-      </div>
-      <div class="tcm-sep"></div>
-      <button class="tcm-item tcm-danger" data-action="close-tab">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        Close tab
-      </button>
-    `;
+    const isHttp = (tab.url || '').trim().startsWith('http');
+    const canCloseRight = this.hasUnpinnedTabsToRight(tabId);
+    const canCloseOther = otherTabs.some(t => !t.pinned);
+    const canDuplicate = isHttp;
+    const canBookmark = isHttp;
+    const canCopyLink = !!(tab.url || '').trim();
+
+    const splitDisabled = !tab.splitPartnerId && splitCandidates.length === 0;
+
+    // Top-level menu — flat, Comet-style. Submenus open from items with data-submenu.
+    const items = [
+      { kind: 'item', action: 'rename-tab', label: 'Rename tab…',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' },
+      ...(tab.customTitle ? [{ kind: 'item', action: 'clear-tab-name', label: 'Use page title' }] : []),
+      { kind: 'item', action: 'toggle-pin', label: tab.pinned ? 'Unpin tab' : 'Pin tab',
+        icon: tab.pinned
+          ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="2" x2="22" y2="22"/><path d="M12 17v5"/><path d="M9 9l-3 3 4 4"/><path d="M14.5 4.5l5 5L17 12l-3-3"/></svg>'
+          : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76V6h-.5a1 1 0 0 1 0-2h7a1 1 0 0 1 0 2H15v4.76l3 2.84V16H6v-2.4z"/></svg>' },
+      { kind: 'sep' },
+      { kind: 'submenu', id: 'split', label: tab.splitPartnerId ? 'Split view' : 'Open in split view',
+        disabled: splitDisabled,
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>' },
+      { kind: 'submenu', id: 'group', label: 'Add tab to group',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>' },
+      ...(currentGroupId ? [{ kind: 'item', action: 'remove-from-group', label: 'Remove from group',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>' }] : []),
+      { kind: 'item', action: 'bookmark-tab', label: 'Bookmark tab', disabled: !canBookmark,
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>' },
+      { kind: 'sep' },
+      { kind: 'item', action: 'copy-link', label: 'Copy link', disabled: !canCopyLink,
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>' },
+      { kind: 'item', action: 'reload', label: 'Reload', shortcut: 'Ctrl+R', disabled: !isHttp,
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15A9 9 0 1 1 18 5.51L23 10"/></svg>' },
+      { kind: 'item', action: 'duplicate', label: 'Duplicate', disabled: !canDuplicate,
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>' },
+      { kind: 'item', action: 'mute-toggle', label: tab.isMuted ? 'Unmute site' : 'Mute site',
+        icon: tab.isMuted
+          ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>'
+          : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>' },
+      { kind: 'sep' },
+      { kind: 'item', action: 'close-tab', label: 'Close', shortcut: 'Ctrl+W', danger: true,
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' },
+      { kind: 'item', action: 'close-others', label: 'Close other tabs', disabled: !canCloseOther },
+      { kind: 'item', action: 'close-right', label: 'Close tabs to the right', disabled: !canCloseRight }
+    ];
+
+    const menu = this._buildMenu(items, { anchorX: x, anchorY: y, parent: null });
     document.body.appendChild(menu);
+    this._positionMenu(menu, x, y);
 
-    // Position — keep within viewport
-    const mw = 220;
-    menu.style.left = `${Math.min(x, window.innerWidth - mw - 8)}px`;
-    menu.style.top = `${Math.min(y, window.innerHeight - (menu.scrollHeight || 240) - 8)}px`;
+    const handleAction = (act, btn) => {
+      if (act === 'close-tab') this.closeTab(tabId);
+      else if (act === 'close-others') this.closeOtherTabs(tabId);
+      else if (act === 'close-right') this.closeTabsToTheRight(tabId);
+      else if (act === 'rename-tab') this._promptRenameTab(tabId);
+      else if (act === 'clear-tab-name') this.setTabCustomTitle(tabId, null);
+      else if (act === 'toggle-pin') {
+        const t = this.tabs.find((x) => x.id === tabId);
+        if (t) {
+          t.pinned = !t.pinned;
+          this._reorderPinnedTabs();
+          this.updateTabUI(t);
+        }
+      }
+      else if (act === 'remove-from-group') this.removeTabFromGroup(tabId);
+      else if (act === 'bookmark-tab') this.bookmarkTabAction(tabId);
+      else if (act === 'copy-link') this.copyTabUrl(tabId);
+      else if (act === 'reload') this.reloadTabById(tabId, false);
+      else if (act === 'duplicate') this.duplicateTab(tabId);
+      else if (act === 'mute-toggle') this._muteTab(tabId);
+      this._hideTabContextMenu();
+    };
 
-    // Color picker selection
-    let selectedColor = this._GROUP_COLORS[0];
-    menu.querySelectorAll('.tcm-color-dot').forEach(dot => {
-      dot.addEventListener('click', () => {
-        menu.querySelectorAll('.tcm-color-dot').forEach(d => d.classList.remove('selected'));
-        dot.classList.add('selected');
-        selectedColor = dot.dataset.color;
+    this._wireMenuActions(menu, handleAction);
+
+    // Submenu openers
+    menu.querySelectorAll('[data-submenu]').forEach(btn => {
+      const onOpen = () => this._openSubmenu(btn, btn.dataset.submenu, { tabId, splitCandidates, existingGroups, currentGroupId, tab });
+      btn.addEventListener('click', (e) => {
+        if (btn.classList.contains('tcm-disabled')) return;
+        e.stopPropagation();
+        onOpen();
+      });
+      let hoverTimer = null;
+      btn.addEventListener('mouseenter', () => {
+        if (btn.classList.contains('tcm-disabled')) return;
+        clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(onOpen, 120);
+      });
+      btn.addEventListener('mouseleave', () => clearTimeout(hoverTimer));
+    });
+
+    this._installMenuOutsideClose(menu);
+  }
+
+  /** Build a menu DOM from a flat item list. Items: {kind, action|id, label, icon, shortcut, danger, disabled}. */
+  _buildMenu(items) {
+    const menu = document.createElement('div');
+    menu.className = 'tab-ctx-menu';
+    const html = items.map((it) => {
+      if (it.kind === 'sep') return '<div class="tcm-sep"></div>';
+      if (it.kind === 'label') return `<div class="tcm-label">${this.escapeHtml(it.label)}</div>`;
+      const cls = ['tcm-item'];
+      if (it.danger) cls.push('tcm-danger');
+      if (it.active) cls.push('tcm-active');
+      if (it.disabled) cls.push('tcm-disabled');
+      const dataAttrs = [];
+      if (it.kind === 'submenu') {
+        cls.push('tcm-submenu-trigger');
+        dataAttrs.push(`data-submenu="${it.id}"`);
+      } else if (it.action) {
+        dataAttrs.push(`data-action="${it.action}"`);
+      }
+      if (it.gid) dataAttrs.push(`data-gid="${it.gid}"`);
+      if (it.otherId) dataAttrs.push(`data-other-id="${it.otherId}"`);
+      const iconHtml = it.icon ? `<span class="tcm-icon">${it.icon}</span>` : (it.dotColor ? `<span class="tcm-dot" style="background:${it.dotColor}"></span>` : '<span class="tcm-icon"></span>');
+      const shortcut = it.shortcut ? `<span class="tcm-shortcut">${this.escapeHtml(it.shortcut)}</span>` : '';
+      const chevron = it.kind === 'submenu' ? '<span class="tcm-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>' : '';
+      return `<button class="${cls.join(' ')}" ${dataAttrs.join(' ')} ${it.disabled ? 'disabled' : ''}>${iconHtml}<span class="tcm-text">${this.escapeHtml(it.label)}</span>${shortcut}${chevron}</button>`;
+    }).join('');
+    menu.innerHTML = html;
+    return menu;
+  }
+
+  /** Wire any [data-action] buttons in `menu` to a handler(action, button). */
+  _wireMenuActions(menu, handler) {
+    menu.querySelectorAll('[data-action]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        if (btn.classList.contains('tcm-disabled')) return;
+        e.stopPropagation();
+        handler(btn.dataset.action, btn);
       });
     });
+  }
 
-    // Create group button
-    menu.querySelector('#tcm-ng-create')?.addEventListener('click', () => {
-      const name = menu.querySelector('#tcm-ng-name')?.value.trim() || `Group ${Object.keys(this.groups).length + 1}`;
-      const gid = this.createGroup(name, selectedColor);
-      this.addTabToGroup(tabId, gid);
-      this._hideTabContextMenu();
+  /** Place a menu near (x,y) keeping it inside the viewport. */
+  _positionMenu(menu, x, y) {
+    menu.style.visibility = 'hidden';
+    const w = menu.offsetWidth || 260;
+    const h = menu.scrollHeight || 280;
+    const left = Math.min(Math.max(8, x), window.innerWidth - w - 8);
+    const top  = Math.min(Math.max(8, y), window.innerHeight - h - 8);
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+    menu.style.visibility = '';
+  }
+
+  /** Open a submenu next to a parent item (auto-flips if it would clip). */
+  _openSubmenu(parentBtn, kind, ctx) {
+    document.querySelectorAll('.tab-ctx-submenu').forEach(el => el.remove());
+    parentBtn.parentElement.querySelectorAll('.tcm-submenu-trigger.tcm-open').forEach(b => b.classList.remove('tcm-open'));
+    parentBtn.classList.add('tcm-open');
+
+    let items = [];
+    if (kind === 'split') {
+      items = this._buildSplitSubmenuItems(ctx);
+    } else if (kind === 'group') {
+      items = this._buildGroupSubmenuItems(ctx);
+    }
+
+    const sub = this._buildMenu(items);
+    sub.classList.add('tab-ctx-submenu');
+    document.body.appendChild(sub);
+
+    const r = parentBtn.getBoundingClientRect();
+    const w = sub.offsetWidth || 260;
+    const h = sub.scrollHeight || 240;
+    let left = r.right + 4;
+    if (left + w + 8 > window.innerWidth) left = Math.max(8, r.left - w - 4);
+    let top = r.top - 4;
+    if (top + h + 8 > window.innerHeight) top = Math.max(8, window.innerHeight - h - 8);
+    sub.style.left = `${left}px`;
+    sub.style.top = `${top}px`;
+
+    // Wire submenu actions
+    this._wireSubmenuActions(sub, kind, ctx);
+  }
+
+  _buildSplitSubmenuItems(ctx) {
+    const { tab, splitCandidates } = ctx;
+    const items = [];
+    if (tab.splitPartnerId) {
+      items.push({ kind: 'item', action: 'swap-split', label: 'Swap left / right',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>' });
+      items.push({ kind: 'item', action: 'unsplit-tab', label: 'Exit split view',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' });
+      return items;
+    }
+    if (!splitCandidates.length) {
+      items.push({ kind: 'label', label: 'No eligible tabs' });
+      items.push({ kind: 'item', action: '__nothing', label: 'Open another http(s) tab to split with', disabled: true });
+      return items;
+    }
+    items.push({ kind: 'label', label: 'Open with…' });
+    const max = 16;
+    splitCandidates.slice(0, max).forEach(ot => {
+      items.push({ kind: 'item', action: 'split-with', otherId: ot.id,
+        label: this.getTabDisplayTitle(ot),
+        dotColor: ot.groupId && this.groups[ot.groupId] ? this.groups[ot.groupId].color : '#64748b' });
     });
+    if (splitCandidates.length > max) {
+      items.push({ kind: 'label', label: `${splitCandidates.length - max} more eligible…` });
+    }
+    return items;
+  }
 
-    // Action buttons
-    menu.querySelectorAll('[data-action]').forEach(btn => {
-      btn.addEventListener('click', () => {
+  _buildGroupSubmenuItems(ctx) {
+    const { existingGroups, currentGroupId } = ctx;
+    const items = [];
+    if (existingGroups.length) {
+      items.push({ kind: 'label', label: 'Existing groups' });
+      existingGroups.forEach(g => {
+        items.push({ kind: 'item', action: 'add-to-group', gid: g.id,
+          label: g.name, dotColor: g.color, active: currentGroupId === g.id });
+      });
+      items.push({ kind: 'sep' });
+    }
+    items.push({ kind: 'item', action: '__new-group', label: 'New group…',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' });
+    return items;
+  }
+
+  _wireSubmenuActions(sub, kind, ctx) {
+    const { tabId } = ctx;
+    sub.querySelectorAll('[data-action]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        if (btn.classList.contains('tcm-disabled')) return;
+        e.stopPropagation();
         const act = btn.dataset.action;
-        if (act === 'close-tab') this.closeTab(tabId);
-        else if (act === 'rename-tab') this._promptRenameTab(tabId);
-        else if (act === 'clear-tab-name') this.setTabCustomTitle(tabId, null);
-        else if (act === 'toggle-pin') {
-          const t = this.tabs.find((x) => x.id === tabId);
-          if (t) {
-            t.pinned = !t.pinned;
-            this._reorderPinnedTabs();
-            this.updateTabUI(t);
-          }
-        } else if (act === 'remove-from-group') this.removeTabFromGroup(tabId);
-        else if (act === 'add-to-group') this.addTabToGroup(tabId, btn.dataset.gid);
-        else if (act === 'unsplit-tab') this.unsplitTab(tabId);
-        else if (act === 'swap-split') this.swapSplitPanes(tabId);
-        else if (act === 'split-with') this.splitTabWith(tabId, btn.dataset.otherId);
-        else if (act === 'new-group-with-tab') {
-          const oid = btn.dataset.otherId;
-          const ot = this.tabs.find(x => x.id === oid);
-          if (ot) {
-            const a = (this.getTabDisplayTitle(tab) || 'Tab').slice(0, 22);
-            const b = (this.getTabDisplayTitle(ot) || 'Tab').slice(0, 22);
-            const name = `${a} / ${b}`.slice(0, 36);
-            const colorIdx = Object.keys(this.groups).length % this._GROUP_COLORS.length;
-            const gid = this.createGroup(name, this._GROUP_COLORS[colorIdx]);
-            this.addTabToGroup(tabId, gid);
-            this.addTabToGroup(ot.id, gid);
-          }
+        if (act === '__nothing') return;
+        if (act === 'split-with') {
+          this.splitTabWith(tabId, btn.dataset.otherId);
+        } else if (act === 'swap-split') {
+          this.swapSplitPanes(tabId);
+        } else if (act === 'unsplit-tab') {
+          this.unsplitTab(tabId);
+        } else if (act === 'add-to-group') {
+          this.addTabToGroup(tabId, btn.dataset.gid);
+        } else if (act === '__new-group') {
+          // Replace the submenu with the new-group composer (color + name + Create)
+          this._showNewGroupComposer(sub, tabId);
+          return;
         }
         this._hideTabContextMenu();
       });
     });
+  }
 
-    // Close on outside click
+  /** Tiny inline composer: color dots + name + Create, replaces the submenu contents. */
+  _showNewGroupComposer(sub, tabId) {
+    const colorDots = this._GROUP_COLORS.map((c, i) =>
+      `<button class="tcm-color-dot${i === 0 ? ' selected' : ''}" data-color="${c}" style="background:${c};color:${c}" title="${c}" type="button"></button>`
+    ).join('');
+    sub.innerHTML = `
+      <div class="tcm-label">New group</div>
+      <div class="tcm-ng-row">
+        <div class="tcm-color-picker">${colorDots}</div>
+        <input class="tcm-ng-input" id="tcm-ng-name" placeholder="Group name" value="Group ${Object.keys(this.groups).length + 1}" maxlength="24" autofocus>
+        <button class="tcm-ng-btn" id="tcm-ng-create" type="button">Create group</button>
+      </div>
+    `;
+    let selectedColor = this._GROUP_COLORS[0];
+    sub.querySelectorAll('.tcm-color-dot').forEach(dot => {
+      dot.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sub.querySelectorAll('.tcm-color-dot').forEach(d => d.classList.remove('selected'));
+        dot.classList.add('selected');
+        selectedColor = dot.dataset.color;
+      });
+    });
+    const create = () => {
+      const inputEl = sub.querySelector('#tcm-ng-name');
+      const name = (inputEl?.value || '').trim() || `Group ${Object.keys(this.groups).length + 1}`;
+      const gid = this.createGroup(name, selectedColor);
+      this.addTabToGroup(tabId, gid);
+      this._hideTabContextMenu();
+    };
+    sub.querySelector('#tcm-ng-create')?.addEventListener('click', (e) => { e.stopPropagation(); create(); });
+    const inputEl = sub.querySelector('#tcm-ng-name');
+    inputEl?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); create(); }
+    });
+    setTimeout(() => { try { inputEl?.focus(); inputEl?.select(); } catch {} }, 0);
+  }
+
+  _installMenuOutsideClose(menu) {
     const closeOutside = (e) => {
-      if (!menu.contains(e.target)) {
-        this._hideTabContextMenu();
-        document.removeEventListener('mousedown', closeOutside);
-      }
+      const sub = document.querySelector('.tab-ctx-submenu');
+      if (menu.contains(e.target)) return;
+      if (sub && sub.contains(e.target)) return;
+      this._hideTabContextMenu();
+      document.removeEventListener('mousedown', closeOutside);
     };
     setTimeout(() => document.addEventListener('mousedown', closeOutside), 10);
   }
 
   _hideTabContextMenu() {
+    document.querySelectorAll('.tab-ctx-submenu').forEach(el => el.remove());
     document.getElementById('tab-ctx-menu')?.remove();
+    document.querySelectorAll('.tab-ctx-menu').forEach(el => el.remove());
   }
 
   async autoOrganizeTabsWithAi() {

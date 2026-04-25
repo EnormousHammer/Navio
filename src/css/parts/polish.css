@@ -56,18 +56,47 @@
 }
 
 /* ---------------------------------------------
-   1) TAB CONTEXT MENU — spacious, grouped, quiet
+   1) TAB CONTEXT MENU — Comet-style: flat, hierarchical
+   - Top-level menu uses submenus instead of inline lists
+   - Icons left, label centre, shortcut/chevron right
    --------------------------------------------- */
 .tab-ctx-menu {
+  position: fixed;
+  z-index: 99999;
   background: var(--p-surface-1);
   border: 1px solid var(--p-border);
-  border-radius: 14px;
-  padding: 6px;
-  min-width: 248px;
+  border-radius: 12px;
+  padding: 5px;
+  min-width: 240px;
+  max-width: 340px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
   box-shadow: var(--p-shadow), 0 0 0 1px var(--p-border);
   backdrop-filter: blur(24px) saturate(140%);
   -webkit-backdrop-filter: blur(24px) saturate(140%);
   animation: tcm-pop var(--dur-mid) var(--ease-pop);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  scrollbar-width: thin;
+}
+.tab-ctx-menu::-webkit-scrollbar { width: 8px; }
+.tab-ctx-menu::-webkit-scrollbar-track { background: transparent; }
+.tab-ctx-menu::-webkit-scrollbar-thumb {
+  background: var(--p-border-strong);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.tab-ctx-menu::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+  background-clip: padding-box;
+}
+.tab-ctx-submenu {
+  /* Slightly tighter to feel like a child menu */
+  min-width: 220px;
+  max-width: 360px;
+  border-radius: 12px;
+  padding: 5px;
 }
 @keyframes tcm-pop {
   from { transform: translateY(-4px) scale(0.98); opacity: 0; }
@@ -75,52 +104,111 @@
 }
 
 .tcm-item {
-  padding: 8px 12px;
-  min-height: 32px;
+  display: flex;
+  align-items: center;
   gap: 10px;
-  font-size: 13px;
-  border-radius: 8px;
+  width: 100%;
+  padding: 7px 10px 7px 10px;
+  min-height: 30px;
+  border: none;
+  background: transparent;
   color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  border-radius: 7px;
+  cursor: pointer;
+  text-align: left;
   line-height: 1;
   transition: background var(--dur-fast) var(--ease-soft),
               color var(--dur-fast) var(--ease-soft);
 }
-.tcm-item svg {
-  width: 14px;
-  height: 14px;
+.tcm-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  color: var(--text-tertiary);
-  stroke-width: 1.8;
-}
-.tcm-item:hover { background: var(--p-hover); color: var(--text-bright); }
-.tcm-item:hover svg { color: var(--text-primary); }
-.tcm-item.tcm-active {
-  background: var(--p-hover);
-  color: var(--text-primary);
-}
-.tcm-item.tcm-active::after {
-  content: '✓';
-  margin-left: auto;
-  font-size: 12px;
   color: var(--text-secondary);
-  opacity: 0.7;
 }
+.tcm-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.6;
+}
+.tcm-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tcm-shortcut {
+  margin-left: 12px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  opacity: 0.8;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.tcm-chevron {
+  margin-left: auto;
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+.tcm-chevron svg { width: 12px; height: 12px; stroke-width: 2; }
+
+.tcm-item:hover { background: var(--p-hover); color: var(--text-bright); }
+.tcm-item:hover .tcm-icon,
+.tcm-item:hover .tcm-chevron { color: var(--text-primary); }
+.tcm-item.tcm-open {
+  background: var(--p-hover);
+  color: var(--text-bright);
+}
+.tcm-item.tcm-active {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.tcm-item.tcm-active .tcm-text::after {
+  content: '  ✓';
+  color: var(--text-secondary);
+  opacity: 0.85;
+  font-weight: 500;
+}
+
+.tcm-item.tcm-disabled,
+.tcm-item[disabled] {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+.tcm-item.tcm-disabled:hover,
+.tcm-item[disabled]:hover { background: transparent; }
+
 .tcm-item.tcm-danger { color: #fda4af; }
 .tcm-item.tcm-danger:hover { background: rgba(244, 63, 94, 0.10); color: #fecdd3; }
+.tcm-item.tcm-danger .tcm-icon { color: #fda4af; opacity: 0.85; }
 [data-theme="light"] .tcm-item.tcm-danger { color: #e11d48; }
 [data-theme="light"] .tcm-item.tcm-danger:hover { background: rgba(244, 63, 94, 0.08); color: #be123c; }
+[data-theme="light"] .tcm-item.tcm-danger .tcm-icon { color: #e11d48; }
 
 .tcm-dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.1), inset 0 0 0 1.5px rgba(255,255,255,0.18);
+  flex-shrink: 0;
 }
 
 .tcm-sep {
   height: 1px;
   background: var(--p-border);
-  margin: 6px 4px;
+  margin: 5px 4px;
 }
 
 .tcm-label {
@@ -129,7 +217,7 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-tertiary);
-  padding: 10px 12px 6px;
+  padding: 8px 12px 4px;
   opacity: 0.85;
 }
 
@@ -153,6 +241,12 @@
   gap: 6px;
   flex-wrap: wrap;
   padding: 2px 2px 6px;
+}
+.tcm-color-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  padding: 6px 8px 8px;
 }
 .tcm-color-dot {
   width: 18px;
@@ -2158,8 +2252,8 @@ html[data-theme="light"] .connectors-hub .connector-card.connected {
 
 /* ── Tab strip ──────────────────────────────────────────────────────────── */
 
-/* Inactive tab: subtle hover so user can predict what they're about to click */
-body:not(.navio-vertical-tabs) .tab-item:not(.active):hover {
+/* Inactive tab: subtle hover — skip grouped tabs so the workspace color stays visible */
+body:not(.navio-vertical-tabs) .tab-item:not(.active):not(.in-group):hover {
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-primary);
 }
@@ -2223,14 +2317,120 @@ body:not(.navio-vertical-tabs) .tab-item.active {
   color: var(--text-primary);
 }
 
-/* Light theme tab adjustments */
-[data-theme="light"] body:not(.navio-vertical-tabs) .tab-item:not(.active):hover {
+/* Light theme tab adjustments — skip grouped tabs (group hover is in styles.css) */
+[data-theme="light"] body:not(.navio-vertical-tabs) .tab-item:not(.active):not(.in-group):hover {
   background: rgba(0, 0, 0, 0.05);
 }
 [data-theme="light"] .tab-close:hover {
   background: rgba(239, 68, 68, 0.12);
   color: #dc2626;
 }
+
+/* ── Tab groups — clearer block boundaries, no truncated names ────────── */
+
+/* Increase the width tabs can claim before truncating, so titles like
+   "canoll-portal-backend - Web Service - Render Dashboard" remain readable
+   when there's strip space available. */
+body:not(.navio-vertical-tabs) .tab-item {
+  max-width: 240px;
+  min-width: 56px;
+}
+body:not(.navio-vertical-tabs) .tab-item.active {
+  /* Active tab gets priority and a slightly larger floor so its title is readable. */
+  min-width: 96px;
+  flex-shrink: 0.4;
+}
+
+/* Group header chip: room for the full group name */
+body:not(.navio-vertical-tabs) .tgh-name {
+  max-width: 180px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.22);
+}
+
+/* Group tab fill is owned by styles.css (strong Comet-like tint). Here we only tune shape. */
+body:not(.navio-vertical-tabs) .tab-item.in-group.group-first {
+  border-top-left-radius: 8px;
+  margin-left: 0;
+}
+body:not(.navio-vertical-tabs) .tab-item.in-group.group-last {
+  border-top-right-radius: 8px;
+  border-right: 2px solid color-mix(in srgb, var(--tg-color, #60a5fa) 65%, transparent);
+  margin-right: 0;
+}
+
+/* Group header chip — Comet polish: subtle bevel + clear text contrast */
+body:not(.navio-vertical-tabs) .tab-group-header {
+  height: 34px;
+  padding: 0 10px 0 12px;
+  background:
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--tg-color, #60a5fa) 95%, white) 0%,
+      var(--tg-color, #60a5fa) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.22),
+    inset 0 -1px 0 rgba(0,0,0,0.18);
+  margin: 0 0 0 4px;
+}
+body:not(.navio-vertical-tabs) .tab-group-header:hover {
+  filter: brightness(1.08) saturate(1.05);
+}
+
+/* Collapsed groups: clearer visual that "the rest are hidden" */
+body:not(.navio-vertical-tabs) .tab-group-header.collapsed {
+  border-radius: 8px;
+  margin: 4px 2px 0 4px;
+  height: 26px;
+  align-self: center;
+}
+body:not(.navio-vertical-tabs) .tab-group-header.collapsed .tgh-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.28);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+/* Vertical (sidebar) mode: render groups as enclosed cards */
+body.navio-vertical-tabs .tab-group-header {
+  padding: 5px 10px 5px 10px;
+  border-radius: 8px 8px 0 0;
+  border: 1px solid color-mix(in srgb, var(--tg-color, #888) 36%, transparent);
+  border-bottom: none;
+  background: color-mix(in srgb, var(--tg-color, #64748b) 16%, transparent);
+  margin: 6px 4px 0 4px;
+}
+body.navio-vertical-tabs .tab-group-header.collapsed {
+  border-radius: 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--tg-color, #888) 36%, transparent);
+}
+body.navio-vertical-tabs .tgh-name {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--text-primary);
+  max-width: none;
+}
+body.navio-vertical-tabs .tab-item.in-group {
+  margin: 0 4px;
+  border-radius: 0;
+  border-left: 1px solid color-mix(in srgb, var(--tg-color, #888) 36%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--tg-color, #888) 36%, transparent);
+}
+body.navio-vertical-tabs .tab-item.in-group.group-last {
+  border-bottom: 1px solid color-mix(in srgb, var(--tg-color, #888) 36%, transparent);
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+  margin-bottom: 4px;
+}
+
+/* Light grouped-tab fill: see styles.css (polish used to override with a weak gradient). */
 
 /* ── Navbar — URL bar & bookmark star ──────────────────────────────────── */
 
@@ -2266,17 +2466,6 @@ body:not(.navio-vertical-tabs) .tab-item.active {
 .url-bookmark-star.bookmarked svg {
   fill: var(--accent);
   stroke: var(--accent);
-}
-
-/* Zoom label — more visible, consistent */
-.url-zoom-label {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  padding: 2px 6px;
-  border-radius: 5px;
-  background: var(--p-hover);
-  letter-spacing: -0.01em;
 }
 
 /* Nav-action buttons — consistent radius */

@@ -359,35 +359,38 @@
   };
 
   async function updateUrlZoomLabel() {
-    const el = document.getElementById('url-zoom-label');
-    if (!el) return;
+    const btn = document.getElementById('btn-zoom-menu');
+    if (!btn) return;
+    let pct = 100;
     if (isNtpActive()) {
-      const pct = Math.round((getNtpZoom() || 1) * 100);
-      el.textContent = pct === 100 ? '' : `${pct}%`;
-      return;
-    }
-    const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
-    if (!wv) {
-      el.textContent = '';
-      return;
-    }
-    let factor = 1;
-    try {
-      if (typeof wv.getZoomFactor === 'function') {
-        factor = wv.getZoomFactor();
-      } else if (typeof wv.getWebContentsId === 'function' && window.navio?.webviewGetZoom) {
-        const z = await window.navio.webviewGetZoom(wv.getWebContentsId());
-        factor = z.factor || 1;
-      } else {
-        el.textContent = '';
+      pct = Math.round((getNtpZoom() || 1) * 100);
+    } else {
+      const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
+      if (!wv) {
+        btn.title = 'Zoom — open a page to adjust (Home uses its own zoom here)';
+        btn.setAttribute('aria-label', 'Zoom');
         return;
       }
-    } catch {
-      el.textContent = '';
-      return;
+      let factor = 1;
+      try {
+        if (typeof wv.getZoomFactor === 'function') {
+          factor = wv.getZoomFactor();
+        } else if (typeof wv.getWebContentsId === 'function' && window.navio?.webviewGetZoom) {
+          const z = await window.navio.webviewGetZoom(wv.getWebContentsId());
+          factor = z.factor || 1;
+        } else {
+          btn.title = 'Zoom';
+          return;
+        }
+      } catch {
+        btn.title = 'Zoom';
+        return;
+      }
+      pct = Math.round((factor || 1) * 100);
     }
-    const pct = Math.round((factor || 1) * 100);
-    el.textContent = pct === 100 ? '' : `${pct}%`;
+    const base = pct === 100 ? 'Zoom: 100%' : `Zoom: ${pct}%`;
+    btn.title = `${base} — Ctrl+Plus / Ctrl+Minus, Ctrl+0 reset. Click for +/−.`;
+    btn.setAttribute('aria-label', `${base}. Opens zoom controls.`);
   }
   window.__navioUpdateZoomLabel = updateUrlZoomLabel;
 
@@ -638,6 +641,95 @@
     }
 
     window.__navioOpenFindInPage = openFind;
+  }
+
+  function bindZoomLabelPopup() {
+    const trigger = document.getElementById('btn-zoom-menu');
+    const popup = document.getElementById('zoom-popup');
+    const pctBtn = document.getElementById('zoom-popup-pct');
+    const inBtn = document.getElementById('zoom-popup-in');
+    const outBtn = document.getElementById('zoom-popup-out');
+    if (!trigger || !popup) return;
+
+    function currentZoomFactor() {
+      if (isNtpActive()) return getNtpZoom() || 1;
+      const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
+      if (!wv) return 1;
+      try { return (typeof wv.getZoomFactor === 'function' ? wv.getZoomFactor() : 1) || 1; } catch { return 1; }
+    }
+
+    function refreshPopupPct() {
+      if (pctBtn) pctBtn.textContent = `${Math.round(currentZoomFactor() * 100)}%`;
+    }
+
+    function applyZoomStep(delta) {
+      if (typeof TabManager !== 'undefined' && TabManager.zoomActiveTabBy) {
+        TabManager.zoomActiveTabBy(delta);
+      }
+      refreshPopupPct();
+      void updateUrlZoomLabel();
+    }
+
+    function resetZoom() {
+      if (typeof TabManager !== 'undefined' && TabManager.setActiveTabZoomFactor) {
+        TabManager.setActiveTabZoomFactor(null);
+      }
+      refreshPopupPct();
+      void updateUrlZoomLabel();
+      closePopup();
+    }
+
+    function openPopup() {
+      refreshPopupPct();
+      const rect = trigger.getBoundingClientRect();
+      popup.style.top = `${rect.bottom + 6}px`;
+      const popupW = 148;
+      let left = rect.left + rect.width / 2 - popupW / 2;
+      left = Math.max(8, Math.min(left, window.innerWidth - popupW - 8));
+      popup.style.left = `${left}px`;
+      popup.style.width = `${popupW}px`;
+      popup.hidden = false;
+      trigger.setAttribute('aria-expanded', 'true');
+    }
+
+    function closePopup() {
+      popup.hidden = true;
+      trigger.setAttribute('aria-expanded', 'false');
+    }
+
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      popup.hidden ? openPopup() : closePopup();
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!popup.hidden && !popup.contains(e.target) && e.target !== trigger) closePopup();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (!popup.hidden && e.key === 'Escape') { closePopup(); trigger.focus(); }
+    });
+
+    if (inBtn) {
+      inBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        applyZoomStep(0.1);
+      });
+    }
+
+    if (outBtn) {
+      outBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        applyZoomStep(-0.1);
+      });
+    }
+
+    if (pctBtn) {
+      pctBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        resetZoom();
+      });
+    }
   }
 
   function bindPrintZoomFullscreen() {
@@ -1535,6 +1627,7 @@
     initBookmarkBar();
     bindBookmarkBarToggle();
     bindFindInPage();
+    bindZoomLabelPopup();
     bindPrintZoomFullscreen();
     bindDownloadsDrawer();
     bindHistoryPanel();

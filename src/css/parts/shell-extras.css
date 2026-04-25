@@ -656,8 +656,79 @@
   font-size: 11px;
   color: var(--text-tertiary);
   min-width: 36px;
-  text-align: right;
-  padding-right: 4px;
+  text-align: center;
+  padding: 2px 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: var(--radius-sm, 6px);
+  font-family: inherit;
+  transition: background var(--duration, 150ms), color var(--duration, 150ms);
+  display: none;
+}
+.url-zoom-label:not(:empty) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.url-zoom-label:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Zoom popup panel */
+.zoom-popup {
+  position: fixed;
+  z-index: 9000;
+  background: var(--bg-surface, #1a1f2e);
+  border: 1px solid var(--border, rgba(255,255,255,0.1));
+  border-radius: var(--radius, 10px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  gap: 4px;
+  user-select: none;
+}
+.zoom-popup-step {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-deep, #0d1017);
+  color: var(--text-primary);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background var(--duration, 150ms), border-color var(--duration, 150ms);
+}
+.zoom-popup-step:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.zoom-popup-pct {
+  flex: 1;
+  min-width: 54px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm, 6px);
+  transition: background var(--duration, 150ms);
+}
+.zoom-popup-pct:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
 }
 
 .tab-search-row-wrap {

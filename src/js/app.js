@@ -428,6 +428,25 @@ class NavioApp {
             favicon: e.favicon || ''
           });
         }
+
+        // Live search-engine suggestions — only for keyword queries, not URLs or domains
+        const looksLikeUrl = /^https?:\/\//i.test(q) || (q.includes('.') && q.split(/\s+/).length <= 3);
+        if (!looksLikeUrl && window.navio.searchSuggestions) {
+          try {
+            const searchEngine = this.config?.searchEngine || 'https://www.google.com/search?q=';
+            const liveSuggestions = await Promise.race([
+              window.navio.searchSuggestions(q, searchEngine),
+              new Promise(r => setTimeout(() => r([]), 1500))
+            ]);
+            for (const suggestion of (liveSuggestions || [])) {
+              const url = searchEngine + encodeURIComponent(suggestion);
+              add({ url, title: suggestion, badge: 'search', favicon: '' });
+            }
+          } catch {
+            // Network error — silently skip
+          }
+        }
+
         return out.slice(0, 14);
       }
 
@@ -503,11 +522,13 @@ class NavioApp {
     const badgeLabel = (b) => {
       if (b === 'bookmark') return 'Saved';
       if (b === 'frequent') return 'Frequent';
+      if (b === 'search') return 'Search';
       return 'Recent';
     };
     const badgeClass = (b) => {
       if (b === 'bookmark') return 'url-suggestion-badge url-suggestion-badge--bookmark';
       if (b === 'frequent') return 'url-suggestion-badge url-suggestion-badge--frequent';
+      if (b === 'search') return 'url-suggestion-badge url-suggestion-badge--search';
       return 'url-suggestion-badge url-suggestion-badge--recent';
     };
     const bookmarkIcon =
@@ -526,9 +547,13 @@ class NavioApp {
         } catch {
           host = it.url;
         }
-        const fav = this._suggestionIconHtml(it.url, it.favicon);
+        const isSearch = it.badge === 'search';
+        const fav = isSearch
+          ? `<span class="url-suggestion-fav url-suggestion-fav--search" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></span>`
+          : this._suggestionIconHtml(it.url, it.favicon);
+        const subtitle = isSearch ? 'Search' : esc(host);
         return `<button type="button" class="url-suggestion-row" role="option" data-i="${i}" aria-selected="false">
-${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc(it.title)}</span><span class="url-suggestion-url">${esc(host)}</span></span>
+${fav}<span class="url-suggestion-body"><span class="url-suggestion-title">${esc(it.title)}</span><span class="url-suggestion-url">${subtitle}</span></span>
 ${badgeHtml(it.badge)}
 </button>`;
       })
@@ -1059,6 +1084,11 @@ ${badgeHtml(it.badge)}
           break;
         case 'zoom-reset':
           applyNavioZoomShortcut('reset');
+          break;
+        case 'refresh-zoom-label':
+          try {
+            if (typeof window.__navioUpdateZoomLabel === 'function') window.__navioUpdateZoomLabel();
+          } catch { /* ignore */ }
           break;
         case 'find-in-page':
           try {
