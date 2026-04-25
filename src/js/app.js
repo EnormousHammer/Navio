@@ -13,6 +13,9 @@ class NavioApp {
 
   async init() {
     this.config = await window.navio.getConfig();
+    if (typeof TabManager !== 'undefined' && typeof TabManager.primeWebviewPreload === 'function') {
+      await TabManager.primeWebviewPreload();
+    }
 
     this.applyTheme(this.config.theme || 'dark');
     this.applyLayoutFromConfig(this.config);
@@ -84,7 +87,7 @@ class NavioApp {
   async startBrowser() {
     if (this._sessionStarted) return;
     this._sessionStarted = true;
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 0));
     if (typeof TabManager === 'undefined') return;
     this._maybeProactiveTip();
     const mode = this.config.startupMode || 'new-tab';
@@ -1651,8 +1654,21 @@ const PasswordManager = (() => {
   document.getElementById('pwd-save-btn')?.addEventListener('click', async () => {
     if (!_pendingSave) return;
     try {
-      await window.navio.passwordsSave(_pendingSave.url, _pendingSave.username, _pendingSave.password);
-    } catch {}
+      const r = await window.navio.passwordsSave(
+        _pendingSave.url,
+        _pendingSave.username,
+        _pendingSave.password
+      );
+      if (r && r.ok) {
+        _showAppToast('Password saved', 'success');
+      } else {
+        _showAppToast((r && r.error) || 'Could not save password', 'error');
+        return;
+      }
+    } catch (e) {
+      _showAppToast(e && e.message ? e.message : 'Could not save password', 'error');
+      return;
+    }
     _hideSave();
   });
 

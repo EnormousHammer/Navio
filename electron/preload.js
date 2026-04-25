@@ -202,6 +202,8 @@ contextBridge.exposeInMainWorld('navio', {
   clearBrowsingData: () => ipcRenderer.invoke('clear-browsing-data'),
 
   getIntroVideoUrl: () => ipcRenderer.invoke('get-intro-video-url'),
+  /** file:// URL passed to `<webview preload>` so guest scripts always load (password save, etc.). */
+  getWebviewGuestPreloadHref: () => ipcRenderer.invoke('navio-webview-guest-preload-href'),
 
   liveConnectorData: (payload) => ipcRenderer.invoke('live-connector-data', payload),
 

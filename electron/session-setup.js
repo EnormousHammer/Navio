@@ -174,21 +174,9 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   const navioSession = session.fromPartition(NAVIO_PARTITION_MAIN);
   const incognitoSession = session.fromPartition(NAVIO_PARTITION_INCOGNITO);
 
-  const webviewPreloadAbs = path.resolve(__dirname, 'webview-preload.js');
-  for (const [ses, id] of [
-    [navioSession, 'navio-webview-preload'],
-    [incognitoSession, 'navio-webview-preload-incognito']
-  ]) {
-    try {
-      ses.registerPreloadScript({
-        id,
-        type: 'frame',
-        filePath: webviewPreloadAbs
-      });
-    } catch (e) {
-      console.error('[navio] registerPreloadScript failed:', id, e.message);
-    }
-  }
+  // Guest `<webview>` scripts are loaded via the `preload` attribute (see tabs.js +
+  // `navio-webview-guest-preload-href` IPC). Session-wide registerPreloadScript was
+  // removed to avoid double-injection alongside the tag preload on Electron 35+.
 
   function applySessionFixes(ses) {
     const ua = ses

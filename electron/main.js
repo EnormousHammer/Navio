@@ -1652,6 +1652,15 @@ ipcMain.handle('get-intro-video-url', () => {
   }
 });
 
+/** Absolute file URL for guest `<webview preload>` (login capture, autofill, chat tab bridge). */
+ipcMain.handle('navio-webview-guest-preload-href', () => {
+  try {
+    return pathToFileURL(path.join(__dirname, 'webview-preload.js')).href;
+  } catch {
+    return '';
+  }
+});
+
 ipcMain.handle('clear-browsing-data', async () => {
   try {
     const ses = session.fromPartition('persist:navio');

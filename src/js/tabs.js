@@ -11,6 +11,8 @@ const NAVIO_HOME_TAB_LABEL = 'Home';
 
 class TabManagerClass {
   constructor() {
+    /** `undefined` = not fetched yet; non-empty string = file URL for `<webview preload>` */
+    this._webviewGuestPreloadHref = undefined;
     this.tabs = [];
     this.activeTabId = null;
     /** Tab receiving AI browser automation (takeover / tools); drives `tab-agent-controlled` UI. */
@@ -77,6 +79,24 @@ class TabManagerClass {
         /* ignore */
       }
     }, 0);
+  }
+
+  /**
+   * Resolve absolute file URL for webview-preload.js (password capture, autofill, chat guest bridge).
+   * Must run before the first tab is created — NavioApp.init awaits this.
+   */
+  async primeWebviewPreload() {
+    if (this._webviewGuestPreloadHref !== undefined) return;
+    try {
+      if (window.navio && typeof window.navio.getWebviewGuestPreloadHref === 'function') {
+        const href = await window.navio.getWebviewGuestPreloadHref();
+        this._webviewGuestPreloadHref = typeof href === 'string' && href.length > 0 ? href : '';
+      } else {
+        this._webviewGuestPreloadHref = '';
+      }
+    } catch {
+      this._webviewGuestPreloadHref = '';
+    }
   }
 
   // ── Passive Memory Capture ────────────────────────────────────────────
@@ -315,6 +335,9 @@ class TabManagerClass {
     webview.setAttribute('webpreferences', 'nativeWindowOpen=no');
     webview.setAttribute('partition', incognito ? NAVIO_INCOGNITO_PARTITION : 'persist:navio');
     webview.setAttribute('useragent', cleanUA);
+    if (this._webviewGuestPreloadHref) {
+      webview.setAttribute('preload', this._webviewGuestPreloadHref);
+    }
     // Always set src="about:blank" so Electron starts the guest renderer
     // immediately and fires dom-ready. Without this, dom-ready never fires
     // and any pending URL gets stuck in the queue forever (deadlock).
@@ -363,7 +386,7 @@ class TabManagerClass {
     }
     if (this.newTabPage && this.newTabPage.classList.contains('active')) {
       await this._nextPaint();
-      await new Promise((r) => setTimeout(r, 140));
+      await new Promise((r) => setTimeout(r, 48));
       return;
     }
     const wv = tab.webview;
@@ -376,7 +399,7 @@ class TabManagerClass {
         wv.removeEventListener('did-finish-load', onLoad);
         clearTimeout(failSafe);
         void this._nextPaint().then(() => {
-          setTimeout(resolve, 160);
+          setTimeout(resolve, 64);
         });
       };
       const onStop = () => finish();

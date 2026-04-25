@@ -4,14 +4,14 @@
  */
 
 const LaunchIntro = {
-  /** Minimum time after preload completes — lets the first tab settle before we show chrome. */
-  MIN_HOLD_WITH_BROWSER_MS: 520,
-  MIN_HOLD_REDUCED_MS: 200,
+  /** Minimum time after preload completes — keep near zero for fastest cold start. */
+  MIN_HOLD_WITH_BROWSER_MS: 0,
+  MIN_HOLD_REDUCED_MS: 0,
   /** Prelude-only path (e.g. first-run onboarding next). */
-  MIN_HOLD_NO_BROWSER_MS: 380,
-  MIN_HOLD_NO_BROWSER_REDUCED_MS: 120,
+  MIN_HOLD_NO_BROWSER_MS: 0,
+  MIN_HOLD_NO_BROWSER_REDUCED_MS: 0,
   /** Short settle after hold before stripping prelude. */
-  POST_READY_SETTLE_MS: 48,
+  POST_READY_SETTLE_MS: 0,
 
   _sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -148,10 +148,9 @@ const LaunchIntro = {
     }
 
     await new Promise((r) => requestAnimationFrame(r));
-    await new Promise((r) => requestAnimationFrame(r));
     document.body.classList.add('shell-prelude-in');
 
-    await this._sleep(this._motionOk() ? 180 : 80);
+    await this._sleep(this._motionOk() ? 32 : 0);
 
     const preload = opts.preloadBrowser;
     const holdMs = typeof preload === 'function' ? this._holdWithBrowserMs() : this._holdNoBrowserMs();
@@ -163,9 +162,8 @@ const LaunchIntro = {
       (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
     const remaining = Math.max(0, holdMs - elapsed);
     if (remaining > 0) await this._sleep(remaining);
-    await this._sleep(this._motionOk() ? this.POST_READY_SETTLE_MS : 40);
+    await this._sleep(this._motionOk() ? this.POST_READY_SETTLE_MS : 0);
 
-    await new Promise((r) => requestAnimationFrame(r));
     await new Promise((r) => requestAnimationFrame(r));
 
     let url = null;

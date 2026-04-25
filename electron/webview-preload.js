@@ -37,6 +37,7 @@ try {
   // ── Find the username field in a form ──────────────────────────────────────
   const USERNAME_SELECTORS = [
     'input[type="email"]',
+    'input[type="tel"]',
     'input[autocomplete="username"]',
     'input[autocomplete="email"]',
     'input[name*="user" i]',

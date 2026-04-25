@@ -49,7 +49,7 @@ const DEFAULT_CONFIG = {
   /** When true and NAVIO_SENTRY_DSN is set at runtime, send crash/diagnostic events to Sentry. */
   crashReportingEnabled: false,
   /** When false, startup skips the full-screen intro video (after first dismiss or Settings). */
-  showLaunchIntro: true,
+  showLaunchIntro: false,
   userName: '',
   lastProactiveSuggestionAt: 0,
   showBookmarkBar: true,
@@ -145,7 +145,7 @@ function loadConfig() {
   merged.downloadRevealInFolder = coerceBool(merged.downloadRevealInFolder, DEFAULT_CONFIG.downloadRevealInFolder);
 
   // Existing installs: don't force the intro again for users who already finished onboarding
-  // before this flag existed (new installs still get DEFAULT_CONFIG.showLaunchIntro true).
+  // before this flag existed (new installs default showLaunchIntro off for fast startup).
   if (
     merged.onboardingComplete === true &&
     !Object.prototype.hasOwnProperty.call(file, 'showLaunchIntro')
