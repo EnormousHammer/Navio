@@ -1769,6 +1769,114 @@ const InlineAI = (() => {
     return String(text || '').replace(/\[FOLLOWUP\][\s\S]*/gi, '').trim();
   }
 
+  function _positionCardBelowToolbar() {
+    const card = _card();
+    const tb = _toolbar();
+    if (!card || !tb) return;
+    const tbRect = tb.getBoundingClientRect();
+    const cardW = 360;
+    const top = tbRect.bottom + 8;
+    const left = Math.max(8, Math.min(tbRect.left, window.innerWidth - cardW - 8));
+    const maxTop = window.innerHeight - 200;
+    if (top > maxTop) {
+      card.style.top = '';
+      card.style.bottom = window.innerHeight - tbRect.top + 8 + 'px';
+    } else {
+      card.style.top = top + 'px';
+      card.style.bottom = '';
+    }
+    card.style.left = left + 'px';
+  }
+
+  /**
+   * Stream model output into the inline AI card (toolbar actions and follow-up refinements).
+   * @param {string} userPrompt
+   * @param {{ enableReplace?: boolean }} [opts]
+   */
+  async function _streamInlineUserPrompt(userPrompt, opts) {
+    const enableReplace = !!(opts && opts.enableReplace);
+    const card = _card();
+    const body = _body();
+    const label = _label();
+    const repBtn = document.getElementById('iai-card-replace');
+    if (!card || !body || !label) return;
+    const up = String(userPrompt || '').trim();
+    if (!up) return;
+
+    if (repBtn) {
+      repBtn.hidden = !enableReplace;
+      repBtn.disabled = true;
+    }
+
+    _positionCardBelowToolbar();
+    card.hidden = false;
+
+    try {
+      let result = '';
+      const omniTab = '__omnibar__';
+      _unsubs.push(window.navio.onAiStreamChunk((payload) => {
+        let tid = '__default__';
+        let chunkText = '';
+        if (typeof payload === 'string') {
+          chunkText = payload;
+        } else if (payload && typeof payload === 'object') {
+          tid = payload.tabId != null ? String(payload.tabId) : '__default__';
+          chunkText = payload.text != null ? String(payload.text) : '';
+        }
+        if (tid !== omniTab || !chunkText) return;
+        result += chunkText;
+        _renderInlineStreamBody(body, result);
+      }));
+      _unsubs.push(window.navio.onAiStreamDone((payload) => {
+        const tid = payload && payload.tabId != null ? String(payload.tabId) : '__default__';
+        if (tid !== omniTab) return;
+        _cancelStream();
+        if (repBtn && enableReplace) repBtn.disabled = !_lastAiResult.trim();
+      }));
+      _unsubs.push(window.navio.onAiStreamError((payload) => {
+        const errObj = typeof payload === 'string' ? { tabId: '__default__', message: payload } : payload || {};
+        const tid = errObj.tabId != null ? String(errObj.tabId) : '__default__';
+        if (tid !== omniTab) return;
+        const errText = errObj.message != null ? String(errObj.message) : String(payload || '');
+        if (body) body.textContent = 'Error: ' + errText;
+        _cancelStream();
+        if (repBtn && enableReplace) repBtn.disabled = true;
+      }));
+
+      await window.navio.aiRequestStream({
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a helpful writing assistant. Be concise. Use professional markdown when it helps: short ## headings, **bold** labels for variants, and bullet lists for options. Do not append [FOLLOWUP] blocks, JSON metadata, or machine-readable trailing tags. When you offer optional tone or length tweaks the user can click in the same panel, use markdown links with this exact URL scheme only (not https): for example [Make it firmer](navio:inline-refine) or [Shorter for email](navio:inline-refine). Those run in place; do not suggest opening a separate assistant.',
+          },
+          { role: 'user', content: up },
+        ],
+        tabId: omniTab,
+      });
+    } catch (err) {
+      if (body) body.textContent = 'Error: ' + err.message;
+    }
+  }
+
+  /** Follow-up chip in the inline card (e.g. "Make it firmer") — refine in place, do not open the sidebar assistant. */
+  function _runFollowUpChipInline(chipLabel) {
+    const instruction = String(chipLabel || '').trim();
+    const prev = (_lastAiResult || '').trim();
+    const draft = prev || (_text || '').trim();
+    if (!instruction || !draft) return;
+    _cancelStream();
+    _lastAiResult = '';
+    const body = _body();
+    const label = _label();
+    if (body) body.textContent = '';
+    if (_lastAction === 'rewrite' && label) label.textContent = LABELS.rewrite;
+    const prompt =
+      `Apply this refinement: "${instruction}"\n\n` +
+      `Rewrite the following text accordingly. Return ONLY the revised text. Do not add a [FOLLOWUP] block.\n\n---\n${draft}\n---`;
+    void _streamInlineUserPrompt(prompt, { enableReplace: _lastAction === 'rewrite' });
+  }
+
   /**
    * Render streamed model text as markdown (same pipeline as the main assistant)
    * and surface follow-up chips instead of raw `[FOLLOWUP]{…}[/FOLLOWUP]` JSON.
@@ -1795,7 +1903,7 @@ const InlineAI = (() => {
     const md = document.createElement('div');
     md.className = 'message-content';
     if (am && typeof am.formatMessage === 'function') {
-      md.innerHTML = am.formatMessage(clean, false);
+      md.innerHTML = am.formatMessage(clean, false, { inlineRefineLinks: true });
     } else {
       md.textContent = clean;
     }
@@ -1828,13 +1936,7 @@ const InlineAI = (() => {
             }
             return;
           }
-          if (typeof AssistantManager === 'undefined' || !AssistantManager.inputEl) return;
-          const ctx = (_text || '').trim().slice(0, 400);
-          const tail = ctx ? `\n\n(Selected text: "${ctx}")` : '';
-          AssistantManager.open();
-          AssistantManager.inputEl.value = `${norm.label}${tail}`;
-          AssistantManager.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-          AssistantManager.sendMessage();
+          _runFollowUpChipInline(norm.label);
         });
         wrap.appendChild(btn);
       });
@@ -1892,91 +1994,16 @@ const InlineAI = (() => {
     _lastAction = action;
     _lastAiResult = '';
 
-    const card  = _card();
     const body  = _body();
     const label = _label();
-    const tb    = _toolbar();
-    const repBtn = document.getElementById('iai-card-replace');
-    if (!card || !body || !label) return;
-
-    if (repBtn) {
-      repBtn.hidden = action !== 'rewrite';
-      repBtn.disabled = true;
-    }
+    if (!body || !label) return;
 
     label.textContent = LABELS[action] || 'Result';
     body.textContent  = ''; // empty → spinner shows via CSS :empty
 
-    // Anchor card just below the toolbar
-    if (tb) {
-      const tbRect = tb.getBoundingClientRect();
-      const cardW  = 360;
-      const top    = tbRect.bottom + 8;
-      const left   = Math.max(8, Math.min(tbRect.left, window.innerWidth - cardW - 8));
-      // Flip above toolbar if card would go off the bottom of the screen
-      const maxTop = window.innerHeight - 200;
-      if (top > maxTop) {
-        card.style.top    = '';
-        card.style.bottom = (window.innerHeight - tbRect.top + 8) + 'px';
-      } else {
-        card.style.top    = top + 'px';
-        card.style.bottom = '';
-      }
-      card.style.left = left + 'px';
-    }
-    card.hidden = false;
-
-    try {
-      const prompt = PROMPTS[action]?.(_text);
-      if (!prompt) return;
-
-      // Register listeners BEFORE starting the stream to avoid a race
-      // where fast responses deliver chunks before handlers are attached.
-      let result = '';
-      const omniTab = '__omnibar__';
-      _unsubs.push(window.navio.onAiStreamChunk((payload) => {
-        let tid = '__default__';
-        let chunkText = '';
-        if (typeof payload === 'string') {
-          chunkText = payload;
-        } else if (payload && typeof payload === 'object') {
-          tid = payload.tabId != null ? String(payload.tabId) : '__default__';
-          chunkText = payload.text != null ? String(payload.text) : '';
-        }
-        if (tid !== omniTab || !chunkText) return;
-        result += chunkText;
-        _renderInlineStreamBody(body, result);
-      }));
-      _unsubs.push(window.navio.onAiStreamDone((payload) => {
-        const tid = payload && payload.tabId != null ? String(payload.tabId) : '__default__';
-        if (tid !== omniTab) return;
-        _cancelStream();
-        if (repBtn && action === 'rewrite') repBtn.disabled = !_lastAiResult.trim();
-      }));
-      _unsubs.push(window.navio.onAiStreamError((payload) => {
-        const errObj = typeof payload === 'string' ? { tabId: '__default__', message: payload } : payload || {};
-        const tid = errObj.tabId != null ? String(errObj.tabId) : '__default__';
-        if (tid !== omniTab) return;
-        const errText = errObj.message != null ? String(errObj.message) : String(payload || '');
-        if (body) body.textContent = 'Error: ' + errText;
-        _cancelStream();
-        if (repBtn && action === 'rewrite') repBtn.disabled = true;
-      }));
-
-      await window.navio.aiRequestStream({
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are a helpful writing assistant. Be concise. Use professional markdown when it helps: short ## headings, **bold** labels for variants, and bullet lists for options. Do not append [FOLLOWUP] blocks, JSON metadata, or machine-readable trailing tags.',
-          },
-          { role: 'user', content: prompt },
-        ],
-        tabId: omniTab,
-      });
-    } catch (err) {
-      if (body) body.textContent = 'Error: ' + err.message;
-    }
+    const prompt = PROMPTS[action]?.(_text);
+    if (!prompt) return;
+    await _streamInlineUserPrompt(prompt, { enableReplace: action === 'rewrite' });
   }
 
   // ── Wire toolbar buttons ──────────────────────────────────────────────────
@@ -2042,6 +2069,21 @@ const InlineAI = (() => {
   document.getElementById('inline-ai-card')?.addEventListener('mousedown', e => {
     e.stopPropagation(); // keep card open while user interacts with it
   });
+
+  // In-body refinement links from formatMessage(..., { inlineRefineLinks: true }) — same behavior as follow-up chips.
+  document.getElementById('iai-card-body')?.addEventListener(
+    'click',
+    (e) => {
+      const a = e.target && typeof e.target.closest === 'function' ? e.target.closest('a.iai-refine-link') : null;
+      if (!a || !a.getAttribute('data-inline-refine')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const instruction = (a.getAttribute('data-inline-refine') || '').trim();
+      if (!instruction) return;
+      _runFollowUpChipInline(instruction);
+    },
+    true
+  );
 
   // Hide toolbar+card when clicking anywhere else in the main window
   document.addEventListener('mousedown', () => hide());

@@ -15156,6 +15156,12 @@ button:focus-visible,
   font-size: 13px;
   line-height: 1.6;
 }
+.iai-card-body a.iai-refine-link {
+  cursor: pointer;
+  color: var(--text-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .iai-card-body .iai-inline-followup {
   margin-top: 10px;
   padding-top: 10px;

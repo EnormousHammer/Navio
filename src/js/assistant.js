@@ -6836,8 +6836,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     msgEl.appendChild(wrap);
   }
 
-  formatMessage(text, parseActions = false) {
+  formatMessage(text, parseActions = false, opts = null) {
     if (!text) return '';
+    const inlineRefineLinks = !!(opts && typeof opts === 'object' && opts.inlineRefineLinks);
 
     // ── 1. Extract action tokens BEFORE any HTML processing ──────────────────
     // Format: [[ACTION:type:params]] — square brackets never appear in plain URLs
@@ -6921,10 +6922,29 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
 
     // ── 9. Links ──────────────────────────────────────────────────────────────
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
+      const u = url.trim();
+      // Inline AI card only: prose refinements like [Make it firmer](navio:inline-refine) stay in-card (see app.js).
+      if (inlineRefineLinks && /^navio:inline-refine(\/|$|\?)/i.test(u)) {
+        let instruction = String(label);
+        const pathM = u.match(/^navio:inline-refine\/([^?#]+)/i);
+        if (pathM) {
+          try {
+            instruction = decodeURIComponent(pathM[1].replace(/\+/g, '%20'));
+          } catch {
+            instruction = pathM[1];
+          }
+        }
+        const escAttr = (s) =>
+          String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;');
+        return `<a href="#" class="iai-refine-link" role="button" data-inline-refine="${escAttr(instruction)}">${label}</a>`;
+      }
       // Block dangerous schemes to prevent XSS / open-redirect via model output
-      const safe = /^https?:\/\//i.test(url.trim()) || /^mailto:/i.test(url.trim());
+      const safe = /^https?:\/\//i.test(u) || /^mailto:/i.test(u);
       if (!safe) return label;
-      return `<a href="${url.replace(/"/g, '&quot;')}" rel="noopener noreferrer">${label}</a>`;
+      return `<a href="${u.replace(/"/g, '&quot;')}" rel="noopener noreferrer">${label}</a>`;
     });
 
     // ── 9b. Gmail links → professional email reference chips ─────────────────
