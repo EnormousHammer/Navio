@@ -716,6 +716,18 @@ class AssistantManagerClass {
     document.getElementById('btn-close-assistant')?.addEventListener('click', () => this.close());
     document.getElementById('btn-clear-chat')?.addEventListener('click', () => this.clearChat());
     document.getElementById('assistant-session-new')?.addEventListener('click', () => void this._startNewSidebarSession());
+    const histSearch = document.getElementById('assistant-session-history-search');
+    if (histSearch) {
+      histSearch.addEventListener('input', () => {
+        try {
+          this._renderSidebarSessionList();
+        } catch {
+          /* ignore */
+        }
+      });
+      histSearch.addEventListener('click', (e) => e.stopPropagation());
+      histSearch.addEventListener('keydown', (e) => e.stopPropagation());
+    }
     document.getElementById('assistant-session-history-list')?.addEventListener('click', (e) => {
       const delBtn = e.target.closest('[data-session-delete]');
       const openBtn = e.target.closest('[data-session-open]');
@@ -9133,6 +9145,27 @@ ${pageInfo}${snapText}`;
     await this._selectThisTabThread();
   }
 
+  _sidebarHistorySearchText() {
+    try {
+      const el = document.getElementById('assistant-session-history-search');
+      return el && typeof el.value === 'string' ? el.value.trim().toLowerCase() : '';
+    } catch {
+      return '';
+    }
+  }
+
+  /** True if `q` is empty or any user/assistant message body in `historyArr` contains `q`. */
+  _historyMessagesContain(historyArr, q) {
+    if (!q || !Array.isArray(historyArr)) return true;
+    const qq = String(q);
+    if (!qq) return true;
+    for (const m of historyArr) {
+      if (!m || typeof m.content !== 'string') continue;
+      if (m.content.toLowerCase().includes(qq)) return true;
+    }
+    return false;
+  }
+
   _renderSidebarSessionList() {
     const root = document.getElementById('assistant-session-history-list');
     if (!root) return;
@@ -9141,13 +9174,54 @@ ${pageInfo}${snapText}`;
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/"/g, '&quot;');
+    const q = this._sidebarHistorySearchText();
     const rows = [];
-    rows.push(
-      `<button type="button" class="assistant-session-this-tab${!this._sidebarThreadKey ? ' is-active' : ''}" data-session-this-tab="1">` +
-        `<span class="assistant-session-row-title">This tab</span>` +
-        `<span class="assistant-session-row-sub">${esc(this._thisTabThreadSubtitle())}</span></button>`
-    );
-    const otherTabs = this._otherTabsWithChatHistory();
+
+    let activeTabSk = '';
+    try {
+      if (typeof TabManager !== 'undefined' && TabManager.getActiveTab) {
+        const at = TabManager.getActiveTab();
+        if (at) activeTabSk = this._storageKeyForTab(at) || '';
+      }
+    } catch {
+      activeTabSk = '';
+    }
+    const thisTabMsgs = activeTabSk ? this._conversationsByTab.get(activeTabSk) || [] : [];
+    const subTxt = this._thisTabThreadSubtitle();
+    const thisTabRowMatch =
+      !q ||
+      'this tab'.includes(q) ||
+      String(subTxt || '')
+        .toLowerCase()
+        .includes(q) ||
+      this._historyMessagesContain(thisTabMsgs, q);
+
+    if (thisTabRowMatch) {
+      rows.push(
+        `<button type="button" class="assistant-session-this-tab${!this._sidebarThreadKey ? ' is-active' : ''}" data-session-this-tab="1">` +
+          `<span class="assistant-session-row-title">This tab</span>` +
+          `<span class="assistant-session-row-sub">${esc(subTxt)}</span></button>`
+      );
+    }
+
+    const otherTabsAll = this._otherTabsWithChatHistory();
+    const otherTabs = !q
+      ? otherTabsAll
+      : otherTabsAll.filter((row) => {
+          const blob = `${row.title} ${row.sub}`.toLowerCase();
+          if (blob.includes(q)) return true;
+          try {
+            if (typeof TabManager === 'undefined' || !TabManager.tabs) return false;
+            const t = TabManager.tabs.find((x) => x && String(x.id) === String(row.tabId));
+            if (!t) return false;
+            const sk = this._storageKeyForTab(t);
+            const h = sk ? this._conversationsByTab.get(sk) || [] : [];
+            return this._historyMessagesContain(h, q);
+          } catch {
+            return false;
+          }
+        });
+
     if (otherTabs.length) {
       rows.push('<div class="assistant-session-section-h" role="presentation">Other tabs</div>');
       for (const row of otherTabs) {
@@ -9162,11 +9236,25 @@ ${pageInfo}${snapText}`;
         );
       }
     }
+
     const order = [...(this._sidebarSessionOrder || [])].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-    if (order.length) {
+    const savedFiltered = !q
+      ? order
+      : order.filter((meta) => {
+          if (String(meta.title || '')
+            .toLowerCase()
+            .includes(q)) {
+            return true;
+          }
+          if (this._formatSessionTime(meta.updatedAt).toLowerCase().includes(q)) return true;
+          const h = this._conversationsByTab.get(meta.id) || [];
+          return this._historyMessagesContain(h, q);
+        });
+
+    if (savedFiltered.length) {
       rows.push('<div class="assistant-session-section-h" role="presentation">Saved chats</div>');
     }
-    for (const meta of order) {
+    for (const meta of savedFiltered) {
       const active = this._sidebarThreadKey === meta.id ? ' is-active' : '';
       const title = esc(meta.title || 'Saved chat');
       const idAttr = esc(meta.id);
@@ -9180,6 +9268,12 @@ ${pageInfo}${snapText}`;
             `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>` +
           `</button>` +
         `</div>`
+      );
+    }
+
+    if (!rows.length) {
+      rows.push(
+        `<div class="assistant-session-empty" role="status">${esc(q ? 'No chats match your search.' : 'Nothing to show.')}</div>`
       );
     }
     root.innerHTML = rows.join('');

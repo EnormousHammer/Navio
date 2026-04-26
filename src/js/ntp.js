@@ -3023,6 +3023,11 @@ const NTP = (() => {
       document.getElementById('ntp-search-input')?.focus();
     });
 
+    const histSearch = document.getElementById('ntp-chat-history-search');
+    histSearch?.addEventListener('input', () => {
+      _ntpRenderHistoryList();
+    });
+
     // Delegate TTS button clicks in the chat panel
     document.getElementById('ntp-chat-messages')?.addEventListener('click', (e) => {
       const btn = e.target.closest('.ntp-chat-tts-btn');
@@ -3062,9 +3067,26 @@ const NTP = (() => {
   function _ntpRenderHistoryList() {
     const list = document.getElementById('ntp-chat-history-list');
     if (!list) return;
-    const sessions = _ntpLoadSessions();
-    if (sessions.length === 0) {
+    const allSessions = _ntpLoadSessions();
+    const qEl = document.getElementById('ntp-chat-history-search');
+    const q = (qEl && typeof qEl.value === 'string' ? qEl.value : '').trim().toLowerCase();
+    if (allSessions.length === 0) {
       list.innerHTML = '<p class="ntp-history-empty">No history yet</p>';
+      return;
+    }
+    const sessions = !q
+      ? allSessions
+      : allSessions.filter((s) => {
+          if (String(s.title || '')
+            .toLowerCase()
+            .includes(q)) {
+            return true;
+          }
+          const msgs = Array.isArray(s.messages) ? s.messages : [];
+          return msgs.some((m) => String(m.content || '').toLowerCase().includes(q));
+        });
+    if (!sessions.length) {
+      list.innerHTML = '<p class="ntp-history-empty">No threads match your search.</p>';
       return;
     }
     list.innerHTML = sessions.map(s => `

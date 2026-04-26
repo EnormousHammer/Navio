@@ -1744,6 +1744,8 @@ const InlineAI = (() => {
   let _unsubs = []; // stream unsubscribe callbacks
   let _targetWv = null;
   let _lastAiResult = '';
+  /** Rich HTML from the last streamed card (for Replace into Gmail / contenteditable). */
+  let _lastAiResultHtml = '';
   let _lastAction = '';
 
   const LABELS = {
@@ -1767,6 +1769,40 @@ const InlineAI = (() => {
   /** Hide incomplete `[FOLLOWUP]…` tails while the stream is still open. */
   function _stripOpenFollowup(text) {
     return String(text || '').replace(/\[FOLLOWUP\][\s\S]*/gi, '').trim();
+  }
+
+  /** Turn refinement UI anchors into plain text so email paste does not keep navio: links. */
+  function _stripRefineAnchorsForPage(html) {
+    const s = String(html || '').trim();
+    if (!s) return '';
+    try {
+      const d = document.createElement('div');
+      d.innerHTML = s;
+      d.querySelectorAll('a.iai-refine-link').forEach((a) => {
+        a.replaceWith(document.createTextNode(a.textContent || ''));
+      });
+      return d.innerHTML;
+    } catch {
+      return s;
+    }
+  }
+
+  async function _writeClipboardForReplace(plain, html) {
+    const p = String(plain || '').trim();
+    const h = String(html || '').trim();
+    if (h && typeof ClipboardItem !== 'undefined') {
+      try {
+        const plainBlob = new Blob([p || h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()], {
+          type: 'text/plain',
+        });
+        const htmlBlob = new Blob([h], { type: 'text/html' });
+        await navigator.clipboard.write([new ClipboardItem({ 'text/html': htmlBlob, 'text/plain': plainBlob })]);
+        return;
+      } catch {
+        /* fall through */
+      }
+    }
+    if (p) await navigator.clipboard.writeText(p);
   }
 
   function _positionCardBelowToolbar() {
@@ -1867,6 +1903,7 @@ const InlineAI = (() => {
     if (!instruction || !draft) return;
     _cancelStream();
     _lastAiResult = '';
+    _lastAiResultHtml = '';
     const body = _body();
     const label = _label();
     if (body) body.textContent = '';
@@ -1887,6 +1924,7 @@ const InlineAI = (() => {
     if (!raw.trim()) {
       body.textContent = '';
       _lastAiResult = '';
+      _lastAiResultHtml = '';
       return;
     }
     const am = typeof AssistantManager !== 'undefined' ? AssistantManager : null;
@@ -1943,6 +1981,7 @@ const InlineAI = (() => {
       body.appendChild(wrap);
     }
     _lastAiResult = (md.innerText || '').replace(/\r\n/g, '\n').trim();
+    _lastAiResultHtml = _stripRefineAnchorsForPage(md.innerHTML);
   }
 
   function _cancelStream() {
@@ -1980,9 +2019,16 @@ const InlineAI = (() => {
     const c  = _card();
     if (tb) tb.hidden = true;
     if (c)  c.hidden  = true;
+    const wv = _targetWv;
+    try {
+      if (wv && typeof wv.send === 'function') wv.send('navio-inline-clear-bookmark');
+    } catch {
+      /* ignore */
+    }
     _text = '';
     _targetWv = null;
     _lastAiResult = '';
+    _lastAiResultHtml = '';
     _lastAction = '';
     const rep = document.getElementById('iai-card-replace');
     if (rep) { rep.hidden = true; }
@@ -1993,6 +2039,7 @@ const InlineAI = (() => {
     _cancelStream();
     _lastAction = action;
     _lastAiResult = '';
+    _lastAiResultHtml = '';
 
     const body  = _body();
     const label = _label();
@@ -2044,11 +2091,16 @@ const InlineAI = (() => {
   async function _replaceSelectionWithResult() {
     const text = (_lastAiResult || '').trim();
     if (!text || !_targetWv) return;
+    const html = (_lastAiResultHtml || '').trim();
     try {
       const wcId = _targetWv.getWebContentsId();
-      let r = await window.navio.replaceSelectionInPage({ webContentsId: wcId, text });
+      let r = await window.navio.replaceSelectionInPage({
+        webContentsId: wcId,
+        text,
+        ...(html ? { html } : {}),
+      });
       if (!r.ok) {
-        await navigator.clipboard.writeText(text);
+        await _writeClipboardForReplace(text, html);
         r = await window.navio.webviewPasteClipboard({ webContentsId: wcId });
       }
       if (!r.ok) {

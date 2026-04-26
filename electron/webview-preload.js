@@ -216,17 +216,60 @@ try {
     if (document.documentElement) mo.observe(document.documentElement, { childList: true, subtree: true });
   } catch {}
 
+  // ── Inline AI: keep the guest selection after the user clicks the host toolbar ──
+  const NAVIO_BOOKMARK_ID = 'navio-inline-sel-bookmark';
+  function removeNavioInlineBookmark() {
+    try {
+      const el = document.getElementById(NAVIO_BOOKMARK_ID);
+      if (!el || !el.parentNode) return;
+      const p = el.parentNode;
+      while (el.firstChild) p.insertBefore(el.firstChild, el);
+      p.removeChild(el);
+    } catch {}
+  }
+  /** Wraps the current DOM range so Replace can target it after focus moves to the shell. */
+  function tryInstallNavioInlineBookmark() {
+    removeNavioInlineBookmark();
+    try {
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return false;
+      const range = sel.getRangeAt(0);
+      if (range.collapsed) return false;
+      const holder = document.createElement('span');
+      holder.id = NAVIO_BOOKMARK_ID;
+      holder.setAttribute('data-navio-bookmark', '1');
+      holder.setAttribute('contenteditable', 'false');
+      const contents = range.extractContents();
+      holder.appendChild(contents);
+      range.insertNode(holder);
+      return true;
+    } catch {
+      try {
+        removeNavioInlineBookmark();
+      } catch {}
+      return false;
+    }
+  }
+
+  ipcRenderer.on('navio-inline-clear-bookmark', () => {
+    try {
+      removeNavioInlineBookmark();
+    } catch {}
+  });
+
   // ── Text selection → inline AI toolbar ───────────────────────────────────
   document.addEventListener('mouseup', function() {
     try {
       const sel = window.getSelection();
       const text = sel?.toString().trim();
       if (!text || text.length < 3) {
+        removeNavioInlineBookmark();
         ipcRenderer.sendToHost('navio-selection-cleared', {});
         return;
       }
       const range = sel.getRangeAt(0);
       const rect  = range.getBoundingClientRect();
+      tryInstallNavioInlineBookmark();
       ipcRenderer.sendToHost('navio-text-selected', {
         text: text.slice(0, 3000), // cap to avoid huge payloads
         x: rect.left + rect.width / 2,
@@ -236,7 +279,10 @@ try {
   });
 
   document.addEventListener('scroll', function() {
-    try { ipcRenderer.sendToHost('navio-selection-cleared', {}); } catch {}
+    try {
+      removeNavioInlineBookmark();
+      ipcRenderer.sendToHost('navio-selection-cleared', {});
+    } catch {}
   }, { passive: true });
 
   // Guest clicks do not bubble to the shell — notify host so popovers (e.g. downloads) dismiss like Chrome.

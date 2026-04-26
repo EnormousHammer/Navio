@@ -3322,22 +3322,93 @@ ipcMain.handle('workflow-delete', async (event, { name }) => {
   }
 });
 
-ipcMain.handle('replace-selection-in-page', async (event, { webContentsId, text }) => {
+ipcMain.handle('replace-selection-in-page', async (event, { webContentsId, text, html }) => {
   try {
     const wc = electronWebContents.fromId(webContentsId);
     if (!wc) return { ok: false, error: 'WebContents not found' };
-    const payload = JSON.stringify(text == null ? '' : String(text));
+    const payloadText = JSON.stringify(text == null ? '' : String(text));
+    const payloadHtml = JSON.stringify(html == null ? '' : String(html));
     const res = await wc.executeJavaScript(`
       (() => {
-        const replacement = ${payload};
-        function tryInsert() {
+        const plain = JSON.parse(${payloadText});
+        const richHtmlRaw = JSON.parse(${payloadHtml});
+        function sanitizeHtml(s) {
+          if (!s || typeof s !== 'string') return '';
+          try {
+            const doc = new DOMParser().parseFromString(s, 'text/html');
+            const b = doc.body;
+            if (!b) return '';
+            b.querySelectorAll('script,style,iframe,object,embed,link').forEach((el) => el.remove());
+            b.querySelectorAll('*').forEach((el) => {
+              for (const attr of Array.from(el.attributes)) {
+                const n = attr.name.toLowerCase();
+                const v = String(attr.value || '').toLowerCase();
+                if (n.startsWith('on') || v.indexOf('javascript:') >= 0) el.removeAttribute(attr.name);
+              }
+            });
+            return b.innerHTML;
+          } catch (e) {
+            return '';
+          }
+        }
+        const richHtml = sanitizeHtml(richHtmlRaw);
+        /** Selection was wrapped in #navio-inline-sel-bookmark when the user picked text (see webview-preload). */
+        function replaceNavioInlineBookmark() {
+          const holder = document.getElementById('navio-inline-sel-bookmark');
+          if (!holder || !holder.parentNode) return false;
+          try {
+            if (richHtml) {
+              holder.innerHTML = richHtml;
+            } else {
+              holder.textContent = plain;
+            }
+            const p = holder.parentNode;
+            while (holder.firstChild) {
+              p.insertBefore(holder.firstChild, holder);
+            }
+            p.removeChild(holder);
+            const host = p.closest && p.closest('[contenteditable="true"]');
+            if (host) {
+              try {
+                host.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+              } catch (e) {
+                host.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+            }
+            return true;
+          } catch (e) {
+            return false;
+          }
+        }
+        function resolveContentEditable() {
           const ae = document.activeElement;
-          if (!ae) return false;
-          if (ae.isContentEditable || ae.getAttribute('contenteditable') === 'true') {
+          if (!ae) return null;
+          if (ae.isContentEditable || ae.getAttribute('contenteditable') === 'true') return ae;
+          if (ae.closest) {
+            const c = ae.closest('[contenteditable="true"]');
+            if (c) return c;
+          }
+          return null;
+        }
+        function tryInsert() {
+          if (replaceNavioInlineBookmark()) return true;
+          const ae = document.activeElement;
+          const ce = resolveContentEditable();
+          if (ce && richHtml) {
             try {
-              if (ae.ownerDocument.execCommand('insertText', false, replacement)) return true;
+              ce.focus();
+              if (document.queryCommandSupported && document.queryCommandSupported('insertHTML')) {
+                if (ce.ownerDocument.execCommand('insertHTML', false, richHtml)) return true;
+              }
             } catch (e) {}
           }
+          if (ce) {
+            try {
+              ce.focus();
+              if (ce.ownerDocument.execCommand('insertText', false, plain)) return true;
+            } catch (e) {}
+          }
+          if (!ae) return false;
           if (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA') {
             try {
               const start = ae.selectionStart, end = ae.selectionEnd;
@@ -3347,18 +3418,18 @@ ipcMain.handle('replace-selection-in-page', async (event, { webContentsId, text 
                   ? window.HTMLTextAreaElement.prototype
                   : window.HTMLInputElement.prototype;
                 const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-                const next = v.slice(0, start) + replacement + v.slice(end);
+                const next = v.slice(0, start) + plain + v.slice(end);
                 if (setter) setter.call(ae, next); else ae.value = next;
-                const pos = start + replacement.length;
+                const pos = start + plain.length;
                 ae.setSelectionRange(pos, pos);
-                ae.dispatchEvent(new InputEvent('input', { bubbles: true, data: replacement }));
+                ae.dispatchEvent(new InputEvent('input', { bubbles: true, data: plain }));
                 ae.dispatchEvent(new Event('change', { bubbles: true }));
                 return true;
               }
             } catch (e) {}
           }
           try {
-            return document.execCommand('insertText', false, replacement);
+            return document.execCommand('insertText', false, plain);
           } catch (e) {
             return false;
           }
@@ -3376,9 +3447,10 @@ ipcMain.handle('webview-paste-clipboard', async (event, { webContentsId }) => {
   try {
     const wc = electronWebContents.fromId(webContentsId);
     if (!wc) return { ok: false };
-    wc.sendInputEvent({ type: 'keyDown', keyCode: 'V', modifiers: ['control'] });
+    const pasteMods = process.platform === 'darwin' ? ['meta'] : ['control'];
+    wc.sendInputEvent({ type: 'keyDown', keyCode: 'V', modifiers: pasteMods });
     await new Promise((r) => setTimeout(r, 40));
-    wc.sendInputEvent({ type: 'keyUp', keyCode: 'V', modifiers: ['control'] });
+    wc.sendInputEvent({ type: 'keyUp', keyCode: 'V', modifiers: pasteMods });
     return { ok: true };
   } catch {
     return { ok: false };

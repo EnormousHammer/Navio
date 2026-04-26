@@ -2286,7 +2286,14 @@
       ? sessions.slice()
       : sessions.filter(s => {
           if ((s.title || '').toLowerCase().includes(filter)) return true;
-          return s.messages.some(m => (m.text || '').toLowerCase().includes(filter));
+          return s.messages.some(m => {
+            const body = String(m.text || m.content || '').toLowerCase();
+            if (body.includes(filter)) return true;
+            if (Array.isArray(m.files)) {
+              return m.files.some(f => String(f.name || '').toLowerCase().includes(filter));
+            }
+            return false;
+          });
         });
 
     if (!visible.length) {
@@ -3734,11 +3741,16 @@
       }
     });
 
-    // Sidebar search
-    sbSearch.addEventListener('input', function () {
-      searchFilter = sbSearch.value || '';
-      renderSidebar();
-    });
+    // Sidebar search (conversation titles + message bodies + attachment names)
+    if (sbSearch) {
+      sbSearch.addEventListener('input', function () {
+        searchFilter = sbSearch.value || '';
+        renderSidebar();
+      });
+      sbSearch.addEventListener('click', function (e) {
+        e.stopPropagation();
+      });
+    }
 
     sbClearAll.addEventListener('click', clearAllSessions);
 
