@@ -242,10 +242,15 @@ class TabManagerClass {
   }
 
   _syncWebviewSizes() {
-    const { width, height } = this.browserContainer.getBoundingClientRect();
+    const el = this.browserContainer;
+    if (!el) return;
+    // Use integer client* sizes so split halves always sum to the container and guest
+    // viewports match the visible chrome (avoids subpixel overflow under the assistant dock).
+    const width = Math.max(0, Math.floor(el.clientWidth));
+    const height = Math.max(0, Math.floor(el.clientHeight));
     if (!width || !height) return;
     const reserve = this._ntpTickerReservePx();
-    const usableH = Math.max(0, height - reserve);
+    const usableH = Math.max(0, Math.floor(height - reserve));
 
     const focused = this.activeTabId ? this.tabs.find((t) => t.id === this.activeTabId) : null;
     const partner = this._resolveReciprocalSplitPartner(focused);
@@ -253,7 +258,7 @@ class TabManagerClass {
     // Show / position the resizable split divider
     if (this._splitDivider) {
       if (partner && focused) {
-        const wLeft = Math.round(width * this._splitRatio);
+        const wLeft = Math.min(width, Math.max(0, Math.round(width * this._splitRatio)));
         this._splitDivider.style.display = '';
         this._splitDivider.style.left  = `${wLeft - 4}px`;
         this._splitDivider.style.top   = '0px';
@@ -275,19 +280,24 @@ class TabManagerClass {
         const leftId = focused.splitLeftPaneTabId || partner.splitLeftPaneTabId;
         const leftTab = (leftId ? this.tabs.find((t) => t.id === leftId) : null) || fallbackLeft;
         const isLeft = tab.id === leftTab.id;
-        const wLeft = Math.round(width * this._splitRatio);
-        const wRight = Math.max(0, width - wLeft);
+        const wLeft = Math.min(width, Math.max(0, Math.round(width * this._splitRatio)));
+        const wRight = width - wLeft;
+        wv.style.top = '0px';
+        wv.style.bottom = 'auto';
         wv.style.left = isLeft ? '0px' : `${wLeft}px`;
         wv.style.right = 'auto';
         wv.style.width = `${isLeft ? wLeft : wRight}px`;
         wv.style.height = `${usableH}px`;
-        wv.style.top = '0px';
+        wv.style.maxWidth = `${isLeft ? wLeft : wRight}px`;
         wv.classList.add(isLeft ? 'split-left' : 'split-right');
       } else {
+        wv.style.top = '0px';
+        wv.style.bottom = 'auto';
         wv.style.left = '0px';
         wv.style.right = '0px';
         wv.style.width = `${width}px`;
         wv.style.height = `${usableH}px`;
+        wv.style.maxWidth = '';
       }
     });
   }
@@ -2960,8 +2970,10 @@ class TabManagerClass {
 
       const onMove = (me) => {
         if (!_dividerDragging) return;
-        const rect = this.browserContainer.getBoundingClientRect();
-        const ratio = (me.clientX - rect.left) / rect.width;
+        const el = this.browserContainer;
+        const w = Math.max(1, Math.floor(el.clientWidth));
+        const rect = el.getBoundingClientRect();
+        const ratio = (me.clientX - rect.left) / w;
         this._splitRatio = Math.max(0.2, Math.min(0.8, ratio));
         this._syncWebviewSizes();
       };

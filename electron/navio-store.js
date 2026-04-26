@@ -144,9 +144,11 @@ function createStore(userData) {
       for (const [k, msgs] of Object.entries(data.byKey)) {
         if (!k || typeof k !== 'string') continue;
         const cleaned = _cleanAssistantMessages(msgs);
-        if (cleaned.length || k.startsWith('sb:')) byKey[k] = cleaned.length ? cleaned : [];
+        if (cleaned.length) byKey[k] = cleaned;
       }
-      let sidebarSessionOrder = _cleanSidebarSessionOrder(data.sidebarSessionOrder);
+      let sidebarSessionOrder = _cleanSidebarSessionOrder(data.sidebarSessionOrder).filter(
+        (row) => row && row.id && typeof row.id === 'string' && row.id.startsWith('sb:') && byKey[row.id]?.length
+      );
       if (!sidebarSessionOrder.length) {
         const inferred = Object.keys(byKey)
           .filter((k) => k.startsWith('sb:'))
@@ -174,9 +176,11 @@ function createStore(userData) {
       for (const [k, msgs] of Object.entries(data.byKey)) {
         if (!k || typeof k !== 'string') continue;
         const cleaned = _cleanAssistantMessages(msgs);
-        if (cleaned.length || k.startsWith('sb:')) byKey[k] = cleaned.length ? cleaned : [];
+        if (cleaned.length) byKey[k] = cleaned;
       }
-      const sidebarSessionOrder = _cleanSidebarSessionOrder(data.sidebarSessionOrder);
+      const sidebarSessionOrder = _cleanSidebarSessionOrder(data.sidebarSessionOrder).filter(
+        (row) => row && row.id && typeof row.id === 'string' && row.id.startsWith('sb:') && byKey[row.id]?.length
+      );
       return writeJson(assistantChatPath, { version: 3, byKey, sidebarSessionOrder });
     }
     return writeJson(assistantChatPath, { version: 3, byKey: {}, sidebarSessionOrder: [] });

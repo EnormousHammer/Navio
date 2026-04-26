@@ -1112,7 +1112,7 @@ class AssistantManagerClass {
             if (typeof m.content !== 'string') continue;
             messages.push({ role: m.role, content: m.content });
           }
-          if (messages.length || k.startsWith(NAVIO_SIDEBAR_THREAD_PREFIX)) {
+          if (messages.length) {
             this._conversationsByTab.set(k, messages);
           }
         }
@@ -1159,12 +1159,12 @@ class AssistantManagerClass {
       const byKey = {};
       for (const [k, h] of this._conversationsByTab.entries()) {
         if (!k || k === NAVIO_PROFILE_CHAT_KEY || k.startsWith('__')) continue;
-        const isSb = k.startsWith(NAVIO_SIDEBAR_THREAD_PREFIX);
-        if ((!h || !h.length) && !isSb) continue;
+        if (!h || !h.length) continue;
         const messages = (h || [])
           .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
           .map((m) => ({ role: m.role, content: m.content }));
-        if (messages.length || isSb) byKey[k] = messages;
+        // Do not persist composer drafts or empty "New chat" shells — only real turns.
+        if (messages.length) byKey[k] = messages;
       }
       const sidebarSessionOrder = (this._sidebarSessionOrder || [])
         .filter((row) => row && row.id && String(row.id).startsWith(NAVIO_SIDEBAR_THREAD_PREFIX) && byKey[row.id])
@@ -3474,6 +3474,13 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     this.isOpen = true;
     this.panel.classList.add('open');
     document.body.classList.add('navio-assistant-open');
+    try {
+      if (typeof TabManager !== 'undefined' && typeof TabManager._syncWebviewSizes === 'function') {
+        requestAnimationFrame(() => TabManager._syncWebviewSizes());
+      }
+    } catch {
+      /* ignore */
+    }
     navioAssistantDebug('open: classes applied', {
       bodyAssistantOpen: document.body.classList.contains('navio-assistant-open'),
       panelClass: this.panel.className
@@ -3588,6 +3595,13 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     this.isOpen = false;
     this.panel?.classList.remove('open');
     document.body.classList.remove('navio-assistant-open');
+    try {
+      if (typeof TabManager !== 'undefined' && typeof TabManager._syncWebviewSizes === 'function') {
+        requestAnimationFrame(() => TabManager._syncWebviewSizes());
+      }
+    } catch {
+      /* ignore */
+    }
     navioAssistantDebug('close: assistant dock hidden');
   }
 
@@ -9180,7 +9194,6 @@ ${pageInfo}${snapText}`;
     }
     await this._showGreeting();
     this._renderSidebarSessionList();
-    void this._persistAssistantHistoryNow();
     if (!this.isOpen) void this.open();
     setTimeout(() => this.inputEl?.focus(), 200);
   }

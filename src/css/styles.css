@@ -1738,6 +1738,7 @@ body.navio-vertical-tabs .tab-group-header:hover {
   flex: 1 1 0;
   position: relative;
   background: var(--bg-void);
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
@@ -1770,12 +1771,14 @@ body.navio-vertical-tabs .tab-group-header:hover {
   right: auto;
   border-right: 1px solid var(--border);
   box-sizing: border-box;
+  min-width: 0;
 }
 
 #browser-container webview.split-right {
-  right: 0;
+  right: auto;
   left: auto;
   box-sizing: border-box;
+  min-width: 0;
 }
 
 #browser-container webview.navio-agent-controlled-webview.active {
