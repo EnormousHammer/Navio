@@ -4546,9 +4546,31 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     return null;
   }
 
+  /**
+   * Full-page chat may send again while a turn is still running. Abort in-flight model work for
+   * this conversation key and wait until the prior turn released busy state.
+   */
+  async _awaitGuestChatInterruptIfBusy(guestKey) {
+    const k = String(guestKey || '');
+    if (!k || !this._tabIsBusy(k)) return;
+    try {
+      if (window.navio && typeof window.navio.aiAbort === 'function') {
+        await window.navio.aiAbort({ tabId: k });
+      }
+    } catch {
+      /* ignore */
+    }
+    const deadline = Date.now() + 15000;
+    while (this._tabIsBusy(k) && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    if (this._tabIsBusy(k)) this._setTabBusy(k, false);
+  }
+
   async _guestDeepResearch(guestWv, topic) {
     const q = (topic || '').trim();
     if (!q || !guestWv) return;
+    await this._awaitGuestChatInterruptIfBusy(this._guestConversationKey());
     this._guestDeliver(guestWv, { type: 'researchStart' });
     try {
       const r = await window.navio.deepResearch({ query: q });
@@ -4565,15 +4587,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const hasFiles = Array.isArray(files) && files.length > 0;
     if (!text && !hasFiles) return;
     const guestKey = this._guestConversationKey();
-    if (this._tabIsBusy(guestKey)) {
-      this._guestDeliver(guestWv, {
-        type: 'assistant',
-        error: false,
-        content:
-          '*(A previous turn is still marked in-flight on the host — press **Stop** or wait. If it is stuck, Stop cancels the model work.)*'
-      });
-      return;
-    }
+    await this._awaitGuestChatInterruptIfBusy(guestKey);
     const config = await window.navio.getConfig();
     if (config.aiKillSwitch) {
       this._guestDeliver(guestWv, { type: 'assistant', error: true, content: 'AI is turned off (kill switch). Enable it in Settings → AI → Policy.' });

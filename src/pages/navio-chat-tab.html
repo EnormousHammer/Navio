@@ -1234,6 +1234,40 @@
     }
     #input::placeholder { color: var(--dim); }
 
+    /* Second control while the model is running: Stop stays separate so Send can stay “send”. */
+    .composer.is-agent-busy #input {
+      padding-right: 104px;
+    }
+    #btn-stop-ai {
+      position: absolute;
+      right: 52px;
+      bottom: 10px;
+      width: 36px;
+      height: 36px;
+      border: none;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%);
+      color: #fff;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out), opacity 0.15s;
+      box-shadow: 0 4px 14px rgba(239, 68, 68, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+      z-index: 2;
+    }
+    #btn-stop-ai:hover {
+      transform: scale(1.03);
+      box-shadow: 0 6px 18px rgba(239, 68, 68, 0.38), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+    }
+    #btn-stop-ai[hidden] {
+      display: none !important;
+    }
+    #btn-stop-ai svg {
+      width: 14px;
+      height: 14px;
+    }
+
     #send {
       position: absolute;
       right: 10px;
@@ -1286,20 +1320,6 @@
       color: var(--muted);
       background: rgba(255, 255, 255, 0.03);
     }
-
-    /* ── Send ↔ Stop toggle ── */
-    #send.is-stop {
-      background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%);
-      box-shadow: 0 6px 16px rgba(239, 68, 68, 0.32);
-    }
-    #send.is-stop:hover:not(:disabled) {
-      box-shadow: 0 8px 20px rgba(239, 68, 68, 0.42);
-    }
-    #send.is-stop .send-icon { display: none; }
-    #send.is-stop .stop-icon { display: inline-block !important; }
-    #send[data-mode="send"] .send-icon { display: inline-block; }
-    #send[data-mode="send"] .stop-icon { display: none !important; }
-    #send .stop-icon { width: 14px; height: 14px; }
 
     /* ── Kebab menu (topbar) ── */
     .tb-kebab-wrap { position: relative; }
@@ -1862,9 +1882,11 @@
           <div class="composer" id="composer-box">
             <div class="att-row" id="att-row" hidden></div>
             <textarea id="input" rows="1" placeholder="Ask anything — a question, a URL, or a task to run in your tabs…" autocomplete="off" maxlength="8000"></textarea>
+            <button type="button" id="btn-stop-ai" hidden title="Stop generating" aria-label="Stop generating">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+            </button>
             <button type="button" id="send" title="Send" aria-label="Send" data-mode="send">
               <svg class="send-icon"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22l-4-9-9-4 20-7z"/></svg>
-              <svg class="stop-icon" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
             </button>
             <div class="composer-drop" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -1905,6 +1927,7 @@
   const sbModel = document.getElementById('sb-model');
   const inputEl = document.getElementById('input');
   const sendBtn = document.getElementById('send');
+  const stopAiBtn = document.getElementById('btn-stop-ai');
   const btnNew = document.getElementById('btn-new');
   const btnActivity = document.getElementById('btn-activity');
   const btnDrawerClose = document.getElementById('btn-drawer-close');
@@ -2743,7 +2766,6 @@
       btn.textContent = chip.label;
       if (chip.url) btn.title = chip.url;
       btn.addEventListener('click', function () {
-        if (busy) return;
         if (chip.url) {
           post({ action: 'openUrl', url: chip.url });
           return;
@@ -3097,23 +3119,16 @@
     } catch { /* ignore */ }
   }
 
-  // ── Busy / Send ↔ Stop ───────────────────────────────────────────
+  // ── Busy: keep composer writable; Stop is its own control so Send can queue a steering message. ──
   function setBusy(b) {
     busy = !!b;
-    inputEl.disabled = busy;
-    if (busy) {
-      sendBtn.dataset.mode = 'stop';
-      sendBtn.classList.add('is-stop');
-      sendBtn.title = 'Stop generating';
-      sendBtn.setAttribute('aria-label', 'Stop generating');
-      sendBtn.disabled = false;
-    } else {
-      sendBtn.dataset.mode = 'send';
-      sendBtn.classList.remove('is-stop');
-      sendBtn.title = 'Send';
-      sendBtn.setAttribute('aria-label', 'Send');
-      sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
-    }
+    inputEl.disabled = false;
+    composerBox.classList.toggle('is-agent-busy', busy);
+    if (stopAiBtn) stopAiBtn.hidden = !busy;
+    sendBtn.dataset.mode = 'send';
+    sendBtn.title = 'Send';
+    sendBtn.setAttribute('aria-label', 'Send');
+    sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
   }
   function stopGeneration() {
     // Tell the host we want to stop (ignored by hosts that don't support it)
@@ -3131,7 +3146,7 @@
   function send(text) {
     const t = (text || '').trim();
     const hasAtt = attachmentsReady();
-    if ((!t && !hasAtt) || busy) return;
+    if (!t && !hasAtt) return;
     if (attachmentsLoading()) { toast('Wait until attachments finish loading.'); return; }
     setBusy(true);
     ensureActive();
@@ -3145,7 +3160,7 @@
   }
   function sendResearch(q) {
     const topic = (q || '').trim();
-    if (!topic || busy) return;
+    if (!topic) return;
     if (attachmentsReady() || attachmentsLoading()) {
       toast('Remove attachments before using >> research.');
       return;
@@ -3157,7 +3172,6 @@
     post({ action: 'deepResearch', topic: topic });
   }
   function submitFromInput() {
-    if (busy) { stopGeneration(); return; }
     const raw = inputEl.value;
     if (!raw.trim() && !attachmentsReady()) return;
     if (raw.trim().indexOf('>>') === 0) {
@@ -3170,7 +3184,6 @@
     updateCharCount();
   }
   function fillInput(text, autoSend) {
-    if (busy) return;
     inputEl.value = text || '';
     inputEl.focus();
     inputEl.dispatchEvent(new Event('input', { bubbles: true }));
@@ -3186,7 +3199,7 @@
     charCountEl.textContent = n + ' / ' + max;
     charCountEl.classList.toggle('warn', n >= max * 0.85 && n < max);
     charCountEl.classList.toggle('max',  n >= max);
-    if (!busy) sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
+    sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
   }
 
   // ── File attachments ────────────────────────────────────────────
@@ -3321,7 +3334,7 @@
       renderAttachmentChips();
       processAttachment(toProcess, entry);
     }
-    if (!busy) sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
+    sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
   }
 
   async function processAttachment(file, entry) {
@@ -3373,7 +3386,7 @@
       entry.error = (e && e.message) || String(e);
     }
     renderAttachmentChips();
-    if (!busy) sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
+    sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
   }
 
   async function encodeInlineOrBinary(file, entry) {
@@ -3519,7 +3532,7 @@
         const id = btn.getAttribute('data-id');
         attachmentQueue = attachmentQueue.filter(function (x) { return x.id !== id; });
         renderAttachmentChips();
-        if (!busy) sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
+        sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
       });
     });
   }
@@ -3603,6 +3616,7 @@
       updateCharCount();
     });
     sendBtn.addEventListener('click', submitFromInput);
+    if (stopAiBtn) stopAiBtn.addEventListener('click', stopGeneration);
 
     btnNew.addEventListener('click', triggerNewChat);
 
