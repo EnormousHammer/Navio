@@ -211,9 +211,54 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
     });
   }
 
+  /**
+   * Cloudflare and similar bot checks compare User-Agent Client Hints to the UA string.
+   * Electron's default hints advertise "Chromium" without "Google Chrome", which diverges
+   * from desktop Chrome and can yield 403 / failed challenge pages (e.g. carrier sites).
+   * Align low- and full-version hints with the embedded Chromium version from process.versions.
+   */
+  function attachChromeAlignedClientHints(ses) {
+    const chromeFull = String(process.versions.chrome || '').trim();
+    const major = (() => {
+      const m = chromeFull.match(/^(\d+)/);
+      return m ? m[1] : '134';
+    })();
+    const platform =
+      process.platform === 'darwin'
+        ? '"macOS"'
+        : process.platform === 'linux'
+          ? '"Linux"'
+          : '"Windows"';
+    const notBrand = '"Not_A Brand";v="8"';
+    const secChUa = `"Chromium";v="${major}", "Google Chrome";v="${major}", ${notBrand}`;
+    const fullVersionList = chromeFull
+      ? `"Chromium";v="${chromeFull}", "Google Chrome";v="${chromeFull}", ${notBrand}`
+      : secChUa;
+
+    ses.webRequest.onBeforeSendHeaders({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) => {
+      try {
+        const requestHeaders = { ...(details.requestHeaders || {}) };
+        requestHeaders['Sec-CH-UA'] = secChUa;
+        requestHeaders['Sec-CH-UA-Mobile'] = '?0';
+        requestHeaders['Sec-CH-UA-Platform'] = platform;
+        if (chromeFull) {
+          requestHeaders['Sec-CH-UA-Full-Version'] = `"${chromeFull}"`;
+          requestHeaders['Sec-CH-UA-Full-Version-List'] = fullVersionList;
+        }
+        callback({ requestHeaders });
+      } catch {
+        callback({ requestHeaders: details.requestHeaders });
+      }
+    });
+  }
+
   applySessionFixes(navioSession);
   applySessionFixes(incognitoSession);
   applySessionFixes(session.defaultSession);
+
+  attachChromeAlignedClientHints(navioSession);
+  attachChromeAlignedClientHints(incognitoSession);
+  attachChromeAlignedClientHints(session.defaultSession);
 
   /**
    * Pick a non-colliding save path in the default downloads dir. Up to 99 " (n)"
