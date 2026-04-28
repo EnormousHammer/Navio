@@ -604,6 +604,49 @@ class AssistantManagerClass {
     this.bindEvents();
     this._assistantHistoryLoadPromise = this._loadPersistedChat();
     void this._refreshCachedTtsVoice();
+    void this._initModelBadge();
+  }
+
+  /** Populate and keep the model badge in the header status line current. */
+  _modelDisplayName(provider, model) {
+    if (!model) return '';
+    const m = String(model).toLowerCase();
+    if (m.includes('gpt-5')) return model.replace('gpt-', 'GPT-').replace(/-(\d)/, '.$1');
+    if (m.startsWith('gpt-4o')) return 'GPT-4o';
+    if (m.startsWith('gpt-4')) return 'GPT-4';
+    if (m.startsWith('gpt-3')) return 'GPT-3.5';
+    if (m.includes('claude-opus')) return 'Claude Opus';
+    if (m.includes('claude-sonnet')) return 'Claude Sonnet';
+    if (m.includes('claude-haiku')) return 'Claude Haiku';
+    if (m.startsWith('claude')) {
+      const short = model.replace(/^claude-(\d+)-?(\d*).*/, 'Claude $1.$2').replace(/\.$/, '');
+      return short;
+    }
+    if (m.includes('gemini-2')) return 'Gemini 2';
+    if (m.includes('gemini-1.5')) return 'Gemini 1.5';
+    if (m.includes('gemini')) return 'Gemini';
+    if (m.includes('o3')) return 'o3';
+    if (m.includes('o1')) return 'o1';
+    return model.length > 22 ? model.slice(0, 20) + '…' : model;
+  }
+
+  async _initModelBadge() {
+    try {
+      const cfg = await window.navio.getConfig();
+      this._applyModelBadge(cfg);
+    } catch { /* ignore */ }
+  }
+
+  _applyModelBadge(cfg) {
+    const badge = document.getElementById('assistant-model-badge');
+    if (!badge || !cfg) return;
+    const name = this._modelDisplayName(cfg.aiProvider, cfg.aiModel);
+    if (name) {
+      badge.textContent = name;
+      badge.hidden = false;
+    } else {
+      badge.hidden = true;
+    }
   }
 
   /** Refresh `_cachedTtsVoice` from disk (fire-and-forget; called at init and after speaking). */
@@ -619,6 +662,95 @@ class AssistantManagerClass {
     } catch {
       /* ignore */
     }
+  }
+
+  /** Download the current conversation as a Markdown file. */
+  _exportConversationAsMarkdown() {
+    try {
+      const history = this._currentHistory ? this._currentHistory() : [];
+      if (!history || !history.length) return;
+      const lines = ['# Navio AI Chat\n'];
+      const date = new Date().toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+      lines.push(`_Exported ${date}_\n\n---\n`);
+      for (const msg of history) {
+        if (!msg || typeof msg.content !== 'string') continue;
+        if (msg.role === 'user') {
+          lines.push(`**You:** ${msg.content}\n`);
+        } else if (msg.role === 'assistant') {
+          lines.push(`**Navio AI:** ${msg.content}\n`);
+        }
+      }
+      const md = lines.join('\n');
+      const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const ts = new Date().toISOString().slice(0, 10);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `navio-chat-${ts}.md`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch { /* ignore */ }
+  }
+
+  /**
+   * Load a user message back into the input and prune all history/DOM from that point forward.
+   * The user can then edit the text and re-send via the normal send path.
+   */
+  _editUserMessage(msgEl, originalText) {
+    if (this._busy) return;
+    try {
+      const key = this._turnConversationKey ?? this._conversationKey?.();
+      const hist = key ? this._conversationsByTab.get(String(key)) : null;
+
+      if (hist && hist.length) {
+        // Find the index of this user message by matching content
+        let targetIdx = -1;
+        for (let i = hist.length - 1; i >= 0; i--) {
+          if (hist[i] && hist[i].role === 'user' && hist[i].content === originalText) {
+            targetIdx = i;
+            break;
+          }
+        }
+        if (targetIdx !== -1) {
+          hist.splice(targetIdx);
+          this._schedulePersistAssistantHistory?.();
+        }
+      }
+
+      // Remove the message bubble and everything after it from the DOM
+      // Also remove the preceding role-strip if present
+      const toRemove = [];
+      const prev = msgEl.previousSibling;
+      if (prev && prev.classList && prev.classList.contains('msg-role-strip')) {
+        toRemove.push(prev);
+      }
+      let node = msgEl;
+      while (node) {
+        toRemove.push(node);
+        node = node.nextSibling;
+      }
+      toRemove.forEach((n) => n.parentNode?.removeChild(n));
+
+      // Restore text to input
+      const inp = document.getElementById('assistant-input') || this.inputEl;
+      if (inp) {
+        inp.value = originalText;
+        inp.focus();
+        inp.dispatchEvent(new Event('input'));
+      }
+    } catch { /* ignore */ }
+  }
+
+  /** Close the history popover panel and reset its button state. */
+  _closeHistoryPanel() {
+    const panel = document.getElementById('assistant-session-history-panel');
+    const wrapper = document.getElementById('assistant-session-history');
+    const btn = document.getElementById('btn-session-history');
+    if (panel) panel.hidden = true;
+    wrapper?.classList.remove('open');
+    btn?.setAttribute('aria-expanded', 'false');
   }
 
   /** Re-resolve panel if DOM changed or constructor ran before the node existed. */
@@ -700,6 +832,9 @@ class AssistantManagerClass {
   }
 
   bindEvents() {
+    // Expose smart row updater so navio-ai-boost.js can call it after navigation.
+    window._navioUpdateSmartRow = (suggestions) => this._updateSmartRow(suggestions);
+
     // Attach delegated link handling as soon as `#assistant-messages` exists (before first `open()`).
     this._ensurePanel();
     const toggleBtn = document.getElementById('btn-toggle-assistant');
@@ -738,7 +873,6 @@ class AssistantManagerClass {
       const delBtn = e.target.closest('[data-session-delete]');
       const openBtn = e.target.closest('[data-session-open]');
       const tabBtn = e.target.closest('[data-session-this-tab]');
-      const hist = document.getElementById('assistant-session-history');
       if (delBtn) {
         e.preventDefault();
         const sid = delBtn.getAttribute('data-session-delete');
@@ -749,13 +883,13 @@ class AssistantManagerClass {
         e.preventDefault();
         const sid = openBtn.getAttribute('data-session-open');
         if (sid) void this._openSidebarSession(sid);
-        if (hist) hist.open = false;
+        this._closeHistoryPanel();
         return;
       }
       if (tabBtn) {
         e.preventDefault();
         void this._selectThisTabThread();
-        if (hist) hist.open = false;
+        this._closeHistoryPanel();
         return;
       }
       const jumpTab = e.target.closest('[data-session-switch-tab]');
@@ -763,13 +897,57 @@ class AssistantManagerClass {
         e.preventDefault();
         const tid = jumpTab.getAttribute('data-session-switch-tab');
         if (tid) void this._openTabThreadFromHistory(tid);
-        if (hist) hist.open = false;
+        this._closeHistoryPanel();
         return;
       }
     });
+
+    // History panel toggle button
+    document.getElementById('btn-session-history')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const panel = document.getElementById('assistant-session-history-panel');
+      const wrapper = document.getElementById('assistant-session-history');
+      const btn = document.getElementById('btn-session-history');
+      if (!panel) return;
+      const isOpen = wrapper?.classList.contains('open');
+      if (isOpen) {
+        this._closeHistoryPanel();
+      } else {
+        panel.hidden = false;
+        wrapper?.classList.add('open');
+        btn?.setAttribute('aria-expanded', 'true');
+        try {
+          this._renderSidebarSessionList();
+          setTimeout(() => document.getElementById('assistant-session-history-search')?.focus(), 50);
+        } catch { /* ignore */ }
+      }
+    });
+
+    // Close history panel on outside click
+    document.addEventListener('click', (e) => {
+      const wrapper = document.getElementById('assistant-session-history');
+      if (wrapper?.classList.contains('open') && !wrapper.contains(e.target)) {
+        this._closeHistoryPanel();
+      }
+    });
+    document.getElementById('btn-export-chat')?.addEventListener('click', () => this._exportConversationAsMarkdown());
     document.getElementById('btn-send-message')?.addEventListener('click', () => this.sendMessage());
     document.getElementById('btn-assistant-stop')?.addEventListener('click', () => this.stopGeneration());
     document.getElementById('btn-tts-stop')?.addEventListener('click', () => this._stopTTSFromBar());
+    document.getElementById('btn-at-mention')?.addEventListener('click', () => {
+      const inp = document.getElementById('assistant-input') || this.inputEl;
+      if (!inp) return;
+      inp.focus();
+      const start = inp.selectionStart ?? inp.value.length;
+      const end = inp.selectionEnd ?? start;
+      const before = inp.value.slice(0, start);
+      const after = inp.value.slice(end);
+      const needsSpace = before.length > 0 && !/\s$/.test(before);
+      inp.value = (needsSpace ? before + ' @' : before + '@') + after;
+      const pos = inp.value.length - after.length;
+      inp.setSelectionRange(pos, pos);
+      this._handleAtMention();
+    });
     this._voiceConvActive = false;
     this._voiceConvRec = null;
     /** Bumped on every voice-conversation end so delayed timers / STT callbacks cannot run after stop or across restart. */
@@ -989,6 +1167,67 @@ class AssistantManagerClass {
       default:
         return '';
     }
+  }
+
+  /**
+   * Update the static smart-chip row with contextual chips derived from the current page URL.
+   * Called by navio-ai-boost.js via `window._navioUpdateSmartRow` after each navigation.
+   * Chips 1-2 become page-specific when suggestions are present; chips 3-4 are always fixed.
+   */
+  _updateSmartRow(suggestions) {
+    const row = document.getElementById('assistant-smart-row');
+    if (!row) return;
+
+    const DEFAULT_CHIPS = [
+      { label: 'Summarize page', smart: 'summarize-page' },
+      { label: 'Answer with sources', smart: 'with-sources' },
+    ];
+    const FIXED_CHIPS = [
+      { label: 'Next actions', smart: 'next-actions' },
+      {
+        label: 'Deep research',
+        smart: 'deep-research',
+        extra: 'class="assistant-smart-chip assistant-smart-chip--research"',
+        icon: `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.85"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+      },
+    ];
+
+    const dynamicPair = (suggestions && suggestions.length > 0)
+      ? suggestions.slice(0, 2)
+      : DEFAULT_CHIPS;
+
+    const allChips = [...dynamicPair, ...FIXED_CHIPS];
+
+    row.innerHTML = allChips.map((c) => {
+      const extraClass = c.extra ? '' : 'class="assistant-smart-chip"';
+      const cls = c.extra || 'class="assistant-smart-chip"';
+      const icon = c.icon ? c.icon + ' ' : '';
+      const prompt = c.prompt ? ` data-smart-prompt="${c.prompt.replace(/"/g, '&quot;')}"` : '';
+      const smart = c.smart ? ` data-smart="${c.smart}"` : '';
+      const title = c.smart === 'deep-research' ? ' title="Multi-source research report from the current page"' : '';
+      return `<button type="button" ${cls}${smart}${prompt}${title}>${icon}${c.label}</button>`;
+    }).join('');
+
+    // Re-attach click handlers for the freshly-rendered chips
+    row.querySelectorAll('.assistant-smart-chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        if (chip.dataset.smart === 'deep-research') {
+          void this.handleQuickAction('deep-research');
+          return;
+        }
+        const directPrompt = chip.dataset.smartPrompt;
+        if (directPrompt) {
+          if (!this.inputEl) return;
+          this.inputEl.value = directPrompt;
+          this.sendMessage();
+          return;
+        }
+        const prompt = this._smartPromptFor(chip.dataset.smart);
+        if (!prompt || !this.inputEl) return;
+        this.inputEl.value = prompt;
+        this.sendMessage();
+      });
+    });
   }
 
   /**
@@ -1239,6 +1478,8 @@ class AssistantManagerClass {
     } catch {
       /* ignore */
     }
+    // Reset smart chips to defaults when switching tabs (navio-ai-boost will re-fill after navigation).
+    try { this._updateSmartRow([]); } catch { /* ignore */ }
   }
 
   /**
@@ -3580,6 +3821,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       await this.syncScopeFromConfig();
       await this.syncConnectorTogglesFromConfig();
       try {
+        const cfg = await window.navio.getConfig();
+        this._applyModelBadge(cfg);
+      } catch { /* ignore */ }
+      try {
         this._syncGmailOAuthEmailCacheFromStatus((await window.navio.oauthStatus()) || {});
       } catch {
         /* ignore */
@@ -5823,6 +6068,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           this._checkAndShowActionFormatWarning(cleanBuffer, streamingMsg);
         }
         this._attachCopyButtonToMessage(streamingMsg, contentEl);
+        this._attachRetryButtonToMessage(streamingMsg);
         this._attachReadAloudButtonToMessage(streamingMsg, contentEl);
         const autoSpeakPlain = (contentEl.innerText || contentEl.textContent || '').trim().slice(0, 4000);
         if (!streamCancelled && autoSpeakPlain) {
@@ -6240,6 +6486,67 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   /**
+   * Attach a retry/regenerate button to an assistant message bubble.
+   * Clicking it removes the assistant turn from history and DOM, then re-sends the last user message.
+   */
+  _attachRetryButtonToMessage(msgEl) {
+    if (!msgEl || msgEl.querySelector('.msg-retry-btn')) return;
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'msg-retry-btn';
+    retryBtn.type = 'button';
+    retryBtn.title = 'Regenerate response';
+    retryBtn.setAttribute('aria-label', 'Regenerate response');
+    retryBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.54"/></svg> Retry`;
+    retryBtn.addEventListener('click', () => {
+      if (this._busy) return;
+      try {
+        const key = this._turnConversationKey ?? this._conversationKey?.();
+        const hist = key ? this._conversationsByTab.get(String(key)) : null;
+        if (!hist || !hist.length) return;
+
+        // Find the last user message in history to re-send
+        let lastUserIdx = -1;
+        for (let i = hist.length - 1; i >= 0; i--) {
+          if (hist[i] && hist[i].role === 'user') { lastUserIdx = i; break; }
+        }
+        if (lastUserIdx === -1) return;
+        const lastUserText = hist[lastUserIdx].content;
+        if (typeof lastUserText !== 'string' || !lastUserText.trim()) return;
+
+        // Remove the assistant response (and anything after it) from history
+        hist.splice(lastUserIdx + 1);
+        this._schedulePersistAssistantHistory?.();
+
+        // Remove the assistant bubble and its role strip from the DOM
+        let node = msgEl;
+        const toRemove = [];
+        while (node) {
+          toRemove.push(node);
+          node = node.nextSibling;
+        }
+        // Also check for the role-strip immediately before msgEl
+        const prev = msgEl.previousSibling;
+        if (prev && prev.classList && prev.classList.contains('msg-role-strip')) {
+          toRemove.unshift(prev);
+        }
+        toRemove.forEach((n) => n.parentNode?.removeChild(n));
+
+        // Re-send the user message
+        if (this.inputEl) this.inputEl.value = lastUserText;
+        void this.sendMessage();
+      } catch { /* ignore */ }
+    });
+    // Place after the copy button if it exists, otherwise before contentEl
+    const copyBtn = msgEl.querySelector('.msg-copy-btn');
+    if (copyBtn && copyBtn.nextSibling) {
+      msgEl.insertBefore(retryBtn, copyBtn.nextSibling);
+    } else {
+      const contentEl = msgEl.querySelector('.message-content');
+      msgEl.insertBefore(retryBtn, contentEl || null);
+    }
+  }
+
+  /**
    * Read-aloud control (separate from copy — never use `msg-copy-btn` here; those
    * share the same absolute corner and stacked on top of each other).
    */
@@ -6346,10 +6653,24 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
 
     msgEl.appendChild(contentEl);
 
+    // ── Edit button for plain user messages ──────────────────────────────────
+    if (role === 'user' && typeof content === 'string') {
+      const originalText = String(content);
+      const editBtn = document.createElement('button');
+      editBtn.className = 'msg-edit-btn';
+      editBtn.type = 'button';
+      editBtn.title = 'Edit message';
+      editBtn.setAttribute('aria-label', 'Edit message');
+      editBtn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+      editBtn.addEventListener('click', () => this._editUserMessage(msgEl, originalText));
+      msgEl.appendChild(editBtn);
+    }
+
     // ── Copy + read-aloud (content first so insertBefore(sidecar, contentEl) orders correctly) ──
     if (role === 'assistant' || type === 'error') {
       this._attachCopyButtonToMessage(msgEl, contentEl);
       if (role === 'assistant') {
+        this._attachRetryButtonToMessage(msgEl);
         this._attachReadAloudButtonToMessage(msgEl, contentEl);
         const plainText = (contentEl.innerText || contentEl.textContent || content || '').slice(0, 4000);
         this._maybeAutoSpeakAssistantReply(plainText);

@@ -166,6 +166,9 @@
       } else {
         clearProactiveChips();
       }
+      if (typeof window._navioUpdateSmartRow === 'function') {
+        try { window._navioUpdateSmartRow(suggestions); } catch { /* ignore */ }
+      }
     }, 1500);
   }
 

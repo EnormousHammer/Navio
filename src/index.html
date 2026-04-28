@@ -1590,13 +1590,16 @@
           </div>
           <div class="assistant-title-stack">
             <span class="assistant-name">Navio <em class="ai-em">AI</em></span>
-            <span class="assistant-status-line"><span class="status-live-dot"></span>Ready</span>
+            <span class="assistant-status-line"><span class="status-live-dot"></span><span id="assistant-model-badge" class="assistant-model-badge"></span>Ready</span>
           </div>
         </div>
         <div class="assistant-actions">
           <!-- Macro record button — records agent steps as a replayable workflow -->
           <button class="icon-btn" id="btn-record-macro" title="Record: capture your next agent task as a replayable workflow" aria-pressed="false">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>
+          </button>
+          <button class="icon-btn" id="btn-export-chat" title="Export chat as Markdown">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           </button>
           <button class="icon-btn" id="btn-clear-chat" title="Clear chat">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
@@ -1627,15 +1630,15 @@
 
       <div class="assistant-session-bar" aria-label="Saved sidebar chats">
         <button type="button" class="assistant-session-new-btn" id="assistant-session-new" title="Start a new saved thread (persists across tabs)">New chat</button>
-        <details class="assistant-session-history" id="assistant-session-history">
-          <summary class="assistant-session-history-summary" title="This tab, other tabs that already have a chat, and saved threads — from any tab">History</summary>
-          <div class="assistant-session-history-popover">
+        <div class="assistant-session-history" id="assistant-session-history">
+          <button type="button" class="assistant-session-history-summary" id="btn-session-history" title="This tab, other tabs that already have a chat, and saved threads — from any tab" aria-expanded="false" aria-controls="assistant-session-history-panel">History</button>
+          <div class="assistant-session-history-popover" id="assistant-session-history-panel" hidden>
             <div class="assistant-session-history-search-wrap">
               <input type="search" class="assistant-session-history-search" id="assistant-session-history-search" placeholder="Search chats…" autocomplete="off" aria-label="Search chat history" />
             </div>
             <div class="assistant-session-history-scroll" id="assistant-session-history-list"></div>
           </div>
-        </details>
+        </div>
       </div>
 
       <div class="assistant-smart-row" id="assistant-smart-row" aria-label="Smart suggestions">
@@ -1772,6 +1775,7 @@
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
               </button>
               <input type="file" id="assistant-file-input" multiple style="position:absolute;width:0;height:0;opacity:0;pointer-events:none" aria-hidden="true" tabindex="-1">
+              <button type="button" class="voice-btn btn-at-mention" id="btn-at-mention" title="Mention a tab — type @ to reference any open tab as context" aria-label="Mention tab">@</button>
               <button class="voice-btn" id="btn-voice-conv" title="Voice conversation — back-and-forth; pause ~3s when finished speaking (same send pipeline as typing)">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/><line x1="18" y1="6" x2="22" y2="6"/><line x1="18" y1="10" x2="22" y2="10"/></svg>
               </button>
