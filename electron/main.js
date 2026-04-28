@@ -443,6 +443,7 @@ const PROMPT_BLOCKS = {};
 const PROMPT_BLOCKS_DIR = path.join(__dirname, 'prompt-blocks');
 for (const [key, file] of [
   ['shipping', 'shipping.txt'],
+  ['pickup', 'pickup.txt'],
   ['gmail', 'gmail.txt'],
   ['connector-setup', 'connector-setup.txt'],
 ]) {
@@ -488,8 +489,14 @@ function _detectPromptBlocks(messages) {
   const CONNECTOR_WORDS =
     /\b(oauth|client\s*id|client\s*secret|redirect\s*(uri|url)|api\s*key|connect\s+(google|gmail|drive|dropbox|slack|notion|github|microsoft|outlook|azure)|set\s*up\s+(the\s+)?(connector|integration|oauth|google|gmail)|google\s*cloud\s*console|developer\s*console|credential)\b/i;
 
+  const PICKUP_URL =
+    /purolator\.com\/(en|fr)\/shipping\/schedule|eshiponline\.purolator|fedex\.com\/(en-ca|en-us)\/shipping\/schedule-manage-pickups|ups\.com\/(pickup|ca\/en\/shipping\/schedule)|mydhl\.express\.dhl|canadapost.*pickup|dayross\.com\/(en\/shipping\/book|pickup)|manitoulintransport\.com.*pickup|tql\.com\/get-a-quote|echo\.com\/shippers|coyote\.com.*shippers/i;
+  const PICKUP_WORDS =
+    /\b(schedule\s+a?\s*pickup|book\s+a?\s*pickup|arrange\s+(a\s+)?(collection|pickup)|request\s+(a\s+)?pickup|pickup\s+request|pickup\s+(date|time|window|address|confirmation)|carrier\s+pickup|driver\s+(pickup|collection)|pick\s*up\s+(my\s+)?(package|shipment|parcel|skid|pallet|freight|order)|when\s+(is|will)\s+(the\s+)?pickup|set\s+up\s+(a\s+)?pickup|(fedex|ups|purolator|dhl|dayross|day\s*&?\s*ross|manitoulin|tql|echo|coyote)\s+(pickup|will\s+pick\s*up|coming\s+to\s+pick))\b/i;
+
   return {
     shipping: SHIPPING_URL.test(activeUrl) || SHIPPING_WORDS.test(userText),
+    pickup: PICKUP_URL.test(activeUrl) || PICKUP_WORDS.test(userText),
     gmail: GMAIL_URL.test(activeUrl) || GMAIL_WORDS.test(userText),
     'connector-setup': CONNECTOR_URL.test(activeUrl) || CONNECTOR_WORDS.test(userText),
   };

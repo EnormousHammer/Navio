@@ -2322,6 +2322,7 @@ class AssistantManagerClass {
     document.getElementById('btn-voice-conv')?.classList.remove('voice-conv-on');
     const transcriptEl = document.getElementById('vch-transcript');
     if (transcriptEl) transcriptEl.textContent = '';
+    this._updateVchAudioBars(null);
     const hud = document.getElementById('voice-conv-hud');
     if (hud) {
       try { delete hud.dataset.vcState; } catch { /* ignore */ }
@@ -2488,11 +2489,12 @@ class AssistantManagerClass {
         },
         ({ state, level }) => {
           if (!this._voiceConvActive) return;
-          if (state === 'recording' && transcriptEl) {
-            const filled = Math.min(Math.round((level || 0) / 7), 8);
-            transcriptEl.textContent = '▮'.repeat(filled) + '▯'.repeat(8 - filled);
-          } else if (state === 'processing' && transcriptEl) {
-            transcriptEl.textContent = 'Transcribing…';
+          if (state === 'recording') {
+            this._updateVchAudioBars(level);
+            if (transcriptEl) transcriptEl.textContent = '';
+          } else {
+            this._updateVchAudioBars(null);
+            if (state === 'processing' && transcriptEl) transcriptEl.textContent = 'Transcribing…';
           }
         },
         this._vcPersistentStream  // ← shared stream, zero latency
@@ -2551,6 +2553,31 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     };
   }
 
+  /**
+   * Animate the VCH audio level bars based on a raw RMS level (0–100).
+   * Pass level=null to switch to idle CSS animation.
+   */
+  _updateVchAudioBars(level) {
+    const barsEl = document.getElementById('vch-audio-bars');
+    if (!barsEl) return;
+    if (level == null) {
+      barsEl.dataset.idle = '1';
+      // Reset heights so idle animation takes over cleanly
+      Array.from(barsEl.children).forEach(s => { s.style.height = ''; });
+      return;
+    }
+    barsEl.dataset.idle = '0';
+    const norm = Math.min(1, Math.max(0, (level || 0) / 38));
+    // Each bar gets a slightly different multiplier for a natural multi-band look
+    const mults = [0.72, 0.95, 1.12, 0.85, 1.20, 0.78, 1.05, 0.90];
+    const bars = barsEl.children;
+    for (let i = 0; i < bars.length; i++) {
+      const jitter = 0.6 + Math.random() * 0.8;
+      const h = Math.max(3, Math.min(20, Math.round(norm * 20 * mults[i] * jitter)));
+      bars[i].style.height = h + 'px';
+    }
+  }
+
   /** Update the HUD ring + label to reflect current conversation state. */
   _voiceConvSetState(state) {
     const hud = document.getElementById('voice-conv-hud');
@@ -2579,8 +2606,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     // Start interrupt listener when AI is busy; stop it when we're listening (Whisper handles it)
     if (state === 'thinking' || state === 'speaking' || state === 'summarizing') {
       this._startVoiceConvInterruptListener();
+      this._updateVchAudioBars(null); // idle bars during AI states
     } else {
       this._stopVoiceConvInterruptListener();
+      // Bars will be driven by live RMS data once _voiceConvListen starts recording
     }
   }
 
@@ -2622,12 +2651,12 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         },
         ({ state, level }) => {
           if (!this._voiceConvActive) return;
-          if (state === 'recording' && transcriptEl) {
-            // Live audio level bars — 8 segments
-            const filled = Math.min(Math.round((level || 0) / 7), 8);
-            transcriptEl.textContent = '▮'.repeat(filled) + '▯'.repeat(8 - filled);
-          } else if (state === 'processing' && transcriptEl) {
-            transcriptEl.textContent = 'Transcribing…';
+          if (state === 'recording') {
+            this._updateVchAudioBars(level);
+            if (transcriptEl) transcriptEl.textContent = '';
+          } else {
+            this._updateVchAudioBars(null);
+            if (state === 'processing' && transcriptEl) transcriptEl.textContent = 'Transcribing…';
           }
         },
         this._vcPersistentStream  // ← reuse persistent stream, no getUserMedia per turn

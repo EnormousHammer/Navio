@@ -690,6 +690,8 @@ IMPORTANT RULES:
 - NEVER submit a final carrier pickup booking without the user confirming — this is a "final commit" action
 - If the carrier shows a confirmation number at the end, always report it clearly
 
+{{BLOCK:pickup}}
+
 ══════════════════════════════════════════
 FORM FILLING (USER-PROVIDED DATA FIRST)
 ══════════════════════════════════════════
