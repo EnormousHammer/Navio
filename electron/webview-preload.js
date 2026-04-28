@@ -27,7 +27,8 @@ try {
         saveConfig: (partial) => ipcRenderer.invoke('save-config', partial),
         postToHost: (payload) => ipcRenderer.sendToHost('navio-chat-host', payload),
         navioTTS: (params) => ipcRenderer.invoke('navio-tts', params),
-        readFileForAttachment: (filePath) => ipcRenderer.invoke('read-file-for-attachment', filePath)
+        readFileForAttachment: (filePath) => ipcRenderer.invoke('read-file-for-attachment', filePath),
+        extractAttachmentText: (args) => ipcRenderer.invoke('extract-attachment-text', args)
       });
     } catch (e) {
       console.error('[navio] navioChatTab preload bridge failed:', e && e.message ? e.message : e);
@@ -258,11 +259,29 @@ try {
   });
 
   // ── Text selection → inline AI toolbar ───────────────────────────────────
+  function _isEditableNode(node) {
+    if (!node) return false;
+    const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+    if (!el || typeof el.closest !== 'function') return false;
+    if (el.closest('input, textarea, [contenteditable]')) return true;
+    // Also check the element itself
+    const tag = (el.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea') return true;
+    if (el.isContentEditable) return true;
+    return false;
+  }
+
   document.addEventListener('mouseup', function() {
     try {
       const sel = window.getSelection();
       const text = sel?.toString().trim();
       if (!text || text.length < 3) {
+        removeNavioInlineBookmark();
+        ipcRenderer.sendToHost('navio-selection-cleared', {});
+        return;
+      }
+      // Don't show the toolbar when selecting inside editable fields
+      if (sel.anchorNode && _isEditableNode(sel.anchorNode)) {
         removeNavioInlineBookmark();
         ipcRenderer.sendToHost('navio-selection-cleared', {});
         return;

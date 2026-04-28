@@ -397,6 +397,12 @@ function navioIsPdfFile(file) {
   return file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
 }
 
+/** Office/document formats whose text must be extracted server-side (DOCX, XLSX, PPTX, RTF, ODT…). */
+function navioIsOfficeDocFile(file) {
+  const ext = (file.name || '').split('.').pop().toLowerCase();
+  return ['docx', 'docm', 'doc', 'xlsx', 'xlsm', 'xls', 'pptx', 'odt', 'ods', 'odp', 'rtf', 'epub'].includes(ext);
+}
+
 /** Human-readable size for attachment chips (matches glc FileCard style). */
 function navioFormatAttachmentBytes(n) {
   if (n == null || !(n > 0)) return '';
@@ -808,12 +814,27 @@ class AssistantManagerClass {
 
     document.querySelectorAll('.assistant-smart-chip').forEach((chip) => {
       chip.addEventListener('click', () => {
+        if (chip.dataset.smart === 'deep-research') {
+          void this.handleQuickAction('deep-research');
+          return;
+        }
         const prompt = this._smartPromptFor(chip.dataset.smart);
         if (!prompt || !this.inputEl) return;
         this.inputEl.value = prompt;
         this.sendMessage();
       });
     });
+
+    // Show >> research hint when the user starts typing a question
+    const researchHint = document.getElementById('assistant-research-hint');
+    if (researchHint && this.inputEl) {
+      this.inputEl.addEventListener('input', () => {
+        const v = this.inputEl.value.trim();
+        const looksLikeQuestion = v.length > 8 && !v.startsWith('>>') &&
+          /^(what|how|why|when|where|who|which|can|is|are|do|does|should|tell me|explain|research|find|compare)\b/i.test(v);
+        researchHint.style.display = looksLikeQuestion ? 'inline' : 'none';
+      });
+    }
 
     if (this.scopeSelect) {
       this.scopeSelect.addEventListener('change', () => this.persistScopeFromUI());
@@ -1523,6 +1544,34 @@ class AssistantManagerClass {
         entry.kind = 'image';
         entry.dataUrl = dataUrl;
         entry.thumb = dataUrl;
+      } else if (navioIsOfficeDocFile(file)) {
+        if (file.size > NAVIO_ASSISTANT_PDF_MAX_BYTES) {
+          throw new Error('Document too large (max 12 MB).');
+        }
+        const dataUrl = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result || ''));
+          r.onerror = () => reject(new Error('Could not read file.'));
+          r.readAsDataURL(file);
+        });
+        const m = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
+        if (!m) throw new Error('Could not encode document.');
+        const result = await window.navio.extractAttachmentText({
+          base64: m[1],
+          mimeType: file.type || '',
+          fileName: file.name || ''
+        });
+        if (result && result.ok && result.text) {
+          const txt = String(result.text);
+          entry.status = 'ready';
+          entry.kind = 'text';
+          entry.text = txt.length > NAVIO_ASSISTANT_TEXT_MAX_CHARS
+            ? `${txt.slice(0, NAVIO_ASSISTANT_TEXT_MAX_CHARS)}\n\n… [truncated]`
+            : txt;
+          entry.thumb = '';
+        } else {
+          throw new Error(result && result.note ? result.note : 'Could not extract text from document.');
+        }
       } else if (navioIsPdfFile(file)) {
         if (file.size > NAVIO_ASSISTANT_PDF_MAX_BYTES) {
           throw new Error('PDF too large (max 12 MB).');

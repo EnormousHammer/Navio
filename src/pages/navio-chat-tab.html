@@ -3214,6 +3214,7 @@
   const ATT_HEURISTIC_TEXT_MAX_BYTES = 768 * 1024;
   const ATT_MAX = 8;
   const TEXT_EXT_RE = /\.(txt|md|mdx|json|json5|jsonc|csv|tsv|xml|html?|htm|xhtml|css|scss|sass|less|js|mjs|cjs|ts|tsx|jsx|c|h|cpp|hpp|cc|cxx|py|pyi|pyw|java|kt|kts|rs|go|yaml|yml|toml|ini|cfg|conf|config|log|sh|bash|zsh|fish|bat|cmd|ps1|psm1|env|svg|sql|vue|svelte|rb|erb|php|swift|dart|scala|sbt|gradle|clj|cljs|edn|ex|exs|erl|hrl|hs|lhs|ml|mli|fs|fsi|fsx|dockerfile|gitignore|gitattributes|editorconfig|properties|lock|pro|cmake|makefile|mk|dockerignore|graphql|gql)$/i;
+  const OFFICE_EXT_RE = /\.(docx|docm|doc|xlsx|xlsm|xls|pptx|odt|ods|odp|rtf|epub)$/i;
   const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|ico|tiff?|avif|heic|heif|jxl)$/i;
 
   let attachmentQueue = []; // { id, name, status: 'loading'|'ready'|'error', kind, dataUrl, base64, text, mimeType, thumb, error }
@@ -3229,6 +3230,9 @@
     if (file.type && file.type.startsWith('text/')) return true;
     if (/^(application\/(json|xml|javascript|x-javascript|sql|graphql)|message\/rfc822)/i.test(file.type || '')) return true;
     return TEXT_EXT_RE.test(file.name || '');
+  }
+  function isOfficeDocFile(file) {
+    return OFFICE_EXT_RE.test(file.name || '');
   }
   function sniffImageMime(buf) {
     if (!buf || buf.length < 12) return null;
@@ -3348,6 +3352,24 @@
         entry.kind = 'image';
         entry.dataUrl = dataUrl;
         entry.thumb = dataUrl;
+      } else if (isOfficeDocFile(file)) {
+        if (file.size > ATT_PDF_MAX_BYTES) throw new Error('Document too large (max 12 MB).');
+        const dataUrl = await readAsDataURL(file);
+        const m = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
+        if (!m) throw new Error('Could not encode document.');
+        const result = api && api.extractAttachmentText
+          ? await api.extractAttachmentText({ base64: m[1], mimeType: file.type || '', fileName: file.name || '' })
+          : { ok: false, note: 'extractAttachmentText not available.' };
+        if (result && result.ok && result.text) {
+          var txt = String(result.text);
+          entry.status = 'ready';
+          entry.kind = 'text';
+          entry.text = txt.length > ATT_TEXT_MAX_CHARS
+            ? txt.slice(0, ATT_TEXT_MAX_CHARS) + '\n\n… [truncated]'
+            : txt;
+        } else {
+          throw new Error(result && result.note ? result.note : 'Could not extract text from document.');
+        }
       } else if (isPdfFile(file)) {
         if (file.size > ATT_PDF_MAX_BYTES) throw new Error('PDF too large (max 12 MB).');
         const dataUrl = await readAsDataURL(file);

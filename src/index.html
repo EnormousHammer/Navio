@@ -1642,6 +1642,10 @@
         <button type="button" class="assistant-smart-chip" data-smart="summarize-page">Summarize page</button>
         <button type="button" class="assistant-smart-chip" data-smart="with-sources">Answer with sources</button>
         <button type="button" class="assistant-smart-chip" data-smart="next-actions">Next actions</button>
+        <button type="button" class="assistant-smart-chip assistant-smart-chip--research" data-smart="deep-research" title="Multi-source research report from the current page">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.85"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Deep research
+        </button>
       </div>
 
       <details id="assistant-agent-log" class="assistant-agent-log" hidden>
@@ -1757,7 +1761,7 @@
       <div class="assistant-input-area">
         <div id="assistant-attachment-row" class="assistant-attachment-row" hidden></div>
         <div class="assistant-input-container">
-          <textarea id="assistant-input" placeholder="Ask Navio anything..." rows="2"></textarea>
+          <textarea id="assistant-input" placeholder="Ask anything, or type >> to deep research…" rows="2"></textarea>
           <div class="assistant-input-toolbar">
             <div class="assistant-toolbar-left">
               <button type="button" class="voice-btn assistant-attach-btn" id="btn-assistant-attach" title="Attach images or files">
@@ -1771,6 +1775,7 @@
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
               </button>
               <span id="voice-hint" class="assistant-input-hint-inline">Shift+Enter for new line</span>
+              <span class="assistant-input-hint-inline assistant-research-hint" id="assistant-research-hint" style="display:none">Type <code style="background:rgba(45,212,191,.12);color:#2dd4bf;padding:1px 4px;border-radius:4px;font-size:10px">&gt;&gt;</code> for deep research</span>
             </div>
             <div class="assistant-toolbar-right">
               <button type="button" class="assistant-stop-btn" id="btn-assistant-stop" title="Stop generating" hidden>

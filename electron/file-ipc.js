@@ -78,6 +78,22 @@ function registerFileIpc(ipcMain, { app, shell }) {
   });
 
   /**
+   * Extract readable text from an office/document file (DOCX, XLSX, PPTX, RTF, ODT, etc.)
+   * already loaded in the renderer as base64. Used by the assistant and chat-tab file
+   * attachment pipeline so the AI can read document contents instead of raw bytes.
+   */
+  ipcMain.handle('extract-attachment-text', async (_, { base64, mimeType, fileName }) => {
+    try {
+      if (!base64 || typeof base64 !== 'string') return { ok: false, note: 'No data provided.' };
+      const { extractDriveFileText } = require('./drive-file-text');
+      const buf = Buffer.from(base64, 'base64');
+      return await extractDriveFileText({ buffer: buf, mimeType: mimeType || '', fileName: fileName || '' });
+    } catch (e) {
+      return { ok: false, note: (e && e.message) ? e.message : String(e) };
+    }
+  });
+
+  /**
    * Read a local file for assistant / chat attachments when the renderer's File
    * from drag-and-drop has size 0 (common on Windows for Explorer → Chromium drops,
    * including from Downloads) but exposes a native `path` (Electron extension).
