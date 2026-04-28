@@ -1,24 +1,70 @@
 /** @type {import('@electron-forge/shared-types').ForgeConfig} */
+
+// Windows Authenticode signing: set WINDOWS_CERTIFICATE_FILE + WINDOWS_CERTIFICATE_PASSWORD in CI.
+// See docs/RELEASE_SIGNING.md for how to decode the PFX from a GitHub secret.
+const winCertFile = process.env.WINDOWS_CERTIFICATE_FILE;
+const winCertPass = process.env.WINDOWS_CERTIFICATE_PASSWORD;
+
+// macOS Developer ID signing + notarization: set the four Apple env vars in CI.
+const appleId           = process.env.APPLE_ID;
+const appleAppPassword  = process.env.APPLE_APP_SPECIFIC_PASSWORD;
+const appleTeamId       = process.env.APPLE_TEAM_ID;
+const appleIdentity     = process.env.APPLE_SIGNING_IDENTITY;
+
 module.exports = {
   packagerConfig: {
     name: 'Navio',
     executableName: 'navio-browser',
     asar: true,
     icon: './src/assets/icon',
-    extraResource: ['./public']
+    extraResource: ['./public'],
+
+    // Windows code signing — only active when the PFX path is present in the environment.
+    ...(winCertFile ? {
+      certificateFile: winCertFile,
+      certificatePassword: winCertPass || '',
+    } : {}),
+
+    // macOS Developer ID signing — only active when the identity is set.
+    ...(appleIdentity ? {
+      osxSign: {
+        identity: appleIdentity,
+        hardenedRuntime: true,
+        entitlements: 'build/entitlements.mac.plist',
+        'entitlements-inherit': 'build/entitlements.mac.plist',
+      },
+    } : {}),
+
+    // macOS notarization — only active when Apple ID credentials are set.
+    ...(appleId && appleAppPassword && appleTeamId ? {
+      osxNotarize: {
+        tool: 'notarytool',
+        appleId,
+        appleIdPassword: appleAppPassword,
+        teamId: appleTeamId,
+      },
+    } : {}),
   },
+
   rebuildConfig: {},
+
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
       config: {
-        name: 'navio_browser'
-      }
+        name: 'navio_browser',
+        // Squirrel installer also picks up the cert when the env vars are set.
+        ...(winCertFile ? {
+          certificateFile: winCertFile,
+          certificatePassword: winCertPass || '',
+        } : {}),
+      },
     },
     {
       name: '@electron-forge/maker-zip',
-      platforms: ['win32', 'darwin']
-    }
+      platforms: ['win32', 'darwin'],
+    },
   ],
-  plugins: []
+
+  plugins: [],
 };

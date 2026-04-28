@@ -3,8 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!-- CSP is intentionally broad (unsafe-eval/inline, connect-src *) for the Electron shell, assistant, and OAuth flows; narrowing it tends to break in-app features. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data: https:; media-src 'self' file: blob: data:; connect-src *; frame-src 'self' blob: https://www.tradingview-widget.com https://*.tradingview.com https://www.tradingview.com https://s3.tradingview.com;">
+  <!-- script-src: all scripts are external files — no unsafe-eval or unsafe-inline needed for scripts.
+       style-src: keeps unsafe-inline for the 60+ style="" attributes in the shell HTML and JS-driven inline styles.
+       connect-src *: required — AI provider endpoints are user-configurable and can be any host. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' file: blob: data:; connect-src *; frame-src 'self' blob: https://www.tradingview-widget.com https://*.tradingview.com https://www.tradingview.com https://s3.tradingview.com;">
   <title>Navio</title>
   <link rel="stylesheet" href="css/styles.css">
   <link rel="stylesheet" href="css/parts/polish.css">

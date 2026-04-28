@@ -22,6 +22,13 @@ const { registerExtensionsIpc, loadPersistedExtensionsOnStartup } = require('./e
 const { registerSyncIpc, startNavioCloudSync } = require('./navio-sync-ipc');
 const { registerProfilesIpc } = require('./navio-profiles-ipc');
 const { registerAgentPlanIpc } = require('./navio-agent-ipc');
+const { navioIsExternalProtocolUrl, navioExtractHttpsFromBrowserHandoffUrl, navioNormalizeTabOpenUrl } = require('./navio-url-utils');
+const { registerMemoryIpc, loadMemory, saveMemory, buildMemoryBlock, buildProfileBlock, extractAndSaveMemory } = require('./memory-ipc');
+const { registerReadingListIpc } = require('./reading-list-ipc');
+const { registerPasswordsIpc, maybeImportOemStremioCredentials } = require('./passwords-ipc');
+const { registerBrowserImportIpc } = require('./browser-import-ipc');
+const { registerContextMenuIpc } = require('./context-menu-ipc');
+const { registerSearchSuggestionsIpc } = require('./search-suggestions-ipc');
 const { NAVIO_TOOLS, toOpenAITools, toAnthropicTools, toGeminiTools } = require('./navio-tools');
 const { getAccessibilityTree, clickByRef, typeByRef, selectByRef, getRefMap, clearRefMap, registerPersistentSession, unregisterPersistentSession } = require('./a11y-tree');
 const { snapshotPage, verifyAction, dismissOverlay, waitForIdle } = require('./navio-agent-verify');
@@ -315,7 +322,7 @@ function createResearchWindow() {
       session: navioSession,
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false
+      sandbox: true
     }
   });
   return win;
@@ -661,140 +668,8 @@ function aiResponseHasBrokenActions(text) {
   return /\bACTION[\s_]?\d\b/i.test(text);                   // broken numbered labels
 }
 
-// ── Browser Memory ───────────────────────────────────────────────────────────
-function memoryPath() {
-  return path.join(app.getPath('userData'), 'navio-memory.json');
-}
-function loadMemory() {
-  try { return JSON.parse(fs.readFileSync(memoryPath(), 'utf8')); }
-  catch { return { facts: [] }; }
-}
-function saveMemory(data) {
-  fs.writeFileSync(memoryPath(), JSON.stringify(data, null, 2), 'utf8');
-}
-
-/** Drop facts older than memoryRetentionDays (from config); 0 = keep forever. */
-function pruneMemoryByRetention() {
-  try {
-    const cfg = loadConfig();
-    const days = Number(cfg.memoryRetentionDays) || 0;
-    if (days <= 0) return;
-    const mem = loadMemory();
-    const facts = mem.facts || [];
-    const cutoff = Date.now() - days * 86400000;
-    const next = facts.filter((f) => {
-      const t = new Date(f.createdAt || f.timestamp || 0).getTime();
-      if (!t || Number.isNaN(t)) return true;
-      return t >= cutoff;
-    });
-    if (next.length !== facts.length) {
-      mem.facts = next;
-      saveMemory(mem);
-    }
-  } catch (e) {
-    console.warn('pruneMemoryByRetention', e.message);
-  }
-}
-
-function buildMemoryBlock() {
-  try {
-    pruneMemoryByRetention();
-    const mem = loadMemory();
-    if (!mem.facts || mem.facts.length === 0) return '';
-    return '\n\nBROWSER MEMORY (remembered facts about this user — use naturally):\n' +
-      mem.facts.map((f) => `- ${f.content}${f.sourceUrl ? ` (source: ${f.sourceUrl})` : ''}`).join('\n');
-  } catch { return ''; }
-}
-
-// ── Learning Profiles ─────────────────────────────────────────────────────────
-const PROFILE_EXTENSIONS = {
-  default: '',
-  developer: '\n\nPROFILE: Developer\n- Prioritize code accuracy, technical depth, and doc links.\n- Use code blocks liberally. Compare tools. Walk through debugging systematically.',
-  researcher: '\n\nPROFILE: Researcher\n- Prioritize accuracy, sources, and analytical depth over brevity.\n- Always cite sources. Challenge assumptions. Flag uncertain or contested claims.',
-  creator: '\n\nPROFILE: Creator\n- Help with writing, design thinking, and creative tasks.\n- Be generative — offer variations and unexpected angles. Polish tone and clarity.'
-};
-
-function buildProfileBlock() {
-  try {
-    const cfg = loadConfig();
-    return PROFILE_EXTENSIONS[cfg.aiProfile] || '';
-  } catch { return ''; }
-}
-
-// ── Parse and save <navio-memory> blocks from AI responses ───────────────────
-function extractAndSaveMemory(content) {
-  if (!content || typeof content !== 'string') return;
-  const match = content.match(/<navio-memory>([\s\S]*?)<\/navio-memory>/i);
-  if (!match) return;
-  const facts = match[1].split('\n')
-    .map(l => l.trim())
-    .filter(l => l.startsWith('save:'))
-    .map(l => l.slice(5).trim())
-    .filter(Boolean);
-  if (facts.length === 0) return;
-  const mem = loadMemory();
-  if (!mem.facts) mem.facts = [];
-  let changed = false;
-  for (const fact of facts) {
-    let content = fact;
-    let sourceUrl = '';
-    const urlM = String(fact).match(/\|\s*url\s*=\s*(\S+)/i);
-    if (urlM) {
-      content = String(fact).replace(/\|\s*url\s*=\s*\S+/i, '').trim();
-      sourceUrl = urlM[1];
-    }
-    if (!mem.facts.find(f => f.content === content)) {
-      mem.facts.push({
-        id: Date.now() + Math.random(),
-        content,
-        type: 'auto',
-        category: 'general',
-        sourceUrl: sourceUrl || undefined,
-        createdAt: new Date().toISOString()
-      });
-      changed = true;
-    }
-  }
-  if (changed) saveMemory(mem);
-}
-
-// ── Memory IPC ───────────────────────────────────────────────────────────────
-ipcMain.handle('memory-get', () => {
-  pruneMemoryByRetention();
-  return loadMemory();
-});
-ipcMain.handle('memory-add', (_, { content }) => {
-  const mem = loadMemory();
-  if (!mem.facts) mem.facts = [];
-  if (!content || mem.facts.find(f => f.content === content)) return { ok: false };
-  mem.facts.push({ id: Date.now(), content, type: 'manual', createdAt: new Date().toISOString() });
-  saveMemory(mem);
-  return { ok: true };
-});
-ipcMain.handle('memory-delete', (_, { id }) => {
-  const mem = loadMemory();
-  mem.facts = (mem.facts || []).filter(f => String(f.id) !== String(id));
-  saveMemory(mem);
-  return { ok: true };
-});
-ipcMain.handle('memory-clear', () => {
-  saveMemory({ facts: [] });
-  return { ok: true };
-});
-
-ipcMain.handle('memory-search', (_, { query }) => {
-  const q = (query || '').toLowerCase().trim();
-  pruneMemoryByRetention();
-  const mem = loadMemory();
-  const facts = mem.facts || [];
-  if (!q) return { facts };
-  return {
-    facts: facts.filter((f) => {
-      const blob = `${f.content || ''} ${f.sourceUrl || ''} ${f.category || ''}`.toLowerCase();
-      return blob.includes(q);
-    })
-  };
-});
+// Memory functions and IPC handlers moved to ./memory-ipc.js.
+registerMemoryIpc(ipcMain, { loadConfig });
 
 // Replaces ONLY the first system message with NAVIO_SYSTEM_PROMPT + memory + profile.
 // Other system messages (page context, selection, tab list, etc.) are preserved.
@@ -822,8 +697,8 @@ function buildPredictaAppendix(cfg) {
 }
 
 function injectSystemPrompt(messages) {
-  const memBlock = buildMemoryBlock();
-  const profileBlock = buildProfileBlock();
+  const memBlock = buildMemoryBlock(loadConfig);
+  const profileBlock = buildProfileBlock(loadConfig);
   const cfg = loadConfig();
   const predictaAppendix = buildPredictaAppendix(cfg);
   let basePrompt = cfg.aiUseToolCalling !== false ? NAVIO_SYSTEM_PROMPT : NAVIO_SYSTEM_PROMPT_LEGACY;
@@ -913,60 +788,8 @@ function navioOpenerOriginFromGuest(guestContents) {
   return '';
 }
 
-function navioIsExternalProtocolUrl(url) {
-  return /^(mailto|tel|sms|callto|wtai|market|ms-windows-store):/i.test(url || '');
-}
-
-/**
- * Windows / Google sometimes emit "open in Edge/Chrome/…" handoff URLs instead of plain https.
- * If we do not rewrite them, Chromium hands the protocol off to the OS default browser and
- * OAuth leaves Navio entirely (e.g. Vercel "Sign in with Google").
- */
-function navioExtractHttpsFromBrowserHandoffUrl(url) {
-  const raw = String(url || '').trim();
-  if (!raw) return null;
-  const direct =
-    /^(?:microsoft-edge(?:-holographic)?|googlechrome|cometbrowser|comet|brave|vivaldi|firefox):(?:\/\/|)(https?:\/\/[^\s'"]+)/i.exec(
-      raw
-    );
-  if (direct) return direct[2];
-
-  const lower = raw.toLowerCase();
-  if (
-    lower.startsWith('microsoft-edge:') ||
-    lower.startsWith('microsoft-edge-holographic:') ||
-    lower.startsWith('googlechrome:')
-  ) {
-    try {
-      const qIdx = raw.indexOf('?');
-      if (qIdx !== -1) {
-        const params = new URLSearchParams(raw.slice(qIdx + 1));
-        const uq = params.get('url');
-        if (uq && /^https?:\/\//i.test(uq)) return decodeURIComponent(uq);
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-  return null;
-}
-
-function navioNormalizeTabOpenUrl(url) {
-  const raw0 = String(url || '').trim();
-  const raw = navioExtractHttpsFromBrowserHandoffUrl(raw0) || raw0;
-  if (!raw) return 'about:blank';
-  if (raw === 'about:blank') return raw;
-  if (navioIsExternalProtocolUrl(raw)) return null;
-  try {
-    const u = new URL(raw);
-    if (u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'file:') {
-      return u.href;
-    }
-  } catch {
-    /* ignore */
-  }
-  return null;
-}
+// navioIsExternalProtocolUrl, navioExtractHttpsFromBrowserHandoffUrl, navioNormalizeTabOpenUrl
+// are now imported from ./navio-url-utils at the top of this file.
 
 /** Parse width= / height= from window.open(..., 'features') for popup heuristics. */
 function navioPopupDimsFromFeatures(feat) {
@@ -1316,7 +1139,7 @@ function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       webviewTag: true,
-      sandbox: false
+      sandbox: true
     }
   });
 
@@ -9215,481 +9038,24 @@ ipcMain.handle('scan-email-inbox', async (event, { webContentsId }) => {
 });
 // ─────────────────────────────────────────────────────────────────────────────
 
-ipcMain.handle('detect-browsers', async () => {
-  const browsers = [];
-  const localAppData = process.env.LOCALAPPDATA || '';
-  const appData = process.env.APPDATA || '';
-
-  const candidates = [
-    { id: 'chrome', name: 'Google Chrome', bookmarks: path.join(localAppData, 'Google', 'Chrome', 'User Data', 'Default', 'Bookmarks') },
-    { id: 'edge', name: 'Microsoft Edge', bookmarks: path.join(localAppData, 'Microsoft', 'Edge', 'User Data', 'Default', 'Bookmarks') },
-    { id: 'brave', name: 'Brave', bookmarks: path.join(localAppData, 'BraveSoftware', 'Brave-Browser', 'User Data', 'Default', 'Bookmarks') },
-    { id: 'opera', name: 'Opera', bookmarks: path.join(appData, 'Opera Software', 'Opera Stable', 'Bookmarks') },
-    { id: 'vivaldi', name: 'Vivaldi', bookmarks: path.join(localAppData, 'Vivaldi', 'User Data', 'Default', 'Bookmarks') }
-  ];
-
-  for (const b of candidates) {
-    try {
-      if (fs.existsSync(b.bookmarks)) {
-        const data = JSON.parse(fs.readFileSync(b.bookmarks, 'utf-8'));
-        const count = countBookmarks(data.roots);
-        browsers.push({ id: b.id, name: b.name, path: b.bookmarks, bookmarkCount: count });
-      }
-    } catch (e) {
-      /* skip */
-    }
-  }
-  return browsers;
-});
-
-function countBookmarks(roots) {
-  let count = 0;
-  function walk(node) {
-    if (!node) return;
-    if (node.type === 'url') {
-      count++;
-      return;
-    }
-    if (node.children) node.children.forEach(walk);
-    if (typeof node === 'object' && !node.type && !node.children) {
-      Object.values(node).forEach((v) => {
-        if (v && typeof v === 'object') walk(v);
-      });
-    }
-  }
-  walk(roots);
-  return count;
-}
-
-ipcMain.handle('import-bookmarks', async (event, browserPath) => {
-  try {
-    const data = JSON.parse(fs.readFileSync(browserPath, 'utf-8'));
-    const bookmarks = [];
-    function extract(node, folder) {
-      if (!node) return;
-      if (node.type === 'url') {
-        bookmarks.push({ title: node.name, url: node.url, folder });
-        return;
-      }
-      const folderName = node.name || folder;
-      if (node.children) node.children.forEach((c) => extract(c, folderName));
-      if (typeof node === 'object' && !node.type && !node.children) {
-        Object.values(node).forEach((v) => {
-          if (v && typeof v === 'object') extract(v, folder);
-        });
-      }
-    }
-    extract(data.roots, 'root');
-    return { bookmarks };
-  } catch (e) {
-    return { error: e.message };
-  }
-});
+// detect-browsers and import-bookmarks moved to ./browser-import-ipc.js
+registerBrowserImportIpc(ipcMain);
 
 // Filesystem / download-folder IPCs moved to electron/file-ipc.js.
 // The set: get-downloads-path, open-downloads-folder, show-in-folder,
 // open-file-path, navio-path-to-file-url.
 require('./file-ipc').registerFileIpc(ipcMain, { app, shell });
 
-// ── Reading List ───────────────────────────────────────────────────────────
-// Entries: [ { url, title, favicon, added, read } ] in <userData>/navio-reading-list.json
+// Reading list IPC moved to ./reading-list-ipc.js
+registerReadingListIpc(ipcMain);
 
-function _rlPath() { return path.join(app.getPath('userData'), 'navio-reading-list.json'); }
-function _rlLoad() { try { return JSON.parse(fs.readFileSync(_rlPath(), 'utf8')); } catch { return []; } }
-function _rlSave(list) { fs.writeFileSync(_rlPath(), JSON.stringify(list, null, 2), 'utf8'); }
+// Password vault IPC moved to ./passwords-ipc.js
+// maybeImportOemStremioCredentials is imported from ./passwords-ipc.js and called in app.whenReady().
+registerPasswordsIpc(ipcMain);
 
-ipcMain.handle('reading-list-add', (_, { url, title, favicon }) => {
-  try {
-    const list = _rlLoad();
-    if (list.some(e => e.url === url)) return { ok: true, added: false };
-    list.unshift({ url, title: title || url, favicon: favicon || null, added: new Date().toISOString(), read: false });
-    if (list.length > 1000) list.splice(1000);
-    _rlSave(list);
-    return { ok: true, added: true };
-  } catch (e) { return { ok: false, error: e.message }; }
-});
 
-ipcMain.handle('reading-list-get', () => {
-  try { return { ok: true, list: _rlLoad() }; }
-  catch (e) { return { ok: false, error: e.message }; }
-});
-
-ipcMain.handle('reading-list-remove', (_, { url }) => {
-  try {
-    _rlSave(_rlLoad().filter(e => e.url !== url));
-    return { ok: true };
-  } catch (e) { return { ok: false, error: e.message }; }
-});
-
-ipcMain.handle('reading-list-mark-read', (_, { url }) => {
-  try {
-    const list = _rlLoad();
-    const item = list.find(e => e.url === url);
-    if (item) { item.read = true; _rlSave(list); }
-    return { ok: true };
-  } catch (e) { return { ok: false, error: e.message }; }
-});
-
-// ── Password vault ─────────────────────────────────────────────────────────
-// Credentials are stored in <userData>/navio-passwords.json.
-// Passwords are encrypted with Electron's safeStorage (OS keychain / DPAPI).
-
-function _pwdVaultPath() {
-  return path.join(app.getPath('userData'), 'navio-passwords.json');
-}
-
-function _pwdLoad() {
-  try { return JSON.parse(fs.readFileSync(_pwdVaultPath(), 'utf8')); } catch { return {}; }
-}
-
-function _pwdSave(vault) {
-  fs.writeFileSync(_pwdVaultPath(), JSON.stringify(vault, null, 2), 'utf8');
-}
-
-function _pwdEncrypt(val) {
-  const { safeStorage } = require('electron');
-  if (safeStorage.isEncryptionAvailable()) return safeStorage.encryptString(val).toString('base64');
-  return Buffer.from(val, 'utf8').toString('base64');
-}
-
-function _pwdDecrypt(enc) {
-  const { safeStorage } = require('electron');
-  const buf = Buffer.from(enc, 'base64');
-  try {
-    if (safeStorage.isEncryptionAvailable()) return safeStorage.decryptString(buf);
-    return buf.toString('utf8');
-  } catch { return ''; }
-}
-
-function _pwdOrigin(url) {
-  try { return new URL(url).origin; } catch { return url; }
-}
-
-/** Origins where we allow managed (hidden-from-UI) vault rows and silent autofill. */
-const STREMIO_MANAGED_ORIGINS = new Set([
-  'https://web.stremio.com',
-  'https://www.stremio.com',
-  'https://app.stremio.com'
-]);
-
-function _pwdOriginAllowsHiddenManaged(origin) {
-  return STREMIO_MANAGED_ORIGINS.has(origin);
-}
-
-function _pwdUpsertEntry(vault, origin, username, password, { hidden } = {}) {
-  if (!vault[origin]) vault[origin] = [];
-  const idx = vault[origin].findIndex((e) => e.username === username);
-  const entry = {
-    username,
-    password: _pwdEncrypt(password),
-    created: new Date().toISOString(),
-    ...(hidden ? { hidden: true } : {})
-  };
-  if (idx >= 0) vault[origin][idx] = entry;
-  else vault[origin].push(entry);
-}
-
-/**
- * OEM / release pipeline: drop `oem-stremio-credentials.json` next to the app
- * (resources/ when packaged) or in userData once; it is deleted after a successful import.
- * Shape: { "email": "...", "password": "..." } (username also accepted).
- */
-function maybeImportOemStremioCredentials() {
-  const candidates = [
-    path.join(process.resourcesPath || '', 'oem-stremio-credentials.json'),
-    path.join(app.getPath('userData'), 'oem-stremio-credentials.json')
-  ];
-  for (const p of candidates) {
-    if (!p || !fs.existsSync(p)) continue;
-    try {
-      const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
-      const username = String(raw.email || raw.username || raw.user || '').trim();
-      const password = String(raw.password || raw.pass || '').trim();
-      if (!username || !password) {
-        console.warn('[navio] OEM Stremio file missing email or password:', p);
-        try {
-          fs.unlinkSync(p);
-        } catch {
-          /* ignore */
-        }
-        continue;
-      }
-      const origin = 'https://web.stremio.com';
-      const vault = _pwdLoad();
-      _pwdUpsertEntry(vault, origin, username, password, { hidden: true });
-      _pwdSave(vault);
-      try {
-        fs.unlinkSync(p);
-      } catch {
-        /* ignore */
-      }
-      console.log('[navio] Imported managed Stremio login (OEM file removed).');
-      return;
-    } catch (e) {
-      console.warn('[navio] OEM Stremio import failed:', p, e.message);
-    }
-  }
-}
-
-ipcMain.handle('passwords-save', (_, { url, username, password, hidden }) => {
-  try {
-    const vault = _pwdLoad();
-    const origin = _pwdOrigin(url);
-    if (hidden === true && !_pwdOriginAllowsHiddenManaged(origin)) {
-      return { ok: false, error: 'Managed hidden passwords are only supported for Stremio.' };
-    }
-    _pwdUpsertEntry(vault, origin, username, password, { hidden: hidden === true });
-    _pwdSave(vault);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-ipcMain.handle('passwords-list', () => {
-  try {
-    const vault = _pwdLoad();
-    const entries = [];
-    for (const [origin, list] of Object.entries(vault)) {
-      for (const e of list) {
-        if (e.hidden) continue;
-        entries.push({ origin, username: e.username, created: e.created });
-      }
-    }
-    return { ok: true, entries };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-ipcMain.handle('passwords-get', (_, { url }) => {
-  try {
-    const vault = _pwdLoad();
-    const origin = _pwdOrigin(url);
-    const list = vault[origin] || [];
-    const rows = list.map((e) => ({
-      username: e.username,
-      password: _pwdDecrypt(e.password),
-      created: e.created,
-      hidden: !!e.hidden
-    }));
-    rows.sort((a, b) => Number(!!b.hidden) - Number(!!a.hidden));
-    return { ok: true, entries: rows };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-ipcMain.handle('passwords-delete', (_, { origin, username }) => {
-  try {
-    const vault = _pwdLoad();
-    if (vault[origin]) {
-      vault[origin] = vault[origin].filter(e => e.username !== username);
-      if (!vault[origin].length) delete vault[origin];
-    }
-    _pwdSave(vault);
-    return { ok: true };
-  } catch (e) { return { ok: false, error: e.message }; }
-});
-
-ipcMain.handle('passwords-export-csv', () => {
-  try {
-    const vault = _pwdLoad();
-    const rows = ['name,url,username,password'];
-    for (const [origin, list] of Object.entries(vault)) {
-      const site = origin.replace(/^https?:\/\//, '');
-      for (const e of list) {
-        if (e.hidden) continue;
-        const pwd = _pwdDecrypt(e.password);
-        rows.push(`"${site}","${origin}","${e.username.replace(/"/g, '""')}","${pwd.replace(/"/g, '""')}"`);
-      }
-    }
-    return { ok: true, csv: rows.join('\n') };
-  } catch (e) { return { ok: false, error: e.message }; }
-});
-
-ipcMain.handle('passwords-import-csv', (_, { csv }) => {
-  try {
-    const vault = _pwdLoad();
-    const lines = csv.split('\n');
-    let imported = 0;
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      // Minimal RFC-4180 CSV parse
-      const parts = [];
-      let cur = '', inQ = false;
-      for (const ch of line + ',') {
-        if (ch === '"') { inQ = !inQ; continue; }
-        if (ch === ',' && !inQ) { parts.push(cur); cur = ''; continue; }
-        cur += ch;
-      }
-      if (parts.length < 4) continue;
-      // Chrome format: name, url, username, password
-      const [, rawUrl, username, password] = parts;
-      if (!rawUrl || !username || !password) continue;
-      try {
-        const origin = _pwdOrigin(rawUrl);
-        if (!vault[origin]) vault[origin] = [];
-        const idx = vault[origin].findIndex(e => e.username === username);
-        const entry = { username, password: _pwdEncrypt(password), created: new Date().toISOString() };
-        if (idx >= 0) vault[origin][idx] = entry; else vault[origin].push(entry);
-        imported++;
-      } catch {}
-    }
-    _pwdSave(vault);
-    return { ok: true, imported };
-  } catch (e) { return { ok: false, error: e.message }; }
-});
-
-ipcMain.handle('show-webview-context-menu', (event, { webContentsId, x, y, params }) => {
-  try {
-    const wc = electronWebContents.fromId(webContentsId);
-    if (!wc) return;
-
-    const menu = new Menu();
-    const openInNewTabPayload = (url) => {
-      if (!url || !mainWindow) return;
-      if (navioIsExternalProtocolUrl(url)) {
-        try {
-          shell.openExternal(url);
-        } catch {
-          /* ignore */
-        }
-        return;
-      }
-      const openUrl = navioNormalizeTabOpenUrl(url);
-      if (!openUrl) return;
-      try {
-        const incognito = wc.session === session.fromPartition(NAVIO_PARTITION_INCOGNITO);
-        mainWindow.webContents.send('open-url-in-new-tab', { url: openUrl, incognito });
-      } catch {
-        mainWindow.webContents.send('open-url-in-new-tab', { url: openUrl, incognito: false });
-      }
-    };
-
-    if (params.selectionText) {
-      const selText = params.selectionText.trim();
-      menu.append(new MenuItem({ label: 'Copy', role: 'copy', click: () => wc.copy() }));
-      if (selText.length > 0) {
-        const preview = selText.length > 40 ? selText.slice(0, 40) + '…' : selText;
-        const cfg = loadConfig();
-        const se = cfg.searchEngine || 'https://www.google.com/search?q=';
-        menu.append(new MenuItem({
-          label: `Search for "${preview}"`,
-          click: () => openInNewTabPayload(se + encodeURIComponent(selText.slice(0, 500)))
-        }));
-      }
-      menu.append(new MenuItem({ type: 'separator' }));
-    }
-    if (params.isEditable) {
-      menu.append(new MenuItem({ label: 'Cut', role: 'cut', click: () => wc.cut() }));
-      menu.append(new MenuItem({ label: 'Copy', role: 'copy', click: () => wc.copy() }));
-      menu.append(new MenuItem({ label: 'Paste', role: 'paste', click: () => wc.paste() }));
-      menu.append(new MenuItem({ label: 'Select All', role: 'selectAll', click: () => wc.selectAll() }));
-      menu.append(new MenuItem({ type: 'separator' }));
-    }
-    if (params.linkURL) {
-      menu.append(new MenuItem({
-        label: 'Open Link in New Tab',
-        click: () => openInNewTabPayload(params.linkURL)
-      }));
-      menu.append(new MenuItem({
-        label: 'Copy Link Address',
-        click: () => clipboard.writeText(params.linkURL)
-      }));
-      menu.append(new MenuItem({ type: 'separator' }));
-    }
-    if (params.mediaType === 'image' && params.srcURL) {
-      menu.append(new MenuItem({
-        label: 'Open Image in New Tab',
-        click: () => openInNewTabPayload(params.srcURL)
-      }));
-      menu.append(new MenuItem({
-        label: 'Copy Image',
-        click: () => { try { wc.copyImageAt(x, y); } catch { clipboard.writeText(params.srcURL); } }
-      }));
-      menu.append(new MenuItem({
-        label: 'Save Image As…',
-        click: () => { try { wc.downloadURL(params.srcURL); } catch { /* ignore */ } }
-      }));
-      menu.append(new MenuItem({ type: 'separator' }));
-    }
-
-    try {
-      const pageUrl = (params && params.pageURL) || wc.getURL() || '';
-      if (/^https?:\/\//i.test(pageUrl)) {
-        const tl = resolveTranslateTargetLang(app, loadConfig());
-        const trUrl =
-          'https://translate.google.com/translate?sl=auto&tl=' +
-          encodeURIComponent(tl) +
-          '&u=' +
-          encodeURIComponent(pageUrl);
-        menu.append(
-          new MenuItem({
-            label: 'Translate page',
-            click: () => openInNewTabPayload(trUrl)
-          })
-        );
-        menu.append(new MenuItem({ type: 'separator' }));
-      }
-    } catch {
-      /* ignore */
-    }
-
-    menu.append(new MenuItem({ label: 'Back', click: () => { if (wcCanGoBack(wc)) wc.goBack(); }, enabled: wcCanGoBack(wc) }));
-    menu.append(new MenuItem({ label: 'Forward', click: () => { if (wcCanGoForward(wc)) wc.goForward(); }, enabled: wcCanGoForward(wc) }));
-    menu.append(new MenuItem({ label: 'Reload', click: () => wc.reload() }));
-    menu.append(new MenuItem({
-      label: 'Print…',
-      click: () => wc.print({ silent: false, printBackground: true })
-    }));
-
-    try {
-      const srcUrl = wc.getURL();
-      if (/^https?:\/\//i.test(srcUrl)) {
-        menu.append(new MenuItem({
-          label: 'View Page Source',
-          click: () => openInNewTabPayload(`view-source:${srcUrl}`)
-        }));
-      }
-    } catch { /* ignore */ }
-
-    try {
-      const curZoom = wc.getZoomFactor();
-      const zoomSub = new Menu();
-      zoomSub.append(new MenuItem({
-        label: 'Zoom In',
-        click: () => {
-          wc.setZoomFactor(Math.min(3, curZoom + 0.1));
-          mainWindow.webContents.send('shortcut', 'refresh-zoom-label');
-        }
-      }));
-      zoomSub.append(new MenuItem({
-        label: 'Zoom Out',
-        click: () => {
-          wc.setZoomFactor(Math.max(0.25, curZoom - 0.1));
-          mainWindow.webContents.send('shortcut', 'refresh-zoom-label');
-        }
-      }));
-      zoomSub.append(new MenuItem({
-        label: `Reset Zoom (${Math.round(curZoom * 100)}%)`,
-        click: () => {
-          wc.setZoomFactor(1);
-          mainWindow.webContents.send('shortcut', 'refresh-zoom-label');
-        }
-      }));
-      menu.append(new MenuItem({ label: 'Zoom', submenu: zoomSub }));
-    } catch { /* ignore */ }
-
-    menu.append(new MenuItem({ type: 'separator' }));
-    menu.append(new MenuItem({ label: 'Inspect Element', click: () => wc.openDevTools({ mode: 'detach' }) }));
-
-    menu.popup({ window: mainWindow });
-  } catch (e) {
-    console.error('context-menu error:', e.message);
-  }
-});
+// Webview context menu moved to ./context-menu-ipc.js
+registerContextMenuIpc(ipcMain, { getMainWindow: () => mainWindow, loadConfig, app });
 
 registerBookmarksIpc(ipcMain, { app, loadConfig });
 registerHistoryIpc(ipcMain, { app });
@@ -9735,29 +9101,7 @@ app.whenReady().then(async () => {
   registerAgentPlanIpc(ipcMain, { store });
   registerMcpIpc(ipcMain, loadConfig, saveConfig);
 
-  ipcMain.handle('search-suggestions', async (_, { q, searchEngine }) => {
-    if (!q || q.length < 2) return [];
-    try {
-      const se = String(searchEngine || '').toLowerCase();
-      let apiUrl;
-      if (se.includes('bing.com')) {
-        apiUrl = `https://api.bing.com/qsonhs.aspx?q=${encodeURIComponent(q)}`;
-      } else if (se.includes('duckduckgo.com')) {
-        apiUrl = `https://ac.duckduckgo.com/ac/?q=${encodeURIComponent(q)}&type=list`;
-      } else {
-        apiUrl = `https://suggestqueries.google.com/complete/search?client=firefox&q=${encodeURIComponent(q)}`;
-      }
-      const res = await net.fetch(apiUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
-      });
-      if (!res.ok) return [];
-      const data = await res.json();
-      const suggestions = Array.isArray(data[1]) ? data[1] : [];
-      return suggestions.slice(0, 6).map(s => String(s));
-    } catch {
-      return [];
-    }
-  });
+  registerSearchSuggestionsIpc(ipcMain);
   registerSchedulerIpc(ipcMain);
 
   // Initialize MCP connections from persisted config
