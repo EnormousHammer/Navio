@@ -1670,11 +1670,89 @@ ipcMain.handle('open-devtools-active', (event, webContentsId) => {
   return { ok: false, error: 'WebContents not found' };
 });
 
+/**
+ * Resolve provider-specific reasoning / extended-thinking parameters from the
+ * configured `aiReasoningEffort` and the active model's known capabilities.
+ *
+ * Returns one of:
+ *   { provider: 'openai',    reasoning_effort: 'low'|'medium'|'high' }
+ *   { provider: 'anthropic', thinking: { type: 'enabled', budget_tokens: N }, beta?: 'interleaved-thinking-2025-05-14' }
+ *   { provider: 'google',    thinkingConfig: { thinkingBudget: N, includeThoughts: false } }
+ *   null (no reasoning params should be sent — model does not support thinking,
+ *         provider is unknown, or the user explicitly chose 'off')
+ *
+ * Capability detection is **conservative by name pattern** so we never send a
+ * param that 400s the request. New model families that follow existing prefixes
+ * (gpt-5*, o-series, claude-opus/sonnet/haiku-4*, claude-3-7*, gemini-2.5/3.x)
+ * are auto-eligible. Unknown / older models silently get no reasoning params.
+ */
+function navioReasoningParamsForRequest(cfg, model) {
+  const provider = cfg.aiProvider || 'openai';
+  let effort = String(cfg.aiReasoningEffort || 'auto').toLowerCase();
+  if (effort === 'off') return null;
+  if (!['auto', 'low', 'medium', 'high'].includes(effort)) effort = 'auto';
+
+  const m = String(model || '').toLowerCase();
+
+  // ── OpenAI / custom OpenAI-compatible (Chat Completions reasoning_effort) ──
+  if (provider === 'openai' || provider === 'custom' || provider === 'ollama') {
+    const isOSeries = /^o[1-9]/.test(m);
+    const isGpt5 = /^gpt-?5/.test(m);
+    if (!isOSeries && !isGpt5) return null;
+    let chosen = effort === 'auto' ? 'medium' : effort;
+    return { provider: 'openai', reasoning_effort: chosen };
+  }
+
+  // ── Anthropic extended thinking ──
+  if (provider === 'anthropic') {
+    const supports =
+      /^claude-opus-4/.test(m) ||
+      /^claude-sonnet-4/.test(m) ||
+      /^claude-haiku-4/.test(m) ||
+      /^claude-3-7-sonnet/.test(m) ||
+      /^claude-4/.test(m);
+    if (!supports) return null;
+    const budget =
+      effort === 'low' ? 2000 :
+      effort === 'high' ? 16000 :
+      8000; // 'medium' or 'auto'
+    return {
+      provider: 'anthropic',
+      thinking: { type: 'enabled', budget_tokens: budget },
+      // Interleaved thinking lets Claude reason between tool calls — much
+      // better agentic behavior. Beta header is harmless on non-tool calls.
+      beta: 'interleaved-thinking-2025-05-14'
+    };
+  }
+
+  // ── Gemini thinkingConfig (2.5+ only; 2.0-flash and 1.5 don't support it) ──
+  if (provider === 'google') {
+    const supports =
+      /^gemini-2\.5/.test(m) ||
+      /^gemini-2\.6/.test(m) ||
+      /^gemini-3/.test(m) ||
+      /^gemini-pro-3/.test(m);
+    if (!supports) return null;
+    const budget =
+      effort === 'low' ? 2048 :
+      effort === 'high' ? 24576 :
+      8192; // 'medium' or 'auto'
+    return {
+      provider: 'google',
+      thinkingConfig: { thinkingBudget: budget, includeThoughts: false }
+    };
+  }
+
+  return null;
+}
+
 async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) {
   const provider = cfg.aiProvider || 'openai';
   const model = cfg.aiModel || 'gpt-5.4';
   const endpoint = cfg.customEndpoint || '';
   const ntpBrief = !!fetchOpts.ntpBrief;
+  // NTP brief stays a fast non-reasoning path; everywhere else honors aiReasoningEffort.
+  const reasoning = ntpBrief ? null : navioReasoningParamsForRequest(cfg, model);
 
   let url;
   let headers;
@@ -1705,6 +1783,9 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
     } else if (ntpBrief) {
       bodyObj.temperature = 0.55;
     }
+    if (reasoning && reasoning.provider === 'openai') {
+      bodyObj.reasoning_effort = reasoning.reasoning_effort;
+    }
     body = JSON.stringify(bodyObj);
   } else if (provider === 'anthropic') {
     messages = normalizeMessagesForAnthropic(messages);
@@ -1725,6 +1806,22 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
     };
     if (fetchOpts.tools && !ntpBrief) {
       anthropicBody.tools = toAnthropicTools(fetchOpts.tools);
+    }
+    if (reasoning && reasoning.provider === 'anthropic') {
+      anthropicBody.thinking = reasoning.thinking;
+      // Thinking requires temperature=1 and disallows top_p/top_k.
+      // Navio doesn't set those, so this is just a defensive cleanup.
+      delete anthropicBody.temperature;
+      delete anthropicBody.top_p;
+      delete anthropicBody.top_k;
+      // Budget must leave room for the model reply on top of thinking.
+      const need = (anthropicBody.thinking.budget_tokens || 0) + 1024;
+      if ((anthropicBody.max_tokens || 0) < need) {
+        anthropicBody.max_tokens = need;
+      }
+      if (reasoning.beta) {
+        headers['anthropic-beta'] = reasoning.beta;
+      }
     }
     body = JSON.stringify(anthropicBody);
   } else if (provider === 'google') {
@@ -1779,6 +1876,9 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
       geminiBody.generationConfig = { maxOutputTokens: 900, temperature: 0.55 };
     } else {
       geminiBody.generationConfig = { maxOutputTokens: 16384 };
+    }
+    if (reasoning && reasoning.provider === 'google') {
+      geminiBody.generationConfig.thinkingConfig = reasoning.thinkingConfig;
     }
     body = JSON.stringify(geminiBody);
   } else if (provider === 'ollama') {

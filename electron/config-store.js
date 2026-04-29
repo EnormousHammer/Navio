@@ -34,6 +34,18 @@ const DEFAULT_CONFIG = {
   aiRedactPII: true,
   aiKillSwitch: false,
   aiStreamResponses: true,
+  /**
+   * Reasoning / extended-thinking budget passed to the active provider.
+   *   'off'    — no reasoning params sent (legacy non-thinking behavior).
+   *   'low'    — small thinking budget (faster, cheaper, modest depth).
+   *   'medium' — balanced (default for capable models).
+   *   'high'   — long thinking budget (best quality, more tokens, slower).
+   *   'auto'   — Navio enables 'medium' on reasoning-capable models (GPT-5/o-series,
+   *              Claude 4 family + 3.7 Sonnet, Gemini 2.5/3.x); no params on others.
+   * Has no effect on the NTP "brief" path (kept fast). Backward-compatible: existing
+   * installs default to 'auto'; setting 'off' restores prior behavior exactly.
+   */
+  aiReasoningEffort: 'auto',
   aiProactivity: 'off',
   shortcuts: {},
   extensionsAllowAI: false,

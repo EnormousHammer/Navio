@@ -999,6 +999,11 @@ class AssistantManagerClass {
     this._workflowRecording = false;
     this._recordedSteps = [];
 
+    // ── Memory popover (header memory button) ─────────────────────────────
+    // Surfaces what Navio remembers about the user inline in the assistant
+    // panel so personalization feels real instead of buried in Settings.
+    this._bindMemoryPopover();
+
     this.inputEl?.addEventListener('keydown', (e) => {
       // Skip IME composition (Enter confirms Japanese/Chinese input — do not submit early).
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
@@ -4555,7 +4560,15 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       }
     }
 
-    if (!isQuickAction && config.assistantTabDigest && typeof TabManager !== 'undefined') {
+    // Tab digest fires when the user opted in via setting OR when this turn's wording
+    // clearly asks about open tabs as a group ("summarize my tabs", "what's open", etc).
+    // Without this auto-trigger the model only sees titles+URLs and has to read_page
+    // each tab one at a time — Comet-class browsers infer this implicitly.
+    const wantsTabDigestThisTurn =
+      !isQuickAction &&
+      typeof TabManager !== 'undefined' &&
+      (config.assistantTabDigest || this._userWantsAllTabsDigest(text));
+    if (wantsTabDigestThisTurn) {
       const digest = await this._buildTabDigestBlock();
       if (digest) messages.push({ role: 'system', content: digest });
     }
@@ -5224,7 +5237,12 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       }
     }
 
-    if (config.assistantTabDigest && typeof TabManager !== 'undefined') {
+    // Same auto-trigger as the primary path: digest fires for explicit setting OR
+    // when the user clearly asks about all open tabs as a group.
+    if (
+      typeof TabManager !== 'undefined' &&
+      (config.assistantTabDigest || this._userWantsAllTabsDigest(text))
+    ) {
       const digest = await this._buildTabDigestBlock();
       if (digest) messages.push({ role: 'system', content: digest });
     }
@@ -5837,6 +5855,12 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         { role: 'assistant', content: response.content }
       );
       this._trimHistory();
+      // If the AI emitted a <navio-memory>save:...</navio-memory> block,
+      // main.js#extractAndSaveMemory has already persisted it. Refresh the
+      // header badge so the user sees the count tick up live.
+      if (typeof response.content === 'string' && /<navio-memory>/i.test(response.content)) {
+        void this._refreshMemoryCountBadge();
+      }
       const graphTab = this._tabForTurnContext();
       await window.navio.contextGraph({
         op: 'addTurn',
@@ -6126,6 +6150,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         { role: 'assistant', content: buffer }
       );
       this._trimHistory();
+      // Live-update the memory header badge if this response saved a fact.
+      if (typeof buffer === 'string' && /<navio-memory>/i.test(buffer)) {
+        void this._refreshMemoryCountBadge();
+      }
       // Notify user if they're on a different tab when this response finishes
       this._showBackgroundCompletionToast(sk);
       const graphTab = this._tabForTurnContext();
@@ -6404,6 +6432,41 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       }
     }
     return urls.slice(0, 12);
+  }
+
+  /**
+   * Detect when the user is clearly asking about all of their open tabs as a set,
+   * even though they didn't @mention specific ones or use comparison wording.
+   * These queries should auto-trigger tab digest regardless of the user's
+   * `assistantTabDigest` setting — otherwise the model only sees titles+URLs and
+   * has to either guess or call read_page on each tab one at a time.
+   *
+   * Conservative on purpose: must clearly reference "tabs/pages/things open" as a
+   * group. Single-tab questions like "summarize this page" fall through and use
+   * the normal active-page excerpt.
+   */
+  _userWantsAllTabsDigest(text) {
+    if (!text || typeof text !== 'string') return false;
+    const s = text.toLowerCase();
+    // Plural tabs / "everything open" / "all my tabs" / "my open pages" — clearly a multi-tab ask.
+    const groupRefs =
+      /\b(my|all|every|everything|each|both)\s+(open\s+)?(tabs?|pages?|windows?|sites?|things\s+open)\b/.test(s) ||
+      /\bopen\s+tabs?\b/.test(s) ||
+      /\bin\s+(my|the)\s+tabs?\b/.test(s) ||
+      /\b(across|spanning)\s+(my\s+)?tabs?\b/.test(s) ||
+      /\b(rundown|overview|summary|recap|catch\s*me\s*up|what.?s?\s+(going\s+on|happening))\b.*\b(tabs?|pages?|browser|browsing|windows?)\b/.test(s) ||
+      /\b(tabs?|pages?|browser|browsing|windows?)\b.*\b(rundown|overview|summary|recap)\b/.test(s) ||
+      // "what's open right now" / "what is open" / "everything open" / "show me everything open"
+      // \bwhat.?s?\s+open\b matches "whats", "what's", "what open" (rare typo) at word boundaries.
+      /\bwhat.?s?\s+open\b/.test(s) ||
+      /\bwhat\s+is\s+open\b/.test(s) ||
+      /\beverything\s+open\b/.test(s);
+    if (!groupRefs) return false;
+
+    // Must look like a question / request, not a navigation/click intent.
+    const requestVerb =
+      /\b(summari[sz]e|summary|overview|rundown|recap|brief\s*me|catch\s*me\s*up|tell\s*me\s+(about|what)|what.?s?\s+(in|on|open|happening|going)|what\s+(is|are)\s+(in|on|open|across|happening|going)|what\s+(do\s+i|am\s+i|are\s+(my|these)|sites?|pages?\s+do\s+i)|show\s+me|give\s+me|describe|explain|read|review|compare|gist|highlights?|anything\s+(important|interesting|new))\b/.test(s);
+    return requestVerb;
   }
 
   async _buildTabDigestBlock() {
@@ -9834,6 +9897,152 @@ ${pageInfo}${snapText}`;
       if (aid) void this._syncPanelToTab(aid);
     }
     this._renderSidebarSessionList();
+  }
+
+  // ── Memory Popover ───────────────────────────────────────────────────────
+  // Surfaces remembered facts inline in the assistant header so users can see
+  // and curate what Navio has learned about them. Memory itself is already
+  // injected into every system prompt by main.js#buildMemoryBlock — this UI
+  // just makes it visible/editable without leaving the panel.
+
+  _bindMemoryPopover() {
+    if (this._memoryPopoverBound) return;
+    this._memoryPopoverBound = true;
+    const btn = document.getElementById('btn-assistant-memory');
+    const pop = document.getElementById('navio-memory-popover');
+    if (!btn || !pop) return;
+
+    const closeBtn = document.getElementById('navio-memory-popover-close');
+    const addBtn = document.getElementById('navio-memory-add-btn');
+    const addInput = document.getElementById('navio-memory-add-input');
+
+    const close = () => {
+      pop.hidden = true;
+      btn.setAttribute('aria-expanded', 'false');
+    };
+
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!pop.hidden) {
+        close();
+        return;
+      }
+      pop.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      await this._renderMemoryPopover();
+    });
+
+    closeBtn?.addEventListener('click', () => close());
+
+    // Click outside closes the popover. Listener is added once and stays alive.
+    document.addEventListener('click', (e) => {
+      if (pop.hidden) return;
+      if (pop.contains(e.target) || btn.contains(e.target)) return;
+      close();
+    });
+
+    addBtn?.addEventListener('click', () => this._memoryAddFromInput(addInput));
+    addInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this._memoryAddFromInput(addInput);
+      }
+    });
+
+    // Initial badge so the count is visible even before user opens the popover.
+    void this._refreshMemoryCountBadge();
+  }
+
+  async _memoryAddFromInput(inputEl) {
+    if (!inputEl) return;
+    const v = String(inputEl.value || '').trim();
+    if (!v) return;
+    try {
+      await window.navio.memoryAdd(v);
+      inputEl.value = '';
+      await this._renderMemoryPopover();
+    } catch (e) {
+      navioAssistantDebug('memory add failed', e?.message);
+    }
+  }
+
+  async _renderMemoryPopover() {
+    const list = document.getElementById('navio-memory-list');
+    const empty = document.getElementById('navio-memory-empty');
+    if (!list) return;
+    let mem = { facts: [] };
+    try {
+      mem = (await window.navio.memoryGet()) || { facts: [] };
+    } catch {
+      mem = { facts: [] };
+    }
+    const facts = Array.isArray(mem.facts) ? mem.facts : [];
+    list.innerHTML = '';
+    if (!facts.length) {
+      if (empty) empty.hidden = false;
+    } else {
+      if (empty) empty.hidden = true;
+      // Newest first — users care most about recently learned facts.
+      const sorted = facts.slice().sort((a, b) => {
+        const ta = new Date(a.createdAt || a.timestamp || 0).getTime();
+        const tb = new Date(b.createdAt || b.timestamp || 0).getTime();
+        return tb - ta;
+      });
+      for (const f of sorted) {
+        const li = document.createElement('li');
+        const text = document.createElement('div');
+        text.className = 'nm-text';
+        text.textContent = f.content || '';
+        if (f.sourceUrl) {
+          const meta = document.createElement('span');
+          meta.className = 'nm-meta';
+          let host = '';
+          try { host = new URL(f.sourceUrl).hostname.replace(/^www\./, ''); } catch { host = ''; }
+          meta.textContent = host ? `from ${host}` : 'with source';
+          text.appendChild(meta);
+        }
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'nm-del';
+        del.innerHTML = '&times;';
+        del.title = 'Forget this';
+        del.addEventListener('click', async () => {
+          try {
+            await window.navio.memoryDelete(f.id);
+            await this._renderMemoryPopover();
+          } catch (e) {
+            navioAssistantDebug('memory delete failed', e?.message);
+          }
+        });
+        li.appendChild(text);
+        li.appendChild(del);
+        list.appendChild(li);
+      }
+    }
+    this._updateMemoryCountBadge(facts.length);
+  }
+
+  _updateMemoryCountBadge(n) {
+    const badge = document.getElementById('assistant-memory-count');
+    if (!badge) return;
+    const num = Number(n) || 0;
+    if (num <= 0) {
+      badge.hidden = true;
+      badge.textContent = '0';
+    } else {
+      badge.hidden = false;
+      badge.textContent = num > 99 ? '99+' : String(num);
+    }
+  }
+
+  async _refreshMemoryCountBadge() {
+    try {
+      const mem = await window.navio.memoryGet();
+      const n = Array.isArray(mem?.facts) ? mem.facts.length : 0;
+      this._updateMemoryCountBadge(n);
+    } catch {
+      this._updateMemoryCountBadge(0);
+    }
   }
 
   // ── Macro Recording ──────────────────────────────────────────────────────

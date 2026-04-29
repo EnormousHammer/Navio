@@ -69,6 +69,7 @@ class SettingsManagerClass {
       aiDataScope: document.getElementById('setting-ai-data-scope'),
       aiRedact: document.getElementById('setting-ai-redact'),
       aiStream: document.getElementById('setting-ai-stream'),
+      aiReasoningEffort: document.getElementById('setting-ai-reasoning-effort'),
       aiAutoExecute: document.getElementById('setting-ai-auto-execute'),
       aiAutoScreenshot: document.getElementById('setting-ai-auto-screenshot'),
       aiAgentStepMode: document.getElementById('setting-ai-agent-step-mode'),
@@ -554,6 +555,10 @@ class SettingsManagerClass {
     if (this.elements.aiKillSwitch) this.elements.aiKillSwitch.checked = !!this.config.aiKillSwitch;
     if (this.elements.aiRedact) this.elements.aiRedact.checked = this.config.aiRedactPII !== false;
     if (this.elements.aiStream) this.elements.aiStream.checked = this.config.aiStreamResponses !== false;
+    if (this.elements.aiReasoningEffort) {
+      const eff = String(this.config.aiReasoningEffort || 'auto').toLowerCase();
+      this.elements.aiReasoningEffort.value = ['auto', 'off', 'low', 'medium', 'high'].includes(eff) ? eff : 'auto';
+    }
     if (this.elements.aiAutoExecute) this.elements.aiAutoExecute.checked = !!this.config.aiAutoExecute;
     if (this.elements.aiAutoScreenshot) {
       this.elements.aiAutoScreenshot.checked = !!this.config.aiAutoScreenshotAfterNavigate;
@@ -1519,6 +1524,9 @@ class SettingsManagerClass {
       aiKillSwitch: !!(this.elements.aiKillSwitch && this.elements.aiKillSwitch.checked),
       aiRedactPII: !!(this.elements.aiRedact && this.elements.aiRedact.checked),
       aiStreamResponses: !!(this.elements.aiStream && this.elements.aiStream.checked),
+      aiReasoningEffort: this.elements.aiReasoningEffort
+        ? (['auto', 'off', 'low', 'medium', 'high'].includes(this.elements.aiReasoningEffort.value) ? this.elements.aiReasoningEffort.value : 'auto')
+        : (this.config.aiReasoningEffort || 'auto'),
       aiAutoExecute: !!(this.elements.aiAutoExecute && this.elements.aiAutoExecute.checked),
       aiAutoScreenshotAfterNavigate: !!(this.elements.aiAutoScreenshot && this.elements.aiAutoScreenshot.checked),
       aiAgentStepMode: !!(this.elements.aiAgentStepMode && this.elements.aiAgentStepMode.checked),

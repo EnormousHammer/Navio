@@ -1097,6 +1097,17 @@
                 <input type="checkbox" id="setting-ai-stream" checked>
                 <span>Stream responses (OpenAI-compatible providers)</span>
               </label>
+              <div class="setting-row">
+                <label for="setting-ai-reasoning-effort">Reasoning effort (extended thinking)</label>
+                <select id="setting-ai-reasoning-effort">
+                  <option value="auto">Auto — medium thinking on capable models (recommended)</option>
+                  <option value="off">Off — no extra reasoning (fastest, cheapest)</option>
+                  <option value="low">Low — quick thinking budget</option>
+                  <option value="medium">Medium — balanced quality / speed</option>
+                  <option value="high">High — long thinking budget (best quality, more tokens)</option>
+                </select>
+                <p class="settings-inline-hint">Routes through GPT-5 / o-series <code>reasoning_effort</code>, Claude 4 family <code>thinking</code>, and Gemini 2.5+ <code>thinkingConfig</code>. Older models silently ignore this setting.</p>
+              </div>
               <label class="setting-toggle-row">
                 <input type="checkbox" id="setting-ai-auto-execute">
                 <span>Auto-execute browser actions (takeover mode — Navio acts without asking)</span>
@@ -1598,6 +1609,11 @@
           </div>
         </div>
         <div class="assistant-actions">
+          <!-- Memory button — shows what Navio remembers about you. Count badge updates live. -->
+          <button class="icon-btn navio-memory-btn" id="btn-assistant-memory" title="What Navio remembers about you (click to view / edit)" aria-haspopup="true" aria-expanded="false">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 0-4 4 4 4 0 0 0-4 4 4 4 0 0 0 1.5 3.1A4 4 0 0 0 6 18a4 4 0 0 0 6 3 4 4 0 0 0 6-3 4 4 0 0 0 .5-4.9A4 4 0 0 0 20 10a4 4 0 0 0-4-4 4 4 0 0 0-4-4z"/><path d="M12 6v15"/></svg>
+            <span class="navio-memory-count" id="assistant-memory-count" hidden>0</span>
+          </button>
           <!-- Macro record button — records agent steps as a replayable workflow -->
           <button class="icon-btn" id="btn-record-macro" title="Record: capture your next agent task as a replayable workflow" aria-pressed="false">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>
@@ -1611,6 +1627,23 @@
           <button class="icon-btn" id="btn-close-assistant" title="Close">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
+        </div>
+        <!-- Memory popover: shown when btn-assistant-memory is clicked. Lists facts Navio remembers. -->
+        <div class="navio-memory-popover" id="navio-memory-popover" role="dialog" aria-label="Navio memory" hidden>
+          <div class="navio-memory-popover-header">
+            <strong>Navio remembers</strong>
+            <button type="button" class="icon-btn navio-memory-popover-close" id="navio-memory-popover-close" title="Close">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="navio-memory-popover-body">
+            <ul class="navio-memory-list" id="navio-memory-list" aria-live="polite"></ul>
+            <p class="navio-memory-empty" id="navio-memory-empty" hidden>Nothing remembered yet. Navio will save useful facts as you chat.</p>
+          </div>
+          <div class="navio-memory-popover-add">
+            <input type="text" id="navio-memory-add-input" class="navio-memory-add-input" placeholder="Add a fact (e.g. 'I'm based in Toronto')" maxlength="240" />
+            <button type="button" class="btn-secondary navio-memory-add-btn" id="navio-memory-add-btn">Add</button>
+          </div>
         </div>
       </div>
 
