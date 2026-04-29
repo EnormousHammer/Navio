@@ -1230,7 +1230,60 @@ function createMainWindow() {
 
   // Phase 1 WCV migration — TabManager owns all tab WebContents.
   tabManager.init(mainWindow, {
-    preloadPath: path.join(__dirname, 'webview-preload.js')
+    preloadPath: path.join(__dirname, 'webview-preload.js'),
+    // Apply the same popup-routing and auto-dark hooks that classic <webview>
+    // tabs receive via did-attach-webview / web-contents-created, but for WCV.
+    onWcvWebContentsCreated(wc) {
+      // Popup routing: window.open, target=_blank, external protocols, popup blocking
+      bindNavioGuestWindowOpenOnce(wc);
+
+      // Auto-dark mode: align page color scheme with app theme
+      const syncDark = () => {
+        try { navioApplyGuestAutoDarkFromContents(wc); } catch { /* ignore */ }
+      };
+      queueMicrotask(syncDark);
+      wc.on('did-finish-load', syncDark);
+      wc.on('did-navigate', syncDark);
+      wc.on('did-navigate-in-page', syncDark);
+
+      // Keyboard shortcut forwarding — classic webviews get this via
+      // installNavioGuestZoomShortcutForward / ...FindShortcutForward / ...AssistantShortcutForward,
+      // but those filter getType()==='webview'. WCV type is 'window', so we wire them here.
+      wc.on('before-input-event', (event, input) => {
+        if (!input || input.type !== 'keyDown') return;
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        const modKey = !!(input.control || input.meta);
+        if (!modKey || input.alt) return;
+        const key = String(input.key || '');
+        const code = String(input.code || '');
+
+        // Zoom: Ctrl/Cmd +/-/0
+        let zoomAction = null;
+        if (key === '0' || code === 'Digit0' || code === 'Numpad0') zoomAction = 'zoom-reset';
+        else if (key === '-' || key === '_' || key === 'Minus' || key === 'Subtract' ||
+                 code === 'Minus' || code === 'NumpadSubtract') zoomAction = 'zoom-out';
+        else if (key === '+' || key === '=' || key === 'Plus' || key === 'Equal' ||
+                 code === 'NumpadAdd' || code === 'Equal') zoomAction = 'zoom-in';
+        if (zoomAction) {
+          event.preventDefault();
+          try { mainWindow.webContents.send('shortcut', zoomAction); } catch { /* ignore */ }
+          return;
+        }
+
+        // Find: Ctrl/Cmd+F
+        if ((key === 'f' || key === 'F') && !input.shift) {
+          event.preventDefault();
+          try { mainWindow.webContents.send('shortcut', 'find-in-page'); } catch { /* ignore */ }
+          return;
+        }
+
+        // Assistant: Ctrl/Cmd+Shift+A
+        if ((key === 'a' || key === 'A') && input.shift) {
+          event.preventDefault();
+          try { mainWindow.webContents.send('shortcut', 'toggle-assistant'); } catch { /* ignore */ }
+        }
+      });
+    }
   });
 
   mainWindow.once('ready-to-show', () => {

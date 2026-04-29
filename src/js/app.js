@@ -2235,14 +2235,26 @@ const PageWatcher = (() => {
   }
 
   document.getElementById('btn-watch-page')?.addEventListener('click', () => {
-    // Get current tab URL from the active webview
     let url = '';
     let title = '';
     try {
-      const activeWv = document.querySelector('.tab-content:not([hidden]) webview');
-      if (activeWv) {
-        url = activeWv.getURL?.() || '';
-        title = activeWv.getTitle?.() || url;
+      // In WCV mode tabs are not real DOM elements — use TabManager model directly.
+      // Falls back to DOM query for classic <webview> mode.
+      const activeTab = typeof TabManager !== 'undefined' ? TabManager.getActiveTab?.() : null;
+      if (activeTab && activeTab.webview) {
+        url = (typeof activeTab.webview.getURL === 'function'
+          ? activeTab.webview.getURL()
+          : activeTab.url) || '';
+        title = (typeof activeTab.webview.getTitle === 'function'
+          ? activeTab.webview.getTitle()
+          : activeTab.title) || url;
+      } else {
+        // Legacy fallback: query DOM for a real webview element
+        const activeWv = document.querySelector('.tab-content:not([hidden]) webview');
+        if (activeWv) {
+          url = activeWv.getURL?.() || '';
+          title = activeWv.getTitle?.() || url;
+        }
       }
     } catch { /* ignore */ }
     if (!url || url === 'about:blank') {

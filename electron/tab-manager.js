@@ -75,6 +75,15 @@ class TabManager {
     this._win = win;
     this._preloadPath = opts.preloadPath || path.join(__dirname, 'webview-preload.js');
 
+    /**
+     * Optional hook called once per WCV WebContents immediately after events are
+     * wired. Used by main.js to attach bindNavioGuestWindowOpenOnce (popup routing,
+     * external protocol handling) and auto-dark-mode sync — the same setup that
+     * installNavioWebviewGuestPopupRouting applies to classic <webview> WebContents
+     * via did-attach-webview / web-contents-created.
+     */
+    this._onWcvWebContentsCreated = opts.onWcvWebContentsCreated || null;
+
     // Re-layout active tab on window resize
     win.on('resize', () => this._layoutAllTabs());
     win.on('maximize', () => this._layoutAllTabs());
@@ -256,11 +265,9 @@ class TabManager {
     };
     this._tabs.set(tabId, entry);
 
-    // Wire navigation events → renderer shell
+    // Wire navigation events → renderer shell (also invokes onWcvWebContentsCreated
+    // which sets up popup routing + auto-dark via the main.js callback)
     this._wireEvents(tabId, wcv.webContents);
-
-    // Handle popup windows (window.open, target=_blank)
-    this._wireWindowOpenHandler(tabId, wcv.webContents);
 
     // Initialise tab bounds to 0×0 (hidden) until positioned
     wcv.setBounds({ x: 0, y: 0, width: 0, height: 0 });
@@ -332,6 +339,12 @@ class TabManager {
   // ── Event Wiring ─────────────────────────────────────────────────────────────
 
   _wireEvents(tabId, wc) {
+    // Give main.js a chance to attach popup routing (bindNavioGuestWindowOpenOnce)
+    // and auto-dark mode — the same hooks applied to classic webview WebContents.
+    if (this._onWcvWebContentsCreated) {
+      try { this._onWcvWebContentsCreated(wc); } catch { /* ignore */ }
+    }
+
     const send = (type, payload = {}) => {
       if (!this._win || this._win.isDestroyed() || this._win.webContents.isDestroyed()) return;
       try {
@@ -452,21 +465,6 @@ class TabManager {
 
     wc.on('destroyed', () => {
       this._tabs.delete(tabId);
-    });
-  }
-
-  _wireWindowOpenHandler(tabId, wc) {
-    wc.setWindowOpenHandler(({ url, disposition }) => {
-      // Let the renderer decide (it receives open-url-in-new-tab)
-      if (this._win && !this._win.isDestroyed()) {
-        this._win.webContents.send('open-url-in-new-tab', {
-          url,
-          background: disposition === 'background-tab',
-          guestWindowOpen: true,
-          incognito: false
-        });
-      }
-      return { action: 'deny' };
     });
   }
 

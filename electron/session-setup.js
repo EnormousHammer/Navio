@@ -383,8 +383,13 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
     ses.on('will-download', (event, item, webContents) => {
       let guestWcId = null;
       try {
-        if (webContents && typeof webContents.getType === 'function' && webContents.getType() === 'webview') {
-          guestWcId = webContents.id;
+        if (webContents && typeof webContents.getType === 'function') {
+          const wcType = webContents.getType();
+          // Classic <webview> tabs have type 'webview'; WCV tabs have type 'window'.
+          // Both can be download-shell tabs (opened via window.open / target=_blank).
+          if (wcType === 'webview' || wcType === 'window') {
+            guestWcId = webContents.id;
+          }
         }
       } catch {
         /* ignore */

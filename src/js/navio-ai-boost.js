@@ -491,35 +491,42 @@
     observer.observe(assistPanel, { attributes: true, attributeFilter: ['class'] });
   }
 
-  // ── Webview navigation listener for proactive chips ───────────────────────
+  // ── Page navigation listener for proactive chips ─────────────────────────
+  // Listens to global window events dispatched by tabs.js bindWebviewEvents.
+  // This works in both classic <webview> mode and WCV shim mode since the
+  // events are on window (not on DOM webview elements).
   function hookWebviewNavigation() {
-    const container = document.getElementById('browser-container');
-    if (!container) return;
+    window.addEventListener('navio-page-navigated', (e) => {
+      try {
+        const tab = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
+        onPageNavigated(e.detail?.url || '', tab?.title || '');
+      } catch { /* ignore */ }
+    });
 
-    const mo = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        for (const node of m.addedNodes) {
-          if (node.tagName === 'WEBVIEW') {
-            node.addEventListener('did-navigate', (e) => {
-              const tab = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
-              onPageNavigated(e.url || node.src, tab?.title || '');
-            });
-            node.addEventListener('page-title-updated', (e) => {
-              onPageNavigated(node.src, e.title || '');
-            });
+    window.addEventListener('navio-page-title-updated', (e) => {
+      try {
+        onPageNavigated(e.detail?.url || '', e.detail?.title || '');
+      } catch { /* ignore */ }
+    });
+
+    // Classic <webview> fallback: also hook existing webview DOM nodes in case
+    // this script loads before tabs.js or for any webview not tracked by TabManager.
+    const container = document.getElementById('browser-container');
+    if (container) {
+      const mo = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          for (const node of m.addedNodes) {
+            if (node.tagName === 'WEBVIEW') {
+              node.addEventListener('did-navigate', (e) => {
+                const tab = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
+                onPageNavigated(e.url || node.src, tab?.title || '');
+              });
+            }
           }
         }
-      }
-    });
-
-    mo.observe(container, { childList: true, subtree: true });
-
-    container.querySelectorAll('webview').forEach((wv) => {
-      wv.addEventListener('did-navigate', (e) => {
-        const tab = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
-        onPageNavigated(e.url || wv.src, tab?.title || '');
       });
-    });
+      mo.observe(container, { childList: true, subtree: true });
+    }
   }
 
   hookWebviewNavigation();

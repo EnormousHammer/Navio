@@ -758,6 +758,12 @@ class TabManagerClass {
       if (tab.id === this.activeTabId) {
         this.updateContextTitle(tab);
       }
+      // Global event for AI Boost and other listeners — works in both webview and WCV modes
+      try {
+        window.dispatchEvent(new CustomEvent('navio-page-title-updated', {
+          detail: { url: tab.url || '', title: tab.title, tabId: tab.id }
+        }));
+      } catch { /* ignore */ }
     });
 
     wv.addEventListener('page-favicon-updated', (e) => {
@@ -804,6 +810,14 @@ class TabManagerClass {
         !this.isNavioChatTabUrl(tab.url)
       ) {
         this._lastBrowserSurfaceTabId = tab.id;
+      }
+      // Global event for AI Boost — works in both webview and WCV shim modes
+      if (raw && raw !== 'about:blank' && !raw.startsWith('data:')) {
+        try {
+          window.dispatchEvent(new CustomEvent('navio-page-navigated', {
+            detail: { url: raw, tabId: tab.id }
+          }));
+        } catch { /* ignore */ }
       }
     });
 

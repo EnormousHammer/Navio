@@ -149,8 +149,12 @@ class WebviewShim extends EventTarget {
 
     // Cached state updated from navigation events (avoids sync IPC on every call)
     this._currentUrl = '';
+    this._currentTitle = '';
     this._canGoBack = false;
     this._canGoForward = false;
+
+    // Cached zoom factor — updated by setZoomFactor() so getZoomFactor() is accurate
+    this._zoomFactor = 1;
 
     // Container reference (set via _setParent when tabs.js "appends" the shim)
     this._containerRef = null;
@@ -227,6 +231,7 @@ class WebviewShim extends EventTarget {
         break;
       }
       case 'page-title-updated': {
+        this._currentTitle = ev.title || '';
         const e = new CustomEvent('page-title-updated');
         e.title = ev.title || '';
         this.dispatchEvent(e);
@@ -411,6 +416,32 @@ class WebviewShim extends EventTarget {
     if (window.navio && window.navio.wcvSendToTab) {
       window.navio.wcvSendToTab(this._tabId, channel, ...args);
     }
+  }
+
+  // ── Zoom ─────────────────────────────────────────────────────────────────────
+
+  /**
+   * Set the page zoom factor.
+   * Routes to webviewSetZoom IPC (handled by webview-actions-ipc.js → wc.setZoomFactor).
+   * Caches the value locally so getZoomFactor() doesn't need a round-trip.
+   */
+  setZoomFactor(factor) {
+    this._zoomFactor = typeof factor === 'number' && Number.isFinite(factor) ? factor : 1;
+    if (window.navio && window.navio.webviewSetZoom) {
+      window.navio.webviewSetZoom(this._webContentsId, this._zoomFactor);
+    }
+  }
+
+  /** Returns the last zoom factor set via setZoomFactor() (no IPC round-trip). */
+  getZoomFactor() {
+    return this._zoomFactor;
+  }
+
+  // ── Title ─────────────────────────────────────────────────────────────────────
+
+  /** Returns the current page title (updated from page-title-updated tab events). */
+  getTitle() {
+    return this._currentTitle || '';
   }
 
   // ── DOM compatibility ─────────────────────────────────────────────────────────
