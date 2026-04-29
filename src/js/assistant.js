@@ -926,7 +926,10 @@ class AssistantManagerClass {
     // Close history panel on outside click
     document.addEventListener('click', (e) => {
       const wrapper = document.getElementById('assistant-session-history');
-      if (wrapper?.classList.contains('open') && !wrapper.contains(e.target)) {
+      const panel = document.getElementById('assistant-session-history-panel');
+      const target = e.target;
+      const clickInsideHistoryUi = !!(wrapper?.contains(target) || panel?.contains(target));
+      if (wrapper?.classList.contains('open') && !clickInsideHistoryUi) {
         this._closeHistoryPanel();
       }
     });
@@ -935,8 +938,9 @@ class AssistantManagerClass {
       'mousedown',
       (e) => {
         const wrapper = document.getElementById('assistant-session-history');
+        const panel = document.getElementById('assistant-session-history-panel');
         if (!wrapper?.classList.contains('open')) return;
-        if (wrapper.contains(e.target)) return;
+        if (wrapper.contains(e.target) || panel?.contains(e.target)) return;
         this._closeHistoryPanel();
       },
       true
@@ -1690,11 +1694,11 @@ class AssistantManagerClass {
       // momentarily empty (wrong storage key, race with persistence, or post-turn resync timing).
       if (!h.length) {
         const liveThread = this.messagesEl.querySelector(
-          '.assistant-message, .user-message, .navio-agent-activity, .navio-plan-card, #typing-indicator, .message-content.streaming-content'
+          '.navio-agent-activity, .navio-plan-card, #typing-indicator, .message-content.streaming-content'
         );
         // Same conversation bucket as before: do not wipe live DOM on a transient empty `h`.
         if (liveThread && prevStorageKey === storageKey) {
-          navioAssistantDebug('_syncPanelToTab: skip empty-history wipe — DOM still shows an active thread', {
+          navioAssistantDebug('_syncPanelToTab: skip empty-history wipe - DOM still shows active in-flight UI', {
             storageKey
           });
           return;

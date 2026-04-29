@@ -1783,7 +1783,10 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
     } else if (ntpBrief) {
       bodyObj.temperature = 0.55;
     }
-    if (reasoning && reasoning.provider === 'openai') {
+    // OpenAI chat/completions currently rejects GPT-5 tool calls when
+    // reasoning_effort is present; keep tools working by omitting it there.
+    const hasTools = !!(fetchOpts.tools && !ntpBrief);
+    if (reasoning && reasoning.provider === 'openai' && !(hasTools && isGpt5)) {
       bodyObj.reasoning_effort = reasoning.reasoning_effort;
     }
     body = JSON.stringify(bodyObj);

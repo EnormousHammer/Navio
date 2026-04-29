@@ -5057,13 +5057,12 @@ button.ntp-ticker-sport--stream:focus-visible {
   min-width: 0;
   max-width: min(var(--assistant-width), 100vw);
   overflow: hidden;
-  background: rgba(14, 18, 30, 0.97);
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
-  /* Closes a 1px DWM seam at the physical window edge (light “hairline” on the right). */
-  border-right: 1px solid rgba(0, 0, 0, 0.35);
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: linear-gradient(180deg, rgba(11, 15, 26, 0.98) 0%, rgba(9, 13, 22, 0.98) 100%);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid rgba(0, 0, 0, 0.28);
   /* Shadow inset to the panel only — negative X used to bleed a dark halo onto the page / vertical tab strip. */
-  box-shadow: 6px 0 36px rgba(0, 0, 0, 0.38), inset 1px 0 0 rgba(255, 255, 255, 0.06);
+  box-shadow: -8px 0 28px rgba(0, 0, 0, 0.34), inset 1px 0 0 rgba(255, 255, 255, 0.04);
   display: flex;
   flex-direction: column;
   transition: width 350ms cubic-bezier(0.32, 0.72, 0, 1);
@@ -5094,8 +5093,8 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   top: 0;
   left: 0;
   right: 0;
-  height: 200px;
-  background: linear-gradient(180deg, rgba(110, 140, 255, 0.1) 0%, rgba(80, 160, 255, 0.045) 45%, transparent 100%);
+  height: 130px;
+  background: linear-gradient(180deg, rgba(105, 130, 205, 0.09) 0%, rgba(80, 160, 255, 0.03) 52%, transparent 100%);
   pointer-events: none;
   z-index: 0;
 }
@@ -5107,7 +5106,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   left: 0;
   width: 1px;
   bottom: 0;
-  background: rgba(80, 160, 255, 0.1);
+  background: rgba(80, 160, 255, 0.07);
   pointer-events: none;
   z-index: 0;
 }
@@ -5121,11 +5120,11 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 7px var(--ap-pad-x) 7px;
+  gap: 10px;
+  padding: 8px var(--ap-pad-x) 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.035);
+  background: linear-gradient(180deg, rgba(20, 28, 48, 0.72) 0%, rgba(12, 16, 28, 0.52) 100%);
   backdrop-filter: none;
   position: relative;
   z-index: 1;
@@ -5140,7 +5139,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 .assistant-title {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
   flex: 1;
 }
@@ -5154,8 +5153,8 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 }
 
 .assistant-name {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 13.5px;
+  font-weight: 650;
   color: var(--text-primary);
   letter-spacing: -0.025em;
 }
@@ -5178,7 +5177,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   font-size: 10px;
   color: #a8b4cc;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   font-variant-numeric: tabular-nums;
 }
@@ -5223,7 +5222,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 
 .assistant-actions {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
@@ -5380,8 +5379,8 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px var(--ap-pad-x) 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 5px var(--ap-pad-x) 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
   background: rgba(255, 255, 255, 0.018);
   backdrop-filter: none;
@@ -5448,21 +5447,22 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px var(--ap-pad-x, 16px) 8px;
+  padding: 6px var(--ap-pad-x, 16px) 7px;
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  background: rgba(0, 0, 0, 0.12);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(180deg, rgba(13, 18, 31, 0.8) 0%, rgba(10, 14, 24, 0.72) 100%);
   position: relative;
   z-index: 4;
 }
 .assistant-session-new-btn {
   flex: 0 0 auto;
-  padding: 5px 11px;
+  height: 30px;
+  padding: 0 12px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text-primary);
-  font-size: 11.5px;
+  background: rgba(255, 255, 255, 0.045);
+  color: #d7deef;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
@@ -5486,13 +5486,14 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 .assistant-session-history-summary {
   list-style: none;
   cursor: pointer;
-  padding: 5px 10px;
+  height: 30px;
+  padding: 0 12px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.04);
-  font-size: 11.5px;
+  background: rgba(255, 255, 255, 0.045);
+  font-size: 12px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: #d7deef;
   text-align: center;
   user-select: none;
   flex: 0 0 auto;
@@ -5507,27 +5508,29 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 }
 /* Popover opens downward; bottom corners merge with the panel when open. */
 .assistant-session-history.open .assistant-session-history-summary {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-  border-bottom-color: transparent;
+  border-color: var(--border-accent);
 }
 .assistant-session-history-popover {
   position: absolute;
-  left: 0;
-  right: 0;
-  top: 100%;
-  margin-top: -1px;
-  max-height: min(56vh, 400px);
+  left: 2px;
+  right: 2px;
+  top: calc(100% + 4px);
+  margin-top: 0;
+  max-height: min(42vh, 320px);
   display: flex;
   flex-direction: column;
   z-index: 20;
   border: 1px solid var(--border);
-  border-radius: 0 0 10px 10px;
-  background: var(--bg-elevated);
+  border-radius: 12px;
+  /* Opaque surface to prevent underlying thread text bleeding through. */
+  background: linear-gradient(180deg, rgba(14, 18, 30, 0.985) 0%, rgba(12, 16, 28, 0.99) 100%);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
   box-sizing: border-box;
   width: 100%;
   overflow: hidden;
+  isolation: isolate;
+  backdrop-filter: blur(6px) saturate(1.06);
+  -webkit-backdrop-filter: blur(6px) saturate(1.06);
   animation: historyPanelIn 0.18s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 @keyframes historyPanelIn {
@@ -5539,7 +5542,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 6px 4px;
+  padding: 8px 8px 6px;
   border-bottom: 1px solid var(--border);
 }
 .assistant-session-history-search {
@@ -5594,9 +5597,10 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 6px;
+  padding: 8px;
   box-sizing: border-box;
   width: 100%;
+  background: rgba(7, 11, 22, 0.3);
 }
 .assistant-session-empty {
   padding: 12px 10px;
@@ -5648,7 +5652,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   margin-bottom: 4px;
   border-radius: 8px;
   border: 1px solid transparent;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.04);
 }
 .assistant-session-row:hover {
   background: rgba(255, 255, 255, 0.05);
@@ -5830,12 +5834,12 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   overflow-y: auto;
   overflow-x: hidden;
   /* Extra right inset so thread text does not sit under the scrollbar; extra top for first bubble. */
-  padding: 8px calc(var(--ap-pad-x) + 10px) 14px var(--ap-pad-x);
+  padding: 10px calc(var(--ap-pad-x) + 10px) 12px var(--ap-pad-x);
   display: flex;
   flex-direction: column;
   /* flex-end pinned a lone welcome to the bottom with a huge empty gap above; scroll-to-bottom is handled in assistant.js */
   justify-content: flex-start;
-  gap: 12px;
+  gap: 10px;
   scroll-behavior: smooth;
   background: transparent;
   scrollbar-gutter: stable;
@@ -5851,7 +5855,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 
 .assistant-messages .user-message {
   align-self: flex-end;
-  max-width: min(92%, 340px);
+  max-width: min(88%, 340px);
 }
 .assistant-messages .assistant-message {
   align-self: stretch;
@@ -6339,19 +6343,19 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 
 /* User: compact neutral pill (Comet-style), not neon-accented */
 .user-message .message-content {
-  background: linear-gradient(140deg, rgba(90, 160, 255, 0.18) 0%, rgba(0, 216, 255, 0.11) 100%);
-  color: #e8ecf4;
-  border: 1px solid rgba(0, 216, 255, 0.24);
+  background: linear-gradient(140deg, rgba(92, 119, 183, 0.34) 0%, rgba(74, 95, 146, 0.28) 100%);
+  color: #e7ecf8;
+  border: 1px solid rgba(145, 167, 214, 0.32);
   border-radius: 20px 20px 6px 20px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.24), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
 }
 
 /* Assistant: editorial surface — flat card, almost full bleed */
 .assistant-message .message-content {
-  background: rgba(255, 255, 255, 0.1);
-  color: #dde4f4;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 4px 14px 14px 14px;
+  background: rgba(17, 23, 37, 0.9);
+  color: #dde6f8;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px 14px 14px 14px;
   backdrop-filter: none;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
   font-size: 13.5px;
@@ -7190,9 +7194,9 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 /* Input area — flush with thread (no separate footer “block”) */
 .assistant-input-area {
   padding: 8px var(--ap-pad-x) 10px;
-  border-top: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
   flex-shrink: 0;
-  background: transparent;
+  background: linear-gradient(180deg, rgba(10, 14, 23, 0.35) 0%, rgba(10, 14, 23, 0.72) 100%);
   position: relative;
   z-index: 1;
   /* Ensure OS file drags (e.g. from Downloads / Explorer) are not captured as window-drag. */
@@ -7568,13 +7572,13 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   display: flex;
   flex-direction: column;
   gap: 0;
-  padding: 10px 12px 8px;
-  background: rgba(255, 255, 255, 0.038);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 16px;
+  padding: 9px 11px 7px;
+  background: rgba(12, 18, 32, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
   transition: opacity 0.15s ease, border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
   backdrop-filter: none;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
   position: relative;
   min-width: 0;
 }
@@ -7583,7 +7587,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 4px;
+  gap: 6px;
   margin-top: 4px;
   padding-top: 0;
   border-top: none;
@@ -7607,7 +7611,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 .assistant-input-hint-inline {
   font-size: 10px;
   color: var(--text-tertiary);
-  opacity: 0.7;
+  opacity: 0.78;
   margin-left: 6px;
   white-space: nowrap;
   overflow: hidden;
@@ -7616,16 +7620,16 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 }
 
 .assistant-panel .assistant-input-container .voice-btn {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border-radius: 9px;
   flex-shrink: 0;
 }
 
 .assistant-input-container:focus-within {
-  border-color: rgba(0, 216, 255, 0.28);
-  box-shadow: 0 0 0 3px rgba(0, 216, 255, 0.07), 0 2px 14px rgba(0, 0, 0, 0.18);
-  background: rgba(255, 255, 255, 0.055);
+  border-color: rgba(131, 157, 217, 0.44);
+  box-shadow: 0 0 0 3px rgba(88, 114, 174, 0.18), 0 2px 14px rgba(0, 0, 0, 0.2);
+  background: rgba(16, 22, 38, 0.94);
   outline: none;
 }
 
@@ -7636,7 +7640,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   border: none;
   background: transparent;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 13.5px;
   font-family: var(--font-sans);
   line-height: 1.5;
   resize: none;
@@ -7666,12 +7670,12 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 }
 
 .send-btn {
-  width: 32px;
-  height: 32px;
-  border: 1px solid rgba(82, 213, 242, 0.42);
-  background: linear-gradient(145deg, rgba(82, 213, 242, 0.22) 0%, rgba(0, 216, 255, 0.12) 100%);
-  color: var(--text-bright);
-  border-radius: 10px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(127, 155, 216, 0.46);
+  background: linear-gradient(145deg, rgba(103, 131, 194, 0.52) 0%, rgba(82, 111, 177, 0.42) 100%);
+  color: #f5f8ff;
+  border-radius: 9px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -7679,7 +7683,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, opacity 0.18s ease,
     transform 0.18s var(--ease-spring), box-shadow 0.18s ease;
   flex-shrink: 0;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset, 0 4px 14px rgba(0, 216, 255, 0.12);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset, 0 4px 16px rgba(69, 90, 138, 0.34);
   position: relative;
   overflow: hidden;
 }
@@ -7689,9 +7693,9 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 }
 
 .send-btn:hover {
-  background: linear-gradient(145deg, rgba(82, 213, 242, 0.35) 0%, rgba(0, 216, 255, 0.2) 100%);
-  border-color: rgba(125, 211, 252, 0.55);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.14) inset, 0 6px 20px rgba(0, 216, 255, 0.18);
+  background: linear-gradient(145deg, rgba(121, 149, 212, 0.62) 0%, rgba(93, 122, 188, 0.56) 100%);
+  border-color: rgba(159, 184, 236, 0.6);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.2) inset, 0 6px 20px rgba(63, 84, 132, 0.4);
   transform: translateY(-1px);
 }
 
@@ -13974,10 +13978,11 @@ button:focus-visible,
 
 /* ── Light mode assistant panel ─────────────────────────────────────────── */
 [data-theme="light"] .assistant-panel {
-  background: var(--bg-primary);
-  border-left-color: var(--border);
-  border-right-color: rgba(0, 0, 0, 0.4);
-  box-shadow: 6px 0 28px rgba(20, 30, 80, 0.1), inset 1px 0 0 rgba(255, 255, 255, 0.5);
+  background: #f9fbff;
+  border-left-color: rgba(50, 70, 160, 0.12);
+  border-top-color: rgba(50, 70, 160, 0.08);
+  border-right-color: rgba(0, 0, 0, 0.22);
+  box-shadow: -8px 0 22px rgba(20, 30, 80, 0.1), inset 1px 0 0 rgba(255, 255, 255, 0.62);
 }
 [data-theme="light"] .assistant-panel::before {
   background: linear-gradient(180deg, rgba(50, 70, 160, 0.03) 0%, transparent 100%);
@@ -14007,7 +14012,7 @@ button:focus-visible,
   border-bottom-color: var(--border);
 }
 [data-theme="light"] .assistant-meta-bar {
-  background: var(--bg-deep);
+  background: rgba(238, 242, 252, 0.86);
   border-bottom-color: var(--border);
 }
 [data-theme="light"] .assistant-meta-bar .assistant-context {
@@ -14039,8 +14044,8 @@ button:focus-visible,
   background: var(--bg-hover);
 }
 [data-theme="light"] .assistant-input-area {
-  background: transparent;
-  border-top: none;
+  background: linear-gradient(180deg, rgba(243, 247, 255, 0.48) 0%, rgba(243, 247, 255, 0.9) 100%);
+  border-top: 1px solid rgba(50, 70, 160, 0.12);
 }
 [data-theme="light"] .assistant-input-area::before {
   display: none;
@@ -14061,14 +14066,14 @@ button:focus-visible,
   color: var(--text-secondary);
 }
 [data-theme="light"] .assistant-input-container {
-  background: rgba(255, 255, 255, 0.78);
-  border-color: rgba(0, 0, 0, 0.1);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.86);
+  border-color: rgba(33, 45, 88, 0.12);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 [data-theme="light"] .assistant-input-container:focus-within {
   background: #fff;
-  border-color: rgba(0, 120, 220, 0.35);
-  box-shadow: 0 0 0 3px rgba(0, 120, 220, 0.08), 0 2px 10px rgba(0, 0, 0, 0.08);
+  border-color: rgba(78, 103, 170, 0.42);
+  box-shadow: 0 0 0 3px rgba(78, 103, 170, 0.12), 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 [data-theme="light"] .assistant-input-toolbar {
   border-top: none;
@@ -14077,15 +14082,15 @@ button:focus-visible,
   color: var(--text-tertiary);
 }
 [data-theme="light"] .send-btn {
-  border-color: rgba(0, 112, 216, 0.35);
-  background: linear-gradient(145deg, rgba(0, 120, 220, 0.18) 0%, rgba(0, 112, 216, 0.1) 100%);
-  color: #0a4a8a;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.85) inset, 0 4px 14px rgba(0, 100, 200, 0.12);
+  border-color: rgba(78, 103, 170, 0.45);
+  background: linear-gradient(145deg, rgba(126, 149, 211, 0.8) 0%, rgba(93, 122, 188, 0.74) 100%);
+  color: #ffffff;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.75) inset, 0 4px 14px rgba(68, 92, 155, 0.2);
 }
 [data-theme="light"] .send-btn:hover {
-  background: linear-gradient(145deg, rgba(0, 120, 220, 0.28) 0%, rgba(0, 112, 216, 0.16) 100%);
-  border-color: rgba(0, 112, 216, 0.48);
-  color: #083a6e;
+  background: linear-gradient(145deg, rgba(138, 162, 224, 0.92) 0%, rgba(105, 135, 201, 0.86) 100%);
+  border-color: rgba(64, 88, 152, 0.56);
+  color: #ffffff;
 }
 [data-theme="light"] .navio-agent-activity {
   /* Same language as dark: light theme was painting this slab #f5f6fa (unreadable on dark sidecar). */
@@ -14229,17 +14234,17 @@ button:focus-visible,
 
 /* ── Dark message bubbles (sidecar-flat) ─────────────────────────────────── */
 [data-theme="dark"] .assistant-message .message-content {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.14);
-  color: #dde4f4;
+  background: rgba(17, 23, 37, 0.9);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #dde6f8;
   backdrop-filter: none;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
 }
 [data-theme="dark"] .user-message .message-content {
-  background: rgba(0, 216, 255, 0.12);
-  border-color: rgba(0, 216, 255, 0.2);
-  color: #e8ecf4;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
+  background: linear-gradient(140deg, rgba(92, 119, 183, 0.34) 0%, rgba(74, 95, 146, 0.28) 100%);
+  border-color: rgba(145, 167, 214, 0.32);
+  color: #e7ecf8;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.24);
 }
 
 /* ── Dark quick actions ─────────────────────────────────────────────────── */
