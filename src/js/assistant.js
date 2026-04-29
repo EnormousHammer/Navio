@@ -751,6 +751,8 @@ class AssistantManagerClass {
     if (panel) panel.hidden = true;
     wrapper?.classList.remove('open');
     btn?.setAttribute('aria-expanded', 'false');
+    // Remove the transparent backdrop that caught clicks over the messages area.
+    document.getElementById('navio-history-backdrop')?.remove();
   }
 
   /** Re-resolve panel if DOM changed or constructor ran before the node existed. */
@@ -916,6 +918,18 @@ class AssistantManagerClass {
         panel.hidden = false;
         wrapper?.classList.add('open');
         btn?.setAttribute('aria-expanded', 'true');
+        // Insert a transparent backdrop so that any click in the messages area
+        // (which the popover floats over) correctly closes the panel.
+        // Without this, clicks on the popover don't reach the outside-click
+        // handler because the popover is a DOM child of the wrapper.
+        if (!document.getElementById('navio-history-backdrop')) {
+          const bd = document.createElement('div');
+          bd.id = 'navio-history-backdrop';
+          bd.className = 'navio-history-backdrop';
+          bd.addEventListener('click', () => this._closeHistoryPanel());
+          bd.addEventListener('mousedown', (ev) => { ev.preventDefault(); this._closeHistoryPanel(); });
+          document.getElementById('assistant-panel')?.appendChild(bd);
+        }
         try {
           this._renderSidebarSessionList();
           setTimeout(() => document.getElementById('assistant-session-history-search')?.focus(), 50);
@@ -9969,6 +9983,11 @@ ${pageInfo}${snapText}`;
       }
       pop.hidden = false;
       btn.setAttribute('aria-expanded', 'true');
+      // Position relative to the button using fixed coords so the popover
+      // is never clipped by overflow:hidden on .assistant-header.
+      const r = btn.getBoundingClientRect();
+      pop.style.top = Math.round(r.bottom + 6) + 'px';
+      pop.style.right = Math.round(window.innerWidth - r.right) + 'px';
       await this._renderMemoryPopover();
     });
 

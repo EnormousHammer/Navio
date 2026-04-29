@@ -1628,8 +1628,10 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
-        <!-- Memory popover: shown when btn-assistant-memory is clicked. Lists facts Navio remembers. -->
-        <div class="navio-memory-popover" id="navio-memory-popover" role="dialog" aria-label="Navio memory" hidden>
+        <!-- Memory popover: shown when btn-assistant-memory is clicked. Lists facts Navio remembers.
+             Lives outside .assistant-header (which has overflow:hidden) so it's not clipped. -->
+      </div><!-- end .assistant-header -->
+      <div class="navio-memory-popover" id="navio-memory-popover" role="dialog" aria-label="Navio memory" hidden>
           <div class="navio-memory-popover-header">
             <strong>Navio remembers</strong>
             <button type="button" class="icon-btn navio-memory-popover-close" id="navio-memory-popover-close" title="Close">
@@ -1645,7 +1647,6 @@
             <button type="button" class="btn-secondary navio-memory-add-btn" id="navio-memory-add-btn">Add</button>
           </div>
         </div>
-      </div>
 
         <div class="assistant-meta-bar" aria-label="Tab context and AI scope">
         <div class="assistant-context" id="assistant-context" title="Default: one thread per tab. Use New chat / History for saved threads you can return to (like Comet).">

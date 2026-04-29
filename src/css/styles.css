@@ -5225,7 +5225,6 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   display: flex;
   gap: 4px;
   flex-shrink: 0;
-  position: relative; /* anchor for .navio-memory-popover */
 }
 
 /* Memory button: shows a small count badge when Navio has remembered facts. */
@@ -5251,9 +5250,11 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 
 /* Popover anchored under the assistant-actions row. */
 .navio-memory-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
+  /* Position set dynamically via JS (getBoundingClientRect of the button)
+     so it's never clipped by overflow:hidden on the header. */
+  position: fixed;
+  top: 52px; /* fallback: approximate header height */
+  right: 12px;
   width: 320px;
   max-width: calc(100vw - 32px);
   background: var(--bg-deep, #0e1320);
@@ -6241,7 +6242,17 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 
 /* Voice conv button active state */
 #btn-voice-conv.voice-conv-on {
-  color: rgba(139, 92, 246, 0.9) !important;
+
+/* Transparent backdrop inserted behind the history popover so that clicks
+   in the messages area (which the popover floats over) close the panel.
+   Appended to #assistant-panel when the panel opens, removed on close. */
+.navio-history-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 11; /* below popover (20) and open wrapper (12), above messages */
+  cursor: default;
+  background: transparent;
+}  color: rgba(139, 92, 246, 0.9) !important;
   background: rgba(139, 92, 246, 0.12) !important;
   border-color: rgba(139, 92, 246, 0.3) !important;
 }
