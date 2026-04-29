@@ -1682,28 +1682,15 @@ class AssistantManagerClass {
     this.setReceipt('');
     document.getElementById('navio-continue-pill')?.remove();
 
-    // Check if an AI stream is currently active for this tab before touching DOM
-    const isStreamingTab = !!(turn && storageKey === turn);
+    // Check if an AI stream is currently active for this tab before touching DOM.
+    // Keep this explicit so empty-history handling never preserves stale bubbles.
+    const isStreamingTab = !!(turn && storageKey === turn && this._busyTabs.has(String(turn)));
 
     const h = this._conversationsByTab.get(storageKey) || [];
     // Replaying history destroys the live "Working" card and streaming bubble — skip while this tab's turn is active.
     if (h.length && !isStreamingTab) {
       this._renderDomFromHistoryKey(storageKey);
     } else if (this.messagesEl && !isStreamingTab) {
-      // Never replace a visible in-progress thread with the welcome screen just because `h` is
-      // momentarily empty (wrong storage key, race with persistence, or post-turn resync timing).
-      if (!h.length) {
-        const liveThread = this.messagesEl.querySelector(
-          '.navio-agent-activity, .navio-plan-card, #typing-indicator, .message-content.streaming-content'
-        );
-        // Same conversation bucket as before: do not wipe live DOM on a transient empty `h`.
-        if (liveThread && prevStorageKey === storageKey) {
-          navioAssistantDebug('_syncPanelToTab: skip empty-history wipe - DOM still shows active in-flight UI', {
-            storageKey
-          });
-          return;
-        }
-      }
       this.messagesEl.innerHTML = '';
       await this._showGreeting();
     }

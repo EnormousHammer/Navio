@@ -5204,6 +5204,20 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 .assistant-model-badge[hidden] {
   display: none;
 }
+.assistant-rev-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(45, 212, 191, 0.45);
+  background: rgba(45, 212, 191, 0.12);
+  color: #7ef5df;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.4;
+}
 
 .status-live-dot {
   width: 6px;
@@ -5532,6 +5546,9 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   backdrop-filter: blur(6px) saturate(1.06);
   -webkit-backdrop-filter: blur(6px) saturate(1.06);
   animation: historyPanelIn 0.18s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.assistant-session-history-popover[hidden] {
+  display: none !important;
 }
 @keyframes historyPanelIn {
   from { opacity: 0; transform: translateY(-6px); }
@@ -14002,6 +14019,11 @@ button:focus-visible,
 }
 [data-theme="light"] .assistant-status-line {
   color: var(--text-tertiary);
+}
+[data-theme="light"] .assistant-rev-tag {
+  border-color: rgba(13, 148, 136, 0.35);
+  background: rgba(20, 184, 166, 0.12);
+  color: #0f766e;
 }
 [data-theme="light"] .status-live-dot {
   background: var(--success);
