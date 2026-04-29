@@ -1670,13 +1670,16 @@
         <button type="button" class="assistant-session-new-btn" id="assistant-session-new" title="Start a new saved thread (persists across tabs)">New chat</button>
         <div class="assistant-session-history" id="assistant-session-history">
           <button type="button" class="assistant-session-history-summary" id="btn-session-history" title="This tab, other tabs that already have a chat, and saved threads — from any tab" aria-expanded="false" aria-controls="assistant-session-history-panel">History</button>
-          <div class="assistant-session-history-popover" id="assistant-session-history-panel" hidden>
-            <div class="assistant-session-history-search-wrap">
-              <input type="search" class="assistant-session-history-search" id="assistant-session-history-search" placeholder="Search chats…" autocomplete="off" aria-label="Search chat history" />
-              <button type="button" class="assistant-session-history-close-btn" id="btn-session-history-close" title="Close history" aria-label="Close chat history">×</button>
-            </div>
-            <div class="assistant-session-history-scroll" id="assistant-session-history-list"></div>
+        </div>
+        <!-- Popover is a sibling of #assistant-session-history (NOT a child).
+             This means clicks on it return wrapper.contains(target)===false,
+             so the outside-click handler correctly closes the panel. -->
+        <div class="assistant-session-history-popover" id="assistant-session-history-panel" hidden>
+          <div class="assistant-session-history-search-wrap">
+            <input type="search" class="assistant-session-history-search" id="assistant-session-history-search" placeholder="Search chats…" autocomplete="off" aria-label="Search chat history" />
+            <button type="button" class="assistant-session-history-close-btn" id="btn-session-history-close" title="Close history" aria-label="Close chat history">×</button>
           </div>
+          <div class="assistant-session-history-scroll" id="assistant-session-history-list"></div>
         </div>
       </div>
 

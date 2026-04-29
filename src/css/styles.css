@@ -6242,21 +6242,10 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 
 /* Voice conv button active state */
 #btn-voice-conv.voice-conv-on {
-
-/* Transparent backdrop inserted behind the history popover so that clicks
-   in the messages area (which the popover floats over) close the panel.
-   Appended to #assistant-panel when the panel opens, removed on close. */
-.navio-history-backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 11; /* below popover (20) and open wrapper (12), above messages */
-  cursor: default;
-  background: transparent;
-}  color: rgba(139, 92, 246, 0.9) !important;
+  color: rgba(139, 92, 246, 0.9) !important;
   background: rgba(139, 92, 246, 0.12) !important;
   border-color: rgba(139, 92, 246, 0.3) !important;
 }
-
 /* Voice conversation mode button: slightly more prominent than single-shot
    mic because it's the richer "talk to Navio" interaction. Subtle violet tint
    at rest — not distracting, but differentiates it from a plain icon button. */
