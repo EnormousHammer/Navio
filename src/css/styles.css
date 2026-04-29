@@ -1654,6 +1654,32 @@ body.navio-vertical-tabs .tab-group-header:hover {
 .url-popup-blocked:hover { filter: brightness(1.08); }
 .url-popup-blocked:not([hidden]) { display: inline-flex; }
 
+/* Per-site Compatibility Mode badge — shown in URL bar when the active tab's
+   origin is in the kill-switch list. Click to toggle off + reload. */
+.url-site-compat-badge {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 2px 8px;
+  max-width: 160px;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  border-radius: 10px;
+  background: rgba(56, 189, 248, 0.12);
+  color: #38bdf8;
+  font-size: 10.5px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.url-site-compat-badge:hover { filter: brightness(1.1); }
+.url-site-compat-badge:not([hidden]) { display: inline-flex; }
+.url-site-compat-badge svg { flex-shrink: 0; }
+
 #url-input {
   flex: 1;
   border: none;

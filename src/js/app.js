@@ -617,6 +617,44 @@ ${badgeHtml(it.badge)}
       });
     }
 
+    // Per-site Compatibility Mode badge — click to disable + reload.
+    const compatBadge = document.getElementById('url-site-compat-badge');
+    if (compatBadge && typeof window.navio.siteCompatSet === 'function') {
+      compatBadge.addEventListener('click', async () => {
+        const url = compatBadge.dataset.url || '';
+        if (!url) return;
+        try {
+          const r = await window.navio.siteCompatSet(url, false);
+          if (r && r.ok) {
+            compatBadge.hidden = true;
+            delete compatBadge.dataset.url;
+            _showAppToast('Compatibility Mode turned off — reloading page', 'success');
+            try {
+              const tab = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
+              if (tab && tab.webview && typeof tab.webview.reload === 'function') tab.webview.reload();
+            } catch { /* ignore */ }
+          } else {
+            _showAppToast('Could not change Compatibility Mode', 'error');
+          }
+        } catch {
+          _showAppToast('Could not change Compatibility Mode', 'error');
+        }
+      });
+    }
+    if (typeof window.navio.onSiteCompatChanged === 'function') {
+      window.navio.onSiteCompatChanged((data) => {
+        try {
+          const tab = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
+          const activeUrl = (tab && tab.url) || (urlInput && urlInput.value) || '';
+          // Re-render the URL bar so the badge reflects the new state.
+          this.updateUrlBar(activeUrl);
+          if (data && data.enabled === true) {
+            _showAppToast('Compatibility Mode enabled for this site', 'success');
+          }
+        } catch { /* ignore */ }
+      });
+    }
+
     urlInput.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         const sug = this._urlSuggest;
@@ -1291,6 +1329,24 @@ ${badgeHtml(it.badge)}
     const incog =
       typeof TabManager !== 'undefined' && TabManager.getActiveTab && !!TabManager.getActiveTab()?.incognito;
     const sslExtra = incog ? ' incognito-context' : '';
+
+    // Per-site Compatibility Mode badge — updated asynchronously since it
+    // requires a main-process round-trip. Hide eagerly to avoid stale state
+    // flashing across tab switches.
+    const compatBadge = document.getElementById('url-site-compat-badge');
+    if (compatBadge) {
+      compatBadge.hidden = true;
+      delete compatBadge.dataset.url;
+      if (url && /^https?:\/\//i.test(url) && typeof window.navio?.siteCompatGet === 'function') {
+        window.navio.siteCompatGet(url).then((r) => {
+          // Bail if the URL bar has navigated away while we awaited the IPC.
+          if (!r || !r.ok || r.enabled !== true) return;
+          if (urlInput && urlInput.value !== url) return;
+          compatBadge.hidden = false;
+          compatBadge.dataset.url = url;
+        }).catch(() => { /* ignore — badge stays hidden */ });
+      }
+    }
 
     if (!url || url === 'about:blank') {
       urlInput.value = '';
@@ -2079,6 +2135,14 @@ const InlineAI = (() => {
         }, 80);
       }
     } else if (action) {
+      // Selection-bookmark install is now lazy (the guest preload no longer
+      // wraps the DOM on every mouseup — that broke many sites). For actions
+      // that may end with Replace, ask the guest to install the bookmark NOW
+      // while the live selection is still focused (mousedown fires before the
+      // focus shifts to the host shell).
+      if (action === 'rewrite' && _targetWv && typeof _targetWv.send === 'function') {
+        try { _targetWv.send('navio-inline-install-bookmark'); } catch { /* ignore */ }
+      }
       _runAction(action);
     }
   });

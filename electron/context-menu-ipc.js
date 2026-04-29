@@ -5,6 +5,7 @@ const { NAVIO_PARTITION_INCOGNITO } = require('./navio-partitions');
 const { resolveTranslateTargetLang } = require('./translate-locale');
 const { wcCanGoBack, wcCanGoForward } = require('./wc-nav-history');
 const { navioIsExternalProtocolUrl, navioNormalizeTabOpenUrl } = require('./navio-url-utils');
+const navioSiteCompat = require('./site-compat');
 
 function registerContextMenuIpc(ipcMain, { getMainWindow, loadConfig, app }) {
   ipcMain.handle('show-webview-context-menu', (event, { webContentsId, x, y, params }) => {
@@ -118,6 +119,49 @@ function registerContextMenuIpc(ipcMain, { getMainWindow, loadConfig, app }) {
           click: () => { wc.setZoomFactor(1); mainWindow.webContents.send('shortcut', 'refresh-zoom-label'); },
         }));
         menu.append(new MenuItem({ label: 'Zoom', submenu: zoomSub }));
+      } catch { /* ignore */ }
+
+      // Per-site Compatibility Mode toggle: lets the user opt out of all
+      // Navio page-level injections for the current origin (selection toolbar,
+      // password autofill detection, login form observer, etc.) when those
+      // injections break a third-party site (carrier portals, banking, gov
+      // forms, etc.). Toggling reloads the tab so the preload picks up the
+      // new state from the main-process store.
+      try {
+        const pageUrl = (params && params.pageURL) || wc.getURL() || '';
+        const compatOrigin = navioSiteCompat.originFromUrl(pageUrl);
+        if (compatOrigin) {
+          const userData = app.getPath('userData');
+          const isOn = navioSiteCompat.isCompat(userData, pageUrl);
+          let host = compatOrigin;
+          try { host = new URL(compatOrigin).host || compatOrigin; } catch { /* keep origin */ }
+          menu.append(new MenuItem({ type: 'separator' }));
+          menu.append(new MenuItem({
+            label: isOn
+              ? `Compatibility Mode is ON for ${host} (click to disable)`
+              : `Use Compatibility Mode for ${host}`,
+            type: 'checkbox',
+            checked: isOn,
+            click: () => {
+              try {
+                navioSiteCompat.setCompat(userData, pageUrl, !isOn);
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                  // Notify the renderer so the URL bar badge can update.
+                  try {
+                    mainWindow.webContents.send('navio-site-compat-changed', {
+                      origin: compatOrigin,
+                      enabled: !isOn
+                    });
+                  } catch { /* ignore */ }
+                }
+                // Reload the page so webview-preload re-evaluates the kill switch.
+                try { wc.reload(); } catch { /* ignore */ }
+              } catch (err) {
+                console.error('[navio] toggle compat mode failed:', err && err.message ? err.message : err);
+              }
+            }
+          }));
+        }
       } catch { /* ignore */ }
 
       menu.append(new MenuItem({ type: 'separator' }));

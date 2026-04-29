@@ -1073,13 +1073,34 @@ function bindNavioGuestWindowOpenOnce(guestContents) {
 /**
  * Chromium "automatic dark theme" for web page content (CDP), aligned with app theme.
  * Keeps body/text contrast readable vs. only toggling prefers-color-scheme on light sites.
+ *
+ * Important: NEVER attach the CDP debugger when we don't actually need it.
+ * Sites can detect that the debugger is attached (a few APIs change behavior,
+ * Chromium shows a warning bar in some configurations, and certain widgets on
+ * carrier / banking / DRM-protected portals refuse to render). Previously this
+ * function attached `dbg.attach('1.3')` for every guest webContents — even
+ * opted-out carrier sites with `enabled: false` — which broke many flows.
+ *
+ * Now:
+ *   - `enabled === true`: attach (if needed) and send the override.
+ *   - `enabled === false` and debugger NOT attached: do nothing (the page is
+ *     already in its native rendering mode; no override is needed).
+ *   - `enabled === false` and debugger IS attached (we previously enabled it
+ *     for this same wc): clear the override so the page returns to native.
  */
 function navioApplyAutoDarkModeToWebContents(contents, enabled) {
   if (!contents || (typeof contents.isDestroyed === 'function' && contents.isDestroyed())) return;
   try {
     const dbg = contents.debugger;
-    if (!dbg.isAttached()) {
-      dbg.attach('1.3');
+    const wasAttached = (() => {
+      try { return dbg.isAttached(); } catch { return false; }
+    })();
+    if (!enabled && !wasAttached) {
+      // Opted-out site, no prior override → leave Chromium completely alone.
+      return;
+    }
+    if (!wasAttached) {
+      try { dbg.attach('1.3'); } catch { /* attach failed — bail without crashing */ return; }
     }
     dbg
       .sendCommand('Emulation.setAutoDarkModeOverride', { enabled: !!enabled })
@@ -1549,6 +1570,65 @@ ipcMain.handle('navio-webview-guest-preload-href', () => {
     return pathToFileURL(path.join(__dirname, 'webview-preload.js')).href;
   } catch {
     return '';
+  }
+});
+
+/**
+ * Per-site Compatibility Mode (kill switch for in-page Navio injections).
+ * Used by the guest preload (sync IPC at startup) to fully bail out for
+ * specific origins where Navio's instrumentation breaks the site (carrier
+ * portals, banking, gov forms, Cloudflare-protected SPAs, etc.).
+ */
+const navioSiteCompat = require('./site-compat');
+
+/** Synchronous probe used by webview-preload.js at the very top of execution. */
+ipcMain.on('navio-site-compat-is-enabled-sync', (event, payload) => {
+  try {
+    const url = payload && typeof payload.url === 'string' ? payload.url : '';
+    event.returnValue = !!navioSiteCompat.isCompat(app.getPath('userData'), url);
+  } catch {
+    event.returnValue = false;
+  }
+});
+
+ipcMain.handle('navio-site-compat-list', () => {
+  try {
+    return { ok: true, origins: navioSiteCompat.listOrigins(app.getPath('userData')) };
+  } catch (e) {
+    return { ok: false, error: e && e.message ? e.message : String(e) };
+  }
+});
+
+ipcMain.handle('navio-site-compat-get', (_, payload) => {
+  try {
+    const url = payload && typeof payload.url === 'string' ? payload.url : '';
+    const origin = navioSiteCompat.originFromUrl(url);
+    return {
+      ok: true,
+      origin,
+      enabled: !!navioSiteCompat.isCompat(app.getPath('userData'), url)
+    };
+  } catch (e) {
+    return { ok: false, error: e && e.message ? e.message : String(e) };
+  }
+});
+
+ipcMain.handle('navio-site-compat-set', (_, payload) => {
+  try {
+    const url = payload && typeof payload.url === 'string' ? payload.url : '';
+    const enabled = !!(payload && payload.enabled);
+    return navioSiteCompat.setCompat(app.getPath('userData'), url, enabled);
+  } catch (e) {
+    return { ok: false, error: e && e.message ? e.message : String(e) };
+  }
+});
+
+ipcMain.handle('navio-site-compat-toggle', (_, payload) => {
+  try {
+    const url = payload && typeof payload.url === 'string' ? payload.url : '';
+    return navioSiteCompat.toggleCompat(app.getPath('userData'), url);
+  } catch (e) {
+    return { ok: false, error: e && e.message ? e.message : String(e) };
   }
 });
 

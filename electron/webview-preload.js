@@ -3,6 +3,13 @@
  * Webview preload — injected into every page loaded inside persist:navio webviews.
  * Detects login forms, captures credentials on submit, and handles autofill commands.
  * Communicates with the renderer (tabs.js) via ipcRenderer.sendToHost().
+ *
+ * Per-site Compatibility Mode (kill switch): if the user marked the current
+ * origin via the page context menu, we bail out at the very top and do not
+ * attach ANY listener. The page then runs as plain Chromium (apart from
+ * session-level UA / Sec-CH-UA alignment, which is required for many sites
+ * to load at all). The Navio chat-tab bridge is exempted because that's our
+ * own internal page, not third-party content.
  */
 try {
   const { ipcRenderer, contextBridge } = require('electron');
@@ -32,6 +39,29 @@ try {
       });
     } catch (e) {
       console.error('[navio] navioChatTab preload bridge failed:', e && e.message ? e.message : e);
+    }
+  }
+
+  // ── Per-site Compatibility Mode kill switch ────────────────────────────────
+  // Synchronous probe at startup. If the user previously toggled
+  // "Compatibility mode" for this origin in the page context menu, we skip
+  // every page-level injection so the site behaves like plain Chromium.
+  // The Navio internal chat tab is always instrumented (it's our own page).
+  if (!isNavioChatTabPage()) {
+    let _navioCompatEnabled = false;
+    try {
+      const here = (typeof location !== 'undefined' && location.href) ? String(location.href) : '';
+      _navioCompatEnabled = !!ipcRenderer.sendSync('navio-site-compat-is-enabled-sync', { url: here });
+    } catch {
+      _navioCompatEnabled = false;
+    }
+    if (_navioCompatEnabled) {
+      try {
+        console.info('[navio] Compatibility Mode is ON for this site — skipping page-level injections.');
+      } catch {}
+      // Bail out of the entire preload. The throw is caught by the outer
+      // try/catch (`/* require not available */`) which graceful-no-ops.
+      throw new Error('navio_site_compat_skip_preload');
     }
   }
 
@@ -186,22 +216,44 @@ try {
   }, true);
 
   // ── Detect login forms on page load ───────────────────────────────────────
+  //
+  // Used to observe `document.documentElement` permanently with childList +
+  // subtree, which fires on every DOM mutation of any heavy SPA (Gmail, Drive,
+  // shipping portals, dashboards). On Purolator's logged-in dashboards that
+  // observer would re-fire constantly, contributing to perceived lag.
+  //
+  // Now we observe `document.body` (skips <head> noise), and we DISCONNECT
+  // once we've found a password field on this page or after a 30 s grace
+  // window — whichever happens first. A subsequent SPA route change re-arms
+  // the observer for the new document via the navigation hook below.
   let _lastLoginPing = { u: '', t: 0 };
+  let _navioLoginObserver = null;
+  let _navioLoginObserverArmedFor = '';
+  let _navioLoginObserverDisarmTimer = null;
+
   function checkForLoginForm() {
     try {
-      if (!document.querySelector('input[type="password"]')) return;
+      if (!document.querySelector('input[type="password"]')) return false;
       const u = window.location.href;
       const now = Date.now();
-      if (_lastLoginPing.u === u && now - _lastLoginPing.t < 1500) return;
+      if (_lastLoginPing.u === u && now - _lastLoginPing.t < 1500) return true;
       _lastLoginPing = { u, t: now };
       ipcRenderer.sendToHost('navio-login-form', { url: u });
-    } catch {}
+      return true;
+    } catch {
+      return false;
+    }
   }
 
-  if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    checkForLoginForm();
-  } else {
-    window.addEventListener('DOMContentLoaded', checkForLoginForm);
+  function _navioDisconnectLoginObserver() {
+    if (_navioLoginObserverDisarmTimer) {
+      clearTimeout(_navioLoginObserverDisarmTimer);
+      _navioLoginObserverDisarmTimer = null;
+    }
+    if (_navioLoginObserver) {
+      try { _navioLoginObserver.disconnect(); } catch {}
+      _navioLoginObserver = null;
+    }
   }
 
   let _loginObsTimer = null;
@@ -209,16 +261,74 @@ try {
     if (_loginObsTimer) clearTimeout(_loginObsTimer);
     _loginObsTimer = setTimeout(() => {
       _loginObsTimer = null;
-      checkForLoginForm();
+      if (checkForLoginForm()) {
+        // Found it — stop watching. The page (or any SPA route change) can
+        // re-arm via _navioArmLoginObserver below.
+        _navioDisconnectLoginObserver();
+      }
     }, 400);
   }
+
+  function _navioArmLoginObserver() {
+    const u = window.location.href;
+    if (_navioLoginObserverArmedFor === u && _navioLoginObserver) return;
+    _navioDisconnectLoginObserver();
+    _navioLoginObserverArmedFor = u;
+    try {
+      _navioLoginObserver = new MutationObserver(() => scheduleLoginFormCheck());
+      const target = document.body || document.documentElement;
+      if (target) _navioLoginObserver.observe(target, { childList: true, subtree: true });
+      // Hard stop: even on SPAs that never paint a password field, give up
+      // after 30 s so we're not eating perf forever.
+      _navioLoginObserverDisarmTimer = setTimeout(() => {
+        _navioDisconnectLoginObserver();
+      }, 30000);
+    } catch {}
+  }
+
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    if (!checkForLoginForm()) _navioArmLoginObserver();
+  } else {
+    window.addEventListener('DOMContentLoaded', () => {
+      if (!checkForLoginForm()) _navioArmLoginObserver();
+    });
+  }
+
+  // SPA route changes (pushState / replaceState / back-forward) re-arm the
+  // observer so we still notice login forms loaded after navigation.
   try {
-    const mo = new MutationObserver(() => scheduleLoginFormCheck());
-    if (document.documentElement) mo.observe(document.documentElement, { childList: true, subtree: true });
+    const _origPush = history.pushState;
+    const _origReplace = history.replaceState;
+    history.pushState = function () {
+      const r = _origPush.apply(this, arguments);
+      try { _navioArmLoginObserver(); } catch {}
+      return r;
+    };
+    history.replaceState = function () {
+      const r = _origReplace.apply(this, arguments);
+      try { _navioArmLoginObserver(); } catch {}
+      return r;
+    };
+    window.addEventListener('popstate', () => { try { _navioArmLoginObserver(); } catch {} });
   } catch {}
 
-  // ── Inline AI: keep the guest selection after the user clicks the host toolbar ──
+  // ── Inline AI: remember the guest selection without mutating the page DOM ──
+  //
+  // Earlier versions wrapped the selection in <span contenteditable="false"> on
+  // every mouseup so the host could "Replace" later. That eager DOM mutation
+  // broke React/Vue state, page MutationObservers, double-click word selection,
+  // contenteditable handlers, and many third-party form widgets across many
+  // sites (carrier portals like Purolator/FedEx, gov forms, web mail, etc.).
+  //
+  // We now only remember the live Range (no DOM change) at selection time, and
+  // wrap it into a bookmark span LAZILY — only when the host explicitly asks
+  // (when the user clicks an action that will Replace). That window is short
+  // (a single mousedown on the toolbar), so the selection is still alive and
+  // the page never sees a phantom <span> appear under the user's cursor.
   const NAVIO_BOOKMARK_ID = 'navio-inline-sel-bookmark';
+  /** Last live Range cloned at mouseup; null when no fresh selection is pending. */
+  let _navioLastSelectionRange = null;
+
   function removeNavioInlineBookmark() {
     try {
       const el = document.getElementById(NAVIO_BOOKMARK_ID);
@@ -228,14 +338,70 @@ try {
       p.removeChild(el);
     } catch {}
   }
-  /** Wraps the current DOM range so Replace can target it after focus moves to the shell. */
-  function tryInstallNavioInlineBookmark() {
-    removeNavioInlineBookmark();
+
+  /** True when both endpoints of the saved range still live in the document. */
+  function _navioRangeStillAttached(range) {
+    if (!range) return false;
+    try {
+      return (
+        range.startContainer &&
+        range.endContainer &&
+        document.contains(range.startContainer) &&
+        document.contains(range.endContainer)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Snapshot the current Range without mutating the DOM. Called from mouseup —
+   * cheap, side-effect free.
+   */
+  function rememberNavioSelectionRange() {
     try {
       const sel = window.getSelection();
-      if (!sel || !sel.rangeCount) return false;
+      if (!sel || !sel.rangeCount) {
+        _navioLastSelectionRange = null;
+        return;
+      }
       const range = sel.getRangeAt(0);
-      if (range.collapsed) return false;
+      if (range.collapsed) {
+        _navioLastSelectionRange = null;
+        return;
+      }
+      _navioLastSelectionRange = range.cloneRange();
+    } catch {
+      _navioLastSelectionRange = null;
+    }
+  }
+
+  /**
+   * Wrap the currently-live selection (or the remembered range as a fallback)
+   * into a non-editable <span> the host can later target for Replace. Only
+   * runs when the host explicitly requests it (toolbar action mousedown).
+   */
+  function tryInstallNavioInlineBookmark() {
+    removeNavioInlineBookmark();
+    let range = null;
+    try {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount) {
+        const live = sel.getRangeAt(0);
+        if (live && !live.collapsed) range = live.cloneRange();
+      }
+    } catch {
+      range = null;
+    }
+    if (!range && _navioRangeStillAttached(_navioLastSelectionRange)) {
+      try {
+        range = _navioLastSelectionRange.cloneRange();
+      } catch {
+        range = null;
+      }
+    }
+    if (!range) return false;
+    try {
       const holder = document.createElement('span');
       holder.id = NAVIO_BOOKMARK_ID;
       holder.setAttribute('data-navio-bookmark', '1');
@@ -255,6 +421,14 @@ try {
   ipcRenderer.on('navio-inline-clear-bookmark', () => {
     try {
       removeNavioInlineBookmark();
+    } catch {}
+    _navioLastSelectionRange = null;
+  });
+
+  /** Host requests lazy bookmark installation just before invoking Replace. */
+  ipcRenderer.on('navio-inline-install-bookmark', () => {
+    try {
+      tryInstallNavioInlineBookmark();
     } catch {}
   });
 
@@ -277,18 +451,26 @@ try {
       const text = sel?.toString().trim();
       if (!text || text.length < 3) {
         removeNavioInlineBookmark();
+        _navioLastSelectionRange = null;
         ipcRenderer.sendToHost('navio-selection-cleared', {});
         return;
       }
       // Don't show the toolbar when selecting inside editable fields
       if (sel.anchorNode && _isEditableNode(sel.anchorNode)) {
         removeNavioInlineBookmark();
+        _navioLastSelectionRange = null;
         ipcRenderer.sendToHost('navio-selection-cleared', {});
         return;
       }
       const range = sel.getRangeAt(0);
       const rect  = range.getBoundingClientRect();
-      tryInstallNavioInlineBookmark();
+      // Snapshot the range only — do NOT mutate the DOM here. The bookmark
+      // span is installed lazily when the host requests it via
+      // `navio-inline-install-bookmark` (typically on toolbar action mousedown).
+      // A fresh selection invalidates any previous bookmark — clean it up so
+      // a stale one doesn't get targeted by Replace.
+      removeNavioInlineBookmark();
+      rememberNavioSelectionRange();
       ipcRenderer.sendToHost('navio-text-selected', {
         text: text.slice(0, 3000), // cap to avoid huge payloads
         x: rect.left + rect.width / 2,
@@ -300,6 +482,7 @@ try {
   document.addEventListener('scroll', function() {
     try {
       removeNavioInlineBookmark();
+      _navioLastSelectionRange = null;
       ipcRenderer.sendToHost('navio-selection-cleared', {});
     } catch {}
   }, { passive: true });

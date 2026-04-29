@@ -270,6 +270,21 @@ contextBridge.exposeInMainWorld('navio', {
     ipcRenderer.invoke('navio-site-popups-set', { origin: String(origin || ''), allowed: !!allowed }),
   sitePopupsGet: (origin) => ipcRenderer.invoke('navio-site-popups-get', { origin: String(origin || '') }),
 
+  // Per-site Compatibility Mode (kill switch for in-page Navio injections —
+  // selection toolbar, password autofill detection, login form observer, etc.).
+  // Toggle this for sites that misbehave when Navio's preload runs (carrier
+  // portals, banking, gov forms, Cloudflare-protected SPAs, etc.).
+  siteCompatList: () => ipcRenderer.invoke('navio-site-compat-list'),
+  siteCompatGet: (url) => ipcRenderer.invoke('navio-site-compat-get', { url: String(url || '') }),
+  siteCompatSet: (url, enabled) =>
+    ipcRenderer.invoke('navio-site-compat-set', { url: String(url || ''), enabled: !!enabled }),
+  siteCompatToggle: (url) => ipcRenderer.invoke('navio-site-compat-toggle', { url: String(url || '') }),
+  onSiteCompatChanged: (cb) => {
+    const h = (_, d) => cb(d || {});
+    ipcRenderer.on('navio-site-compat-changed', h);
+    return () => ipcRenderer.removeListener('navio-site-compat-changed', h);
+  },
+
   // Browser Memory
   memoryGet: () => ipcRenderer.invoke('memory-get'),
   memoryAdd: (content) => ipcRenderer.invoke('memory-add', { content }),
