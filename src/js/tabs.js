@@ -332,38 +332,92 @@ class TabManagerClass {
       .replace(/\s+/g, ' ')
       .trim();
 
-    // Create webview element
-    const webview = document.createElement('webview');
-    webview.setAttribute('id', `wv-${id}`);
-    webview.setAttribute('allowpopups', '');
-    // Route window.open through main setWindowOpenHandler (tabs) instead of a bare BrowserWindow.
-    webview.setAttribute('webpreferences', 'nativeWindowOpen=no');
-    webview.setAttribute('partition', incognito ? NAVIO_INCOGNITO_PARTITION : 'persist:navio');
-    webview.setAttribute('useragent', cleanUA);
-    if (this._webviewGuestPreloadHref) {
-      webview.setAttribute('preload', this._webviewGuestPreloadHref);
+    // ── WCV mode (Phase 1 migration) ────────────────────────────────────────
+    // When tab-manager.js is running in main, window.navio.wcvCreateTab exists.
+    // Use a WebviewShim instead of a real <webview> element — the shim routes
+    // all webview API calls to the main-process WebContentsView via IPC.
+    const wcvMode = !!(window.navio && typeof window.navio.wcvCreateTab === 'function');
+
+    let webview;
+    if (wcvMode) {
+      const result = window.navio.wcvCreateTab({
+        url: null,         // tab-manager loads about:blank; real URL is loaded via _pendingUrl on dom-ready
+        incognito,
+        tabId: id,
+        switchTo: false    // renderer drives visibility via classList/bounds
+      });
+      if (!result) {
+        console.error('[tabs] wcvCreateTab returned null — falling back to classic webview');
+        // Fallback: create a real webview so the tab doesn't silently break
+        webview = document.createElement('webview');
+        webview.setAttribute('id', `wv-${id}`);
+        webview.setAttribute('allowpopups', '');
+        webview.setAttribute('webpreferences', 'nativeWindowOpen=no');
+        webview.setAttribute('partition', incognito ? NAVIO_INCOGNITO_PARTITION : 'persist:navio');
+        webview.setAttribute('useragent', cleanUA);
+        if (this._webviewGuestPreloadHref) {
+          webview.setAttribute('preload', this._webviewGuestPreloadHref);
+        }
+        webview.setAttribute('src', 'about:blank');
+        webview._domReady = false;
+        webview._pendingUrl = url || null;
+        tab.webview = webview;
+        this.bindWebviewEvents(tab);
+        if (url && opts.loadWait) {
+          tab._aiLoadWait = this._waitForNextWebviewLoad(webview, opts.loadWait);
+        }
+        this.browserContainer.appendChild(webview);
+        this._syncWebviewSizes();
+      } else {
+        webview = new WebviewShim(result.tabId, result.webContentsId, {
+          getContainer: () => this.browserContainer
+        });
+        webview._domReady = false;
+        webview._pendingUrl = url || null;
+        tab.webview = webview;
+        // Bind events before _setParent so dom-ready from main doesn't race.
+        this.bindWebviewEvents(tab);
+        if (url && opts.loadWait) {
+          tab._aiLoadWait = this._waitForNextWebviewLoad(webview, opts.loadWait);
+        }
+        // Not a real DOM node — tell the shim its logical parent for bounds calc.
+        webview._setParent(this.browserContainer);
+        this._syncWebviewSizes();
+      }
+    } else {
+      // ── Classic <webview> mode (unchanged) ──────────────────────────────
+      webview = document.createElement('webview');
+      webview.setAttribute('id', `wv-${id}`);
+      webview.setAttribute('allowpopups', '');
+      // Route window.open through main setWindowOpenHandler (tabs) instead of a bare BrowserWindow.
+      webview.setAttribute('webpreferences', 'nativeWindowOpen=no');
+      webview.setAttribute('partition', incognito ? NAVIO_INCOGNITO_PARTITION : 'persist:navio');
+      webview.setAttribute('useragent', cleanUA);
+      if (this._webviewGuestPreloadHref) {
+        webview.setAttribute('preload', this._webviewGuestPreloadHref);
+      }
+      // Always set src="about:blank" so Electron starts the guest renderer
+      // immediately and fires dom-ready. Without this, dom-ready never fires
+      // and any pending URL gets stuck in the queue forever (deadlock).
+      webview.setAttribute('src', 'about:blank');
+      webview._domReady = false;
+      webview._pendingUrl = url || null;
+
+      tab.webview = webview;
+
+      // Listeners must be registered before the node is attached: dom-ready can fire
+      // immediately on appendChild, and AI open_tab must not miss did-finish-load.
+      this.bindWebviewEvents(tab);
+      if (url && opts.loadWait) {
+        tab._aiLoadWait = this._waitForNextWebviewLoad(webview, opts.loadWait);
+      }
+
+      this.browserContainer.appendChild(webview);
+
+      // Size the new webview immediately and synchronously so Electron has the
+      // correct viewport dimensions before dom-ready / loadURL fires.
+      this._syncWebviewSizes();
     }
-    // Always set src="about:blank" so Electron starts the guest renderer
-    // immediately and fires dom-ready. Without this, dom-ready never fires
-    // and any pending URL gets stuck in the queue forever (deadlock).
-    webview.setAttribute('src', 'about:blank');
-    webview._domReady = false;
-    webview._pendingUrl = url || null;
-
-    tab.webview = webview;
-
-    // Listeners must be registered before the node is attached: dom-ready can fire
-    // immediately on appendChild, and AI open_tab must not miss did-finish-load.
-    this.bindWebviewEvents(tab);
-    if (url && opts.loadWait) {
-      tab._aiLoadWait = this._waitForNextWebviewLoad(webview, opts.loadWait);
-    }
-
-    this.browserContainer.appendChild(webview);
-
-    // Size the new webview immediately and synchronously so Electron has the
-    // correct viewport dimensions before dom-ready / loadURL fires.
-    this._syncWebviewSizes();
 
     this.tabs.push(tab);
     this.renderTabItem(tab);

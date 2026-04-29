@@ -43,6 +43,7 @@ const navioCrashReporter = require('./navio-crash-reporter');
 const { wcCanGoBack, wcCanGoForward } = require('./wc-nav-history');
 const { ensureGuestWebviewKeyboardFocus } = require('./agent-input-focus');
 const { BINARY_MAX_BYTES, shouldDownloadAndExtract, extractDriveFileText } = require('./drive-file-text');
+const { tabManager } = require('./tab-manager');
 
 function getProfileIdFromLaunch() {
   const a = process.argv.find((x) => typeof x === 'string' && x.startsWith('--navio-profile='));
@@ -1225,6 +1226,11 @@ function createMainWindow() {
       webviewTag: true,
       sandbox: true
     }
+  });
+
+  // Phase 1 WCV migration — TabManager owns all tab WebContents.
+  tabManager.init(mainWindow, {
+    preloadPath: path.join(__dirname, 'webview-preload.js')
   });
 
   mainWindow.once('ready-to-show', () => {

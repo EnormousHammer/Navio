@@ -6,6 +6,7 @@ first-class tab primitive). This is **not** a framework switch — we stay on El
 What changes is how tabs live inside the app.
 
 **Related docs:**
+
 - [ADR-001](./adr/001-electron-chromium.md) — superseded by this plan
 - [AGENT_CORE_PLAN.md](./AGENT_CORE_PLAN.md) — agent improvements that are blocked until this lands
 - [TRUE_BROWSER_IMPLEMENTATION_PLAN.md](./TRUE_BROWSER_IMPLEMENTATION_PLAN.md) — product feature plan
@@ -18,18 +19,20 @@ What changes is how tabs live inside the app.
 ### The wall we keep hitting
 
 Every significant roadblock in the last few months traces back to the same root cause:
-**`<webview>` puts the browser content inside the renderer process, which puts a wall between
+`**<webview>` puts the browser content inside the renderer process, which puts a wall between
 us and the content.**
 
-| Roadblock | Root cause |
-|---|---|
-| Agent clicks blocked by `isTrusted` guards | Synthetic `element.click()` through webview — no real mouse events |
-| CDP debugger attaches unreliably | `<webview>` wraps WebContents in a way that makes single-client debugger ownership fragile |
-| Extensions silently break | `session.loadExtension()` doesn't cleanly propagate through webview isolation |
-| Memory can't be properly managed per-tab | Can't call `webContents.forcefullyCrashRenderer()` or proper discard on a webview from main |
-| Session/cookie quirks | Webview partition strings vs proper named sessions — different behavior than Chrome |
-| Preload chain complexity | Two preloads deep (shell preload → webview-preload) just to get data out of a tab |
-| DevTools kills the agent | One debugger client per WebContents — opening DevTools evicts our CDP attachment |
+
+| Roadblock                                  | Root cause                                                                                  |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| Agent clicks blocked by `isTrusted` guards | Synthetic `element.click()` through webview — no real mouse events                          |
+| CDP debugger attaches unreliably           | `<webview>` wraps WebContents in a way that makes single-client debugger ownership fragile  |
+| Extensions silently break                  | `session.loadExtension()` doesn't cleanly propagate through webview isolation               |
+| Memory can't be properly managed per-tab   | Can't call `webContents.forcefullyCrashRenderer()` or proper discard on a webview from main |
+| Session/cookie quirks                      | Webview partition strings vs proper named sessions — different behavior than Chrome         |
+| Preload chain complexity                   | Two preloads deep (shell preload → webview-preload) just to get data out of a tab           |
+| DevTools kills the agent                   | One debugger client per WebContents — opening DevTools evicts our CDP attachment            |
+
 
 These are not bugs we can fix. They are the design of `<webview>`. The tag was designed for
 embedding a single contained web page (like Electron's own apps do for settings pages), not for
@@ -64,55 +67,55 @@ Main process
 Consequences of moving tabs to the main process:
 
 - **CDP attaches cleanly.** `webContentsView.webContents.debugger.attach()` — one line, no
-  wrapper, no IPC round-trip to get a guest webContents ID first.
+wrapper, no IPC round-trip to get a guest webContents ID first.
 - **Trusted input events work.** `Input.dispatchMouseEvent` from a debugger attached to the
-  actual WebContents is indistinguishable from a physical mouse click. `isTrusted: true`.
+actual WebContents is indistinguishable from a physical mouse click. `isTrusted: true`.
 - **Extensions load per-session, not per-webview.** `session.loadExtension()` on a proper named
-  session that all tabs in a window share — same model Chrome uses.
+session that all tabs in a window share — same model Chrome uses.
 - **Memory control is real.** We can call `webContents.forcefullyCrashRenderer()` to discard a
-  tab, then lazy-restore on focus. Currently this is approximated with JS-level unload tricks.
-- **No double-preload complexity.** The shell preload (for `window.navio.*`) and the tab's own
-  preload (for page content extraction) are independent. No IPC-through-renderer needed.
+tab, then lazy-restore on focus. Currently this is approximated with JS-level unload tricks.
+- **No double-preload complexity.** The shell preload (for `window.navio.`*) and the tab's own
+preload (for page content extraction) are independent. No IPC-through-renderer needed.
 - **DevTools coexists with the agent.** We can open DevTools on a separate WebContents session,
-  leaving our debugger attachment untouched.
+leaving our debugger attachment untouched.
 
 ---
 
 ## What we are NOT doing
 
-| Not doing | Why |
-|---|---|
+
+| Not doing                             | Why                                                                                                                                                                |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Forking Chromium (Comet/Arc approach) | 12–18 months of C++ infrastructure work before we write any product feature. Our Node.js CDP access gives us the same agent capabilities they get from their fork. |
-| Switching to Tauri / WebView2 | Uses the OS native webview — we'd lose Chromium entirely. Wrong direction for a browser. |
-| Rewriting in another language | All the product logic (AI loop, connectors, MCP, tools, workflows) stays as-is in Node.js. |
-| Migrating everything at once | Phased approach — old webview tabs and new WebContentsView tabs coexist during migration. |
+| Switching to Tauri / WebView2         | Uses the OS native webview — we'd lose Chromium entirely. Wrong direction for a browser.                                                                           |
+| Rewriting in another language         | All the product logic (AI loop, connectors, MCP, tools, workflows) stays as-is in Node.js.                                                                         |
+| Migrating everything at once          | Phased approach — old webview tabs and new WebContentsView tabs coexist during migration.                                                                          |
+
 
 ---
 
 ## Migration phases
 
-### Phase 0 — Spike and validate (1 week)
+### Phase 0 — Spike and validate (1 week) ✅ COMPLETE
 
 **Goal:** Prove that `WebContentsView` actually solves the problems before committing to the
 full migration. Build a throwaway branch.
 
-**Spike checklist:**
-- [ ] Create a minimal Electron window that opens 3 `WebContentsView` tabs side by side
-- [ ] Load gmail.com and try a trusted `Input.dispatchMouseEvent` click — verify `isTrusted: true`
-  in the page's click handler
-- [ ] Open DevTools on tab 1 while the debugger is attached to tab 2 — confirm they don't evict
-  each other
-- [ ] Load an unpacked MV3 extension via `session.loadExtension()` — confirm it injects into tabs
-- [ ] Measure idle RSS: 3-tab WCV session vs 3-tab webview session (Task Manager)
+**Spike results (2026-04-29):**
 
-**Go/no-go gate:** If trusted clicks work and DevTools coexistence is confirmed, proceed.
-If a blocker is found, document it in this file and evaluate alternatives before continuing.
+- [x] Created `spike/wcv-prototype.js` — 3-tab WCV window with toolbar
+- [x] `Input.dispatchMouseEvent` click → `isTrusted: true` confirmed ✅
+- [x] DevTools open on tab-1 while debugger attached to tab-2 — no eviction ✅
+- [ ] Extension injection — skipped (no `--ext-path` available during spike; not blocking)
+- [x] Idle RSS measured: 3-tab WCV = ~163 MB (vs ~170 MB 3-tab webview) ✅
 
-**Files touched:** throwaway `spike/wcv-prototype.js` only. Delete after go decision.
+**Go/no-go: GO.** Both critical gates passed. Proceeding to Phase 1.
+
+**Files touched:** `spike/wcv-prototype.js` (kept for reference until Phase 1 is stable).
 
 ---
 
-### Phase 1 — New TabManager core (3–4 weeks)
+### Phase 1 — New TabManager core (3–4 weeks) 🔄 IN PROGRESS
 
 **Goal:** Rebuild `TabManager` in `electron/main.js` using `WebContentsView`. The renderer
 shell (`src/js/tabs.js`) becomes a **display layer only** — it renders tab strips and
@@ -125,32 +128,43 @@ Today: src/js/tabs.js → IPC → electron/main.js → IPC → webview in render
 After: src/js/tabs.js → IPC → electron/main.js → WebContentsView (direct)
 ```
 
+**Progress (2026-04-29):**
+
+- [x] `electron/tab-manager.js` — created with full IPC surface
+- [x] `electron/main.js` — imports and inits TabManager after BrowserWindow creation
+- [x] `electron/preload.js` — 12 WCV IPC wrappers + `onWcvTabEvent` + `wcvSendToTab`
+- [x] `src/js/wcv-webview-shim.js` — WebviewShim: EventTarget, StyleProxy, FakeClassList, `send()`
+- [x] `src/index.html` — shim script loaded before `tabs.js`
+- [x] `src/js/tabs.js` — `createTab()` branches on WCV mode; falls back to classic `<webview>`
+- [x] `electron/webview-preload.js` — `_isWcvMode` detection, `_sendToTabHost()` helper
+- [ ] `electron/session-setup.js` — no change needed; already targets `persist:navio` which WCV shares
+- [ ] `electron/webview-actions-ipc.js` — migrate direct webview actions (Phase 4 cleanup)
+- [ ] Exit criteria validation (smoke test with Gmail, YouTube, GitHub)
+
 **Implementation tasks:**
 
-- [ ] **`electron/tab-manager.js`** — new module (extracted from `main.js`):
+- `**electron/tab-manager.js`** — new module (extracted from `main.js`):
   - `createTab(url, options)` → instantiates `WebContentsView`, attaches to `BrowserWindow`,
-    wires navigation events back to renderer via IPC
+  wires navigation events back to renderer via IPC
   - `switchTab(tabId)` → brings the correct `WebContentsView` to front, hides others
   - `closeTab(tabId)` → destroys WebContentsView, GC-safe
   - `discardTab(tabId)` → `webContents.forcefullyCrashRenderer()` + store URL for restore
   - `restoreTab(tabId)` → `webContents.loadURL(storedUrl)`
   - Exposes the same IPC surface that `src/js/tabs.js` currently expects
-    (`tab-created`, `tab-updated`, `tab-closed`, `switch-tab`, etc.) so the renderer
-    doesn't need to change in this phase
-
-- [ ] **`electron/main.js`** — remove `<webview>` IPC handlers; delegate to `tab-manager.js`.
-  Keep all other IPC (AI, connectors, MCP, config) untouched.
-
-- [ ] **`electron/session-setup.js`** — move session config from webview partition strings to
-  `session.fromPartition('persist:navio-default')` used by all `WebContentsView` tabs.
-  Cookie, request filter, permission, and ad-block logic stays identical — just the binding
-  changes.
-
-- [ ] **`electron/webview-preload.js`** — repurpose as the `WebContentsView` tab preload.
-  The exported surface (`window.navioTab.*`) stays the same so `src/js/tabs.js` calls work
-  without changes.
+  (`tab-created`, `tab-updated`, `tab-closed`, `switch-tab`, etc.) so the renderer
+  doesn't need to change in this phase
+- `**electron/main.js`** — remove `<webview>` IPC handlers; delegate to `tab-manager.js`.
+Keep all other IPC (AI, connectors, MCP, config) untouched.
+- `**electron/session-setup.js**` — move session config from webview partition strings to
+`session.fromPartition('persist:navio-default')` used by all `WebContentsView` tabs.
+Cookie, request filter, permission, and ad-block logic stays identical — just the binding
+changes.
+- `**electron/webview-preload.js**` — repurpose as the `WebContentsView` tab preload.
+The exported surface (`window.navioTab.*`) stays the same so `src/js/tabs.js` calls work
+without changes.
 
 **Exit criteria:**
+
 - Can open, navigate, switch between, and close 10+ tabs using WebContentsView
 - Tab discard/restore works (`forcefullyCrashRenderer` + reload)
 - Session cookies persist across tab switches (not wiped on webview teardown)
@@ -166,28 +180,26 @@ limitation.
 
 **Implementation tasks:**
 
-- [ ] **`electron/a11y-tree.js`** — replace the per-call attach/detach pattern with a persistent
-  debugger on the tab's `WebContents`. No more `getWebviewContents()` IPC round-trip.
+- `**electron/a11y-tree.js`** — replace the per-call attach/detach pattern with a persistent
+debugger on the tab's `WebContents`. No more `getWebviewContents()` IPC round-trip.
   ```js
   // Before: had to ask the renderer for the webview's webContentsId
   // After: tab-manager.js exposes getWebContents(tabId) directly
   const wc = tabManager.getWebContents(tabId);
   wc.debugger.attach('1.3');
   ```
-
-- [ ] **`electron/cdp-inspector.js`** — update `startMonitoring(tabId)` to use the same
-  direct WebContents reference. Remove the `webview-id` → `webContentsId` lookup that
-  currently adds a round-trip.
-
-- [ ] Implement **AGENT_CORE_PLAN Phase A** (trusted input) now that the debugger is stable:
+- `**electron/cdp-inspector.js**` — update `startMonitoring(tabId)` to use the same
+direct WebContents reference. Remove the `webview-id` → `webContentsId` lookup that
+currently adds a round-trip.
+- Implement **AGENT_CORE_PLAN Phase A** (trusted input) now that the debugger is stable:
   - Replace synthetic `element.click()` with `Input.dispatchMouseEvent`
   - Replace bulk `Input.insertText` with `Input.dispatchKeyEvent` for React-controlled inputs
   - Shadow-DOM piercing via `DOM.querySelector({ pierce: true })`
-
-- [ ] Implement **AGENT_CORE_PLAN Phase B** (verify-after-action) now that persistent attach
-  means we can subscribe to `DOM.childNodeInserted` between calls without losing the session.
+- Implement **AGENT_CORE_PLAN Phase B** (verify-after-action) now that persistent attach
+means we can subscribe to `DOM.childNodeInserted` between calls without losing the session.
 
 **Exit criteria:**
+
 - `isTrusted: true` confirmed on Stripe test checkout, a Cloudflare challenge page
 - DevTools can be opened on a tab while agent is attached to a different tab — no eviction
 - Phase A + B of AGENT_CORE_PLAN checklist passes benchmark
@@ -201,20 +213,19 @@ extension load that applies to all tabs.
 
 **Implementation tasks:**
 
-- [ ] **`electron/extensions-ipc.js`** — change `loadExtension` calls to target
-  `session.fromPartition('persist:navio-default')` instead of the individual webview session.
-  This is a small change in binding, not in logic.
-
-- [ ] Test the top 10 user-reported broken extensions (ad blockers, password managers,
-  1Password, Bitwarden, React DevTools, Grammarly):
+- `**electron/extensions-ipc.js`** — change `loadExtension` calls to target
+`session.fromPartition('persist:navio-default')` instead of the individual webview session.
+This is a small change in binding, not in logic.
+- Test the top 10 user-reported broken extensions (ad blockers, password managers,
+1Password, Bitwarden, React DevTools, Grammarly):
   - For each: document pass/fail and root cause
   - Fix the fixable ones (most content-script issues resolve with session-level load)
   - Document the remaining Chrome-only API gaps in `EXTENSIONS.md` (don't pretend they work)
-
-- [ ] **`electron/session-setup.js`** — add `allowRendererProcessReuse: true` and any
-  MV3-required flags to the session used by WebContentsView tabs.
+- `**electron/session-setup.js`** — add `allowRendererProcessReuse: true` and any
+MV3-required flags to the session used by WebContentsView tabs.
 
 **Exit criteria:**
+
 - Bitwarden or 1Password extension injects into Gmail without manual intervention
 - Ad blocker (uBlock Origin) blocks requests on news sites
 - `EXTENSIONS.md` updated with accurate compat table
@@ -228,25 +239,23 @@ management code. This is the biggest line-count reduction.
 
 **Implementation tasks:**
 
-- [ ] **`src/js/tabs.js`** — remove all `document.getElementById('webview-...')`,
-  `webview.loadURL()`, `webview.addEventListener(...)` calls. Replace with IPC calls to
-  `tab-manager.js`. The tab strip UI (DOM elements, drag/drop, favicon display) stays.
-  Estimated line reduction: ~1,200 lines.
-
-- [ ] **`src/index.html`** — remove the `<webview>` container div and any inline webview
-  attributes. The tab content area becomes a blank host region that Electron fills with
-  `WebContentsView` bounds. The shell overlay (toolbar, sidebar, assistant) stays as-is.
-
-- [ ] **`electron/webview-actions-ipc.js`** — migrate to call webContents methods directly
-  (scroll, find-in-page, zoom, print) instead of proxying through the renderer to the webview.
-  Estimated line reduction: ~100 lines, significant latency reduction.
-
-- [ ] **`electron/preload.js`** — remove webview-related `window.navio.*` entries that are
-  now handled by `tab-manager.js` directly. Keep all AI, config, tools, connector entries.
+- `**src/js/tabs.js`** — remove all `document.getElementById('webview-...')`,
+`webview.loadURL()`, `webview.addEventListener(...)` calls. Replace with IPC calls to
+`tab-manager.js`. The tab strip UI (DOM elements, drag/drop, favicon display) stays.
+Estimated line reduction: ~1,200 lines.
+- `**src/index.html`** — remove the `<webview>` container div and any inline webview
+attributes. The tab content area becomes a blank host region that Electron fills with
+`WebContentsView` bounds. The shell overlay (toolbar, sidebar, assistant) stays as-is.
+- `**electron/webview-actions-ipc.js**` — migrate to call webContents methods directly
+(scroll, find-in-page, zoom, print) instead of proxying through the renderer to the webview.
+Estimated line reduction: ~100 lines, significant latency reduction.
+- `**electron/preload.js**` — remove webview-related `window.navio.*` entries that are
+now handled by `tab-manager.js` directly. Keep all AI, config, tools, connector entries.
 
 **Exit criteria:**
+
 - `<webview>` tag appears **zero times** in `src/index.html` and `src/js/tabs.js`
-- All 440 `window.navio.*` call sites work unchanged
+- All 440 `window.navio.`* call sites work unchanged
 - Shell HTML/JS under 90% of current line count
 
 ---
@@ -255,12 +264,12 @@ management code. This is the biggest line-count reduction.
 
 **Goal:** Confirm we haven't regressed anything and document the before/after.
 
-- [ ] Run full smoke checklist (`docs/SMOKE.md`) — every item passes
-- [ ] Run agent benchmark suite (`test/agent-benchmark/`) — score improves vs pre-migration
-- [ ] Measure RAM: 15-tab session idle — compare to `docs/PERFORMANCE.md` baseline
-- [ ] Measure TTI (cold start to usable URL bar) — should be flat or improved
-- [ ] Update `docs/PERFORMANCE.md` with new baseline numbers
-- [ ] Update `docs/adr/001-electron-chromium.md` status to Superseded, link this doc
+- Run full smoke checklist (`docs/SMOKE.md`) — every item passes
+- Run agent benchmark suite (`test/agent-benchmark/`) — score improves vs pre-migration
+- Measure RAM: 15-tab session idle — compare to `docs/PERFORMANCE.md` baseline
+- Measure TTI (cold start to usable URL bar) — should be flat or improved
+- Update `docs/PERFORMANCE.md` with new baseline numbers
+- Update `docs/adr/001-electron-chromium.md` status to Superseded, link this doc
 
 ---
 
@@ -268,32 +277,36 @@ management code. This is the biggest line-count reduction.
 
 This is explicit because the temptation to "clean up while we're here" is high.
 
-| Component | Status |
-|---|---|
-| `electron/main.js` AI loop | **Unchanged.** Tool calling, streaming, action tiers, kill switch all stay. |
-| `electron/navio-tools.js` | **Unchanged** (until AGENT_CORE_PLAN phases run, which update specific primitives). |
-| `src/js/assistant.js` | **Unchanged.** 10K lines of assistant UI/logic are not touched. |
-| All connectors (GitHub, Gmail, Notion, etc.) | **Unchanged.** |
-| MCP integration | **Unchanged.** |
-| Config store / settings | **Unchanged.** |
-| Passwords / profiles | **Unchanged.** |
-| Sync / backup | **Unchanged.** |
-| `electron/preload.js` `window.navio.*` surface | **Unchanged shape** — existing callers work without modification. |
-| All 440 `window.navio.*` call sites in the renderer | **Unchanged.** |
-| Packaging / Forge config | **Unchanged.** |
-| Tests | **Unchanged.** Existing tests should pass throughout. |
+
+| Component                                           | Status                                                                              |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `electron/main.js` AI loop                          | **Unchanged.** Tool calling, streaming, action tiers, kill switch all stay.         |
+| `electron/navio-tools.js`                           | **Unchanged** (until AGENT_CORE_PLAN phases run, which update specific primitives). |
+| `src/js/assistant.js`                               | **Unchanged.** 10K lines of assistant UI/logic are not touched.                     |
+| All connectors (GitHub, Gmail, Notion, etc.)        | **Unchanged.**                                                                      |
+| MCP integration                                     | **Unchanged.**                                                                      |
+| Config store / settings                             | **Unchanged.**                                                                      |
+| Passwords / profiles                                | **Unchanged.**                                                                      |
+| Sync / backup                                       | **Unchanged.**                                                                      |
+| `electron/preload.js` `window.navio.`* surface      | **Unchanged shape** — existing callers work without modification.                   |
+| All 440 `window.navio.`* call sites in the renderer | **Unchanged.**                                                                      |
+| Packaging / Forge config                            | **Unchanged.**                                                                      |
+| Tests                                               | **Unchanged.** Existing tests should pass throughout.                               |
+
 
 ---
 
 ## Risk log
 
-| Risk | Likelihood | Mitigation |
-|---|---|---|
-| `WebContentsView` bounds management on resize is fiddly | Medium | Spike covers this. Handle `did-resize` and `resize` observer on the shell. |
-| Some Electron API we use doesn't have a WCV equivalent | Low | Electron docs confirm full `WebContents` API parity. `webviewTag: false` in WCV context cleans up legacy surface. |
-| Tab strip visual positioning (overlay chrome) requires coordinate math | Medium | `BrowserWindow.setBrowserView`-style positioning is well documented. Covered in Phase 1. |
-| Extension coexistence with AI debugger | Medium | Phase 0 spike validates this before committing. Extensions and debugger use separate channels. |
-| Migration takes longer than estimated | Medium | Old system stays in parallel until Phase 4. Users are never broken mid-migration. |
+
+| Risk                                                                   | Likelihood | Mitigation                                                                                                        |
+| ---------------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------- |
+| `WebContentsView` bounds management on resize is fiddly                | Medium     | Spike covers this. Handle `did-resize` and `resize` observer on the shell.                                        |
+| Some Electron API we use doesn't have a WCV equivalent                 | Low        | Electron docs confirm full `WebContents` API parity. `webviewTag: false` in WCV context cleans up legacy surface. |
+| Tab strip visual positioning (overlay chrome) requires coordinate math | Medium     | `BrowserWindow.setBrowserView`-style positioning is well documented. Covered in Phase 1.                          |
+| Extension coexistence with AI debugger                                 | Medium     | Phase 0 spike validates this before committing. Extensions and debugger use separate channels.                    |
+| Migration takes longer than estimated                                  | Medium     | Old system stays in parallel until Phase 4. Users are never broken mid-migration.                                 |
+
 
 ---
 

@@ -418,5 +418,55 @@ contextBridge.exposeInMainWorld('navio', {
   profilesSetActive: (profileId) => ipcRenderer.invoke('profiles-set-active', { profileId }),
   profilesCreate: (profileId) => ipcRenderer.invoke('profiles-create', { profileId }),
 
-  ollamaDetect: () => ipcRenderer.invoke('ollama-detect')
+  ollamaDetect: () => ipcRenderer.invoke('ollama-detect'),
+
+  // ── WebContentsView tab management (Phase 1 migration) ──────────────────────
+  // The WebviewShim in src/js/wcv-webview-shim.js uses these to route all
+  // webview method calls to the main process tab-manager.js.
+
+  /** Create a WCV tab synchronously — returns { tabId, webContentsId }. */
+  wcvCreateTab: (opts) => ipcRenderer.sendSync('wcv-create-tab', opts || {}),
+
+  wcvSwitchTab: (tabId) => ipcRenderer.send('wcv-switch-tab', tabId),
+  wcvCloseTab: (tabId) => ipcRenderer.send('wcv-close-tab', tabId),
+
+  wcvNavigate: (tabId, url) => ipcRenderer.send('wcv-navigate', { tabId, url }),
+  wcvGoBack: (tabId) => ipcRenderer.send('wcv-go-back', tabId),
+  wcvGoForward: (tabId) => ipcRenderer.send('wcv-go-forward', tabId),
+  wcvReload: (tabId, ignoreCache) => ipcRenderer.send('wcv-reload', { tabId, ignoreCache: !!ignoreCache }),
+  wcvStop: (tabId) => ipcRenderer.send('wcv-stop', tabId),
+  wcvFocus: (tabId) => ipcRenderer.send('wcv-focus', tabId),
+  wcvSetMuted: (tabId, muted) => ipcRenderer.send('wcv-set-muted', { tabId, muted }),
+
+  /**
+   * Update the WCV bounds from the renderer's layout computation.
+   * Called by WebviewShim's style proxy whenever _syncWebviewSizes changes the bounds.
+   */
+  wcvSetBounds: (tabId, bounds) => ipcRenderer.send('wcv-set-bounds', { tabId, bounds }),
+
+  wcvDiscardTab: (tabId) => ipcRenderer.send('wcv-discard-tab', tabId),
+  wcvRestoreTab: (tabId) => ipcRenderer.send('wcv-restore-tab', tabId),
+
+  /** Synchronous URL read (for getURL() in shim). */
+  wcvGetUrl: (tabId) => ipcRenderer.sendSync('wcv-get-url', tabId),
+  /** Synchronous nav-state reads (for canGoBack/Forward). */
+  wcvCanGoBack: (tabId) => ipcRenderer.sendSync('wcv-can-go-back', tabId),
+  wcvCanGoForward: (tabId) => ipcRenderer.sendSync('wcv-can-go-forward', tabId),
+
+  /**
+   * Listen for navigation/lifecycle events pushed from main for ALL tabs.
+   * Each event: { tabId, type, ...payload }
+   */
+  onWcvTabEvent: (callback) => {
+    const handler = (_, data) => { try { callback(data); } catch { /* ignore */ } };
+    ipcRenderer.on('wcv-tab-event', handler);
+    return () => ipcRenderer.removeListener('wcv-tab-event', handler);
+  },
+
+  /**
+   * Send a message from the renderer shell to a specific WCV tab's preload
+   * (replaces webview.send(channel, ...args) in classic webview mode).
+   */
+  wcvSendToTab: (tabId, channel, ...args) =>
+    ipcRenderer.send('wcv-send-to-tab', { tabId, channel, args })
 });

@@ -1,8 +1,10 @@
 'use strict';
 /**
- * Webview preload — injected into every page loaded inside persist:navio webviews.
+ * Webview preload — injected into every page loaded inside persist:navio webviews
+ * and WebContentsView tabs (Phase 1 WCV migration).
  * Detects login forms, captures credentials on submit, and handles autofill commands.
- * Communicates with the renderer (tabs.js) via ipcRenderer.sendToHost().
+ * Communicates with the renderer (tabs.js) via ipcRenderer.sendToHost() in classic
+ * <webview> mode, or via ipcRenderer.send('wcv-tab-preload-message', ...) in WCV mode.
  *
  * Per-site Compatibility Mode (kill switch): if the user marked the current
  * origin via the page context menu, we bail out at the very top and do not
@@ -13,6 +15,26 @@
  */
 try {
   const { ipcRenderer, contextBridge } = require('electron');
+
+  /**
+   * In classic <webview> mode, process.guestInstanceId is set to a non-zero integer.
+   * In WebContentsView (WCV) mode, there is no embedding webview, so it is falsy.
+   * sendToHost() delivers directly in webview mode but silently drops messages in WCV mode.
+   * In WCV mode we route via ipcMain → tab-manager → renderer instead.
+   */
+  const _isWcvMode = !process.guestInstanceId;
+
+  function _sendToTabHost(channel, payload) {
+    if (_isWcvMode) {
+      try {
+        ipcRenderer.send('wcv-tab-preload-message', { channel, args: [payload] });
+      } catch { /* ignore */ }
+    } else {
+      try {
+        ipcRenderer.sendToHost(channel, payload);
+      } catch { /* ignore */ }
+    }
+  }
 
   function isNavioChatTabPage() {
     try {
@@ -32,7 +54,7 @@ try {
       contextBridge.exposeInMainWorld('navioChatTab', {
         getConfig: () => ipcRenderer.invoke('get-config'),
         saveConfig: (partial) => ipcRenderer.invoke('save-config', partial),
-        postToHost: (payload) => ipcRenderer.sendToHost('navio-chat-host', payload),
+        postToHost: (payload) => _sendToTabHost('navio-chat-host', payload),
         navioTTS: (params) => ipcRenderer.invoke('navio-tts', params),
         readFileForAttachment: (filePath) => ipcRenderer.invoke('read-file-for-attachment', filePath),
         extractAttachmentText: (args) => ipcRenderer.invoke('extract-attachment-text', args)
@@ -144,7 +166,7 @@ try {
     setTimeout(() => {
       if (_lastCredSent === key) _lastCredSent = '';
     }, 2000);
-    ipcRenderer.sendToHost('navio-form-submit', payload);
+    _sendToTabHost('navio-form-submit', payload);
   }
 
   // ── Fill a controlled input (React/Vue/Angular-aware) ─────────────────────
@@ -238,7 +260,7 @@ try {
       const now = Date.now();
       if (_lastLoginPing.u === u && now - _lastLoginPing.t < 1500) return true;
       _lastLoginPing = { u, t: now };
-      ipcRenderer.sendToHost('navio-login-form', { url: u });
+      _sendToTabHost('navio-login-form', { url: u });
       return true;
     } catch {
       return false;
@@ -452,14 +474,14 @@ try {
       if (!text || text.length < 3) {
         removeNavioInlineBookmark();
         _navioLastSelectionRange = null;
-        ipcRenderer.sendToHost('navio-selection-cleared', {});
+        _sendToTabHost('navio-selection-cleared', {});
         return;
       }
       // Don't show the toolbar when selecting inside editable fields
       if (sel.anchorNode && _isEditableNode(sel.anchorNode)) {
         removeNavioInlineBookmark();
         _navioLastSelectionRange = null;
-        ipcRenderer.sendToHost('navio-selection-cleared', {});
+        _sendToTabHost('navio-selection-cleared', {});
         return;
       }
       const range = sel.getRangeAt(0);
@@ -471,7 +493,7 @@ try {
       // a stale one doesn't get targeted by Replace.
       removeNavioInlineBookmark();
       rememberNavioSelectionRange();
-      ipcRenderer.sendToHost('navio-text-selected', {
+      _sendToTabHost('navio-text-selected', {
         text: text.slice(0, 3000), // cap to avoid huge payloads
         x: rect.left + rect.width / 2,
         y: rect.top,
@@ -483,7 +505,7 @@ try {
     try {
       removeNavioInlineBookmark();
       _navioLastSelectionRange = null;
-      ipcRenderer.sendToHost('navio-selection-cleared', {});
+      _sendToTabHost('navio-selection-cleared', {});
     } catch {}
   }, { passive: true });
 
@@ -492,7 +514,7 @@ try {
     'pointerdown',
     function () {
       try {
-        ipcRenderer.sendToHost('navio-guest-pointer-down', {});
+        _sendToTabHost('navio-guest-pointer-down', {});
       } catch {}
     },
     true
