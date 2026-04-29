@@ -2408,6 +2408,60 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
 
   const TAB_TOOLS = new Set(['open_tab', 'close_tab', 'switch_tab', 'list_tabs', 'split_tabs']);
 
+  /**
+   * Stall detector: track the last few tool calls and auto-inject an error
+   * result when the model repeats the exact same tool+args ≥ STALL_THRESHOLD
+   * times in a row. Without this the model can spin forever doing e.g.
+   *   read_page(filter=interactive) → empty → read_page(filter=interactive) → empty → …
+   * The injected error is short and action-oriented so the model's next token
+   * picks a different strategy rather than giving up.
+   */
+  const STALL_THRESHOLD = 3; // consecutive identical calls before intervention
+  const stallTrack = []; // { sig: string, count: number }
+
+  /**
+   * Returns a stall-intervention tool result string when the same sig has been
+   * seen >= STALL_THRESHOLD times in a row, otherwise null.
+   * Resets the streak when a different sig arrives.
+   */
+  function navioCheckStall(toolName, args) {
+    // Build a compact signature: tool name + first 180 chars of JSON args.
+    const sig = toolName + '|' + JSON.stringify(args || {}).slice(0, 180);
+    const last = stallTrack[stallTrack.length - 1];
+    if (last && last.sig === sig) {
+      last.count++;
+      if (last.count >= STALL_THRESHOLD) {
+        // Specific recovery hints per tool family
+        let hint = 'You must change your approach. Do NOT repeat this call.';
+        if (toolName === 'read_page') {
+          const curFilter = (args && args.filter) || '';
+          const next = curFilter === 'all' ? '"interactive" or use screenshot instead' : '"all"';
+          hint = `read_page returned the same result ${last.count} times. ` +
+            `Try filter=${next}, or call screenshot to get visual context, or navigate to a more specific URL. ` +
+            `Do NOT call read_page with the same filter again.`;
+        } else if (toolName === 'navigate') {
+          hint = `navigate to the same URL has been called ${last.count} times. ` +
+            `The page is likely already loaded. Call read_page or screenshot to see what's there, ` +
+            `or navigate to a DIFFERENT, more specific URL. Do NOT navigate here again.`;
+        } else if (toolName === 'web_search') {
+          hint = `web_search with the same query has run ${last.count} times. ` +
+            `Rephrase the query with different keywords, add a year (2026), or try a different source.`;
+        } else if (toolName === 'click') {
+          hint = `click on the same element has been called ${last.count} times — it is not working. ` +
+            `Try a different ref, use click with text= instead of ref=, or call screenshot to find the right target.`;
+        } else if (toolName === 'screenshot') {
+          hint = `screenshot has been called ${last.count} times without making progress. ` +
+            `Use the coordinates from the screenshot to click something, scroll down, or navigate elsewhere.`;
+        }
+        return { error: `[STALL DETECTED] ${hint}` };
+      }
+    } else {
+      stallTrack.length = 0; // reset on any different call
+      stallTrack.push({ sig, count: 1 });
+    }
+    return null;
+  }
+
   for (let step = 0; step < maxSteps; step++) {
     if (signal?.aborted) {
       return finishAgentRun({ content: '**Stopped.**', cancelled: true, toolLog });
@@ -2440,6 +2494,29 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
 
     for (const tc of result.toolCalls) {
       console.log(`[navio] tool-loop step ${step}: ${tc.name}(${JSON.stringify(tc.arguments).slice(0, 120)})`);
+
+      // Stall guard: if the model is spinning on the exact same tool+args,
+      // short-circuit with an action-oriented error rather than running again.
+      // Only applies to browser/search tools that commonly loop (not Gmail, Drive,
+      // Calendar, tab management or MCP which have different idempotency profiles).
+      const STALL_GUARDED = new Set([
+        'read_page', 'navigate', 'web_search', 'click', 'screenshot',
+        'get_page_text', 'scroll', 'go_back', 'go_forward', 'type_text'
+      ]);
+      if (STALL_GUARDED.has(tc.name)) {
+        const stallResult = navioCheckStall(tc.name, tc.arguments);
+        if (stallResult) {
+          console.warn(`[navio] stall-guard fired at step ${step}: ${tc.name}`);
+          currentMessages = appendToolResult(currentMessages, tc, stallResult, provider);
+          toolLog.push({ tool: tc.name, args: tc.arguments, result: stallResult, stall_guard: true });
+          tp({ step, tool: tc.name, result: stallResult });
+          continue;
+        }
+      } else {
+        // Reset stall tracker whenever a non-guarded tool fires — the agent is
+        // making different kinds of progress.
+        stallTrack.length = 0;
+      }
 
       // Web search — Perplexity when connected (best citations), else fall back
       // to the active LLM provider's native web-search tool so users never need

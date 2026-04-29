@@ -6074,6 +6074,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     let finalized = false;
     let stallTimer = null;
     let streamCancelled = false;
+    // rAF coalescing: reset per-turn so each new stream starts clean.
+    this._streamRafPending = false;
+    this._streamFirstChunkSeen = false;
 
     // Shared finalize: renders buffer with action cards, saves history.
     // Safe to call from done event, stall timeout, or error handler.
@@ -6207,8 +6210,29 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       const contentEl = streamingMsg.querySelector('.message-content');
       // Strip [FOLLOWUP] block from live stream so it doesn't flash as raw text
       const { clean: liveClean } = this._extractFollowUpChips(buffer);
-      contentEl.innerHTML = this.formatMessage(liveClean);
-      this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+
+      // Coalesce rapid chunk renders via rAF so we pay the markdown-parse cost
+      // at most once per animation frame (~16 ms) instead of once per token.
+      // First chunk always renders immediately (no pending frame yet) so the
+      // user sees the first word with zero extra delay.
+      if (!this._streamRafPending) {
+        this._streamRafPending = true;
+        requestAnimationFrame(() => {
+          this._streamRafPending = false;
+          const el = streamingMsg && streamingMsg.querySelector('.message-content');
+          if (!el) return;
+          const { clean } = this._extractFollowUpChips(buffer);
+          el.innerHTML = this.formatMessage(clean);
+          this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+        });
+      }
+      // Keep a synchronous render path for the very first visible chunk so
+      // there's no blank frame before the rAF fires.
+      if (!this._streamFirstChunkSeen) {
+        this._streamFirstChunkSeen = true;
+        contentEl.innerHTML = this.formatMessage(liveClean);
+        this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+      }
     });
 
     const unDone = window.navio.onAiStreamDone(async (payload) => {
@@ -9497,21 +9521,22 @@ ${pageInfo}${snapText}`;
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
 
     // Cycle through warm-up labels so the user knows something is happening during context-building.
-    // Labels rotate every 3s while still on "Thinking" (tool updates override immediately via _updateTypingLabel).
-    const warmupLabels = ['One sec', 'Pulling context', 'Almost there', 'One sec'];
+    // Labels rotate every 1.5 s while still on "Thinking" (tool updates override immediately via _updateTypingLabel).
+    const warmupLabels = ['On it', 'Reading context', 'Thinking…', 'On it'];
     let warmupIdx = 0;
     const warmupTimer = setInterval(() => {
       const labelEl = document.getElementById('typing-indicator-label');
       if (!labelEl) { clearInterval(warmupTimer); return; }
       // Only cycle if the label is still on a warmup phase (not overridden by a tool-specific label)
       const curText = labelEl.textContent || '';
-      if (warmupLabels.includes(curText) || curText === 'Thinking' || curText === 'One sec') {
+      const isWarmup = warmupLabels.includes(curText) || curText === 'Thinking' || curText === 'One sec';
+      if (isWarmup) {
         warmupIdx = (warmupIdx + 1) % warmupLabels.length;
         labelEl.textContent = warmupLabels[warmupIdx];
       } else {
         clearInterval(warmupTimer);
       }
-    }, 3000);
+    }, 1500);
     // Store timer ref so removeTypingIndicator can clean it up
     indicator.dataset.warmupTimer = warmupTimer;
   }
@@ -9548,7 +9573,22 @@ ${pageInfo}${snapText}`;
       read_console: 'Peeking at the console',
       read_network: 'Watching network calls',
       propose_plan: 'Sketching a plan',
-      wait: 'Holding on a moment'
+      wait: 'Holding on a moment',
+      drive_search: 'Searching Drive',
+      drive_get_file: 'Reading the file',
+      drive_list_folder: 'Listing the folder',
+      drive_create_file: 'Creating a file',
+      drive_update_text_file: 'Updating the file',
+      drive_update_google_doc: 'Updating the doc',
+      drive_trash_file: 'Moving to trash',
+      save_local_file: 'Saving to your PC',
+      insert_text: 'Pasting into the field',
+      press_key: 'Pressing a key',
+      select_option: 'Selecting an option',
+      go_forward: 'Going forward',
+      go_back: 'Going back',
+      run_workflow: 'Running a workflow',
+      list_workflows: 'Checking saved workflows'
     };
     labelEl.textContent = labels[tool] || 'On it';
   }

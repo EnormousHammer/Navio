@@ -1732,7 +1732,14 @@
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                     Weekend trip
                   </button>
-                </div>
+                  <button type="button" class="assistant-starter-chip ai-starter-cat" data-starter-group="agent">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    Browser agent
+                  </button>
+                  <button type="button" class="assistant-starter-chip ai-starter-cat" data-starter-group="research">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    Research
+                  </button>                </div>
               </div>
               <div class="ai-starter-face ai-starter-face--options" hidden>
                 <div class="ai-starter-options-head">
@@ -1761,6 +1768,20 @@
                   <button type="button" class="ai-starter-option" data-prompt="Help me plan a budget-conscious weekend trip. Ask only what you must, then suggest 2 options with estimated cost ranges and money-saving tips.">Budget focus</button>
                   <button type="button" class="ai-starter-option" data-prompt="Help me plan a family-friendly weekend trip with kid-appropriate pacing. Ask region or city if unknown, then suggest 2 options with relaxed schedules.">Family friendly</button>
                   <button type="button" class="ai-starter-option" data-prompt="Help me plan an outdoor-focused weekend: hiking, parks, or nature within about 3 hours travel. Ask departure city if you need it, then suggest 2 itineraries.">Outdoors &amp; nature</button>
+                </div>
+
+                <div class="ai-starter-panel ai-starter-group" data-starter-group="agent" hidden>
+                  <button type="button" class="ai-starter-option" data-prompt="Find the cheapest direct flight from Toronto to New York for next weekend (Saturday return Sunday). Search Google Flights, list every option with price, airline and time, then tell me the best value pick.">Find cheapest flight</button>
+                  <button type="button" class="ai-starter-option" data-prompt="Open Amazon and search for the top-rated wireless noise-cancelling headphones under $200. List the top 3 results with price, rating and a one-line reason to buy each.">Shop: best headphones under $200</button>
+                  <button type="button" class="ai-starter-option" data-prompt="Go to YouTube and find the most popular tutorial video on how to use Notion effectively in 2026. Navigate to it and start playing it in theatre mode.">Play a YouTube tutorial</button>
+                  <button type="button" class="ai-starter-option" data-prompt="Summarize everything open in my browser right now — give me a one-sentence overview of each tab and highlight anything that looks urgent or needs action.">Summarize all my open tabs</button>
+                </div>
+
+                <div class="ai-starter-panel ai-starter-group" data-starter-group="research" hidden>
+                  <button type="button" class="ai-starter-option" data-prompt="Compare the top 3 AI assistant browsers available today (Perplexity Comet, ChatGPT Atlas, and Navio). Search for current information and give me a side-by-side table of features, pricing, and platform support.">Compare AI browsers</button>
+                  <button type="button" class="ai-starter-option" data-prompt="What are the biggest tech news stories today? Search the web, give me 5 headlines with a one-sentence summary each, and link the sources.">Today's tech news (cited)</button>
+                  <button type="button" class="ai-starter-option" data-prompt="I want to understand the page I have open right now. Give me a deep analysis: main topic, key claims, who wrote it, target audience, and any biases or missing context I should know about.">Deep analysis of this page</button>
+                  <button type="button" class="ai-starter-option" data-prompt="Search the web for the best productivity tools for remote teams in 2026. Summarize the top 5 with pricing, main features, and what type of team each is best for.">Best productivity tools 2026</button>
                 </div>
               </div>
             </div>
@@ -1814,10 +1835,10 @@
               </button>
               <input type="file" id="assistant-file-input" multiple style="position:absolute;width:0;height:0;opacity:0;pointer-events:none" aria-hidden="true" tabindex="-1">
               <button type="button" class="voice-btn btn-at-mention" id="btn-at-mention" title="Mention a tab — type @ to reference any open tab as context" aria-label="Mention tab">@</button>
-              <button class="voice-btn" id="btn-voice-conv" title="Voice conversation — back-and-forth; pause ~3s when finished speaking (same send pipeline as typing)">
+              <button class="voice-btn voice-btn--conv" id="btn-voice-conv" title="Voice conversation — talk back and forth with Navio (pause ~3s when done speaking)">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/><line x1="18" y1="6" x2="22" y2="6"/><line x1="18" y1="10" x2="22" y2="10"/></svg>
               </button>
-              <button class="voice-btn" id="btn-voice-mode" title="Voice input — merges with text in the box; pause ~3s when done; sends like Enter (>> research, attachments, etc.)">
+              <button class="voice-btn" id="btn-voice-mode" title="Voice input — speak once, Navio transcribes and sends (pause ~3s when done)">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
               </button>
               <span id="voice-hint" class="assistant-input-hint-inline">Shift+Enter for new line</span>

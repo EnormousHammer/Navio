@@ -6246,6 +6246,21 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   border-color: rgba(139, 92, 246, 0.3) !important;
 }
 
+/* Voice conversation mode button: slightly more prominent than single-shot
+   mic because it's the richer "talk to Navio" interaction. Subtle violet tint
+   at rest — not distracting, but differentiates it from a plain icon button. */
+.voice-btn--conv {
+  color: rgba(139, 92, 246, 0.65);
+  border-color: rgba(139, 92, 246, 0.15);
+  background: rgba(139, 92, 246, 0.06);
+}
+.voice-btn--conv:hover {
+  color: rgba(139, 92, 246, 0.95);
+  background: rgba(139, 92, 246, 0.15);
+  border-color: rgba(139, 92, 246, 0.35);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.2);
+}
+
 /* Light theme */
 [data-theme="light"] .voice-conv-hud {
   background: rgba(109, 40, 217, 0.04);
