@@ -1643,16 +1643,19 @@ html[data-theme="light"] .assistant-panel .assistant-input-area::before {
   display: none;
 }
 
+/* Sidecar keeps dark glass tokens; composer must not be fully transparent — native textarea
+   can stay white while --text-primary is light ink, which produced invisible typing. */
 html[data-theme="light"] .assistant-panel .assistant-input-container {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  border-radius: 0;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+  border-radius: 16px;
 }
 
 html[data-theme="light"] .assistant-panel .assistant-input-container:focus-within {
-  background: transparent;
-  box-shadow: none;
+  background: rgba(0, 0, 0, 0.38);
+  border-color: rgba(0, 216, 255, 0.35);
+  box-shadow: 0 0 0 2px rgba(0, 216, 255, 0.12), 0 2px 14px rgba(0, 0, 0, 0.22);
 }
 
 html[data-theme="light"] .assistant-panel .assistant-smart-row {
@@ -3123,19 +3126,33 @@ body.navio-vertical-tabs .tab-item.in-group.group-last {
   margin: 4px 8px;
 }
 
-/* Assistant dock: kill any remaining bottom “card” chrome (wins over §10 + base styles). */
+/* Assistant dock: flush layout but keep a real surface behind the textarea (UA can paint white). */
 #assistant-panel .assistant-input-area {
   background: transparent !important;
   border-top: none !important;
 }
 #assistant-panel .assistant-input-container,
 #assistant-panel .assistant-input-container:focus-within {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  border-radius: 0 !important;
+  background: rgba(0, 0, 0, 0.28) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18) !important;
+  border-radius: 16px !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+#assistant-panel .assistant-input-container:focus-within {
+  border-color: rgba(0, 216, 255, 0.32) !important;
+  box-shadow: 0 0 0 2px rgba(0, 216, 255, 0.1), 0 2px 14px rgba(0, 0, 0, 0.22) !important;
+}
+#assistant-panel #assistant-input {
+  color: rgba(238, 242, 252, 0.96);
+  -webkit-text-fill-color: rgba(238, 242, 252, 0.96);
+  caret-color: #fff;
+  background: rgba(0, 0, 0, 0.12);
+}
+#assistant-panel #assistant-input::placeholder {
+  color: rgba(180, 190, 210, 0.75);
+  -webkit-text-fill-color: rgba(180, 190, 210, 0.75);
 }
 #assistant-panel .assistant-input-toolbar {
   border-top: none !important;

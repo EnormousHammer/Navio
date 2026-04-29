@@ -930,6 +930,35 @@ class AssistantManagerClass {
         this._closeHistoryPanel();
       }
     });
+    // mousedown (capture): closes before focus moves; fixes cases where bubble click never reached document.
+    document.addEventListener(
+      'mousedown',
+      (e) => {
+        const wrapper = document.getElementById('assistant-session-history');
+        if (!wrapper?.classList.contains('open')) return;
+        if (wrapper.contains(e.target)) return;
+        this._closeHistoryPanel();
+      },
+      true
+    );
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.key !== 'Escape') return;
+        const wrapper = document.getElementById('assistant-session-history');
+        if (!wrapper?.classList.contains('open')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        this._closeHistoryPanel();
+      },
+      true
+    );
+    document.getElementById('btn-session-history-close')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this._closeHistoryPanel();
+    });
+    this.inputEl?.addEventListener('focus', () => this._closeHistoryPanel());
     document.getElementById('btn-export-chat')?.addEventListener('click', () => this._exportConversationAsMarkdown());
     document.getElementById('btn-send-message')?.addEventListener('click', () => this.sendMessage());
     document.getElementById('btn-assistant-stop')?.addEventListener('click', () => this.stopGeneration());

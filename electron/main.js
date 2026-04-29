@@ -1089,14 +1089,65 @@ function navioApplyAutoDarkModeToWebContents(contents, enabled) {
   }
 }
 
-function navioSyncAllGuestWebAutoDarkMode() {
+/**
+ * Carrier / logistics portals (WebForms, legacy ASP.NET, etc.) often mis-render or lose
+ * interactive controls when Chromium auto-dark is forced via CDP — opt those guests out.
+ */
+function navioGuestUrlShouldOptOutAutoDark(urlStr) {
+  try {
+    const u = new URL(String(urlStr || '').trim());
+    const host = (u.hostname || '').toLowerCase();
+    if (!host) return false;
+    return (
+      host.includes('purolator') ||
+      host.includes('fedex') ||
+      host === 'ups.com' ||
+      host.endsWith('.ups.com') ||
+      host === 'ups.ca' ||
+      host.endsWith('.ups.ca') ||
+      host === 'dhl.com' ||
+      host.endsWith('.dhl.com') ||
+      host.includes('canadapost') ||
+      host.includes('postescanada') ||
+      host === 'usps.com' ||
+      host.endsWith('.usps.com') ||
+      host.includes('ontrac') ||
+      host.includes('shipstation') ||
+      host.includes('freightcom') ||
+      host.includes('tforce') ||
+      host.includes('xpo.com') ||
+      host.includes('odfl.com') ||
+      host.includes('estes') ||
+      host.includes('rlcarriers')
+    );
+  } catch {
+    return /\b(purolator|fedex|ups\.com|dhl|canadapost|usps|ontrac|shipstation)\b/i.test(String(urlStr || ''));
+  }
+}
+
+function navioGuestAutoDarkEnabledForWebContents(contents) {
   const cfg = loadConfig();
-  const enabled = cfg.theme !== 'light';
+  if (cfg.theme === 'light') return false;
+  let url = '';
+  try {
+    url = contents.getURL() || '';
+  } catch {
+    url = '';
+  }
+  if (navioGuestUrlShouldOptOutAutoDark(url)) return false;
+  return true;
+}
+
+function navioApplyGuestAutoDarkFromContents(contents) {
+  navioApplyAutoDarkModeToWebContents(contents, navioGuestAutoDarkEnabledForWebContents(contents));
+}
+
+function navioSyncAllGuestWebAutoDarkMode() {
   try {
     for (const wc of electronWebContents.getAllWebContents()) {
       try {
         if (typeof wc.getType !== 'function' || wc.getType() !== 'webview') continue;
-        navioApplyAutoDarkModeToWebContents(wc, enabled);
+        navioApplyGuestAutoDarkFromContents(wc);
       } catch {
         /* ignore */
       }
@@ -1113,12 +1164,17 @@ function installNavioWebviewGuestPopupRouting() {
     try {
       if (typeof contents.getType === 'function' && contents.getType() === 'webview') {
         bindNavioGuestWindowOpenOnce(contents);
-        const applyForCurrentTheme = () => {
-          const cfg = loadConfig();
-          navioApplyAutoDarkModeToWebContents(contents, cfg.theme !== 'light');
+        const syncGuestAutoDark = () => {
+          try {
+            navioApplyGuestAutoDarkFromContents(contents);
+          } catch {
+            /* ignore */
+          }
         };
-        queueMicrotask(applyForCurrentTheme);
-        contents.once('did-finish-load', applyForCurrentTheme);
+        queueMicrotask(syncGuestAutoDark);
+        contents.on('did-finish-load', syncGuestAutoDark);
+        contents.on('did-navigate', syncGuestAutoDark);
+        contents.on('did-navigate-in-page', syncGuestAutoDark);
       }
     } catch {
       /* ignore */
