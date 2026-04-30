@@ -2430,6 +2430,7 @@ class TabManagerClass {
     });
     el.addEventListener('contextmenu', (e) => {
       e.preventDefault();
+      e.stopPropagation();
       this._showGroupContextMenu(group.id, e.clientX, e.clientY);
     });
     el.addEventListener('pointerdown', (e) => {
@@ -2802,11 +2803,25 @@ class TabManagerClass {
 
   /** Place a menu near (x,y) keeping it inside the viewport. */
   _positionMenu(menu, x, y) {
+    // Anchor at (0,0) first so the browser can compute dimensions before we move it.
+    menu.style.top = '0px';
+    menu.style.left = '0px';
     menu.style.visibility = 'hidden';
+    // offsetHeight is more reliable than scrollHeight for non-scrollable fixed elements.
     const w = menu.offsetWidth || 260;
-    const h = menu.scrollHeight || 280;
-    const left = Math.min(Math.max(8, x), window.innerWidth - w - 8);
-    const top  = Math.min(Math.max(8, y), window.innerHeight - h - 8);
+    const h = menu.offsetHeight || menu.scrollHeight || 280;
+    // The tab strip is a drag region at the very top of the window (~36px).
+    // Always start the menu BELOW that region so Electron's app-region drag area
+    // does not visually obscure or clip the first menu item.
+    const TOP_CLEARANCE = 38;
+    // Prefer opening below the cursor; flip above if there is not enough room.
+    let top = y + 4;
+    if (top + h + 8 > window.innerHeight) top = y - h - 4;
+    top = Math.max(TOP_CLEARANCE, top);
+    if (top + h + 8 > window.innerHeight) top = Math.max(TOP_CLEARANCE, window.innerHeight - h - 8);
+    let left = x;
+    if (left + w + 8 > window.innerWidth) left = Math.max(8, x - w);
+    left = Math.max(8, left);
     menu.style.left = `${left}px`;
     menu.style.top = `${top}px`;
     menu.style.visibility = '';

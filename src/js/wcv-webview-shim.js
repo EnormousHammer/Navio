@@ -418,6 +418,17 @@ class WebviewShim extends EventTarget {
     }
   }
 
+  /**
+   * Run JavaScript in the tab page (guest). Required for full-page AI chat host→guest
+   * delivery and the same call sites that use classic `<webview>.executeJavaScript`.
+   */
+  executeJavaScript(code) {
+    if (window.navio && typeof window.navio.wcvExecuteJavaScript === 'function') {
+      return window.navio.wcvExecuteJavaScript(this._tabId, code);
+    }
+    return Promise.reject(new Error('wcvExecuteJavaScript is not available'));
+  }
+
   // ── Zoom ─────────────────────────────────────────────────────────────────────
 
   /**

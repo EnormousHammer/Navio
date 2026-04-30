@@ -6261,6 +6261,51 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   color: #fff;
 }
 
+/* Mute button */
+.vch-mute-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.22);
+  border-radius: 50%;
+  color: rgba(139, 92, 246, 0.75);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.13s, border-color 0.13s, color 0.13s;
+  pointer-events: auto;
+}
+.vch-mute-btn:hover {
+  background: rgba(139, 92, 246, 0.18);
+  border-color: rgba(139, 92, 246, 0.45);
+  color: rgba(139, 92, 246, 1);
+}
+/* Show/hide the two mic SVGs based on muted state */
+.vch-mute-btn .vch-mute-icon-off { display: none; }
+.vch-mute-btn.vch-muted .vch-mute-icon-on  { display: none; }
+.vch-mute-btn.vch-muted .vch-mute-icon-off { display: block; }
+.vch-mute-btn.vch-muted {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: rgba(239, 68, 68, 0.85);
+}
+.vch-mute-btn.vch-muted:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.55);
+  color: rgb(239, 68, 68);
+}
+
+/* Muted HUD state */
+.voice-conv-hud[data-vc-state="muted"] .vch-ring {
+  border-color: rgba(156, 163, 175, 0.15);
+  animation: none;
+}
+.voice-conv-hud[data-vc-state="muted"] .vch-state-icon { color: rgba(156, 163, 175, 0.7); }
+.voice-conv-hud[data-vc-state="muted"] .vch-state-label { color: rgba(156, 163, 175, 0.8); }
+
 /* Voice conv button active state */
 #btn-voice-conv.voice-conv-on {
   color: rgba(139, 92, 246, 0.9) !important;
@@ -11043,6 +11088,152 @@ button.navio-followup-chip:active {
   background: rgba(14, 116, 144, 0.1);
   border-color: rgba(14, 116, 144, 0.4);
   color: #164e63;
+}
+
+/* ── Market Research Product Shelf ──────────────────────────────────────── */
+.navio-product-shelf {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 10px 0 4px;
+  margin: 8px 0 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+.navio-product-shelf::-webkit-scrollbar { height: 4px; }
+.navio-product-shelf::-webkit-scrollbar-track { background: transparent; }
+.navio-product-shelf::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+
+.navio-product-card {
+  flex: 0 0 148px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border, rgba(255,255,255,0.09));
+  border-radius: var(--radius-md, 12px);
+  background: var(--bg-elevated, #1a2130);
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  cursor: default;
+}
+.navio-product-card:hover {
+  border-color: var(--accent, #00d8ff);
+  box-shadow: 0 4px 16px rgba(0, 216, 255, 0.12);
+  transform: translateY(-1px);
+}
+
+.npc-img-wrap {
+  width: 100%;
+  height: 110px;
+  background: var(--bg-hover, #222a3a);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.npc-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.npc-img-empty,
+.npc-img-wrap.npc-img-empty {
+  background: var(--bg-hover, #222a3a);
+}
+.npc-img-placeholder {
+  color: var(--text-muted, #6b7a90);
+  opacity: 0.5;
+}
+
+.npc-info {
+  padding: 8px 9px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-height: 0;
+}
+.npc-name {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-primary, #e8ecf4);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.npc-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.npc-price {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--success, #22c55e);
+}
+.npc-rating {
+  font-size: 10.5px;
+  color: var(--warning, #f59e0b);
+}
+.npc-store {
+  font-size: 10px;
+  color: var(--text-tertiary, #7a869f);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin-top: 1px;
+}
+.npc-open-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin: 6px 9px 9px;
+  padding: 5px 0;
+  border: 1px solid rgba(0, 216, 255, 0.3);
+  border-radius: var(--radius-sm, 8px);
+  background: rgba(0, 216, 255, 0.07);
+  color: var(--accent, #00d8ff);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+.npc-open-btn:hover {
+  background: rgba(0, 216, 255, 0.15);
+  border-color: rgba(0, 216, 255, 0.55);
+}
+
+[data-theme="light"] .navio-product-card {
+  background: #f8f9fd;
+  border-color: rgba(0,0,0,0.08);
+}
+[data-theme="light"] .navio-product-card:hover {
+  border-color: #0070d8;
+  box-shadow: 0 4px 16px rgba(0, 112, 216, 0.12);
+}
+[data-theme="light"] .npc-img-wrap,
+[data-theme="light"] .npc-img-empty {
+  background: #eef0f8;
+}
+[data-theme="light"] .npc-name { color: #16172a; }
+[data-theme="light"] .npc-price { color: #15803d; }
+[data-theme="light"] .npc-rating { color: #b45309; }
+[data-theme="light"] .npc-store { color: #737594; }
+[data-theme="light"] .npc-open-btn {
+  border-color: rgba(0, 112, 216, 0.3);
+  background: rgba(0, 112, 216, 0.07);
+  color: #0070d8;
+}
+[data-theme="light"] .npc-open-btn:hover {
+  background: rgba(0, 112, 216, 0.14);
+  border-color: rgba(0, 112, 216, 0.5);
 }
 
 /* Custom scope pill that wraps the native <select> */

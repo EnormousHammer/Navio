@@ -468,5 +468,8 @@ contextBridge.exposeInMainWorld('navio', {
    * (replaces webview.send(channel, ...args) in classic webview mode).
    */
   wcvSendToTab: (tabId, channel, ...args) =>
-    ipcRenderer.send('wcv-send-to-tab', { tabId, channel, args })
+    ipcRenderer.send('wcv-send-to-tab', { tabId, channel, args }),
+
+  /** Run JS in a WCV tab's page (replaces `<webview>.executeJavaScript` for WebviewShim). */
+  wcvExecuteJavaScript: (tabId, code) => ipcRenderer.invoke('wcv-execute-javascript', { tabId, code })
 });

@@ -190,11 +190,16 @@ const NAVIO_VOICE_CONV_HOLD_POLL_MS = 3200;
 
 let _navioVcHoldPhraseIx = 0;
 const NAVIO_VOICE_CONV_HOLD_PHRASES = [
-  'Still with you — this step is taking a little longer than usual.',
+  'Still here — this part is taking a little longer than usual.',
   'Thanks for waiting — I am still working through it.',
-  'One more moment while I finish this part.',
-  'Almost there — sorting the details now.',
-  'Bear with me — I am narrowing in on the answer.'
+  'Almost there — just sorting a few more details.',
+  'Bear with me — I am narrowing in on the answer.',
+  'Just a bit longer — I want to make sure I get this right.',
+  'Still on it — pulling a few things together now.',
+  'Hang tight — cross-checking some details for you.',
+  'Nearly done — wrapping up the last bit.',
+  'Getting there — a little more to go.',
+  'Still reading through this — almost ready.',
 ];
 
 function navioNextVoiceConvHoldPhrase() {
@@ -206,9 +211,12 @@ function navioNextVoiceConvHoldPhrase() {
 
 let _navioVcOpenPhraseIx = 0;
 const NAVIO_VOICE_CONV_OPEN_PHRASES = [
-  'One moment — I am on it.',
-  'Got it — working that through now.',
-  'Understood — give me just a second here.'
+  'On it — give me just a moment.',
+  'Got it — working through that now.',
+  'Sure — let me look into that for you.',
+  'Understood — one second.',
+  'On it — let me pull that up.',
+  'Sure thing — give me just a moment.',
 ];
 
 /** First spoken line after the user’s request (voice conversation); YouTube / transcript asks get a tailored opener. */
@@ -219,6 +227,61 @@ function navioVoiceConvOpenPhraseForText(userText) {
   }
   const a = NAVIO_VOICE_CONV_OPEN_PHRASES;
   return a[_navioVcOpenPhraseIx++ % a.length];
+}
+
+/**
+ * Return a natural spoken sentence for a tool progress event in voice conversation.
+ * Returns null for tools that should use the generic label or stay silent.
+ * Rotates through variants to avoid sounding repetitive.
+ */
+let _navioVcSpokenReadIx = 0;
+let _navioVcSpokenSearchIx = 0;
+function navioVoiceConvSpokenToolUpdate(tool, result) {
+  if (result?.error) return null;
+  switch (tool) {
+    case 'read_page': {
+      const title = String(result?.title || '').trim();
+      const readVariants = [
+        title ? `Reading ${title} now.` : 'Looking at that page now.',
+        title ? `I can see ${title} — going through it.` : 'Going through the page now.',
+        title ? `On ${title} — reading through it.` : 'Reading the page.',
+      ];
+      return readVariants[_navioVcSpokenReadIx++ % readVariants.length];
+    }
+    case 'web_search': {
+      const cites = Array.isArray(result?.citations) ? result.citations.length : 0;
+      const searchVariants = cites > 0
+        ? [
+            `Found ${cites} source${cites === 1 ? '' : 's'} — going through them.`,
+            `Got ${cites} result${cites === 1 ? '' : 's'} — checking them now.`,
+            `Pulled up ${cites} source${cites === 1 ? '' : 's'} — reading through.`,
+          ]
+        : [
+            'Searched the web — looking at what came up.',
+            'Done searching — checking the results.',
+            'Got some results — looking them over.',
+          ];
+      return searchVariants[_navioVcSpokenSearchIx++ % searchVariants.length];
+    }
+    case 'gmail_get_thread': {
+      const n = result?.message_count ?? result?.messages?.length ?? 0;
+      return n ? `Reading a thread — ${n} message${n === 1 ? '' : 's'} in it.` : 'Reading that email thread.';
+    }
+    case 'gmail_search': {
+      const n = result?.results?.length ?? 0;
+      return n > 0 ? `Found ${n} email${n === 1 ? '' : 's'} — looking through them.` : 'Checked Gmail.';
+    }
+    case 'drive_get_file': {
+      const name = String(result?.name || '').trim();
+      return name ? `Reading ${name} from Drive.` : 'Reading a file from Drive.';
+    }
+    case 'get_page_text': {
+      const kb = ((result?.text || '').length / 1000).toFixed(1);
+      return `Pulled about ${kb}k of text from the page.`;
+    }
+    default:
+      return null;
+  }
 }
 
 /**
@@ -2298,6 +2361,11 @@ class AssistantManagerClass {
         const MAX_RECORD_MS = 90_000;   // 90 s safety cap
         const recordStart = Date.now();
         let speechThresh = 14;
+        // Sustained-speech gate: require audio above speakGate for at least this long
+        // before treating it as real speech. Prevents single loud pops, key clicks,
+        // or steady fan hum from falsely triggering end-of-silence detection.
+        const SPEECH_CONFIRM_MS = 80;
+        let speechBurstStart = 0;
 
         const vadLoop = () => {
           if (userAborted) return;
@@ -2336,8 +2404,17 @@ class AssistantManagerClass {
             // Gate below `speechThresh` so soft voices still arm VAD; silence still uses clock after last loud frame.
             const speakGate = Math.max(7.5, speechThresh - 4.5);
             if (rms > speakGate) {
-              hasSpoken = true;
-              lastLoudMs = now;
+              // Require sustained audio (≥SPEECH_CONFIRM_MS) before treating as real speech.
+              // This filters out brief pops, clicks, keyboard noise and steady background hum
+              // that would otherwise prevent silence-detection from ever firing.
+              if (!speechBurstStart) speechBurstStart = now;
+              if (now - speechBurstStart >= SPEECH_CONFIRM_MS) {
+                hasSpoken = true;
+                lastLoudMs = now;
+              }
+            } else {
+              // Audio dropped below gate — reset burst; lastLoudMs stays at last confirmed speech.
+              speechBurstStart = 0;
             }
           }
           if (vadCalibrated && hasSpoken && lastLoudMs && now - lastLoudMs >= SILENCE_NEEDED_MS) {
@@ -2527,6 +2604,9 @@ class AssistantManagerClass {
     document.getElementById('btn-voice-conv-end')?.addEventListener('click', () => {
       this._stopVoiceConversation();
     });
+    document.getElementById('btn-voice-conv-mute')?.addEventListener('click', () => {
+      this._toggleVoiceConvMute();
+    });
   }
 
   _startVoiceConversation() {
@@ -2586,6 +2666,10 @@ class AssistantManagerClass {
       this._vcPersistentStream = null;
     }
     document.getElementById('btn-voice-conv')?.classList.remove('voice-conv-on');
+    // Reset mute state so the next session starts unmuted
+    this._vcMicMuted = false;
+    const muteBtn = document.getElementById('btn-voice-conv-mute');
+    if (muteBtn) muteBtn.classList.remove('vch-muted');
     const transcriptEl = document.getElementById('vch-transcript');
     if (transcriptEl) transcriptEl.textContent = '';
     this._updateVchAudioBars(null);
@@ -2710,6 +2794,17 @@ class AssistantManagerClass {
     // Cancel any in-flight AI generation
     try { this.stopGeneration?.(); } catch { /* ignore */ }
 
+    // Immediately release busy locks — stopGeneration() is an async IPC and the flag
+    // won't clear until the stream closes, which can be seconds later. Without this,
+    // sendMessage() in the upcoming transcript callback hits the busy guard and bails,
+    // leaving the transcript text stuck in the input box.
+    const tKey = this._turnConversationKey || this._conversationKey?.();
+    if (tKey) this._busyTabs.delete(tKey);
+    if (this._sidebarThreadKey) this._busyTabs.delete(this._sidebarThreadKey);
+
+    // Clear thinking-filler timers so they don't fire and start speaking over the user.
+    this._clearVoiceConvThinkingTimers();
+
     // Cancel any in-progress TTS
     this._stopSpeaking();
 
@@ -2749,6 +2844,12 @@ class AssistantManagerClass {
             this._voiceConvSetState('thinking');
             this._applyVoiceTranscriptToInput(text, { replace: true });
             this.sendMessage();
+            // Safety net: if sendMessage() returned early for any reason (edge-case
+            // race on the busy flag), don't leave the transcript visible in the input.
+            if (this.inputEl && this.inputEl.value.trim()) {
+              this.inputEl.value = '';
+              this._fitAssistantInputHeight?.();
+            }
           } else {
             this._scheduleVoiceConvListen(350);
           }
@@ -2857,6 +2958,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       thinking:    'Thinking… (speak to interrupt)',
       speaking:    'Speak anytime to interrupt',
       summarizing: 'Wrapping up… (speak to interrupt)',
+      muted:       'Mic muted',
     };
     if (lbl) lbl.textContent = labels[state] || state;
 
@@ -2866,16 +2968,37 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       thinking:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>`,
       speaking:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`,
       summarizing: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`,
+      muted:       `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/></svg>`,
     };
     if (icon && icons[state]) icon.innerHTML = icons[state];
 
-    // Start interrupt listener when AI is busy; stop it when we're listening (Whisper handles it)
+    // Start interrupt listener when AI is busy; stop it when we're listening or muted
     if (state === 'thinking' || state === 'speaking' || state === 'summarizing') {
       this._startVoiceConvInterruptListener();
       this._updateVchAudioBars(null); // idle bars during AI states
     } else {
       this._stopVoiceConvInterruptListener();
+      if (state === 'muted') this._updateVchAudioBars(null);
       // Bars will be driven by live RMS data once _voiceConvListen starts recording
+    }
+  }
+
+  /** Toggle microphone mute in voice conversation mode. */
+  _toggleVoiceConvMute() {
+    if (!this._voiceConvActive) return;
+    this._vcMicMuted = !this._vcMicMuted;
+    const muteBtn = document.getElementById('btn-voice-conv-mute');
+    if (muteBtn) muteBtn.classList.toggle('vch-muted', this._vcMicMuted);
+    if (this._vcMicMuted) {
+      // Stop active recording so the mic releases while muted
+      if (this._voiceConvRec) {
+        try { this._voiceConvRec.stop(); } catch { /* ignore */ }
+        this._voiceConvRec = null;
+      }
+      this._voiceConvSetState('muted');
+    } else {
+      // Unmute — resume listening immediately
+      this._scheduleVoiceConvListen(0);
     }
   }
 
@@ -2887,6 +3010,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const cap = this._vcSid;
     setTimeout(() => {
       if (cap !== this._vcSid || !this._voiceConvActive) return;
+      if (this._vcMicMuted) {
+        // Mic is muted — show muted state instead of starting a new listen cycle
+        this._voiceConvSetState('muted');
+        return;
+      }
       this._voiceConvListen();
     }, delayMs);
   }
@@ -2894,6 +3022,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   /** Start a single mic capture cycle in voice conversation mode using Whisper. */
   _voiceConvListen() {
     if (!this._voiceConvActive) return;
+    if (this._vcMicMuted) return;
     this._voiceConvSetState('listening');
     const transcriptEl = document.getElementById('vch-transcript');
     if (transcriptEl) transcriptEl.textContent = '';
@@ -2910,6 +3039,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
             this._voiceConvSetState('thinking');
             this._applyVoiceTranscriptToInput(text, { replace: false });
             this.sendMessage();
+            if (this.inputEl && this.inputEl.value.trim()) {
+              this.inputEl.value = '';
+              this._fitAssistantInputHeight?.();
+            }
           } else {
             // Nothing heard — loop back to listening
             this._scheduleVoiceConvListen(350);
@@ -2970,6 +3103,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
             this._applyVoiceTranscriptToInput(text, { replace: false });
           }
           this.sendMessage();
+          if (this.inputEl && this.inputEl.value.trim()) {
+            this.inputEl.value = '';
+            this._fitAssistantInputHeight?.();
+          }
         } else {
           this._scheduleVoiceConvListen(350);
         }
@@ -3270,7 +3407,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       const best = sorted[0];
       if (best) utt.voice = best;
     }
-    const baseRate = this._voiceConvActive ? 0.93 : 0.92;
+    const baseRate = this._voiceConvActive ? 1.0 : 0.97;
     utt.rate =
       typeof speechOpts.webSpeechRate === 'number' && Number.isFinite(speechOpts.webSpeechRate)
         ? speechOpts.webSpeechRate
@@ -3337,14 +3474,14 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         ? Number(opts.speed)
         : this._voiceConvActive
           ? opts.workNudge
-            ? 0.91
-            : 0.99
+            ? 1.0
+            : 1.03
           : undefined;
     const speechOpts = {};
     if (opts.webSpeechRate != null && Number.isFinite(Number(opts.webSpeechRate))) {
       speechOpts.webSpeechRate = Number(opts.webSpeechRate);
     } else if (this._voiceConvActive) {
-      speechOpts.webSpeechRate = opts.workNudge ? 0.89 : 0.93;
+      speechOpts.webSpeechRate = opts.workNudge ? 0.95 : 1.0;
     }
 
     const chunkPlan = navioVoiceConvTtsChunkPlan(plain.slice(0, 4000));
@@ -3394,7 +3531,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const s = String(snippet || '').trim();
     if (!this._voiceConvActive || !s) return;
     if (s.length > 900) return;
-    await this._speakText(s, null, { speed: 0.91, workNudge: true, humanPace: true });
+    await this._speakText(s, null, { speed: 1.0, workNudge: true, humanPace: true });
   }
 
   _clearVoiceConvThinkingTimers() {
@@ -5690,7 +5827,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         const now = Date.now();
         if (now - (this._voiceConvProgressTtsAt || 0) >= NAVIO_VOICE_CONV_PROGRESS_TTS_MIN_GAP_MS) {
           this._voiceConvProgressTtsAt = now;
-          void this._speakVoiceConvWorkNudge(String(label));
+          // Prefer a natural spoken form; fall back to the display label.
+          const spokenLabel = navioVoiceConvSpokenToolUpdate(tool, result) || String(label);
+          void this._speakVoiceConvWorkNudge(spokenLabel);
         }
       }
     });
@@ -6114,12 +6253,16 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
 
       if (streamingMsg) {
         const contentEl = streamingMsg.querySelector('.message-content');
-        const { clean: cleanBuffer, chips: streamChips } = this._extractFollowUpChips(buffer);
+        const { clean: cleanBuffer, chips: streamChips, products: streamProducts } = this._extractFollowUpChips(buffer);
         if (contentEl) {
           contentEl.classList.remove('streaming-content');
           contentEl.innerHTML = this.formatMessage(cleanBuffer, true);
           await this._wireActions(contentEl);
           this._checkAndShowActionFormatWarning(cleanBuffer, streamingMsg);
+        }
+        // ── Product shelf (market research results) ──────────────────────────
+        if (streamProducts && streamProducts.length) {
+          this._appendProductShelf(streamingMsg, streamProducts);
         }
         this._attachCopyButtonToMessage(streamingMsg, contentEl);
         this._attachRetryButtonToMessage(streamingMsg);
@@ -6744,6 +6887,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     msgEl.appendChild(this._messageRoleStrip(role, type));
 
     let followUpChips = [];
+    let _msgProductItems = null;
     if (type === 'error') {
       const clean = content.replace(/^\*\*Error:\*\*\s*/i, '').replace(/^\*\*Connection error:\*\*\s*/i, '');
       contentEl.innerHTML = `
@@ -6760,12 +6904,18 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         const extracted = this._extractFollowUpChips(content);
         renderContent = extracted.clean;
         followUpChips = extracted.chips;
+        _msgProductItems = extracted.products || null;
       }
       contentEl.innerHTML = this.formatMessage(renderContent, role === 'assistant');
       if (role === 'assistant') this._wireActions(contentEl); // async — fire-and-forget is fine here
     }
 
     msgEl.appendChild(contentEl);
+
+    // ── Product shelf (market research results) ──────────────────────────────
+    if (role === 'assistant' && _msgProductItems && _msgProductItems.length) {
+      this._appendProductShelf(msgEl, _msgProductItems);
+    }
 
     // ── Edit button for plain user messages ──────────────────────────────────
     if (role === 'user' && typeof content === 'string') {
@@ -7324,13 +7474,14 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
 
   /**
    * Strip [FOLLOWUP]{...}[/FOLLOWUP] from content and return chips separately.
-   * Returns { clean: string, chips: Array<{ label: string, url: string|null }> }.
+   * Also strips any [PRODUCTS] block so it never appears as raw text.
+   * Returns { clean: string, chips: Array<{ label: string, url: string|null }>, products: Array|null }.
    */
   _extractFollowUpChips(text) {
-    if (!text || typeof text !== 'string') return { clean: text || '', chips: [] };
+    if (!text || typeof text !== 'string') return { clean: text || '', chips: [], products: null };
     const re = /\[FOLLOWUP\]\s*(\{[\s\S]*?\})\s*\[\/FOLLOWUP\]/g;
     const chips = [];
-    const clean = text
+    let clean = text
       .replace(re, (_, json) => {
         try {
           const parsed = JSON.parse(json);
@@ -7348,7 +7499,120 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       .replace(/\n{3,}/g, '\n\n')
       .replace(/\[FOLLOWUP\][\s\S]*/gi, '')
       .trim();
-    return { clean, chips: chips.slice(0, 4) };
+
+    // Also extract and strip [PRODUCTS] blocks
+    const { clean: cleanNoProducts, products } = this._extractProductsBlock(clean);
+    clean = cleanNoProducts;
+
+    return { clean, chips: chips.slice(0, 4), products };
+  }
+
+  /**
+   * Strip [PRODUCTS]{...}[/PRODUCTS] from text and parse the product items.
+   * Returns { clean: string, products: Array<object>|null }.
+   */
+  _extractProductsBlock(text) {
+    if (!text || typeof text !== 'string') return { clean: text || '', products: null };
+    const re = /\[PRODUCTS\]\s*(\{[\s\S]*?\})\s*\[\/PRODUCTS\]/;
+    const m = text.match(re);
+    if (!m) return { clean: text, products: null };
+    let products = null;
+    try {
+      const parsed = JSON.parse(m[1]);
+      if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
+        products = parsed.items.slice(0, 8);
+      }
+    } catch {
+      /* malformed JSON, ignore */
+    }
+    const clean = text.replace(re, '').replace(/\n{3,}/g, '\n\n').trim();
+    return { clean, products };
+  }
+
+  /**
+   * Render a horizontal product shelf card row and append it to msgEl.
+   * Each card shows the product image, name, price, store, rating and an Open button.
+   */
+  _appendProductShelf(msgEl, products) {
+    if (!msgEl || !Array.isArray(products) || products.length === 0) return;
+    const shelf = document.createElement('div');
+    shelf.className = 'navio-product-shelf';
+
+    products.forEach((item) => {
+      if (!item || typeof item !== 'object') return;
+      const card = document.createElement('div');
+      card.className = 'navio-product-card';
+
+      // Image area
+      const imgWrap = document.createElement('div');
+      imgWrap.className = 'npc-img-wrap';
+      const imgSrc = String(item.img || '').trim();
+      if (imgSrc && /^https?:\/\//i.test(imgSrc)) {
+        const img = document.createElement('img');
+        img.src = imgSrc;
+        img.alt = '';
+        img.className = 'npc-img';
+        img.addEventListener('error', () => {
+          imgWrap.innerHTML = '';
+          imgWrap.classList.add('npc-img-empty');
+          imgWrap.innerHTML = `<svg class="npc-img-placeholder" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
+        });
+        imgWrap.appendChild(img);
+      } else {
+        imgWrap.classList.add('npc-img-empty');
+        imgWrap.innerHTML = `<svg class="npc-img-placeholder" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
+      }
+      card.appendChild(imgWrap);
+
+      // Info block
+      const info = document.createElement('div');
+      info.className = 'npc-info';
+
+      const name = document.createElement('div');
+      name.className = 'npc-name';
+      name.textContent = String(item.name || 'Product').slice(0, 80);
+      info.appendChild(name);
+
+      const row = document.createElement('div');
+      row.className = 'npc-meta-row';
+      if (item.price) {
+        const price = document.createElement('span');
+        price.className = 'npc-price';
+        price.textContent = String(item.price).slice(0, 20);
+        row.appendChild(price);
+      }
+      if (item.rating) {
+        const rating = document.createElement('span');
+        rating.className = 'npc-rating';
+        rating.textContent = String(item.rating).slice(0, 20);
+        row.appendChild(rating);
+      }
+      if (row.children.length) info.appendChild(row);
+
+      if (item.store) {
+        const store = document.createElement('div');
+        store.className = 'npc-store';
+        store.textContent = String(item.store).slice(0, 30);
+        info.appendChild(store);
+      }
+      card.appendChild(info);
+
+      // Open button
+      const itemUrl = String(item.url || '').trim();
+      if (itemUrl && /^https?:\/\//i.test(itemUrl)) {
+        const btn = document.createElement('button');
+        btn.className = 'npc-open-btn';
+        btn.type = 'button';
+        btn.title = itemUrl;
+        btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> Open`;
+        btn.addEventListener('click', () => this._openFollowUpChipUrl(itemUrl));
+        card.appendChild(btn);
+      }
+
+      shelf.appendChild(card);
+    });
+
+    msgEl.insertBefore(shelf, msgEl.querySelector('.navio-followup-chips') || null);
   }
 
   _appendFollowUpChips(msgEl, chips, onChipClick) {

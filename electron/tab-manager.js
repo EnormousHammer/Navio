@@ -25,6 +25,8 @@
  *   wcv-get-url       (sendSync) tabId → string
  *   wcv-can-go-back   (sendSync) tabId → boolean
  *   wcv-can-go-forward(sendSync) tabId → boolean
+ *   wcv-send-to-tab   (send)     { tabId, channel, args }
+ *   wcv-execute-javascript (invoke) { tabId, code } → result of wc.executeJavaScript(code)
  *
  * IPC channels (main → renderer):
  *   wcv-tab-event { tabId, type, ...payload }
@@ -223,6 +225,15 @@ class TabManager {
       try {
         wc.send(channel, ...(Array.isArray(args) ? args : [args]));
       } catch { /* ignore */ }
+    });
+
+    /** Full-page AI chat (`_guestDeliver`) and other code paths call `<webview>.executeJavaScript`; WCV uses this. */
+    ipcMain.handle('wcv-execute-javascript', async (_event, { tabId, code }) => {
+      const wc = this._getWc(tabId);
+      if (!wc || typeof wc.executeJavaScript !== 'function') {
+        throw new Error('Tab webContents not available');
+      }
+      return await wc.executeJavaScript(String(code || ''));
     });
   }
 
