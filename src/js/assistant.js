@@ -5860,12 +5860,19 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         tabId: graphTab?.id,
         url: graphTab?.url || ''
       });
-    } else if (guestWv) {
-      void this._guestDeliver(guestWv, {
-        type: 'assistant',
-        error: true,
-        content: 'No reply from the model. Open another tab with a page, or try again.'
-      });
+    } else {
+      const emptyMsg =
+        'No reply from the model. Open another tab with a page, or try again.';
+      if (guestWv) {
+        void this._guestDeliver(guestWv, { type: 'assistant', error: true, content: emptyMsg });
+      } else {
+        this.addMessage(
+          'assistant',
+          emptyMsg,
+          'error',
+          toolTurnMs != null ? { durationMs: toolTurnMs } : null
+        );
+      }
     }
     } finally {
       this._clearVoiceConvThinkingTimers();

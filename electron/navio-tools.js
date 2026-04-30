@@ -605,7 +605,8 @@ const NAVIO_TOOLS = [
     name: 'gmail_update_draft',
     description:
       'Update the plain-text body of an existing Gmail draft (same draft ID from gmail_create_draft or gmail_create_reply_draft). ' +
-      'Use when the user revised the draft text in chat before sending. Preserves To/Cc/Bcc and reply threading headers.',
+      'Use when the user revised the draft text in chat before sending. Preserves To/Cc/Bcc and reply threading headers. ' +
+      'Same automatic Send-as signature append as create (plain + HTML multipart when available; omitted if plain signature text already appears at end of body).',
     parameters: {
       type: 'object',
       properties: {
@@ -621,7 +622,7 @@ const NAVIO_TOOLS = [
     description:
       'Create a reply draft for a Gmail message via the Gmail API. The draft is saved in Gmail Drafts ' +
       'and is NOT sent — the user reviews and sends it manually. ' +
-      'The body you pass is stored verbatim (no signature appended by Navio). Gmail applies the user’s own signature from Gmail settings when they compose/send there. ' +
+      'Navio appends the user’s Gmail **Send mail as** signature after your body (multipart plain + HTML when Gmail stores HTML, so rich signature styling appears in compose). Skip duplicating sign-offs the signature already contains. ' +
       'Write only the message text — no "Best regards", name block, or footer unless the user explicitly asked for that wording in the body. ' +
       'Body must be **plain text** (no Markdown/HTML). ' +
       'Prefer this for bulk or threaded replies. If the user explicitly wants text in the Gmail compose window, use read_page + click + **insert_text** (plain) on the message body. ' +
@@ -650,7 +651,7 @@ const NAVIO_TOOLS = [
       'Create a **new** Gmail draft (not a reply) via the API: standalone compose with To, Subject, body, optional Cc/Bcc. ' +
       'Saved to Drafts, not sent. Use for pickup requests, first-contact emails, or any message that is **not** a reply to an existing thread. ' +
       'For replies to mail already in Gmail, use **gmail_create_reply_draft** with message_id instead. ' +
-      'Body is stored verbatim (no Navio-appended signature). Requires Google OAuth with gmail.compose.',
+      'Navio appends the user’s Gmail **Send mail as** signature after the body (plain + HTML multipart when available). Requires Google OAuth with gmail.compose.',
     parameters: {
       type: 'object',
       properties: {
