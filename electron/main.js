@@ -1057,12 +1057,15 @@ function bindNavioGuestWindowOpenOnce(guestContents) {
       // Popups from streaming sites are often ads or helpers; opening in the foreground steals focus
       // from the player — user must click again. Open in background so the stream tab stays active.
       const background = isStreamingVideoOpenerOrigin(openerOrigin);
+      // Only `about:blank` popups are download-shell candidates. Real-URL popups (ads, OAuth, etc.)
+      // must NOT register: session-setup treats registered tabs as disposable and closes them on the
+      // first will-download, which would kill a normal browsing tab when any file downloads.
+      const guestWindowOpen = openUrl === 'about:blank';
       mw.webContents.send('open-url-in-new-tab', {
         url: openUrl,
         incognito,
         background,
-        /** Renderer registers this guest for download-shell auto-close (Chrome-style). */
-        guestWindowOpen: true
+        guestWindowOpen
       });
     } catch {
       /* ignore */

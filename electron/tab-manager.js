@@ -65,6 +65,9 @@ class TabManager {
 
     /** IPC registered flag — only register once */
     this._ipcRegistered = false;
+
+    /** Coalesce shell re-stack after WCV bounds updates (some builds reorder child views). */
+    this._shellElevateQueued = false;
   }
 
   // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -198,6 +201,7 @@ class TabManager {
         entry.wcv.setBounds({ x: 0, y: 0, width: 0, height: 0 });
         entry.lastBounds = null;
       }
+      this._queueElevateShellAboveTabViews();
     });
 
     ipcMain.on('wcv-discard-tab', (_event, tabId) => {
@@ -270,6 +274,15 @@ class TabManager {
     }
   }
 
+  _queueElevateShellAboveTabViews() {
+    if (this._shellElevateQueued) return;
+    this._shellElevateQueued = true;
+    queueMicrotask(() => {
+      this._shellElevateQueued = false;
+      this._elevateShellAboveTabViews();
+    });
+  }
+
   /**
    * Create a new WCV tab.
    * Returns { tabId, webContentsId } immediately (synchronous).
@@ -292,7 +305,7 @@ class TabManager {
     });
 
     this._win.contentView.addChildView(wcv);
-    this._elevateShellAboveTabViews();
+    this._queueElevateShellAboveTabViews();
 
     const entry = {
       wcv,
@@ -352,6 +365,7 @@ class TabManager {
     if (this._activeTabId === tabId) {
       this._activeTabId = null;
     }
+    this._queueElevateShellAboveTabViews();
     return true;
   }
 
@@ -376,6 +390,7 @@ class TabManager {
         entry.wcv.setBounds({ x: 0, y: 0, width: 0, height: 0 });
       }
     }
+    this._queueElevateShellAboveTabViews();
   }
 
   // ── Event Wiring ─────────────────────────────────────────────────────────────
