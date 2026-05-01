@@ -171,6 +171,8 @@ const NAVIO_ASSISTANT_MAX_ATTACHMENTS = 8;
 const NAVIO_VOICE_END_SILENCE_MS = 4000;
 /** Extra silence when voice-conversation reuses the persistent mic (hands-free turns). */
 const NAVIO_VOICE_CONV_EXTRA_SILENCE_MS = 700;
+/** Silence used specifically during a voice-conversation turn — much shorter than toolbar dictation. */
+const NAVIO_VOICE_CONV_END_SILENCE_MS = 1600;
 /** After OpenAI TTS (or speech) ends in voice conversation, reopen the mic after this delay. */
 const NAVIO_VOICE_CONV_AFTER_TTS_MS = 200;
 /** Pause before auto TTS (voice conversation + Settings → read aloud) so the first syllable is not immediate. */
@@ -2280,7 +2282,7 @@ class AssistantManagerClass {
    * @param {MediaStream|null} sharedStream - pre-opened mic stream to reuse (no getUserMedia, no track teardown).
    *   Pass this._vcPersistentStream in voice-conversation mode so barge-in has zero latency.
    */
-  _whisperListen(onTranscript, onUpdate, sharedStream = null) {
+  _whisperListen(onTranscript, onUpdate, sharedStream = null, silenceMs = null) {
     /** True only when the user cancels — NOT when VAD / max-duration ends the take. */
     let userAborted = false;
     let ownedStream = null;  // only set when WE opened the mic
@@ -2353,9 +2355,9 @@ class AssistantManagerClass {
         let vadCalibratedAt = 0;
         const vadCalSamples = [];
         const VAD_CALIBRATE_MS = 400;
-        const SILENCE_NEEDED_MS = sharedStream
+        const SILENCE_NEEDED_MS = silenceMs != null ? silenceMs : (sharedStream
           ? NAVIO_VOICE_END_SILENCE_MS + NAVIO_VOICE_CONV_EXTRA_SILENCE_MS
-          : NAVIO_VOICE_END_SILENCE_MS;
+          : NAVIO_VOICE_END_SILENCE_MS);
         /** If we never cross `speakGate` after calibration, stop anyway (quiet room / mic gain / hung analyser). */
         const NO_SPEECH_GIVEUP_MS = SILENCE_NEEDED_MS + 1200;
         const MAX_RECORD_MS = 90_000;   // 90 s safety cap
@@ -2709,7 +2711,7 @@ class AssistantManagerClass {
     // Adaptive noise floor: sample ambient audio (including TTS bleed) for 350ms,
     // then set the trigger threshold above it. This handles rooms where speaker audio
     // leaks into the mic without causing false triggers or missing the user's voice.
-    const INTERRUPT_CONFIRM_MS = 120; // ms of sustained speech above threshold → fire (was 260ms)
+    const INTERRUPT_CONFIRM_MS = 200; // ms of sustained speech above threshold → fire
     let speechStart = null;
     let noiseSamples = [];
     let noiseFloor = 8;
@@ -2864,7 +2866,8 @@ class AssistantManagerClass {
             if (state === 'processing' && transcriptEl) transcriptEl.textContent = 'Transcribing…';
           }
         },
-        this._vcPersistentStream  // ← shared stream, zero latency
+        this._vcPersistentStream,       // ← shared stream, zero latency
+        NAVIO_VOICE_CONV_END_SILENCE_MS // ← shorter silence for barge-in turns
       );
       this._voiceConvRec = { stop: stopFn };
     } else {
@@ -2972,8 +2975,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     };
     if (icon && icons[state]) icon.innerHTML = icons[state];
 
-    // Start interrupt listener when AI is busy; stop it when we're listening or muted
+    // Start interrupt listener when AI is busy; stop it when we're listening or muted.
+    // On 'speaking' (TTS just started) restart the listener so it re-measures the noise floor
+    // with TTS audio already in the room — prevents TTS bleed from triggering false barge-ins.
     if (state === 'thinking' || state === 'speaking' || state === 'summarizing') {
+      if (state === 'speaking') this._stopVoiceConvInterruptListener();
       this._startVoiceConvInterruptListener();
       this._updateVchAudioBars(null); // idle bars during AI states
     } else {
@@ -3058,7 +3064,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
             if (state === 'processing' && transcriptEl) transcriptEl.textContent = 'Transcribing…';
           }
         },
-        this._vcPersistentStream  // ← reuse persistent stream, no getUserMedia per turn
+        this._vcPersistentStream,       // ← reuse persistent stream, no getUserMedia per turn
+        NAVIO_VOICE_CONV_END_SILENCE_MS // ← shorter silence for hands-free turns
       );
       this._voiceConvRec = { stop: stopFn };
     } else {
