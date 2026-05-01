@@ -103,6 +103,17 @@ class TabManager {
     win.on('show', () => this._deferElevateShellAboveTabViews());
     win.on('focus', () => this._deferElevateShellAboveTabViews());
 
+    // Moving the frameless window (especially on Windows) can reshuffle native child views.
+    let moveElevTimer = null;
+    win.on('move', () => {
+      if (moveElevTimer) return;
+      moveElevTimer = setTimeout(() => {
+        moveElevTimer = null;
+        this._elevateShellAboveTabViews();
+        this._deferElevateShellAboveTabViews();
+      }, 80);
+    });
+
     this._registerIpc();
   }
 
@@ -184,6 +195,10 @@ class TabManager {
     ipcMain.on('wcv-focus', (_event, tabId) => {
       const wc = this._getWc(tabId);
       if (wc) wc.focus();
+      // Guest focus can reorder native views so the tab paints above the shell; fix immediately.
+      this._elevateShellAboveTabViews();
+      this._queueElevateShellAboveTabViews();
+      this._deferElevateShellAboveTabViews();
     });
 
     ipcMain.on('wcv-set-muted', (_event, { tabId, muted }) => {
@@ -207,12 +222,16 @@ class TabManager {
         entry.wcv.setBounds({ x: 0, y: 0, width: 0, height: 0 });
         entry.lastBounds = null;
       }
+      // setBounds can briefly put the guest above the shell (Windows / some Electron builds).
+      // Elevate synchronously so the next click on the tab strip / navbar hits the shell, not the page.
+      this._elevateShellAboveTabViews();
       this._queueElevateShellAboveTabViews();
       this._deferElevateShellAboveTabViews();
     });
 
     /** Renderer: call after opening menus/modals so the shell paints above tab WCVs (see _elevateShellAboveTabViews). */
     ipcMain.on('wcv-ensure-shell-on-top', () => {
+      this._elevateShellAboveTabViews();
       this._queueElevateShellAboveTabViews();
       this._deferElevateShellAboveTabViews();
     });
@@ -276,7 +295,7 @@ class TabManager {
           child instanceof WebContentsView &&
           child.webContents &&
           !child.webContents.isDestroyed() &&
-          child.webContents.id === shellId
+          (child.webContents === shellWc || child.webContents.id === shellId)
         ) {
           cv.addChildView(child);
           return;
@@ -339,6 +358,7 @@ class TabManager {
     });
 
     this._win.contentView.addChildView(wcv);
+    this._elevateShellAboveTabViews();
     this._queueElevateShellAboveTabViews();
     this._deferElevateShellAboveTabViews();
 
@@ -426,6 +446,7 @@ class TabManager {
         entry.wcv.setBounds({ x: 0, y: 0, width: 0, height: 0 });
       }
     }
+    this._elevateShellAboveTabViews();
     this._queueElevateShellAboveTabViews();
     this._deferElevateShellAboveTabViews();
   }

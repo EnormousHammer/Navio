@@ -303,6 +303,21 @@ class TabManagerClass {
         wv.style.maxWidth = '';
       }
     });
+
+    // WCV: guest views stack natively above the shell; after every layout pass ask main to
+    // re-elevate the shell (coalesced to one IPC per animation frame).
+    if (document.body.classList.contains('navio-wcv-tabs-below') && window.navio?.wcvEnsureShellOnTop) {
+      if (!this._wcvShellBumpRaf) {
+        this._wcvShellBumpRaf = requestAnimationFrame(() => {
+          this._wcvShellBumpRaf = 0;
+          try {
+            window.navio.wcvEnsureShellOnTop();
+          } catch {
+            /* ignore */
+          }
+        });
+      }
+    }
   }
 
   /**
