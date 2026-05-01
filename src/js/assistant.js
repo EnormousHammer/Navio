@@ -172,7 +172,7 @@ const NAVIO_VOICE_END_SILENCE_MS = 4000;
 /** Extra silence when voice-conversation reuses the persistent mic (hands-free turns). */
 const NAVIO_VOICE_CONV_EXTRA_SILENCE_MS = 700;
 /** Silence used specifically during a voice-conversation turn — much shorter than toolbar dictation. */
-const NAVIO_VOICE_CONV_END_SILENCE_MS = 2000;
+const NAVIO_VOICE_CONV_END_SILENCE_MS = 2200;
 /** After OpenAI TTS (or speech) ends in voice conversation, reopen the mic after this delay. */
 const NAVIO_VOICE_CONV_AFTER_TTS_MS = 200;
 /** Pause before auto TTS (voice conversation + Settings → read aloud) so the first syllable is not immediate. */
