@@ -199,6 +199,39 @@ const NAVIO_VOICE_CONV_PROGRESS_TTS_MIN_GAP_MS = 4200;
 const NAVIO_VOICE_CONV_HOLD_SILENCE_MS = 7800;
 /** How often we check for that awkward silence (ms). */
 const NAVIO_VOICE_CONV_HOLD_POLL_MS = 3200;
+/**
+ * Voice-conv barge-in while TTS plays: min time RMS must stay above the adaptive gate.
+ * Short windows treated laptop keyboard as “speech” and cut the assistant off mid-sentence.
+ */
+const NAVIO_VOICE_CONV_INTERRUPT_SPEAKING_MS = 420;
+/** Same listener during model work / wrap-up — typing can still spike RMS; slightly longer than legacy 400ms. */
+const NAVIO_VOICE_CONV_INTERRUPT_NONSPEAKING_MS = 520;
+
+/**
+ * During TTS, ignore interrupt frames that look like keyboard/desk transients (strong HF vs speech band).
+ * @param {Uint8Array} freqBuf - from AnalyserNode.getByteFrequencyData
+ * @param {number} sampleRate
+ */
+function navioVcMicFrameLooksLikeHumanVoiceForBargeIn(freqBuf, sampleRate) {
+  const n = freqBuf.length;
+  if (n < 8) return true;
+  const nyquist = sampleRate / 2;
+  const binHz = nyquist / n;
+  let speechBand = 0;
+  let highBand = 0;
+  let total = 0;
+  for (let i = 1; i < n; i++) {
+    const v = freqBuf[i];
+    total += v;
+    const hz = i * binHz;
+    if (hz >= 110 && hz <= 4200) speechBand += v;
+    if (hz >= 5200) highBand += v;
+  }
+  if (total < 30) return false;
+  // Clicks / keycaps skew ultrasonic vs voiced speech picked up on the laptop mic.
+  if (highBand > speechBand * 0.72) return false;
+  return speechBand / total > 0.22;
+}
 
 let _navioVcHoldPhraseIx = 0;
 const NAVIO_VOICE_CONV_HOLD_PHRASES = [
@@ -2758,13 +2791,15 @@ class AssistantManagerClass {
     analyser.smoothingTimeConstant = 0.25;
     audioCtx.createMediaStreamSource(stream).connect(analyser);
     const buf = new Uint8Array(analyser.frequencyBinCount);
+    const freqBuf = new Uint8Array(analyser.frequencyBinCount);
 
     // Adaptive noise floor: sample ambient audio (including TTS bleed) for 350ms,
     // then set the trigger threshold above it. This handles rooms where speaker audio
     // leaks into the mic without causing false triggers or missing the user's voice.
     // Shorter during TTS so we duck the assistant quickly; longer while the model runs so
     // brief noise does not abort the whole agent turn mid-tool.
-    const interruptConfirmMs = (st) => (st === 'speaking' ? 130 : 400);
+    const interruptConfirmMs = (st) =>
+      st === 'speaking' ? NAVIO_VOICE_CONV_INTERRUPT_SPEAKING_MS : NAVIO_VOICE_CONV_INTERRUPT_NONSPEAKING_MS;
 
     let speechStart = null;
     let noiseSamples = [];
@@ -2815,7 +2850,13 @@ class AssistantManagerClass {
       const minThresh = vcState === 'speaking' ? 12 : 14;
       const threshold = Math.max(noiseFloor * mult + floorPad, minThresh);
 
-      if (rms > threshold) {
+      let loudEnough = rms > threshold;
+      if (loudEnough && vcState === 'speaking') {
+        analyser.getByteFrequencyData(freqBuf);
+        loudEnough = navioVcMicFrameLooksLikeHumanVoiceForBargeIn(freqBuf, audioCtx.sampleRate);
+      }
+
+      if (loudEnough) {
         if (!speechStart) speechStart = Date.now();
         else if (Date.now() - speechStart >= interruptConfirmMs(vcState)) {
           this._handleVoiceConvInterrupt();
