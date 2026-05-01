@@ -5120,8 +5120,8 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 8px var(--ap-pad-x) 8px;
+  gap: 8px;
+  padding: 7px var(--ap-pad-x);
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   flex-shrink: 0;
   background: linear-gradient(180deg, rgba(20, 28, 48, 0.72) 0%, rgba(12, 16, 28, 0.52) 100%);
@@ -5172,13 +5172,13 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 .assistant-status-line {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   margin-top: 0;
-  font-size: 10px;
-  color: #a8b4cc;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 9.5px;
+  color: rgba(168, 180, 204, 0.75);
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-transform: none;
   font-variant-numeric: tabular-nums;
 }
 
@@ -5205,18 +5205,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   display: none;
 }
 .assistant-rev-tag {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 5px;
-  border-radius: 999px;
-  border: 1px solid rgba(45, 212, 191, 0.45);
-  background: rgba(45, 212, 191, 0.12);
-  color: #7ef5df;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  line-height: 1.4;
+  display: none;
 }
 
 .status-live-dot {
@@ -5236,8 +5225,17 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 
 .assistant-actions {
   display: flex;
-  gap: 6px;
+  gap: 2px;
   flex-shrink: 0;
+}
+
+/* Compact the header action icon buttons so 5 of them fit cleanly in the header */
+.assistant-actions .icon-btn {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  border-radius: 8px;
 }
 
 /* Memory button: shows a small count badge when Navio has remembered facts. */
@@ -5393,7 +5391,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px var(--ap-pad-x) 6px;
+  padding: 3px var(--ap-pad-x) 4px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
   background: rgba(255, 255, 255, 0.018);
@@ -5410,6 +5408,8 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   min-height: 0;
   background: transparent;
   align-items: center;
+  font-size: 11px;
+  gap: 5px;
 }
 
 .assistant-meta-bar .assistant-controls-strip {
@@ -5438,11 +5438,9 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   flex: 1;
   min-width: 0;
   line-height: 1.4;
-  word-break: break-word;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .context-dot {
@@ -5461,7 +5459,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px var(--ap-pad-x, 16px) 7px;
+  padding: 4px var(--ap-pad-x, 14px) 5px;
   flex-shrink: 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   background: linear-gradient(180deg, rgba(13, 18, 31, 0.8) 0%, rgba(10, 14, 24, 0.72) 100%);
@@ -5470,13 +5468,13 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 }
 .assistant-session-new-btn {
   flex: 0 0 auto;
-  height: 30px;
-  padding: 0 12px;
+  height: 26px;
+  padding: 0 11px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.045);
   color: #d7deef;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
@@ -5500,12 +5498,12 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 .assistant-session-history-summary {
   list-style: none;
   cursor: pointer;
-  height: 30px;
-  padding: 0 12px;
+  height: 26px;
+  padding: 0 11px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.045);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   color: #d7deef;
   text-align: center;
@@ -5850,11 +5848,9 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  /* Extra right inset so thread text does not sit under the scrollbar; extra top for first bubble. */
-  padding: 10px calc(var(--ap-pad-x) + 10px) 12px var(--ap-pad-x);
+  padding: 8px calc(var(--ap-pad-x) + 8px) 12px var(--ap-pad-x);
   display: flex;
   flex-direction: column;
-  /* flex-end pinned a lone welcome to the bottom with a huge empty gap above; scroll-to-bottom is handled in assistant.js */
   justify-content: flex-start;
   gap: 10px;
   scroll-behavior: smooth;
@@ -6082,8 +6078,8 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 .voice-conv-hud {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px 11px;
+  gap: 10px;
+  padding: 8px 14px;
   background: rgba(139, 92, 246, 0.09);
   border-top: 1px solid rgba(139, 92, 246, 0.22);
   border-bottom: 1px solid rgba(139, 92, 246, 0.07);
@@ -6091,6 +6087,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   transform: translateY(8px);
   transition: opacity 0.22s ease, transform 0.22s ease;
   pointer-events: none;
+  flex-shrink: 0;
 }
 .voice-conv-hud.vch-show {
   opacity: 1;
@@ -6101,8 +6098,8 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 /* Animated ring wrapping the state icon */
 .vch-ring-wrap {
   position: relative;
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   flex-shrink: 0;
 }
 .vch-ring {
@@ -6266,22 +6263,23 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   padding: 0;
-  background: rgba(139, 92, 246, 0.08);
-  border: 1px solid rgba(139, 92, 246, 0.22);
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.28);
   border-radius: 50%;
-  color: rgba(139, 92, 246, 0.75);
+  color: rgba(139, 92, 246, 0.85);
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.13s, border-color 0.13s, color 0.13s;
+  transition: background 0.13s, border-color 0.13s, color 0.13s, box-shadow 0.13s;
   pointer-events: auto;
 }
 .vch-mute-btn:hover {
-  background: rgba(139, 92, 246, 0.18);
-  border-color: rgba(139, 92, 246, 0.45);
+  background: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.5);
   color: rgba(139, 92, 246, 1);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.25);
 }
 /* Show/hide the two mic SVGs based on muted state */
 .vch-mute-btn .vch-mute-icon-off { display: none; }
@@ -6306,11 +6304,19 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 .voice-conv-hud[data-vc-state="muted"] .vch-state-icon { color: rgba(156, 163, 175, 0.7); }
 .voice-conv-hud[data-vc-state="muted"] .vch-state-label { color: rgba(156, 163, 175, 0.8); }
 
-/* Voice conv button active state */
+/* Voice conv button active state — pulses so users know they can click to mute */
 #btn-voice-conv.voice-conv-on {
   color: rgba(139, 92, 246, 0.9) !important;
   background: rgba(139, 92, 246, 0.12) !important;
   border-color: rgba(139, 92, 246, 0.3) !important;
+  animation: voice-pulse 1.2s ease-in-out infinite;
+}
+
+/* When voice HUD is active (sibling selector) pulse the conv btn in the input bar */
+.voice-conv-hud.vch-show ~ .assistant-input-area #btn-voice-conv:not(.voice-conv-on) {
+  color: rgba(139, 92, 246, 0.7);
+  background: rgba(139, 92, 246, 0.09);
+  border-color: rgba(139, 92, 246, 0.22);
 }
 /* Voice conversation mode button: slightly more prominent than single-shot
    mic because it's the richer "talk to Navio" interaction. Subtle violet tint
@@ -6325,6 +6331,25 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   background: rgba(139, 92, 246, 0.15);
   border-color: rgba(139, 92, 246, 0.35);
   box-shadow: 0 0 10px rgba(139, 92, 246, 0.2);
+}
+
+/* Single-shot voice mic: teal tint at rest to visually distinguish from the violet conv mic */
+#btn-voice-mode {
+  color: rgba(45, 212, 191, 0.55);
+  border-color: rgba(45, 212, 191, 0.12);
+  background: rgba(45, 212, 191, 0.05);
+}
+#btn-voice-mode:hover {
+  color: rgba(45, 212, 191, 0.95);
+  background: rgba(45, 212, 191, 0.12);
+  border-color: rgba(45, 212, 191, 0.35);
+  box-shadow: 0 0 8px rgba(45, 212, 191, 0.18);
+}
+/* When listening (recording) show red pulse identical to existing .voice-btn.listening */
+#btn-voice-mode.listening {
+  color: #fc8181;
+  background: rgba(252, 129, 129, 0.12);
+  border-color: rgba(252, 129, 129, 0.3);
 }
 
 /* Light theme */
@@ -7255,13 +7280,12 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 
 /* Input area — flush with thread (no separate footer “block”) */
 .assistant-input-area {
-  padding: 8px var(--ap-pad-x) 10px;
+  padding: 10px var(--ap-pad-x) 14px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   flex-shrink: 0;
   background: linear-gradient(180deg, rgba(10, 14, 23, 0.35) 0%, rgba(10, 14, 23, 0.72) 100%);
   position: relative;
   z-index: 1;
-  /* Ensure OS file drags (e.g. from Downloads / Explorer) are not captured as window-drag. */
   -webkit-app-region: no-drag;
 }
 
@@ -7634,10 +7658,10 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   display: flex;
   flex-direction: column;
   gap: 0;
-  padding: 9px 11px 7px;
+  padding: 10px 13px 9px;
   background: rgba(12, 18, 32, 0.88);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
+  border-radius: 13px;
   transition: opacity 0.15s ease, border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
   backdrop-filter: none;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
@@ -7658,7 +7682,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 .assistant-toolbar-left {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   flex: 1;
   min-width: 0;
 }
@@ -7673,12 +7697,14 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 .assistant-input-hint-inline {
   font-size: 10px;
   color: var(--text-tertiary);
-  opacity: 0.78;
-  margin-left: 6px;
+  opacity: 0.55;
+  margin-left: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   letter-spacing: 0.01em;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .assistant-panel .assistant-input-container .voice-btn {
@@ -11332,20 +11358,22 @@ button.navio-followup-chip:active {
   flex-shrink: 0;
   border: none;
   background: transparent;
-  color: var(--text-accent);
-  font-size: 10.5px;
-  font-weight: 600;
+  color: rgba(124, 157, 255, 0.65);
+  font-size: 10px;
+  font-weight: 500;
   cursor: pointer;
   font-family: inherit;
-  padding: 0.3rem 0.45rem;
+  padding: 0.25rem 0.4rem;
   border-radius: var(--ap-control-radius);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration: none;
   white-space: nowrap;
+  opacity: 0.85;
+  transition: opacity 0.15s, color 0.15s;
 }
 
 .assistant-ai-settings-link:hover {
-  color: var(--text-primary);
+  color: var(--text-accent);
+  opacity: 1;
   background: var(--bg-hover);
 }
 
