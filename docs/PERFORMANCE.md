@@ -16,11 +16,11 @@ $pids = (Get-CimInstance Win32_Process -Filter "Name='electron.exe'" |
 Close other Electron apps first, or the filter may include stray paths.
 
 
-| Scenario                                   | Private WS (MB) | Notes                                                                                                                          |
-| ------------------------------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Idle, default NTP / few tabs               | 3957            | Example: 2026-04-16 dev run — sum of all `electron.exe` with `NavioBrowser` in command line (~14 processes incl. GPU/helpers). |
-| ~15 tabs, assistant open                   |                 | Record manually on your machine.                                                                                               |
-| Cold start → URL bar usable (subjective s) |                 | e.g. stopwatch until URL bar accepts input.                                                                                    |
+| Scenario                                   | Private WS (MB) | Notes                                                                                                                                                                                               |
+| ------------------------------------------ | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Idle, default NTP / few tabs               | 3957            | 2026-04-16 dev run — sum of all `electron.exe` with `NavioBrowser` in command line (~14 processes incl. GPU/helpers).                                                                               |
+| ~15 tabs, assistant open                   | —               | **Measure locally:** open 15 mixed tabs + assistant sidebar, wait ~30 s for settle, run PowerShell snippet above. Record here after measuring (baseline pre-discard; compare after discard enabled). |
+| Cold start → URL bar usable (subjective s) | —               | **Measure locally:** `npm start`, stopwatch until the omnibox accepts keyboard input. Typically 3–6 s on SSD; record to track regressions after main-process changes.                               |
 
 
 Re-run after large changes to tabs, webview lifecycle, or assistant context.
@@ -32,8 +32,8 @@ Re-run after large changes to tabs, webview lifecycle, or assistant context.
 
 ## Recommendations
 
-1. **Idle webviews**: Many tabs increase memory; consider optional tab discarding in a future release (unload guest when tab inactive for N minutes).
-2. **Lazy load**: Heavy panels (Connectors, Workspace) could defer initialization until first open.
+1. **Idle webviews**: Tab discarding is implemented (`tabDiscardIdleMinutes: 30` default). Verify RAM savings with the 15-tab scenario above — compare with discard on vs off.
+2. **Lazy load (done)**: `ConnectorsManager` now defers OAuth/IMAP status calls to first hub open. Only `getConfig()` + `connectorGetKeys()` run at startup. Verify startup TTI improvement by re-measuring cold start.
 3. **CSS**: Large `styles.css` is split incrementally under `src/css/parts/`; prefer adding new UI rules there.
 
 ## Startup

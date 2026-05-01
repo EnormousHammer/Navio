@@ -1106,6 +1106,23 @@
   align-items: center;
   gap: 4px;
 }
+.ext-row-failed {
+  opacity: 0.85;
+}
+.ext-row-failed .ext-row-title {
+  color: var(--danger, #e05252);
+}
+.ext-error-badge {
+  margin-right: 4px;
+  font-size: 13px;
+}
+.ext-row-error-msg {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--danger, #e05252);
+  padding: 2px 0 4px 2px;
+  word-break: break-word;
+}
 
 .settings-troubleshoot-details {
   margin-top: 12px;

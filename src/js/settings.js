@@ -892,7 +892,10 @@ class SettingsManagerClass {
       const r = await window.navio.extensionsList();
       const loaded = r.loaded || [];
       const persisted = r.persisted || [];
+      const failed = r.failed || [];
       const enabledById = Object.fromEntries(persisted.map((e) => [e.id, e.enabled !== false]));
+      const failedById = Object.fromEntries(failed.map((f) => [f.id, f.error]));
+
       const rows = loaded.map((x) => {
         const on = enabledById[x.id] !== false;
         return `<div class="ext-row ext-row-rich" data-id="${_escAttr(x.id)}">
@@ -905,7 +908,24 @@ class SettingsManagerClass {
           </span>
         </div>`;
       });
-      wrap.innerHTML = rows.length ? rows.join('') : '<p class="settings-inline-hint">No extensions loaded this session.</p>';
+
+      // Show failed-to-load extensions with a warning badge
+      const failedRows = failed.map((f) => {
+        const name = persisted.find((p) => p.id === f.id)?.path?.split(/[\\/]/).pop() || f.id;
+        return `<div class="ext-row ext-row-rich ext-row-failed" data-id="${_escAttr(f.id)}" title="${_escAttr(f.error)}">
+          <span class="ext-row-title">
+            <span class="ext-error-badge" aria-label="Load failed">&#9888;</span>
+            ${_esc(name)}
+          </span>
+          <span class="ext-row-error-msg">${_esc(f.error)}</span>
+          <span class="ext-row-actions">
+            <button type="button" class="btn btn-secondary ext-remove" data-id="${_escAttr(f.id)}">Remove</button>
+          </span>
+        </div>`;
+      });
+
+      const allRows = [...rows, ...failedRows];
+      wrap.innerHTML = allRows.length ? allRows.join('') : '<p class="settings-inline-hint">No extensions loaded this session.</p>';
       wrap.querySelectorAll('.ext-remove').forEach((btn) => {
         btn.addEventListener('click', async () => {
           await window.navio.extensionsRemove(btn.dataset.id);

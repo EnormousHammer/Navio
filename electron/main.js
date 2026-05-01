@@ -2582,16 +2582,18 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
         stallTrack.length = 0;
       }
 
-      // Web search — Perplexity when connected (best citations), else fall back
-      // to the active LLM provider's native web-search tool so users never need
-      // a second paid key just to get cited answers.
+      // Web search — Perplexity (best citations) → Brave Search (independent, cited)
+      // → active LLM provider native web search. Users never need all three; each
+      // tier activates only when the prior one is absent or fails.
       if (tc.name === 'web_search') {
         const query = (tc.arguments && tc.arguments.query) || '';
         let toolResult;
         try {
           const connMap = loadConnectorKeys();
-          const encKey = connMap['perplexity'];
-          const perplexityKey = encKey ? decryptConnectorKey(encKey) : null;
+          const encPerplexity = connMap['perplexity'];
+          const perplexityKey = encPerplexity ? decryptConnectorKey(encPerplexity) : null;
+          const encBrave = connMap['brave'];
+          const braveKey = encBrave ? decryptConnectorKey(encBrave) : null;
 
           let searchRes = null;
           let source = null;
@@ -2599,7 +2601,15 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
             searchRes = await queryPerplexity(perplexityKey, query);
             source = 'perplexity';
             if (searchRes && searchRes.error) {
-              console.warn(`[navio] Perplexity web_search failed, falling back to provider: ${searchRes.error}`);
+              console.warn(`[navio] Perplexity web_search failed, trying Brave: ${searchRes.error}`);
+              searchRes = null;
+            }
+          }
+          if (!searchRes && braveKey) {
+            searchRes = await queryBraveSearch(braveKey, query);
+            source = 'brave';
+            if (searchRes && searchRes.error) {
+              console.warn(`[navio] Brave Search failed, falling back to provider: ${searchRes.error}`);
               searchRes = null;
             }
           }
@@ -7850,6 +7860,7 @@ ipcMain.handle('connector-query', async (event, { serviceId, query, options }) =
     if (serviceId === 'github') return await queryGitHub(token, query, options);
     if (serviceId === 'notion') return await queryNotion(token, query, options);
     if (serviceId === 'perplexity') return await queryPerplexity(token, query, options);
+    if (serviceId === 'brave') return await queryBraveSearch(token, query);
     if (serviceId === 'linear') return await queryLinear(token, query, options);
     if (serviceId === 'gmail' || serviceId === 'gmail_2') {
       const gmailRes = await queryGmail(token, query, options);
@@ -7968,6 +7979,43 @@ async function queryPerplexity(apiKey, query, options = {}) {
   const content = data.choices?.[0]?.message?.content || '';
   const citations = data.citations || [];
   return { answer: content, citations, model };
+}
+
+/**
+ * Brave Search API — independent web search that doesn't route through the
+ * user's LLM provider. Free tier: 2000 queries/month. Get a key at
+ * https://brave.com/search/api/
+ *
+ * Returns { answer, citations: string[] } on success, { error } on failure.
+ */
+async function queryBraveSearch(apiKey, query) {
+  if (!apiKey) return { error: 'No Brave Search API key configured.' };
+  const cleanQuery = String(query || '').trim();
+  if (!cleanQuery) return { error: 'Empty search query.' };
+  try {
+    const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(cleanQuery)}&count=8&result_filter=web`;
+    const resp = await net.fetch(url, {
+      headers: {
+        'X-Subscription-Token': apiKey,
+        Accept: 'application/json'
+      }
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      const msg = data?.message || `Brave Search HTTP ${resp.status}`;
+      return { error: msg };
+    }
+    const results = data?.web?.results || [];
+    if (!results.length) return { answer: 'No results found.', citations: [] };
+    const citations = results.map((r) => r.url).filter(Boolean);
+    const answer = results
+      .slice(0, 6)
+      .map((r, i) => `${i + 1}. **${r.title || 'Result'}** — ${(r.description || '').slice(0, 220)}\n   ${r.url}`)
+      .join('\n\n');
+    return { answer, citations };
+  } catch (e) {
+    return { error: `Brave Search failed: ${e.message}` };
+  }
 }
 
 /**
@@ -8110,7 +8158,7 @@ async function queryProviderWebSearch(cfg, apiKey, query) {
       return { answer, citations, model };
     }
 
-    return { error: `Web search is not available for provider "${provider}". Add a Perplexity key in Settings → Connectors, or switch to OpenAI, Anthropic, or Google in Settings → AI.` };
+    return { error: `Web search is not available for provider "${provider}". Add a Perplexity or Brave Search key in Settings → Connectors, or switch to OpenAI, Anthropic, or Google in Settings → AI.` };
   } catch (e) {
     return { error: `Provider web search failed: ${e.message}` };
   }

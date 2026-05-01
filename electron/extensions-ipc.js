@@ -89,17 +89,26 @@ async function loadPersistedExtensionsOnStartup(app) {
   const userData = app.getPath('userData');
   const state = loadState(userData);
   const navioSession = session.fromPartition('persist:navio');
+  startupLoadFailures.clear();
   for (const e of state.entries || []) {
     if (!e.enabled || !e.path) continue;
     try {
-      if (!fs.existsSync(e.path)) continue;
+      if (!fs.existsSync(e.path)) {
+        startupLoadFailures.set(e.id, 'Extension folder not found — it may have been moved or deleted.');
+        console.warn('[navio] Extension folder missing:', e.path);
+        continue;
+      }
       await navioSession.loadExtension(e.path, { allowFileAccess: true });
       console.log('[navio] Loaded extension:', e.path);
     } catch (err) {
+      startupLoadFailures.set(e.id, err.message || 'Failed to load extension');
       console.warn('[navio] Extension load failed:', e.path, err.message);
     }
   }
 }
+
+/** In-memory map of extension id → load error message for failures at startup. */
+const startupLoadFailures = new Map();
 
 function registerExtensionsIpc(ipcMain, { app, getMainWindow }) {
   ipcMain.handle('extensions-list', async () => {
@@ -119,7 +128,13 @@ function registerExtensionsIpc(ipcMain, { app, getMainWindow }) {
     } catch (e) {
       loaded = [];
     }
-    return { persisted: state.entries || [], loaded };
+    // Attach any startup load errors so the UI can surface them
+    const failed = [];
+    for (const [id, error] of startupLoadFailures) {
+      const persisted = (state.entries || []).find((x) => x.id === id);
+      failed.push({ id, path: persisted?.path || '', error });
+    }
+    return { persisted: state.entries || [], loaded, failed };
   });
 
   ipcMain.handle('extensions-load-unpacked', async () => {

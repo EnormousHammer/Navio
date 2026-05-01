@@ -10494,31 +10494,32 @@ ${pageInfo}${snapText}`;
       // Helper: extract a clean search term from the user query
       const clean = (pattern) => text.replace(pattern, '').replace(/\b(my|the|search|find|in|from|about|show|list|all|open|get|what|are|is|any)\b/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
 
-      // ── Perplexity (real-time web search) ──────────────────────────────
-      if (webMode !== 'never' && has('perplexity')) {
-        const webSearchIntentAuto =
-          /\b(search|look up|find out|latest|news|current|today|recent|on the web|from the web|web results|online|lookup|cite|verify|fact\s*check|browse\s+online|perplexity)\b/i.test(text) ||
-          /\bwhat\s+(is|are|was|were)\s+the\s+(latest|news|weather|price|stock|rate|situation|meaning|definition)\b/i.test(text) ||
-          // General knowledge questions not likely answered from the active page
-          /^(what|who|where|when|why|how)\s+(is|are|was|were|do|does|did|can|could|should|would)\b/i.test(text.trim()) ||
-          /\b(how\s+(much|many|long|far|old|often)|what\s+does|who\s+is|where\s+is|what\s+year|what\s+time|what\s+are\s+the\s+(best|top|most))\b/i.test(text) ||
-          /\b(price|cost|rate|stock|weather|definition|meaning|explain|difference\s+between|compare|vs\.?|versus|pros\s+and\s+cons|review|rating|recommend)\b/i.test(text) ||
-          /\b(how\s+to|best\s+way\s+to|steps\s+to|guide\s+(to|for)|tutorial)\b/i.test(text);
-        const webSearchIntent =
-          webMode === 'always' || (webMode === 'auto' && webSearchIntentAuto);
-        if (webSearchIntent) {
-          try {
-            const res = await ConnectorsManager.queryConnector('perplexity', text);
-            if (res?.answer) {
-              if (Array.isArray(res.citations) && res.citations.length) {
-                this._pendingConnectorCitations = res.citations.slice(0, 12);
-              }
-              results.push(
-                `[Perplexity Web Search]\n${res.answer.slice(0, 1400)}${res.citations?.length ? `\n\nWeb sources: ${res.citations.slice(0, 4).join(', ')}` : ''}`
-              );
+      // ── Web search (Perplexity preferred, Brave Search fallback) ──────────
+      const webSearchIntentAuto =
+        /\b(search|look up|find out|latest|news|current|today|recent|on the web|from the web|web results|online|lookup|cite|verify|fact\s*check|browse\s+online|perplexity|brave)\b/i.test(text) ||
+        /\bwhat\s+(is|are|was|were)\s+the\s+(latest|news|weather|price|stock|rate|situation|meaning|definition)\b/i.test(text) ||
+        // General knowledge questions not likely answered from the active page
+        /^(what|who|where|when|why|how)\s+(is|are|was|were|do|does|did|can|could|should|would)\b/i.test(text.trim()) ||
+        /\b(how\s+(much|many|long|far|old|often)|what\s+does|who\s+is|where\s+is|what\s+year|what\s+time|what\s+are\s+the\s+(best|top|most))\b/i.test(text) ||
+        /\b(price|cost|rate|stock|weather|definition|meaning|explain|difference\s+between|compare|vs\.?|versus|pros\s+and\s+cons|review|rating|recommend)\b/i.test(text) ||
+        /\b(how\s+to|best\s+way\s+to|steps\s+to|guide\s+(to|for)|tutorial)\b/i.test(text);
+      const webSearchIntent = webMode === 'always' || (webMode === 'auto' && webSearchIntentAuto);
+
+      if (webMode !== 'never' && webSearchIntent && (has('perplexity') || has('brave'))) {
+        try {
+          // Prefer Perplexity (best citations); fall back to Brave Search
+          const webServiceId = has('perplexity') ? 'perplexity' : 'brave';
+          const res = await ConnectorsManager.queryConnector(webServiceId, text);
+          if (res?.answer) {
+            if (Array.isArray(res.citations) && res.citations.length) {
+              this._pendingConnectorCitations = res.citations.slice(0, 12);
             }
-          } catch (_) {}
-        }
+            const sourceLabel = webServiceId === 'brave' ? 'Brave Search' : 'Perplexity Web Search';
+            results.push(
+              `[${sourceLabel}]\n${res.answer.slice(0, 1400)}${res.citations?.length ? `\n\nWeb sources: ${res.citations.slice(0, 4).join(', ')}` : ''}`
+            );
+          }
+        } catch (_) {}
       }
 
       // ── Gmail ──────────────────────────────────────────────────────────

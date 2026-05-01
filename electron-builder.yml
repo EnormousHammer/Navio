@@ -1,0 +1,51 @@
+appId: com.navioai.browser
+productName: Navio
+copyright: Copyright © 2026 Navio
+
+# Main entry (mirrors package.json "main")
+directories:
+  output: dist-eb
+
+# Files to include (mirrors forge.config.js asar + public extraResource)
+files:
+  - electron/**
+  - src/**
+  - public/**
+  - package.json
+  - "!node_modules/.cache"
+  - "!**/*.map"
+
+# Include the public/ folder as an extra resource (same as forge extraResource)
+extraResources:
+  - from: public
+    to: public
+
+# Windows installer target: NSIS classic installer
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: src/assets/icon.ico
+
+nsis:
+  # Non-silent install with a destination folder picker
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  # "Navio" shown in Add/Remove Programs
+  installerIcon: src/assets/icon.ico
+  uninstallerIcon: src/assets/icon.ico
+  shortcutName: Navio
+  deleteAppDataOnUninstall: false
+  # Run app after install
+  runAfterFinish: true
+
+# macOS (optional — requires Apple developer credentials in CI)
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  icon: src/assets/icon.png
+  category: public.app-category.utilities

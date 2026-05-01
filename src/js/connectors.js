@@ -14,12 +14,16 @@ class ConnectorsManagerClass {
     this.hubVisible = false;
     this.activeTab = 'connections'; // 'connections' | 'launch'
 
-    // Which services have stored API keys OR OAuth tokens (populated on init)
+    // Which services have stored API keys OR OAuth tokens (populated on first open)
     this.connectedIds = new Set();
 
-    // OAuth provider status + config (populated on init)
+    // OAuth provider status + config (populated on first open)
     this.oauthStatus = {};   // providerId → { connected, email, name, avatar }
     this.oauthProviders = []; // array of provider config objects from main process
+
+    /** Lazy-init guard: init() runs once on the first hub open, not at construction. */
+    this._initialized = false;
+    this._initPromise = null;
 
     // Map: serviceId → oauthProviderId
     this.serviceToOAuth = {
@@ -248,6 +252,22 @@ class ConnectorsManagerClass {
         keyLink: 'https://www.perplexity.ai/settings/api',
         capabilities: ['Real-time web search', 'Answers with source citations', 'Current events & news'],
         category: 'ai-search'
+      },
+      {
+        id: 'brave',
+        name: 'Brave Search',
+        tagline: 'Independent web search — no LLM provider needed',
+        description: 'Connect the Brave Search API for cited web results independent of your AI provider. Free tier: 2000 queries/month. Used automatically when Perplexity is not connected.',
+        icon: 'Bv',
+        logo: 'https://cdn.simpleicons.org/brave/fb542b',
+        logoBg: '#ffffff',
+        gradient: 'linear-gradient(135deg, #d63a00, #fb542b)',
+        keyLabel: 'API Key',
+        keyPlaceholder: 'BSA...',
+        keyHint: 'Go to brave.com/search/api → sign up for the free Data for AI plan (2000 queries/month)',
+        keyLink: 'https://brave.com/search/api/',
+        capabilities: ['Independent web search', 'Source citations', 'No LLM provider dependency', 'Free tier available'],
+        category: 'ai-search'
       }
     ];
 
@@ -331,6 +351,7 @@ class ConnectorsManagerClass {
       { id: 'claude', name: 'Claude', url: 'https://claude.ai', category: 'ai', icon: 'Cl', color: '#d4a574', gradient: 'linear-gradient(135deg, #c5956b, #d4a574)' },
       { id: 'gemini', name: 'Gemini', url: 'https://gemini.google.com', category: 'ai', icon: 'Ge', color: '#4285f4', gradient: 'linear-gradient(135deg, #4285f4, #a855f7)' },
       { id: 'perplexity', name: 'Perplexity', url: 'https://www.perplexity.ai', category: 'ai', icon: 'Px', color: '#20b8a2', gradient: 'linear-gradient(135deg, #1a9688, #20b8a2)' },
+      { id: 'brave-search-web', name: 'Brave Search', url: 'https://search.brave.com', category: 'ai', icon: 'Bv', color: '#fb542b', gradient: 'linear-gradient(135deg, #d63a00, #fb542b)' },
       { id: 'midjourney', name: 'Midjourney', url: 'https://www.midjourney.com', category: 'ai', icon: 'MJ', color: '#ffffff', gradient: 'linear-gradient(135deg, #1a1a2e, #333)' },
       { id: 'huggingface', name: 'Hugging Face', url: 'https://huggingface.co', category: 'ai', icon: 'HF', color: '#ffcc00', gradient: 'linear-gradient(135deg, #ff9d00, #ffcc00)' },
       { id: 'copilot', name: 'Copilot', url: 'https://copilot.microsoft.com', category: 'ai', icon: 'Co', color: '#0078d4', gradient: 'linear-gradient(135deg, #0078d4, #00bcf2)' },
@@ -360,25 +381,63 @@ class ConnectorsManagerClass {
       { id: 'design', name: 'Design', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><path d="M17.5 10.5 21 3"/><path d="M3 21l7.5-7.5"/><path d="M12.5 12.5 21 21"/><path d="M3 3l7 7"/></svg>' }
     ];
 
-    this.init();
+    // Bind DOM events eagerly; load favorites from local config so sidebar pins render.
+    // The heavier OAuth/IMAP/keys calls are deferred to first hub open via _ensureInit().
+    this.bindEvents();
+    this._loadFavorites();
   }
 
-  async init() {
-    try {
-      const config = await window.navio.getConfig();
-      this.favorites = config.connectorFavorites || ['gmail', 'gdrive', 'dropbox', 'slack', 'notion', 'github', 'chatgpt'];
-    } catch (e) {
-      this.favorites = ['gmail', 'gdrive', 'dropbox', 'slack', 'notion', 'github', 'chatgpt'];
-    }
+  /**
+   * Lightweight startup load: reads local config (favorites) and connector key
+   * presence (needed by the assistant's connector context before the hub is opened).
+   * Renders sidebar pins once done. No OAuth/IMAP network calls.
+   */
+  async _loadFavorites() {
+    await Promise.allSettled([
+      (async () => {
+        try {
+          const config = await window.navio.getConfig();
+          this.favorites = config.connectorFavorites || ['gmail', 'gdrive', 'dropbox', 'slack', 'notion', 'github', 'chatgpt'];
+        } catch (_) {
+          this.favorites = ['gmail', 'gdrive', 'dropbox', 'slack', 'notion', 'github', 'chatgpt'];
+        }
+      })(),
+      (async () => {
+        try {
+          const keys = await window.navio.connectorGetKeys();
+          this.connectedIds = new Set(Object.keys(keys).filter((k) => keys[k]));
+        } catch (_) {}
+      })()
+    ]);
+    this.renderSidebarPins();
+  }
 
-    // Load OAuth status and provider configs (for "Sign in with Google" buttons)
+  /**
+   * Ensure init() has been called exactly once. Returns the same Promise on
+   * concurrent calls so IPC isn't duplicated if the hub is opened rapidly.
+   */
+  _ensureInit() {
+    if (this._initialized) return Promise.resolve();
+    if (this._initPromise) return this._initPromise;
+    this._initPromise = this.init().then(() => {
+      this._initialized = true;
+      this._initPromise = null;
+    });
+    return this._initPromise;
+  }
+
+  /** Full init: OAuth status + IMAP status for UI rendering — deferred to first hub open. */
+  async init() {
+    // Load OAuth status, provider configs, and refresh key presence (all for hub UI)
     try {
-      const [oauthSt, oauthProv] = await Promise.all([
+      const [oauthSt, oauthProv, keys] = await Promise.all([
         window.navio.oauthStatus(),
-        window.navio.oauthProvidersConfig()
+        window.navio.oauthProvidersConfig(),
+        window.navio.connectorGetKeys()
       ]);
       this.oauthStatus = oauthSt || {};
       this.oauthProviders = oauthProv || [];
+      this.connectedIds = new Set(Object.keys(keys).filter((k) => keys[k]));
     } catch {}
 
     // Load IMAP connection status (gmail, outlook)
@@ -386,15 +445,7 @@ class ConnectorsManagerClass {
       this.imapStatus = await window.navio.imapStatus() || {};
     } catch {}
 
-    try {
-      const keys = await window.navio.connectorGetKeys();
-      this.connectedIds = new Set(Object.keys(keys).filter((k) => keys[k]));
-    } catch (e) {
-      this.connectedIds = new Set();
-    }
-
     this.renderSidebarPins();
-    this.bindEvents();
   }
 
   async _refreshOAuthState() {
@@ -493,14 +544,15 @@ class ConnectorsManagerClass {
     const hub = document.getElementById('connectors-hub');
     hub.classList.add('active');
 
-    // Default to Connections tab if no services connected yet; else respect last tab
-    this.switchTab(this.activeTab);
-
-    setTimeout(() => {
-      if (this.activeTab === 'launch') {
-        document.getElementById('connectors-search').focus();
-      }
-    }, 200);
+    // Lazy-init on first open: load OAuth/IMAP/key status before rendering tabs
+    this._ensureInit().then(() => {
+      this.switchTab(this.activeTab);
+      setTimeout(() => {
+        if (this.activeTab === 'launch') {
+          document.getElementById('connectors-search')?.focus();
+        }
+      }, 200);
+    });
   }
 
   hideHub() {
