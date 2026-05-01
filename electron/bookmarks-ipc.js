@@ -3,6 +3,7 @@
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { navioNormalizeHistoryKey } = require('./navio-url-utils');
 
 function bookmarksPath(userData) {
   return path.join(userData, 'navio-bookmarks.json');
@@ -117,6 +118,43 @@ function registerBookmarksIpc(ipcMain, { app, loadConfig }) {
     }
     saveBookmarks(userData, data);
     return { ok: true, migrated: n, data };
+  });
+
+  ipcMain.handle('bookmarks-patch-favicon-for-url', (_, { url, favicon }) => {
+    if (!url || typeof url !== 'string' || !favicon || typeof favicon !== 'string') {
+      return { ok: false, updated: 0 };
+    }
+    let fav = favicon.trim().slice(0, 2048);
+    if (!/^https?:\/\//i.test(fav) && !/^data:image\//i.test(fav)) return { ok: false, updated: 0 };
+    let norm;
+    try {
+      const u = new URL(url);
+      if (!u.protocol.startsWith('http')) return { ok: false, updated: 0 };
+      norm = navioNormalizeHistoryKey(url);
+    } catch {
+      return { ok: false, updated: 0 };
+    }
+    const userData = app.getPath('userData');
+    const data = loadBookmarks(userData);
+    let n = 0;
+    for (const ent of data.bar || []) {
+      if (ent && ent.url && navioNormalizeHistoryKey(ent.url) === norm) {
+        ent.favicon = fav;
+        n++;
+      }
+    }
+    const walk = (nodes) => {
+      for (const ent of nodes || []) {
+        if (ent.url && navioNormalizeHistoryKey(ent.url) === norm) {
+          ent.favicon = fav;
+          n++;
+        }
+        if (ent.children && ent.children.length) walk(ent.children);
+      }
+    };
+    walk(data.tree || []);
+    if (n) saveBookmarks(userData, data);
+    return { ok: true, updated: n };
   });
 }
 

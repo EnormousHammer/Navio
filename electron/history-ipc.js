@@ -3,6 +3,7 @@
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { navioNormalizeHistoryKey } = require('./navio-url-utils');
 
 const MAX_ENTRIES = 10000;
 
@@ -44,8 +45,8 @@ function registerHistoryIpc(ipcMain, { app }) {
     }
     const userData = app.getPath('userData');
     const data = loadHistory(userData);
-    const norm = normalizeUrl(url);
-    const existing = data.entries.find((e) => normalizeUrl(e.url) === norm);
+    const norm = navioNormalizeHistoryKey(url);
+    const existing = data.entries.find((e) => navioNormalizeHistoryKey(e.url) === norm);
     if (existing) {
       existing.visitCount = (existing.visitCount || 1) + 1;
       existing.visitedAt = Date.now();
@@ -94,16 +95,28 @@ function registerHistoryIpc(ipcMain, { app }) {
     saveHistory(app.getPath('userData'), { version: 1, entries: [] });
     return { ok: true };
   });
-}
 
-function normalizeUrl(url) {
-  try {
-    const u = new URL(url);
-    u.hash = '';
-    return u.href;
-  } catch {
-    return url;
-  }
+  ipcMain.handle('history-patch-favicon', (_, { url, favicon }) => {
+    if (!url || typeof url !== 'string' || !favicon || typeof favicon !== 'string') {
+      return { ok: false };
+    }
+    let fav = favicon.trim().slice(0, 2048);
+    if (!/^https?:\/\//i.test(fav) && !/^data:image\//i.test(fav)) return { ok: false };
+    try {
+      const u = new URL(url);
+      if (!u.protocol.startsWith('http')) return { ok: false };
+    } catch {
+      return { ok: false };
+    }
+    const userData = app.getPath('userData');
+    const data = loadHistory(userData);
+    const norm = navioNormalizeHistoryKey(url);
+    const hit = data.entries.find((e) => navioNormalizeHistoryKey(e.url) === norm);
+    if (!hit) return { ok: false, updated: false };
+    hit.favicon = fav;
+    saveHistory(userData, data);
+    return { ok: true, updated: true };
+  });
 }
 
 module.exports = { registerHistoryIpc, loadHistory, saveHistory };

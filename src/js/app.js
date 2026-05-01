@@ -310,7 +310,45 @@ class NavioApp {
   }
 
   /**
-   * Letter chip underlay + favicon image (Google s2 or stored). Image hides on error so letter shows.
+   * Skip live search-engine completions only for clear URL/host typing (single token, host-like),
+   * not for every string that happens to contain a dot.
+   */
+  _looksLikeTypedUrlForSearchSkip(q) {
+    const t = (q || '').trim();
+    if (!t) return false;
+    if (/^https?:\/\//i.test(t)) return true;
+    const words = t.split(/\s+/).filter(Boolean);
+    if (words.length >= 2) return false;
+    if (!t.includes('.')) return false;
+    const core = t.replace(/^www\./i, '');
+    return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(core);
+  }
+
+  /** DuckDuckGo ip3 icon, then Google s2 — used when no stored favicon. */
+  _suggestionFaviconUrlChain(url, storedFavicon) {
+    let host = '';
+    try {
+      host = new URL(url).hostname.replace(/^www\./, '');
+    } catch {
+      return [];
+    }
+    if (!host) return [];
+    const ddg = `https://icons.duckduckgo.com/ip3/${host}.ico`;
+    const s2 = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`;
+    const chain = [];
+    const push = (u) => {
+      const s = u && String(u).trim();
+      if (!s) return;
+      if (!chain.includes(s)) chain.push(s);
+    };
+    push(storedFavicon);
+    push(ddg);
+    push(s2);
+    return chain;
+  }
+
+  /**
+   * Letter chip underlay + favicon (stored → DuckDuckGo → Google s2). Image steps through chain on error.
    */
   _suggestionIconHtml(url, storedFavicon) {
     const esc = (s) => {
@@ -326,27 +364,73 @@ class NavioApp {
     }
     const letter = (host[0] || '?').toUpperCase();
     const hue = this._hostHue(host || '?');
-    const s2 = host ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64` : '';
     const letterHtml = `<span class="url-suggestion-fav url-suggestion-fav--letter" style="--letter-hue:${hue}">${esc(letter)}</span>`;
-    const primary = storedFavicon || s2;
-    if (!primary) return letterHtml;
-    const needFallback = !!(storedFavicon && s2 && String(storedFavicon).trim() !== String(s2).trim());
-    const fallbackAttr = needFallback ? ` data-fallback-s2="${esc(s2)}"` : '';
-    return `<span class="url-suggestion-fav-wrap">${letterHtml}<img class="url-suggestion-fav url-suggestion-fav--img" src="${esc(primary)}" alt="" loading="lazy"${fallbackAttr} /></span>`;
+    const chain = this._suggestionFaviconUrlChain(url, storedFavicon);
+    if (!chain.length) return letterHtml;
+    const [first, ...rest] = chain;
+    const restAttr = rest.length
+      ? ` data-fav-rest="${encodeURIComponent(JSON.stringify(rest))}"`
+      : '';
+    return `<span class="url-suggestion-fav-wrap">${letterHtml}<img class="url-suggestion-fav url-suggestion-fav--img" src="${esc(first)}" alt="" loading="lazy"${restAttr} /></span>`;
   }
 
   _wireUrlSuggestionImgFallbacks(listEl) {
     if (!listEl) return;
     listEl.querySelectorAll('.url-suggestion-fav--img').forEach((img) => {
       img.addEventListener('error', function onImgErr() {
-        const s2 = this.getAttribute('data-fallback-s2');
-        if (s2 && !this.dataset.triedS2) {
-          this.dataset.triedS2 = '1';
-          this.src = s2;
+        let rest = [];
+        try {
+          const enc = this.getAttribute('data-fav-rest');
+          if (enc) rest = JSON.parse(decodeURIComponent(enc));
+        } catch {
+          rest = [];
+        }
+        if (Array.isArray(rest) && rest.length > 0) {
+          const [next, ...more] = rest;
+          this.setAttribute('data-fav-rest', more.length ? encodeURIComponent(JSON.stringify(more)) : '');
+          this.src = next;
           return;
         }
         this.classList.add('is-hidden');
       });
+    });
+  }
+
+  _scoreOmniboxItem(item, ql) {
+    const q = (ql || '').trim().toLowerCase();
+    let score = 0;
+    if (item.badge === 'bookmark') score += 520;
+    if (item.badge === 'search') score -= 280;
+
+    if (q) {
+      const title = String(item.title || '').toLowerCase();
+      const urlStr = String(item.url || '').toLowerCase();
+      if (title.startsWith(q)) score += 220;
+      else if (title.includes(q)) score += 130 - Math.min(85, Math.max(0, title.indexOf(q)));
+      if (urlStr.includes(q)) score += 110 - Math.min(75, Math.max(0, urlStr.indexOf(q)));
+      try {
+        const h = new URL(item.url).hostname.toLowerCase().replace(/^www\./, '');
+        const parts = h.split('.');
+        if (parts.some((p) => p.startsWith(q))) score += 95;
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const vc = item.visitCount || 0;
+    score += Math.min(220, vc * 16);
+    const va = item.visitedAt || 0;
+    score += va / 86400000000;
+
+    return score;
+  }
+
+  _sortUrlSuggestionItems(items, ql) {
+    return [...items].sort((a, b) => {
+      const da = this._scoreOmniboxItem(a, ql);
+      const db = this._scoreOmniboxItem(b, ql);
+      if (db !== da) return db - da;
+      return String(a.title || '').localeCompare(String(b.title || ''), undefined, { sensitivity: 'base' });
     });
   }
 
@@ -365,11 +449,11 @@ class NavioApp {
       if (!window.navio.historySearch) return [];
 
       if (q) {
-        const { entries = [] } = await window.navio.historySearch(q, 50);
+        const ql = q.toLowerCase();
+        const { entries = [] } = await window.navio.historySearch(q, 100);
         if (window.navio.bookmarksGet) {
           const bdata = await window.navio.bookmarksGet();
           const flat = this._flattenBookmarksForOmnibox(bdata);
-          const ql = q.toLowerCase();
           for (const b of flat) {
             const hay = `${b.title || ''} ${b.url || ''}`.toLowerCase();
             if (hay.includes(ql)) {
@@ -393,9 +477,8 @@ class NavioApp {
           });
         }
 
-        // Live search-engine suggestions — only for keyword queries, not URLs or domains
-        const looksLikeUrl = /^https?:\/\//i.test(q) || (q.includes('.') && q.split(/\s+/).length <= 3);
-        if (!looksLikeUrl && window.navio.searchSuggestions) {
+        // Live search-engine suggestions — skip only for obvious URL/host typing
+        if (!this._looksLikeTypedUrlForSearchSkip(q) && window.navio.searchSuggestions) {
           try {
             const searchEngine = this.config?.searchEngine || 'https://www.google.com/search?q=';
             const liveSuggestions = await Promise.race([
@@ -411,7 +494,7 @@ class NavioApp {
           }
         }
 
-        return out.slice(0, 14);
+        return this._sortUrlSuggestionItems(out, ql).slice(0, 14);
       }
 
       const { entries = [] } = await window.navio.historySearch('', 250);
@@ -452,7 +535,7 @@ class NavioApp {
           });
         }
       }
-      return out.slice(0, 14);
+      return this._sortUrlSuggestionItems(out, '').slice(0, 14);
     } catch (e) {
       console.warn('[Navio] url suggestions', e);
       return [];

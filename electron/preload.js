@@ -359,9 +359,11 @@ contextBridge.exposeInMainWorld('navio', {
   bookmarksRemove: (id) => ipcRenderer.invoke('bookmarks-remove', { id }),
   bookmarksReorder: (payload) => ipcRenderer.invoke('bookmarks-reorder', payload),
   bookmarksMigrateImported: () => ipcRenderer.invoke('bookmarks-migrate-imported'),
+  bookmarksPatchFaviconForUrl: (payload) => ipcRenderer.invoke('bookmarks-patch-favicon-for-url', payload),
 
   historyGet: () => ipcRenderer.invoke('history-get'),
   historyAdd: (payload) => ipcRenderer.invoke('history-add', payload),
+  historyPatchFavicon: (payload) => ipcRenderer.invoke('history-patch-favicon', payload),
   historySearch: (query, limit) => ipcRenderer.invoke('history-search', { query, limit }),
   historyRemove: (id) => ipcRenderer.invoke('history-remove', { id }),
   historyClear: () => ipcRenderer.invoke('history-clear'),

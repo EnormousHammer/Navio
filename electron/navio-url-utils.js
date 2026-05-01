@@ -58,8 +58,20 @@ function navioNormalizeTabOpenUrl(url) {
   return null;
 }
 
+/** Strip hash for history / omnibox dedupe and favicon patch matching. */
+function navioNormalizeHistoryKey(url) {
+  try {
+    const u = new URL(String(url || '').trim());
+    u.hash = '';
+    return u.href;
+  } catch {
+    return String(url || '').trim();
+  }
+}
+
 module.exports = {
   navioIsExternalProtocolUrl,
   navioExtractHttpsFromBrowserHandoffUrl,
   navioNormalizeTabOpenUrl,
+  navioNormalizeHistoryKey,
 };

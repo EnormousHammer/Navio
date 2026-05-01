@@ -772,6 +772,20 @@ class TabManagerClass {
       if (e.favicons && e.favicons.length > 0) {
         tab.favicon = e.favicons[0];
         this.updateTabUI(tab);
+        const pageUrl = tab.url || '';
+        const fav = tab.favicon;
+        if (pageUrl.startsWith('http') && fav) {
+          try {
+            if (typeof window.navio?.historyPatchFavicon === 'function') {
+              void window.navio.historyPatchFavicon({ url: pageUrl, favicon: fav });
+            }
+            if (typeof window.navio?.bookmarksPatchFaviconForUrl === 'function') {
+              void window.navio.bookmarksPatchFaviconForUrl({ url: pageUrl, favicon: fav });
+            }
+          } catch {
+            /* non-critical */
+          }
+        }
       }
     });
 

@@ -41,11 +41,11 @@ Channels exposed via `ipcMain.handle` (and closely related patterns). Callers ar
 
 ### `electron/bookmarks-ipc.js`
 
-| `bookmarks-get`, `bookmarks-add`, `bookmarks-update`, `bookmarks-remove`, `bookmarks-reorder`, `bookmarks-migrate-imported` | Bookmark tree. |
+| `bookmarks-get`, `bookmarks-add`, `bookmarks-update`, `bookmarks-remove`, `bookmarks-reorder`, `bookmarks-migrate-imported`, `bookmarks-patch-favicon-for-url` | Bookmark tree; sync favicon when the page reports one. |
 
 ### `electron/history-ipc.js`
 
-| `history-get`, `history-add`, `history-search`, `history-remove`, `history-clear` | History store. |
+| `history-get`, `history-add`, `history-patch-favicon`, `history-search`, `history-remove`, `history-clear` | History store; patch favicon after real icon loads. |
 
 ### `electron/file-ipc.js`
 
