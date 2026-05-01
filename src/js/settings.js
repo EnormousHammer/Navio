@@ -828,6 +828,11 @@ class SettingsManagerClass {
     const panel = this.panelIds.includes(initialPanel) ? initialPanel : 'general';
     this.showPanel(panel);
     this.modal.classList.add('visible');
+    try {
+      window.navioEnsureShellOnTopIfWcv?.();
+    } catch {
+      /* ignore */
+    }
     this._renderOAuthClientIdFields();
     this._refreshAdBlockStats();
     this._loadMemoryList();

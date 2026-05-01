@@ -815,6 +815,7 @@ const navioGuestWindowOpenBound = new WeakSet();
 let navioWebviewGuestPopupRoutingInstalled = false;
 let navioGuestAssistantShortcutForwardInstalled = false;
 let navioGuestZoomShortcutForwardInstalled = false;
+let navioGuestHistoryShortcutForwardInstalled = false;
 
 /**
  * When a page tab (<webview>) has focus, Ctrl/Cmd+Shift+A does not reach the shell
@@ -949,6 +950,57 @@ function installNavioGuestFindShortcutForward() {
       if (!isFindInPage(input)) return;
       event.preventDefault();
       sendFind();
+    });
+  });
+}
+
+/**
+ * Browser mouse-button history navigation: many mice map thumb buttons to
+ * "Back"/"Forward". Forward from guest pages so behavior matches normal browsers.
+ */
+function installNavioGuestHistoryShortcutForward() {
+  if (navioGuestHistoryShortcutForwardInstalled) return;
+  navioGuestHistoryShortcutForwardInstalled = true;
+
+  const sendHistoryNav = (action) => {
+    try {
+      const mw = mainWindow;
+      if (mw && !mw.isDestroyed()) {
+        mw.webContents.send('shortcut', action);
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const classifyHistoryShortcut = (input) => {
+    if (!input || input.alt) return null;
+    const type = String(input.type || '');
+    if (type === 'mouseDown') {
+      const btn = String(input.button || '').toLowerCase();
+      if (btn === 'back') return 'go-back';
+      if (btn === 'forward') return 'go-forward';
+      return null;
+    }
+    if (type === 'keyDown') {
+      const key = String(input.key || '');
+      if (key === 'BrowserBack') return 'go-back';
+      if (key === 'BrowserForward') return 'go-forward';
+    }
+    return null;
+  };
+
+  app.on('web-contents-created', (_event, wc) => {
+    try {
+      if (typeof wc.getType !== 'function' || wc.getType() !== 'webview') return;
+    } catch {
+      return;
+    }
+    wc.on('before-input-event', (event, input) => {
+      const action = classifyHistoryShortcut(input);
+      if (!action) return;
+      event.preventDefault();
+      sendHistoryNav(action);
     });
   });
 }
@@ -1253,8 +1305,36 @@ function createMainWindow() {
       // installNavioGuestZoomShortcutForward / ...FindShortcutForward / ...AssistantShortcutForward,
       // but those filter getType()==='webview'. WCV type is 'window', so we wire them here.
       wc.on('before-input-event', (event, input) => {
-        if (!input || input.type !== 'keyDown') return;
+        if (!input) return;
         if (!mainWindow || mainWindow.isDestroyed()) return;
+        if (input.type === 'mouseDown') {
+          const btn = String(input.button || '').toLowerCase();
+          if (btn === 'back' || btn === 'forward') {
+            event.preventDefault();
+            try {
+              mainWindow.webContents.send('shortcut', btn === 'back' ? 'go-back' : 'go-forward');
+            } catch {
+              /* ignore */
+            }
+            return;
+          }
+        }
+        if (input.type === 'keyDown') {
+          const mediaKey = String(input.key || '');
+          if (mediaKey === 'BrowserBack' || mediaKey === 'BrowserForward') {
+            event.preventDefault();
+            try {
+              mainWindow.webContents.send(
+                'shortcut',
+                mediaKey === 'BrowserBack' ? 'go-back' : 'go-forward'
+              );
+            } catch {
+              /* ignore */
+            }
+            return;
+          }
+        }
+        if (input.type !== 'keyDown') return;
         const modKey = !!(input.control || input.meta);
         if (!modKey || input.alt) return;
         const key = String(input.key || '');
@@ -9650,6 +9730,7 @@ app.whenReady().then(async () => {
   installNavioGuestAssistantShortcutForward();
   installNavioGuestZoomShortcutForward();
   installNavioGuestFindShortcutForward();
+  installNavioGuestHistoryShortcutForward();
 
   createMainWindow();
 

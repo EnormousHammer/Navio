@@ -28,6 +28,11 @@ class ReadingModeClass {
       document.getElementById('reading-close')?.addEventListener('click', () => this.close());
       this.pane.classList.add('visible');
       this.pane.setAttribute('aria-hidden', 'false');
+      try {
+        window.navioEnsureShellOnTopIfWcv?.();
+      } catch {
+        /* ignore */
+      }
       return;
     }
     const cfg = await window.navio.getConfig();
@@ -50,6 +55,11 @@ class ReadingModeClass {
     document.getElementById('reading-close')?.addEventListener('click', () => this.close());
     this.pane.classList.add('visible');
     this.pane.setAttribute('aria-hidden', 'false');
+    try {
+      window.navioEnsureShellOnTopIfWcv?.();
+    } catch {
+      /* ignore */
+    }
   }
 
   close() {

@@ -294,6 +294,11 @@
     async function open() {
       if (!overlay) return;
       overlay.hidden = false;
+      try {
+        window.navioEnsureShellOnTopIfWcv?.();
+      } catch {
+        /* ignore */
+      }
       if (q) q.value = '';
       await fillBookmarksOverlayList('');
       if (q) q.focus();
@@ -407,6 +412,11 @@
     const q = document.getElementById('history-overlay-search');
     if (overlay) {
       overlay.hidden = false;
+      try {
+        window.navioEnsureShellOnTopIfWcv?.();
+      } catch {
+        /* ignore */
+      }
       if (q) q.value = '';
       fillHistoryOverlayList('');
       if (q) q.focus();
@@ -418,6 +428,11 @@
     const q = document.getElementById('bookmarks-overlay-search');
     if (!overlay) return;
     overlay.hidden = false;
+    try {
+      window.navioEnsureShellOnTopIfWcv?.();
+    } catch {
+      /* ignore */
+    }
     if (q) q.value = '';
     await fillBookmarksOverlayList('');
     if (q) q.focus();
@@ -481,6 +496,11 @@
       menu.hidden = false;
       trigger.setAttribute('aria-expanded', 'true');
       positionMenu();
+      try {
+        window.navioEnsureShellOnTopIfWcv?.();
+      } catch {
+        /* ignore */
+      }
     }
 
     trigger.addEventListener('click', (e) => {
@@ -671,6 +691,11 @@
       if (!wv || !wv.getWebContentsId) return;
       lastWc = wv.getWebContentsId();
       bar.hidden = false;
+      try {
+        window.navioEnsureShellOnTopIfWcv?.();
+      } catch {
+        /* ignore */
+      }
       input.focus();
       input.select();
     }
@@ -803,6 +828,11 @@
       positionPopupUnderTrigger();
       popup.hidden = false;
       trigger.setAttribute('aria-expanded', 'true');
+      try {
+        window.navioEnsureShellOnTopIfWcv?.();
+      } catch {
+        /* ignore */
+      }
     }
 
     function closePopup() {
@@ -1260,7 +1290,15 @@
       renderActiveActions('drawer', row.querySelector('.dd-actions'), d.savePath);
 
       if (shelf && shelfList) {
+        const shelfWasHidden = shelf.hidden;
         shelf.hidden = false;
+        if (shelfWasHidden) {
+          try {
+            window.navioEnsureShellOnTopIfWcv?.();
+          } catch {
+            /* ignore */
+          }
+        }
         const srow = ensureShelfRow(d.savePath, d.filename);
         if (srow) {
           const sm = srow.querySelector('.download-shelf-meta');
@@ -1312,7 +1350,15 @@
       }
 
       if (shelf && shelfList && !shelfRowsByPath.get(d.savePath)) {
+        const shelfWasHidden = shelf.hidden;
         shelf.hidden = false;
+        if (shelfWasHidden) {
+          try {
+            window.navioEnsureShellOnTopIfWcv?.();
+          } catch {
+            /* ignore */
+          }
+        }
         ensureShelfRow(d.savePath, d.filename);
         const srowNew = shelfRowsByPath.get(d.savePath);
         if (srowNew) {
@@ -1564,7 +1610,14 @@
 
     window.__navioToggleDownloadsDrawer = () => {
       panel.hidden = !panel.hidden;
-      if (!panel.hidden) positionDownloadsDrawer();
+      if (!panel.hidden) {
+        try {
+          window.navioEnsureShellOnTopIfWcv?.();
+        } catch {
+          /* ignore */
+        }
+        positionDownloadsDrawer();
+      }
     };
     window.__navioCloseDownloadsDrawer = closeDownloadsDrawer;
   }

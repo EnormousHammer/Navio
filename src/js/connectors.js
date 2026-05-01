@@ -543,6 +543,11 @@ class ConnectorsManagerClass {
     this.hubVisible = true;
     const hub = document.getElementById('connectors-hub');
     hub.classList.add('active');
+    try {
+      window.navioEnsureShellOnTopIfWcv?.();
+    } catch {
+      /* ignore */
+    }
 
     // Lazy-init on first open: load OAuth/IMAP/key status before rendering tabs
     this._ensureInit().then(() => {

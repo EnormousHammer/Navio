@@ -62,6 +62,11 @@ class CommandPaletteClass {
     this.visible = true;
     this.overlay.classList.add('visible');
     this.overlay.setAttribute('aria-hidden', 'false');
+    try {
+      window.navioEnsureShellOnTopIfWcv?.();
+    } catch {
+      /* ignore */
+    }
     this.input.value = '';
     void this.refresh();
     setTimeout(() => this.input.focus(), 50);
@@ -141,6 +146,11 @@ class CommandPaletteClass {
           const inp = document.getElementById('tab-search-input');
           if (o && inp) {
             o.hidden = false;
+            try {
+              window.navioEnsureShellOnTopIfWcv?.();
+            } catch {
+              /* ignore */
+            }
             inp.value = '';
             inp.dispatchEvent(new Event('input'));
             inp.focus();

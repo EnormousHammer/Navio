@@ -4063,6 +4063,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     this.panel.classList.add('open');
     document.body.classList.add('navio-assistant-open');
     try {
+      window.navioEnsureShellOnTopIfWcv?.();
+    } catch {
+      /* ignore */
+    }
+    try {
       if (typeof TabManager !== 'undefined' && typeof TabManager._syncWebviewSizes === 'function') {
         requestAnimationFrame(() => TabManager._syncWebviewSizes());
       }

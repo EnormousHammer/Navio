@@ -975,6 +975,11 @@ ${badgeHtml(it.badge)}
     });
 
     document.body.appendChild(menu);
+    try {
+      window.navioEnsureShellOnTopIfWcv?.();
+    } catch {
+      /* ignore */
+    }
     const rect = anchor.getBoundingClientRect();
     const mw = Math.min(360, menu.offsetWidth || 280);
     let left = rect.left;
@@ -1219,6 +1224,11 @@ ${badgeHtml(it.badge)}
           const input = document.getElementById('tab-search-input');
           if (overlay && input) {
             overlay.hidden = false;
+            try {
+              window.navioEnsureShellOnTopIfWcv?.();
+            } catch {
+              /* ignore */
+            }
             input.value = '';
             input.dispatchEvent(new Event('input'));
             input.focus();
@@ -1431,6 +1441,11 @@ ${badgeHtml(it.badge)}
         const input = document.getElementById('tab-search-input');
         if (overlay && input) {
           overlay.hidden = false;
+          try {
+            window.navioEnsureShellOnTopIfWcv?.();
+          } catch {
+            /* ignore */
+          }
           input.value = '';
           input.dispatchEvent(new Event('input'));
           input.focus();
@@ -1681,6 +1696,11 @@ const ReadingListManager = (() => {
   function open() {
     const p = _panel();
     if (p) p.classList.add('rl-open');
+    try {
+      window.navioEnsureShellOnTopIfWcv?.();
+    } catch {
+      /* ignore */
+    }
     refresh();
   }
 

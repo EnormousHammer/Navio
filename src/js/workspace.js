@@ -77,6 +77,11 @@ class WorkspaceManagerClass {
     if (!this.overlay) return;
     this.overlay.classList.add('visible');
     this.overlay.setAttribute('aria-hidden', 'false');
+    try {
+      window.navioEnsureShellOnTopIfWcv?.();
+    } catch {
+      /* ignore */
+    }
     await this.render();
   }
 

@@ -12064,9 +12064,11 @@ button.navio-followup-chip:active {
 }
 
 .assistant-panel .assistant-input-container .assistant-stop-btn {
-  width: auto;
+  width: 32px;
+  min-width: 32px;
   height: 32px;
-  padding: 0 11px;
+  padding: 0;
+  justify-content: center;
 }
 
 /* ── Plan approval card (propose_plan tool) ── */

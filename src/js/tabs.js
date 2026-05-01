@@ -41,6 +41,28 @@ class TabManagerClass {
     this._ensureTabListTrail();
 
     this.tabListEl.addEventListener('wheel', (e) => {
+      const modZoom = !!(e.ctrlKey || e.metaKey);
+      if (modZoom) {
+        // Browser-normal behavior: Ctrl/Cmd + wheel always zooms, even when the cursor
+        // is over chrome surfaces like the tab strip.
+        e.preventDefault();
+        const delta = (typeof e.deltaY === 'number' && e.deltaY !== 0) ? e.deltaY : e.deltaX;
+        if (!delta) return;
+        if (this.isNtpActive() &&
+            typeof window.__navioGetNtpZoom === 'function' &&
+            typeof window.__navioSetNtpZoom === 'function') {
+          const cur = window.__navioGetNtpZoom();
+          const step = delta < 0 ? 0.1 : -0.1;
+          window.__navioSetNtpZoom(cur + step);
+        } else if (delta < 0) {
+          this.zoomActiveTabBy(0.1);
+        } else {
+          this.zoomActiveTabBy(-0.1);
+        }
+        if (typeof window.__navioFlashZoomPopup === 'function') window.__navioFlashZoomPopup();
+        return;
+      }
+
       // Convert vertical scroll to horizontal so a regular mouse wheel pans the tab strip.
       // Also handle deltaX so touchpad horizontal swipes scroll natively.
       if (e.deltaX !== 0 || e.deltaY !== 0) {
@@ -3491,3 +3513,27 @@ class TabManagerClass {
 }
 
 const TabManager = new TabManagerClass();
+
+/**
+ * WebContentsView mode: guest WebContentsViews are native siblings that can paint above the shell.
+ * DOM overlays (settings, history, drawers, …) still live in the shell renderer — if the shell is not
+ * re-stacked in main, the next click goes to the page “behind” the overlay. Call after any overlay opens.
+ */
+function navioEnsureShellOnTopIfWcv() {
+  if (!document.body || !document.body.classList.contains('navio-wcv-tabs-below')) return;
+  const bump = () => {
+    try {
+      if (window.navio && typeof window.navio.wcvEnsureShellOnTop === 'function') {
+        window.navio.wcvEnsureShellOnTop();
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+  bump();
+  requestAnimationFrame(() => {
+    bump();
+    requestAnimationFrame(bump);
+  });
+}
+window.navioEnsureShellOnTopIfWcv = navioEnsureShellOnTopIfWcv;
