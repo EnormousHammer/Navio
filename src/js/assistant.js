@@ -172,7 +172,7 @@ const NAVIO_VOICE_END_SILENCE_MS = 4000;
 /** Extra silence when voice-conversation reuses the persistent mic (hands-free turns). */
 const NAVIO_VOICE_CONV_EXTRA_SILENCE_MS = 700;
 /** Silence used specifically during a voice-conversation turn — much shorter than toolbar dictation. */
-const NAVIO_VOICE_CONV_END_SILENCE_MS = 1600;
+const NAVIO_VOICE_CONV_END_SILENCE_MS = 2200;
 /** After OpenAI TTS (or speech) ends in voice conversation, reopen the mic after this delay. */
 const NAVIO_VOICE_CONV_AFTER_TTS_MS = 200;
 /** Pause before auto TTS (voice conversation + Settings → read aloud) so the first syllable is not immediate. */
@@ -2366,7 +2366,7 @@ class AssistantManagerClass {
         // Sustained-speech gate: require audio above speakGate for at least this long
         // before treating it as real speech. Prevents single loud pops, key clicks,
         // or steady fan hum from falsely triggering end-of-silence detection.
-        const SPEECH_CONFIRM_MS = 80;
+        const SPEECH_CONFIRM_MS = 150;
         let speechBurstStart = 0;
 
         const vadLoop = () => {
@@ -2838,19 +2838,23 @@ class AssistantManagerClass {
       // Whisper path — pass the persistent stream so recording starts at the EXACT moment
       // the interrupt fired. No getUserMedia latency, no lost words at the start of the barge-in.
       const stopFn = this._whisperListen(
-        (text) => {
+        async (text) => {
           this._voiceConvRec = null;
           if (!this._voiceConvActive) return;
           if (transcriptEl) transcriptEl.textContent = '';
           if (text.trim()) {
             this._voiceConvSetState('thinking');
             this._applyVoiceTranscriptToInput(text, { replace: true });
-            this.sendMessage();
-            // Safety net: if sendMessage() returned early for any reason (edge-case
-            // race on the busy flag), don't leave the transcript visible in the input.
-            if (this.inputEl && this.inputEl.value.trim()) {
+            // Await so the safety-net below runs only after sendMessage has had a chance
+            // to read and clear the input — prevents the async race that leaves voice-conv
+            // stuck in 'thinking' with no message sent.
+            await this.sendMessage();
+            if (this._voiceConvActive && this.inputEl && this.inputEl.value.trim()) {
               this.inputEl.value = '';
               this._fitAssistantInputHeight?.();
+            }
+            if (this._voiceConvActive && document.getElementById('voice-conv-hud')?.dataset.vcState === 'thinking') {
+              this._scheduleVoiceConvListen(350);
             }
           } else {
             this._scheduleVoiceConvListen(350);
@@ -3037,17 +3041,26 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     // Falls back to Web Speech API if navioSTT is unavailable.
     if (window.navio?.navioSTT) {
       const stopFn = this._whisperListen(
-        (text) => {
+        async (text) => {
           this._voiceConvRec = null;
           if (!this._voiceConvActive) return;
           if (transcriptEl) transcriptEl.textContent = '';
           if (text.trim()) {
             this._voiceConvSetState('thinking');
             this._applyVoiceTranscriptToInput(text, { replace: false });
-            this.sendMessage();
-            if (this.inputEl && this.inputEl.value.trim()) {
+            // MUST await — sendMessage is async and clears the input at its first internal await.
+            // Without await the safety-net below fires before sendMessage reads the input, sees
+            // it non-empty, clears it, then sendMessage resumes with an empty field and bails,
+            // leaving voice-conv stuck in 'thinking' forever.
+            await this.sendMessage();
+            // Recovery: sendMessage returned early (busy guard / empty text) — don't leave
+            // voice-conv stuck in 'thinking'. Clear any leftover input and restart the mic.
+            if (this._voiceConvActive && this.inputEl && this.inputEl.value.trim()) {
               this.inputEl.value = '';
               this._fitAssistantInputHeight?.();
+            }
+            if (this._voiceConvActive && document.getElementById('voice-conv-hud')?.dataset.vcState === 'thinking') {
+              this._scheduleVoiceConvListen(350);
             }
           } else {
             // Nothing heard — loop back to listening
