@@ -467,9 +467,23 @@ class TabManager {
       } catch { /* ignore — window may be closing */ }
     };
 
+    /**
+     * Some guest renderers (notably PDFs/file viewers opened from downloads) can
+     * re-order native child views during/after navigation. Re-assert shell z-order
+     * across immediate + deferred ticks so top chrome stays clickable.
+     */
+    const stabilizeShellLayering = () => {
+      this._elevateShellAboveTabViews();
+      this._queueElevateShellAboveTabViews();
+      this._deferElevateShellAboveTabViews();
+      setTimeout(() => this._deferElevateShellAboveTabViews(), 80);
+      setTimeout(() => this._deferElevateShellAboveTabViews(), 220);
+    };
+
     wc.on('dom-ready', () => {
       const entry = this._tabs.get(tabId);
       if (entry) entry.loading = false;
+      stabilizeShellLayering();
       send('dom-ready', {
         canGoBack: wcCanGoBack(wc),
         canGoForward: wcCanGoForward(wc)
@@ -479,12 +493,14 @@ class TabManager {
     wc.on('did-start-loading', () => {
       const entry = this._tabs.get(tabId);
       if (entry) entry.loading = true;
+      stabilizeShellLayering();
       send('did-start-loading', {});
     });
 
     wc.on('did-stop-loading', () => {
       const entry = this._tabs.get(tabId);
       if (entry) entry.loading = false;
+      stabilizeShellLayering();
       send('did-stop-loading', {
         canGoBack: wcCanGoBack(wc),
         canGoForward: wcCanGoForward(wc)
@@ -492,6 +508,7 @@ class TabManager {
     });
 
     wc.on('did-finish-load', () => {
+      stabilizeShellLayering();
       send('did-finish-load', {
         url: wc.getURL(),
         canGoBack: wcCanGoBack(wc),
@@ -511,6 +528,7 @@ class TabManager {
     wc.on('did-navigate', (_event, url) => {
       const entry = this._tabs.get(tabId);
       if (entry) entry.url = url;
+      stabilizeShellLayering();
       send('did-navigate', {
         url,
         isMainFrame: true,
@@ -524,6 +542,7 @@ class TabManager {
         const entry = this._tabs.get(tabId);
         if (entry) entry.url = url;
       }
+      stabilizeShellLayering();
       send('did-navigate-in-page', {
         url,
         isMainFrame: !!isMainFrame,
