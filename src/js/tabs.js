@@ -406,7 +406,10 @@ class TabManagerClass {
     // When tab-manager.js is running in main, window.navio.wcvCreateTab exists.
     // Use a WebviewShim instead of a real <webview> element — the shim routes
     // all webview API calls to the main-process WebContentsView via IPC.
-    const wcvMode = !!(window.navio && typeof window.navio.wcvCreateTab === 'function');
+    // Temporary stability guard: WCV native view stacking is currently causing
+    // shell overlays (bookmarks/settings/connectors/menus) to render behind page
+    // content on some Windows builds. Force classic webview path for now.
+    const wcvMode = false && !!(window.navio && typeof window.navio.wcvCreateTab === 'function');
 
     let webview;
     if (wcvMode) {
