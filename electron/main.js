@@ -1964,7 +1964,7 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
 
   let response;
   try {
-    response = await fetch(url, {
+    response = await net.fetch(url, {
       method: 'POST',
       headers,
       body,
@@ -1974,6 +1974,8 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
     if (e && (e.name === 'AbortError' || fetchOpts.signal?.aborted)) {
       return { error: 'Stopped', aborted: true };
     }
+    const cause = e.cause?.message || e.cause?.code || '';
+    console.error('[navio] AI fetch network error:', e.message, cause ? `(${cause})` : '', url);
     throw e;
   }
 
@@ -2918,7 +2920,13 @@ ipcMain.handle('ai-request', async (event, payload) => {
 
     return result;
   } catch (err) {
-    return { error: err.message };
+    const cause = err.cause?.message || err.cause?.code || '';
+    const detail = cause ? ` (${cause})` : '';
+    console.error('[navio] ai-request error:', err.message, detail);
+    const userMsg = err.message === 'fetch failed'
+      ? `Network error connecting to AI provider${detail}. Check your internet connection and API key, then try again.`
+      : err.message;
+    return { error: userMsg };
   }
 });
 
@@ -3215,7 +3223,13 @@ ipcMain.handle('ai-request-with-tools', async (event, { messages, webContentsId,
     if (err && (err.name === 'AbortError' || ac.signal.aborted)) {
       return { content: '**Stopped.**', cancelled: true, toolLog: [] };
     }
-    return { error: err.message };
+    const cause = err.cause?.message || err.cause?.code || '';
+    const detail = cause ? ` (${cause})` : '';
+    const userMsg = err.message === 'fetch failed'
+      ? `Network error connecting to AI provider${detail}. Check your internet connection and API key, then try again.`
+      : err.message;
+    console.error('[navio] ai-request-with-tools error:', err.message, detail);
+    return { error: userMsg };
   } finally {
     releaseAiAbortController(event.sender, tid);
   }
@@ -3359,12 +3373,11 @@ ipcMain.handle('navio-stt', async (event, { audio, mimeType, language }) => {
     const body = Buffer.concat(parts);
 
     const endpoint = (cfg.customEndpoint || 'https://api.openai.com').replace(/\/v1.*$/, '') + '/v1/audio/transcriptions';
-    const resp = await fetch(endpoint, {
+    const resp = await net.fetch(endpoint, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': `multipart/form-data; boundary=${boundary}`,
-        'Content-Length': String(body.length),
       },
       body,
       signal: AbortSignal.timeout(30000),
@@ -3378,6 +3391,8 @@ ipcMain.handle('navio-stt', async (event, { audio, mimeType, language }) => {
     const data = await resp.json();
     return { ok: true, text: (data.text || '').trim() };
   } catch (e) {
+    const cause = e.cause?.message || e.cause?.code || '';
+    console.error('[navio] STT network error:', e.message, cause ? `(${cause})` : '');
     return { ok: false, error: e.message || 'STT request failed' };
   }
 });
@@ -3426,7 +3441,7 @@ ipcMain.handle('navio-tts', async (event, { text, voice, model, speed }) => {
     const ttsSpeed = Math.min(4, Math.max(0.25, rawSpeed));
 
     const endpoint = (cfg.customEndpoint || 'https://api.openai.com').replace(/\/v1.*$/, '') + '/v1/audio/speech';
-    const resp = await fetch(endpoint, {
+    const resp = await net.fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
@@ -7934,7 +7949,7 @@ async function queryNotion(apiKey, query, options = {}) {
 
 async function queryPerplexity(apiKey, query, options = {}) {
   const model = options.model || 'sonar';
-  const resp = await fetch('https://api.perplexity.ai/chat/completions', {
+  const resp = await net.fetch('https://api.perplexity.ai/chat/completions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -7995,7 +8010,7 @@ async function queryProviderWebSearch(cfg, apiKey, query) {
       const url = `${base}/responses`;
       const isGpt5 = /^gpt-?5/i.test(model);
       const toolType = isGpt5 ? 'web_search' : 'web_search_preview';
-      const resp = await fetch(url, {
+      const resp = await net.fetch(url, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -8032,7 +8047,7 @@ async function queryProviderWebSearch(cfg, apiKey, query) {
     }
 
     if (provider === 'anthropic') {
-      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      const resp = await net.fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
           'x-api-key': apiKey,
