@@ -240,6 +240,37 @@ class TabManager {
   // ── Tab Lifecycle ─────────────────────────────────────────────────────────────
 
   /**
+   * Tab WebContentsViews are added after the shell's view, so they stack on top.
+   * Any shell UI that overlaps the page rect (downloads drawer, menus, modals)
+   * would paint underneath the guest surface. Re-parent order: calling
+   * addChildView on an existing child moves it to the top (Electron View API).
+   */
+  _elevateShellAboveTabViews() {
+    const win = this._win;
+    if (!win || win.isDestroyed()) return;
+    try {
+      const cv = win.contentView;
+      if (!cv || typeof cv.addChildView !== 'function' || !cv.children) return;
+      const shellWc = win.webContents;
+      if (!shellWc || shellWc.isDestroyed()) return;
+      const shellId = shellWc.id;
+      for (const child of cv.children) {
+        if (
+          child instanceof WebContentsView &&
+          child.webContents &&
+          !child.webContents.isDestroyed() &&
+          child.webContents.id === shellId
+        ) {
+          cv.addChildView(child);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('[tab-manager] _elevateShellAboveTabViews:', err && err.message);
+    }
+  }
+
+  /**
    * Create a new WCV tab.
    * Returns { tabId, webContentsId } immediately (synchronous).
    */
@@ -260,8 +291,8 @@ class TabManager {
       }
     });
 
-    // Add behind nothing yet — inserted into contentView, above the shell renderer
     this._win.contentView.addChildView(wcv);
+    this._elevateShellAboveTabViews();
 
     const entry = {
       wcv,

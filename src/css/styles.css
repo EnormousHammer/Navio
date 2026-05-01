@@ -1769,6 +1769,20 @@ body.navio-vertical-tabs .tab-group-header:hover {
   overflow: hidden;
 }
 
+/* WebContentsView tabs: shell is composited above guest views; keep this region
+   transparent and non–hit-target so the page shows through and receives clicks.
+   NTP and reading mode re-enable pointer-events on their own roots. */
+body.navio-wcv-tabs-below #browser-container {
+  background: transparent;
+  pointer-events: none;
+}
+
+body.navio-wcv-tabs-below #browser-container .new-tab-page.active,
+body.navio-wcv-tabs-below #browser-container .reading-mode-pane.visible,
+body.navio-wcv-tabs-below #browser-container .split-divider {
+  pointer-events: auto;
+}
+
 #browser-container webview {
   position: absolute;
   top: 0;

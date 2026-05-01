@@ -1,6 +1,7 @@
 'use strict';
 
 const { ipcMain, session, shell, globalShortcut, dialog, desktopCapturer } = require('electron');
+const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const {
@@ -212,6 +213,37 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   }
 
   /**
+   * Desktop Chrome-style Sec-CH-UA-Arch / Bitness / WoW64 for the running process.
+   * Bot checks often expect these alongside Sec-CH-UA + platform (Electron omits or differs).
+   */
+  function chromeLikeArchBitnessHeaders() {
+    const wow = '?0';
+    if (process.arch === 'arm64') {
+      return { 'Sec-CH-UA-Arch': '"arm"', 'Sec-CH-UA-Bitness': '"64"', 'Sec-CH-UA-WoW64': wow };
+    }
+    if (process.arch === 'ia32') {
+      return { 'Sec-CH-UA-Arch': '"x86"', 'Sec-CH-UA-Bitness': '"32"', 'Sec-CH-UA-WoW64': wow };
+    }
+    return { 'Sec-CH-UA-Arch': '"x86"', 'Sec-CH-UA-Bitness': '"64"', 'Sec-CH-UA-WoW64': wow };
+  }
+
+  /**
+   * Approximate Sec-CH-UA-Platform-Version for Windows (Chrome uses 15.0.0 for Win11, 10.0.0 for Win10).
+   * Other platforms: omit — wrong values hurt more than missing hints.
+   */
+  function chromeLikePlatformVersionHeader() {
+    if (process.platform !== 'win32') return null;
+    try {
+      const parts = String(os.release() || '').split('.');
+      const build = parseInt(parts[2], 10) || 0;
+      if (build >= 22000) return '"15.0.0"';
+      return '"10.0.0"';
+    } catch {
+      return '"10.0.0"';
+    }
+  }
+
+  /**
    * Cloudflare and similar bot checks compare User-Agent Client Hints to the UA string.
    * Electron's default hints advertise "Chromium" without "Google Chrome", which diverges
    * from desktop Chrome and can yield 403 / failed challenge pages (e.g. carrier sites).
@@ -234,6 +266,8 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
     const fullVersionList = chromeFull
       ? `"Chromium";v="${chromeFull}", "Google Chrome";v="${chromeFull}", ${notBrand}`
       : secChUa;
+    const archHints = chromeLikeArchBitnessHeaders();
+    const platformVersion = chromeLikePlatformVersionHeader();
 
     ses.webRequest.onBeforeSendHeaders({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) => {
       try {
@@ -241,6 +275,10 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
         requestHeaders['Sec-CH-UA'] = secChUa;
         requestHeaders['Sec-CH-UA-Mobile'] = '?0';
         requestHeaders['Sec-CH-UA-Platform'] = platform;
+        Object.assign(requestHeaders, archHints);
+        if (platformVersion) {
+          requestHeaders['Sec-CH-UA-Platform-Version'] = platformVersion;
+        }
         if (chromeFull) {
           requestHeaders['Sec-CH-UA-Full-Version'] = `"${chromeFull}"`;
           requestHeaders['Sec-CH-UA-Full-Version-List'] = fullVersionList;

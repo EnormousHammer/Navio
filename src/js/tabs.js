@@ -382,6 +382,8 @@ class TabManagerClass {
         }
         // Not a real DOM node — tell the shim its logical parent for bounds calc.
         webview._setParent(this.browserContainer);
+        // Main lifts shell WebContentsView above tab WCVs; hole-punch guest area in CSS.
+        document.body.classList.add('navio-wcv-tabs-below');
         this._syncWebviewSizes();
       }
     } else {
