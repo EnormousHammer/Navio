@@ -308,3 +308,55 @@ test('shouldBlockAdNetworkRequest: non-ad URL is never blocked', () => {
     false
   );
 });
+
+test('shouldBlockWebPopup: cross-origin popup from streaming embed is blocked (casino/redirect)', () => {
+  assert.strictEqual(
+    shouldBlockWebPopup({
+      url: 'https://bizcasino.com/landing',
+      disposition: 'new-window',
+      features: 'menubar=no,toolbar=no,width=800,height=600',
+      openerOrigin: 'https://embedme.today',
+      cfg: baseCfg
+    }),
+    true
+  );
+});
+
+test('shouldBlockWebPopup: same-origin popup from streaming embed is allowed (player helper)', () => {
+  assert.strictEqual(
+    shouldBlockWebPopup({
+      url: 'https://embedme.today/player/fullscreen',
+      disposition: 'new-window',
+      features: 'menubar=no,toolbar=no,width=800,height=600',
+      openerOrigin: 'https://embedme.today',
+      cfg: baseCfg
+    }),
+    false
+  );
+});
+
+test('shouldBlockWebPopup: cross-origin popup from Predicta blocked when ad-block on', () => {
+  assert.strictEqual(
+    shouldBlockWebPopup({
+      url: 'https://some-redirect-ad.net/click',
+      disposition: 'new-window',
+      features: 'width=900,height=700',
+      openerOrigin: 'https://predicta-bet.vercel.app',
+      cfg: baseCfg
+    }),
+    true
+  );
+});
+
+test('shouldBlockWebPopup: cross-origin popup from streaming embed allowed when ad-block off', () => {
+  assert.strictEqual(
+    shouldBlockWebPopup({
+      url: 'https://bizcasino.com/landing',
+      disposition: 'new-window',
+      features: 'menubar=no,toolbar=no,width=800,height=600',
+      openerOrigin: 'https://embedme.today',
+      cfg: { ...baseCfg, adBlockEnabled: false }
+    }),
+    false
+  );
+});

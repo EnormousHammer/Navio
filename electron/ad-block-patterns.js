@@ -506,6 +506,21 @@ function shouldBlockWebPopup(payload) {
 
   if (cfg.adBlockEnabled !== false && urlMatchesAdBlock(url)) return true;
 
+  // Streaming embed origins (sports streams, Predicta embeds, etc.) never legitimately
+  // open cross-origin popups — those are always ad redirects (casinos, traffic redirectors,
+  // etc.). Same-origin sub-pages (player helpers, sub-paths of the embed host) are allowed.
+  if (cfg.adBlockEnabled !== false && url && url !== 'about:blank' && isStreamingVideoOpenerOrigin(openerOrigin)) {
+    try {
+      const openerHost = new URL(openerOrigin).hostname.toLowerCase();
+      const popupHost = new URL(url).hostname.toLowerCase();
+      const sameDomain =
+        openerHost === popupHost ||
+        openerHost.endsWith('.' + popupHost) ||
+        popupHost.endsWith('.' + openerHost);
+      if (!sameDomain) return true;
+    } catch { /* malformed URL — fall through to other rules */ }
+  }
+
   if (hasPostBody) return false;
   if (siteAllowsPopups) return false;
 
