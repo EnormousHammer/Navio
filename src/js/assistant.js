@@ -635,7 +635,7 @@ class AssistantManagerClass {
     this.scopeSelect = document.getElementById('assistant-data-scope');
     this.receiptEl = document.getElementById('assistant-context-receipt');
     this.isOpen = false;
-    /** Tab ids currently running an assistant turn (each tab can have its own task in parallel). */
+    /** Conversation storage keys (`tabId`, `g:…`, `__guest__`, etc.) with an in-flight model/tool turn. */
     this._busyTabs = new Set();
     /** Tab group id (`grp-*`) created this tool-turn so open_tab targets stay under one named strip group. */
     this._aiTurnWorkspaceGroupId = null;
@@ -4756,7 +4756,12 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     }
   }
 
-  async processMessage(text, isQuickAction = false, historyUserLabel = null) {
+  /**
+   * @param {{ reuseTurnKey?: boolean } | null} [opts] - When `reuseTurnKey` is true (agent auto-follow-up / format fix
+   *   while the same tool turn is still busy), keep `_turnConversationKey` so a tab switch cannot file the reply
+   *   under the newly focused tab.
+   */
+  async processMessage(text, isQuickAction = false, historyUserLabel = null, opts = null) {
     await this._ensureAssistantHistoryLoadedBounded();
     const config = await window.navio.getConfig();
 
@@ -4770,7 +4775,27 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       return;
     }
 
-    const turnKey = this._conversationKey();
+    const reuseTurnKey = !!(opts && opts.reuseTurnKey);
+    let turnKey;
+    if (
+      reuseTurnKey &&
+      this._turnConversationKey &&
+      this._busyTabs.has(String(this._turnConversationKey))
+    ) {
+      turnKey = String(this._turnConversationKey);
+    } else {
+      turnKey = this._conversationKey();
+      for (const busy of this._busyTabs) {
+        if (String(busy) !== String(turnKey)) {
+          this.addMessage(
+            'assistant',
+            'Navio is still answering in another tab or chat. Switch back to that tab to see progress, wait for it to finish, or press **Stop** there before starting something new here.',
+            'error'
+          );
+          return;
+        }
+      }
+    }
     this._turnConversationKey = turnKey;
     try {
     this._setTabBusy(turnKey, true);
@@ -9877,7 +9902,7 @@ IMPORTANT AGENT RULES:
 ${googleEditorDirective}${devConsoleDirective}${setupContinuationRule}
 
 ${pageInfo}${snapText}`;
-    await this.processMessage(followUpText, isQuickActionFollowUp, null);
+    await this.processMessage(followUpText, isQuickActionFollowUp, null, { reuseTurnKey: true });
     document.getElementById('navio-continue-pill')?.remove();
     // _wireActions (called inside processMessage → addMessage) now handles auto-execution
     // in both takeover mode and auto-execute mode, so no extra _executeTakeover call needed here.
@@ -9945,7 +9970,7 @@ ${pageInfo}${snapText}`;
     setTimeout(async () => {
       pill.remove();
       const fixPrompt = '[SYSTEM FIX: Your previous response used "ACTION0", "ACTION1" etc. as plain-text labels — those are invalid placeholders that Navio cannot execute. You MUST rewrite your entire response and replace every ACTION placeholder with a real [[ACTION:type:params]] token. Examples: [[ACTION:navigate:https://www.youtube.com/results?search_query=latest+news]] or [[ACTION:click:text=first video]]. Write the full response again now using ONLY [[ACTION:type:params]] tokens for every browser step. Do NOT use ACTION0, ACTION1, numbered labels, or any other placeholder format.]';
-      await this.processMessage(fixPrompt, true, null);
+      await this.processMessage(fixPrompt, true, null, { reuseTurnKey: true });
     }, 600);
 
     return true;
