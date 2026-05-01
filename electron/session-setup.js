@@ -180,12 +180,14 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   // removed to avoid double-injection alongside the tag preload on Electron 35+.
 
   function applySessionFixes(ses) {
-    const ua = ses
-      .getUserAgent()
-      .replace(/\s*Electron\/[\d.]+/g, '')
-      .replace(/\s*NavioBrowser\/[\d.]+/g, '')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
+    // Strip Electron + any app suffix (Navio, navio-browser, etc.) so the UA matches
+    // desktop Chrome through the final Safari token. Mismatches vs Sec-CH-UA-* (see
+    // attachChromeAlignedClientHints) trigger Cloudflare / carrier bot walls.
+    let ua = ses.getUserAgent().replace(/\s{2,}/g, ' ').trim();
+    ua = ua.replace(/\s*Electron\/[\d.]+\s*/gi, '');
+    ua = ua.replace(/\s*NavioBrowser\/[\d.]+\s*/gi, '');
+    ua = ua.replace(/(Safari\/[^\s]+)\s+.*$/i, '$1');
+    ua = ua.replace(/\s{2,}/g, ' ').trim();
     ses.setUserAgent(ua);
 
     if (typeof ses.setSpellCheckerLanguages === 'function') {

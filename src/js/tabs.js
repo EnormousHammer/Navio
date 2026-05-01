@@ -393,9 +393,12 @@ class TabManagerClass {
       zoomFactor: null
     };
 
-    // Build a clean user-agent that doesn't expose Electron
+    // Match session-setup.js: no Electron or app suffix after Safari/ — webview
+    // useragent must align with Sec-CH-UA-* or Cloudflare-style checks fail.
     const cleanUA = navigator.userAgent
-      .replace(/Electron\/\S+\s?/g, '')
+      .replace(/\s*Electron\/[\d.]+\s*/gi, '')
+      .replace(/\s*NavioBrowser\/[\d.]+\s*/gi, '')
+      .replace(/(Safari\/[^\s]+)\s+.*$/i, '$1')
       .replace(/\s+/g, ' ')
       .trim();
 
