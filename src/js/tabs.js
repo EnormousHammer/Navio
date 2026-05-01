@@ -58,6 +58,9 @@ class TabManagerClass {
     this._tabDiscardInterval = null;
     this._startTabDiscardSchedule();
 
+    /** WCV mode: one-time pointer capture → main re-elevates shell above tab surfaces (see tab-manager.js). */
+    this._wcvShellElevateGuardInstalled = false;
+
     // ── Split ratio (0.2 – 0.8); default 50/50 ────────────────────────
     this._splitRatio = 0.5;
     this._initSplitDivider();
@@ -302,6 +305,33 @@ class TabManagerClass {
     });
   }
 
+  /**
+   * WebContentsView tabs stack above the shell in the native compositor; modals/menus
+   * can appear “behind” the page. Re-elevate the shell after pointer paths that open UI.
+   */
+  _installWcvShellElevateGuard() {
+    if (this._wcvShellElevateGuardInstalled) return;
+    if (!(window.navio && typeof window.navio.wcvEnsureShellOnTop === 'function')) return;
+    this._wcvShellElevateGuardInstalled = true;
+    let rafTail = 0;
+    const bump = () => {
+      if (!document.body.classList.contains('navio-wcv-tabs-below')) return;
+      if (typeof window.navio.wcvEnsureShellOnTop !== 'function') return;
+      if (rafTail) cancelAnimationFrame(rafTail);
+      rafTail = requestAnimationFrame(() => {
+        rafTail = requestAnimationFrame(() => {
+          rafTail = 0;
+          try {
+            window.navio.wcvEnsureShellOnTop();
+          } catch {
+            /* ignore */
+          }
+        });
+      });
+    };
+    document.addEventListener('pointerdown', bump, true);
+  }
+
   createTab(url = null, opts = {}) {
     const id = `tab-${++this.tabCounter}`;
     const incognito = !!opts.incognito;
@@ -384,6 +414,7 @@ class TabManagerClass {
         webview._setParent(this.browserContainer);
         // Main lifts shell WebContentsView above tab WCVs; hole-punch guest area in CSS.
         document.body.classList.add('navio-wcv-tabs-below');
+        this._installWcvShellElevateGuard();
         this._syncWebviewSizes();
       }
     } else {

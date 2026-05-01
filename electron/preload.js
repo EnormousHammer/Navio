@@ -446,6 +446,12 @@ contextBridge.exposeInMainWorld('navio', {
    */
   wcvSetBounds: (tabId, bounds) => ipcRenderer.send('wcv-set-bounds', { tabId, bounds }),
 
+  /**
+   * Re-stack the shell WebContentsView above tab WebContentsViews.
+   * Call after UI interactions that open overlays (WCV guests otherwise paint on top).
+   */
+  wcvEnsureShellOnTop: () => ipcRenderer.send('wcv-ensure-shell-on-top'),
+
   wcvDiscardTab: (tabId) => ipcRenderer.send('wcv-discard-tab', tabId),
   wcvRestoreTab: (tabId) => ipcRenderer.send('wcv-restore-tab', tabId),
 

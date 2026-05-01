@@ -68,6 +68,8 @@ class TabManager {
 
     /** Coalesce shell re-stack after WCV bounds updates (some builds reorder child views). */
     this._shellElevateQueued = false;
+    /** If `_queueElevateShellAboveTabViews` runs again while a microtask is pending, run once more after. */
+    this._shellElevatePendingAgain = false;
   }
 
   // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -96,6 +98,10 @@ class TabManager {
     win.on('restore', () => this._layoutAllTabs());
     win.on('enter-full-screen', () => this._layoutAllTabs());
     win.on('leave-full-screen', () => this._layoutAllTabs());
+
+    // Guest WCVs can briefly stack above the shell after restore/focus; re-elevate.
+    win.on('show', () => this._deferElevateShellAboveTabViews());
+    win.on('focus', () => this._deferElevateShellAboveTabViews());
 
     this._registerIpc();
   }
@@ -202,6 +208,13 @@ class TabManager {
         entry.lastBounds = null;
       }
       this._queueElevateShellAboveTabViews();
+      this._deferElevateShellAboveTabViews();
+    });
+
+    /** Renderer: call after opening menus/modals so the shell paints above tab WCVs (see _elevateShellAboveTabViews). */
+    ipcMain.on('wcv-ensure-shell-on-top', () => {
+      this._queueElevateShellAboveTabViews();
+      this._deferElevateShellAboveTabViews();
     });
 
     ipcMain.on('wcv-discard-tab', (_event, tabId) => {
@@ -275,11 +288,32 @@ class TabManager {
   }
 
   _queueElevateShellAboveTabViews() {
-    if (this._shellElevateQueued) return;
+    if (this._shellElevateQueued) {
+      this._shellElevatePendingAgain = true;
+      return;
+    }
     this._shellElevateQueued = true;
     queueMicrotask(() => {
       this._shellElevateQueued = false;
       this._elevateShellAboveTabViews();
+      if (this._shellElevatePendingAgain) {
+        this._shellElevatePendingAgain = false;
+        this._queueElevateShellAboveTabViews();
+      }
+    });
+  }
+
+  /**
+   * Some Electron builds reorder native child views after setBounds/layout.
+   * Run elevation again on the next macrotask so the shell stays above guest WCVs.
+   */
+  _deferElevateShellAboveTabViews() {
+    setImmediate(() => {
+      try {
+        this._elevateShellAboveTabViews();
+      } catch {
+        /* ignore */
+      }
     });
   }
 
@@ -306,6 +340,7 @@ class TabManager {
 
     this._win.contentView.addChildView(wcv);
     this._queueElevateShellAboveTabViews();
+    this._deferElevateShellAboveTabViews();
 
     const entry = {
       wcv,
@@ -366,6 +401,7 @@ class TabManager {
       this._activeTabId = null;
     }
     this._queueElevateShellAboveTabViews();
+    this._deferElevateShellAboveTabViews();
     return true;
   }
 
@@ -391,6 +427,7 @@ class TabManager {
       }
     }
     this._queueElevateShellAboveTabViews();
+    this._deferElevateShellAboveTabViews();
   }
 
   // ── Event Wiring ─────────────────────────────────────────────────────────────
