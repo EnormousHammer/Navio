@@ -97,9 +97,11 @@ try {
     'input[name*="email" i]',
     'input[name*="login" i]',
     'input[name*="account" i]',
+    'input[name*="ident" i]',
     'input[id*="user" i]',
     'input[id*="email" i]',
     'input[id*="login" i]',
+    'input[id*="ident" i]',
     'input[type="text"]',
   ];
 
@@ -107,24 +109,127 @@ try {
     return el && el.type !== 'password' && !el.disabled;
   }
 
-  /** For submit capture: field must already contain a value. */
-  function findUsernameField(root) {
-    const scope = root || document;
-    for (const sel of USERNAME_SELECTORS) {
-      const el = scope.querySelector(sel);
+  /** First password field inside `container` or any descendant open shadow root. */
+  function queryPasswordInTree(container) {
+    if (!container) return null;
+    const walk = (root) => {
+      if (!root || !root.querySelector) return null;
+      try {
+        const pwd = root.querySelector('input[type="password"]');
+        if (pwd && !pwd.disabled) return pwd;
+      } catch {
+        return null;
+      }
+      let els;
+      try {
+        els = root.querySelectorAll('*');
+      } catch {
+        return null;
+      }
+      for (let i = 0; i < els.length; i++) {
+        const el = els[i];
+        if (el && el.shadowRoot) {
+          const inner = walk(el.shadowRoot);
+          if (inner) return inner;
+        }
+      }
+      return null;
+    };
+    try {
+      return walk(container);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * For submit capture: field must already contain a value.
+   * `pwdField` anchors which text box is the username (first filled input before it in tree order).
+   */
+  function findUsernameField(scope, pwdField) {
+    const root = scope || document;
+    const strongSelectors = USERNAME_SELECTORS.slice(0, -1);
+    for (const sel of strongSelectors) {
+      try {
+        const el = root.querySelector(sel);
+        if (_inputUsable(el) && el.value && el.value.trim()) return el;
+      } catch {
+        /* continue */
+      }
+    }
+    const candidates = [];
+    try {
+      root
+        .querySelectorAll('input[type="text"], input[type="search"], input[type="email"], input[type="tel"], input:not([type])')
+        .forEach((el) => candidates.push(el));
+    } catch {
+      return null;
+    }
+    let bestBefore = null;
+    for (const el of candidates) {
+      if (!_inputUsable(el) || !el.value || !el.value.trim()) continue;
+      if (!pwdField) return el;
+      try {
+        const pos = pwdField.compareDocumentPosition(el);
+        if (pos & Node.DOCUMENT_POSITION_PRECEDING) bestBefore = el;
+      } catch {
+        if (!bestBefore) bestBefore = el;
+      }
+    }
+    if (bestBefore) return bestBefore;
+    for (const el of candidates) {
       if (_inputUsable(el) && el.value && el.value.trim()) return el;
     }
     return null;
   }
 
   /**
-   * For autofill: same ordering as submit, but match empty visible fields (SPA / fresh form).
-   * Without this, username never fills because findUsernameField skips empty inputs.
+   * For autofill: match empty visible fields (SPA / fresh form).
    */
   function findUsernameFieldForAutofill(root) {
-    const scope = root || document;
-    for (const sel of USERNAME_SELECTORS) {
-      const el = scope.querySelector(sel);
+    const pwdField = queryPasswordInTree(root || document);
+    if (!pwdField) {
+      const scope = root || document;
+      for (const sel of USERNAME_SELECTORS) {
+        try {
+          const el = scope.querySelector(sel);
+          if (_inputUsable(el)) return el;
+        } catch {
+          /* continue */
+        }
+      }
+      return null;
+    }
+    const scope =
+      pwdField.getRootNode && pwdField.getRootNode() instanceof ShadowRoot
+        ? pwdField.getRootNode()
+        : root || document;
+    const strongSelectors = USERNAME_SELECTORS.slice(0, -1);
+    for (const sel of strongSelectors) {
+      try {
+        const el = scope.querySelector(sel);
+        if (_inputUsable(el)) return el;
+      } catch {
+        /* continue */
+      }
+    }
+    const candidates = [];
+    try {
+      scope
+        .querySelectorAll('input[type="text"], input[type="search"], input[type="email"], input:not([type])')
+        .forEach((el) => candidates.push(el));
+    } catch {
+      return null;
+    }
+    for (const el of candidates) {
+      if (!_inputUsable(el)) continue;
+      try {
+        if (pwdField.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING) return el;
+      } catch {
+        return el;
+      }
+    }
+    for (const el of candidates) {
       if (_inputUsable(el)) return el;
     }
     return null;
@@ -143,18 +248,44 @@ try {
 
   function snapshotLoginFromRoot(root) {
     try {
-      const pwdField = root.querySelector('input[type="password"]');
+      const container = root || document;
+      const pwdField = queryPasswordInTree(container);
       if (!pwdField || !pwdField.value) return null;
-      const usernameEl = findUsernameField(root);
-      if (!usernameEl || !usernameEl.value || !usernameEl.value.trim()) return null;
+      const scope =
+        pwdField.getRootNode && pwdField.getRootNode() instanceof ShadowRoot
+          ? pwdField.getRootNode()
+          : container;
+      const usernameEl = findUsernameField(scope, pwdField);
+      const u = usernameEl && usernameEl.value ? usernameEl.value.trim() : '';
       return {
-        username: usernameEl.value.trim(),
+        username: u,
         password: pwdField.value,
         url: window.location.href,
       };
     } catch {
       return null;
     }
+  }
+
+  /** React/Vue often flush controlled input values after the event tick — retry a few times. */
+  function scheduleSnapshotAndSend(root) {
+    const run = () => {
+      try {
+        const snap = snapshotLoginFromRoot(root);
+        if (snap) sendCredentialsOnce(snap);
+      } catch {
+        /* ignore */
+      }
+    };
+    run();
+    try {
+      queueMicrotask(run);
+    } catch {
+      setTimeout(run, 0);
+    }
+    setTimeout(run, 0);
+    setTimeout(run, 50);
+    setTimeout(run, 120);
   }
 
   let _lastCredSent = '';
@@ -187,8 +318,7 @@ try {
   document.addEventListener('submit', function (e) {
     try {
       const form = e.target;
-      const snap = form && snapshotLoginFromRoot(form);
-      if (snap) sendCredentialsOnce(snap);
+      if (form) scheduleSnapshotAndSend(form);
     } catch {}
   }, true /* capture phase — runs before the page's own handlers */);
 
@@ -209,9 +339,9 @@ try {
       if (!isSubmit) return;
 
       let root = btn.form || btn.closest('form');
-      if (root && !root.querySelector('input[type="password"]')) root = null;
+      if (root && !queryPasswordInTree(root)) root = null;
       if (!root) {
-        const pwd = document.querySelector('input[type="password"]:not([disabled])');
+        const pwd = queryPasswordInTree(document);
         if (!pwd) return;
         root = loginRootForPassword(pwd);
         const inRoot = root && root !== document ? root.contains(btn) : false;
@@ -221,8 +351,7 @@ try {
           root = loginRootForPassword(pwd);
         }
       }
-      const snap = snapshotLoginFromRoot(root);
-      if (snap) sendCredentialsOnce(snap);
+      scheduleSnapshotAndSend(root);
     } catch {}
   }, true);
 
@@ -232,8 +361,7 @@ try {
       const el = e.target;
       if (!el || el.tagName !== 'INPUT' || el.type !== 'password') return;
       const root = loginRootForPassword(el);
-      const snap = snapshotLoginFromRoot(root);
-      if (snap) sendCredentialsOnce(snap);
+      scheduleSnapshotAndSend(root);
     } catch {}
   }, true);
 
@@ -255,7 +383,7 @@ try {
 
   function checkForLoginForm() {
     try {
-      if (!document.querySelector('input[type="password"]')) return false;
+      if (!queryPasswordInTree(document)) return false;
       const u = window.location.href;
       const now = Date.now();
       if (_lastLoginPing.u === u && now - _lastLoginPing.t < 1500) return true;
@@ -541,7 +669,7 @@ try {
   // ── Handle autofill command sent from the renderer ─────────────────────────
   ipcRenderer.on('navio-autofill', (_, { username, password, autoSubmit }) => {
     try {
-      const pwdField = document.querySelector('input[type="password"]:not([disabled])');
+      const pwdField = queryPasswordInTree(document);
       if (!pwdField) return;
       const root = loginRootForPassword(pwdField);
       const usernameEl = findUsernameFieldForAutofill(root);

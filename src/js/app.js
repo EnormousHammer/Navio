@@ -271,11 +271,11 @@ class NavioApp {
     return out;
   }
 
-  /** When true, show history/bookmark rows; when false (empty or long AI-style question), skip to avoid noise. */
+  /** When true, show history/bookmark rows; when false (long AI-style question), skip to avoid noise. */
   _shouldOfferUrlSuggestions(raw) {
     const t = (raw || '').trim();
-    // Empty omnibox (e.g. new tab focus) → stay quiet; only populate once the user actually types.
-    if (!t) return false;
+    // Empty omnibox → still offer frequent/recent/bookmarks so focus alone can pick a destination.
+    if (!t) return true;
     if (/^https?:\/\//i.test(t)) return true;
     if (/^ai:/i.test(t) || t.startsWith('>>')) return false;
     if (t.includes('.') && t.split(/\s+/).length <= 4) return true;
@@ -872,8 +872,16 @@ ${badgeHtml(it.badge)}
 
     urlInput.addEventListener('focus', () => {
       urlInput.select();
-      // Intentionally do NOT populate suggestions on focus; they should appear only once the user starts typing.
-      // This keeps the new-tab experience clean and avoids a flash of history/bookmarks on every focus.
+      const rawFocus = urlInput.value.trim();
+      if (aiHint) {
+        const showHint = rawFocus.length > 3 && !rawFocus.startsWith('http') && this._isAIQuery(rawFocus);
+        aiHint.classList.toggle('visible', showHint);
+        if (showHint) this._hideUrlSuggestions();
+      }
+      clearTimeout(this._urlSuggest.debounce);
+      this._urlSuggest.debounce = setTimeout(() => {
+        void this._refreshUrlSuggestions(urlInput, aiHint);
+      }, 100);
     });
 
     urlInput.addEventListener('blur', () => {
@@ -1871,7 +1879,11 @@ const PasswordManager = (() => {
       /* offer new save */
     }
     _pendingSave = { username, password, url };
-    if (saveUser) saveUser.textContent = username;
+    if (saveUser) {
+      saveUser.textContent = (username && String(username).trim())
+        ? username
+        : 'Username not detected — you can edit it in Settings → Passwords after saving.';
+    }
     const msgEl = saveBar.querySelector('.pwd-save-msg');
     if (msgEl) {
       const host = _originLabel(url);
