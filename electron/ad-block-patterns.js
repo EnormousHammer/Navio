@@ -271,7 +271,43 @@ const AD_BLOCK_PATTERNS = [
   'ipredictive.com',
   'jivox.com',
   'knorex.com',
-  'krux.com'
+  'krux.com',
+  // Sports-streaming / embed-player specific ad networks (popunders, push, video pre-roll).
+  // These are the dominant ad vendors on third-party sports stream embeds (streamed.pk, etc.).
+  'adsterra.com',
+  'adsterra.net',
+  'hilltopads.net',
+  'hilltopads.com',
+  'ad-maven.com',
+  'admavencdn.com',
+  'clickadu.com',
+  'adcash.com',
+  'adcash.net',
+  'trafficstars.com',
+  'traffichunt.com',
+  'yllix.com',
+  'juicyads.com',
+  'juicyadult.com',
+  'valueimpression.com',
+  'contentabc.com',
+  'realsrv.com',
+  // Video pre-roll / outstream ad networks common in embed players
+  'primis.tech',
+  'vidazoo.com',
+  'adinplay.com',
+  'vmg-ad.com',
+  // Push-notification consent scripts — streaming sites use these as an ad vector
+  'onesignal.com',
+  'pushcrew.com',
+  'pushengage.com',
+  'pushassist.com',
+  'pushpushgo.com',
+  'web-push-notifications.com',
+  'megapu.sh',
+  'propush.me',
+  'pushground.com',
+  'richpush.co',
+  'onsitepush.com'
 ];
 
 function urlMatchesAdBlock(url) {
@@ -383,7 +419,13 @@ function isStreamingVideoOpenerOrigin(openerOrigin) {
       'nimo.tv',
       'streamable.com',
       'facebook.com',
-      'instagram.com'
+      'instagram.com',
+      // Predicta sports hub — streams open via streamed.pk embeds
+      'predicta-bet.vercel.app',
+      'streamed.su',
+      'embedme.today',
+      'embedsports.me',
+      'watchsports.today'
     ];
     return roots.some((s) => h === s || h.endsWith('.' + s));
   } catch {

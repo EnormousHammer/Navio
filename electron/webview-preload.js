@@ -559,6 +559,77 @@ try {
     }
   });
 
+  // ── Cosmetic ad blocking (streaming / embed-player overlay removal) ──────────
+  // Hides overlay and interstitial ad elements injected into the DOM by streaming
+  // embed pages. These are invisible to network blocking because they are created
+  // by page scripts after load — no outbound network request to cancel.
+  //
+  // Two layers:
+  //   1. A <style> tag with CSS attribute selectors targeting explicit "ad" names.
+  //   2. A MutationObserver that checks newly-added nodes against the same patterns,
+  //      catching ads injected after the initial paint (click-triggered overlays).
+  //
+  // Selectors use explicit ad-keyword substrings so legitimate page elements are
+  // not affected. The case-insensitive `i` modifier requires Chromium 49+ (fine here).
+  function initCosmeticAdBlock() {
+    const CSS_HIDE = [
+      // Full-screen / positioned overlay ads
+      '[class*="ad-overlay"i]', '[id*="ad-overlay"i]',
+      '[class*="overlay-ad"i]', '[id*="overlay-ad"i]',
+      '[class*="adv-overlay"i]', '[id*="adv-overlay"i]',
+      // Pre-roll and VAST video ad containers
+      '[class*="preroll-ad"i]', '[id*="preroll-ad"i]',
+      '[class*="vast-ad"i]',    '[id*="vast-ad"i]',
+      // Script-injected popup / modal ad wrappers
+      '[class*="ad-popup"i]',   '[id*="ad-popup"i]',
+      '[class*="adv-popup"i]',  '[id*="adv-popup"i]',
+      '[class*="ad-modal"i]',   '[id*="ad-modal"i]',
+      // Adblock-detection walls (urge to whitelist — hide instead)
+      '[class*="adblock-wall"i]',  '[id*="adblock-wall"i]',
+      '[class*="anti-adblock"i]',  '[id*="anti-adblock"i]',
+      // Google AdSense fallback
+      'ins.adsbygoogle',
+    ].join(',');
+
+    try {
+      const style = document.createElement('style');
+      style.id = 'navio-cosmetic-block';
+      style.textContent = CSS_HIDE + '{display:none!important}';
+      (document.head || document.documentElement).appendChild(style);
+    } catch { /* ignore — CSP may block; network layer still active */ }
+
+    // Regex mirrors the CSS patterns for the MutationObserver path.
+    const _OBS_RE = /\bad[-_]?(overlay|popup|modal)\b|\b(overlay|popup)[-_]?ad\b|\bpreroll[-_]ad\b|\bvast[-_]ad\b|\badblock[-_]wall\b|\banti[-_]adblock\b/i;
+
+    function _checkNode(node) {
+      if (!node || node.nodeType !== 1 /* ELEMENT_NODE */) return;
+      const c = typeof node.className === 'string' ? node.className : '';
+      const id = node.id || '';
+      if (_OBS_RE.test(c) || _OBS_RE.test(id)) {
+        try { node.style.setProperty('display', 'none', 'important'); } catch {}
+      }
+      try {
+        for (const child of node.children || []) _checkNode(child);
+      } catch {}
+    }
+
+    const _cObs = new MutationObserver((records) => {
+      for (const rec of records) {
+        for (const n of rec.addedNodes) _checkNode(n);
+      }
+    });
+
+    function _armCosmeticObs() {
+      const target = document.body || document.documentElement;
+      if (target) _cObs.observe(target, { childList: true, subtree: true });
+    }
+
+    if (document.body) _armCosmeticObs();
+    else document.addEventListener('DOMContentLoaded', _armCosmeticObs, { once: true });
+  }
+
+  initCosmeticAdBlock();
+
   // ── YouTube: auto-skip ads ────────────────────────────────────────────────
   // Watches for the skip button on YouTube ads and clicks it as soon as it
   // becomes available. Runs only on youtube.com domains.
