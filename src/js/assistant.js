@@ -2177,7 +2177,8 @@ class AssistantManagerClass {
       '[What to do now — only this]\n' +
       'Address **this** user message. Do not start a different goal, topic, or side task. ' +
       'Do not use tools for things they did not ask for in this turn. ' +
-      'If they only say something short because the thread is continuing, keep the **same** task as before — do not invent a new one.\n\n'
+      'If they only say something short because the thread is continuing, keep the **same** task as before — do not invent a new one. ' +
+      'If any part of the request is ambiguous or you are not fully sure what they want, ask one short confirmation question before acting.\n\n'
     );
   }
 
@@ -4212,7 +4213,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       return;
     }
     const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
-    if ((!text && !hasReadyAttachments) || this._threadBusyForSend() || (aid && this._tabIsBusy(aid))) return;
+    if (!text && !hasReadyAttachments) return;
+    if (this._threadBusyForSend() || (aid && this._tabIsBusy(aid))) {
+      await this._awaitSidebarInterruptIfBusy();
+      if (this._threadBusyForSend() || (aid && this._tabIsBusy(aid))) return;
+    }
 
     if (text.startsWith('>>')) {
       if (hasReadyAttachments) {
@@ -4425,6 +4430,50 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     this._clearPendingAutoTts();
   }
 
+  /**
+   * Sidebar send should support "mid-turn correction":
+   * if the current visible conversation is busy, abort and wait for busy flags to clear
+   * so a new user message can be sent immediately.
+   */
+  async _awaitSidebarInterruptIfBusy() {
+    const keys = [];
+    if (this._sidebarThreadKey && this._busyTabs.has(this._sidebarThreadKey)) {
+      keys.push(String(this._sidebarThreadKey));
+    }
+    try {
+      const active = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
+      const activeKey = active ? String(this._storageKeyForTab(active) || '') : '';
+      if (activeKey && this._busyTabs.has(activeKey) && !keys.includes(activeKey)) {
+        keys.push(activeKey);
+      }
+    } catch {
+      /* ignore */
+    }
+    if (!keys.length) return;
+    try {
+      if (window.navio && typeof window.navio.aiAbort === 'function') {
+        for (const k of keys) {
+          try {
+            await window.navio.aiAbort({ tabId: k });
+          } catch {
+            /* ignore per-key abort failures */
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline) {
+      const stillBusy = keys.some((k) => this._busyTabs.has(k));
+      if (!stillBusy) return;
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    for (const k of keys) {
+      if (this._busyTabs.has(k)) this._setTabBusy(k, false);
+    }
+  }
+
   _threadBusyForSend() {
     if (this._sidebarThreadKey && this._busyTabs.has(this._sidebarThreadKey)) return true;
     return false;
@@ -4573,7 +4622,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       stop.hidden = !busy;
       stop.disabled = !busy;
     }
-    if (send) send.hidden = !!busy;
+    if (send) {
+      // Keep Send visible while busy so users can interrupt/correct mid-run.
+      send.hidden = false;
+      send.disabled = false;
+    }
   }
 
   /**
@@ -4864,7 +4917,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       content:
         '[Thread discipline]\nThe **latest user message** (see **What to do now** on it) is the only target. ' +
         'Do not do work they did not ask for. Do not switch to a new goal mid-turn. ' +
-        'Earlier messages are context only; short replies mean “continue the same task,” not “start something new.”'
+        'Earlier messages are context only; short replies mean “continue the same task,” not “start something new.” ' +
+        'If intent is unclear, ask a brief confirmation question first instead of guessing.'
     });
     // Pre-work acknowledgment: for multi-step tool tasks, output one brief natural sentence before
     // the first tool call so the user knows you heard them. Text surfaces as a chat bubble.
@@ -5275,7 +5329,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       content:
         '[Thread discipline]\nThe **latest user message** (see **What to do now** on it) is the only target. ' +
         'Do not do work they did not ask for. Do not switch to a new goal mid-turn. ' +
-        'Earlier messages are context only; short replies mean “continue the same task,” not “start something new.”'
+        'Earlier messages are context only; short replies mean “continue the same task,” not “start something new.” ' +
+        'If intent is unclear, ask a brief confirmation question first instead of guessing.'
     });
     const recentHistory = this._currentHistory().slice(-72);
     messages.push(...recentHistory);
@@ -5505,7 +5560,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       content:
         '[Thread discipline]\nThe **latest user message** (see **What to do now** on it) is the only target. ' +
         'Do not do work they did not ask for. Do not switch to a new goal mid-turn. ' +
-        'Earlier messages are context only; short replies mean “continue the same task,” not “start something new.”'
+        'Earlier messages are context only; short replies mean “continue the same task,” not “start something new.” ' +
+        'If intent is unclear, ask a brief confirmation question first instead of guessing.'
     });
     // Pre-work acknowledgment: output one brief sentence before first tool call so the user isn't silent.
     // This text is sent via tr() as bubble:true and surfaced as a chat message above the Working card.
