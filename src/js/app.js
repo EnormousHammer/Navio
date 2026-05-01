@@ -396,11 +396,81 @@ class NavioApp {
     });
   }
 
+  /** Same host + same page title → one row (different paths); keeps best-scoring URL. */
+  _hostTitleCollapseKey(item) {
+    let host = '';
+    try {
+      host = new URL(item.url).hostname.toLowerCase().replace(/^www\./, '');
+    } catch {
+      return null;
+    }
+    if (!host) return null;
+    const title = String(item.title || '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .toLowerCase();
+    if (!title) return null;
+    return `${host}\n${title}`;
+  }
+
+  _collapseOmniboxSameHostTitle(items, ql) {
+    const keyToList = new Map();
+    const noKey = [];
+    for (const it of items) {
+      const k = this._hostTitleCollapseKey(it);
+      if (k == null) {
+        noKey.push(it);
+        continue;
+      }
+      if (!keyToList.has(k)) keyToList.set(k, []);
+      keyToList.get(k).push(it);
+    }
+    const pickBest = (arr) => {
+      if (arr.length === 1) return arr[0];
+      return arr.reduce((best, it) => {
+        const db = this._scoreOmniboxItem(best, ql);
+        const di = this._scoreOmniboxItem(it, ql);
+        if (di !== db) return di > db ? it : best;
+        const vb = best.visitCount || 0;
+        const vi = it.visitCount || 0;
+        if (vi !== vb) return vi > vb ? it : best;
+        const ab = best.visitedAt || 0;
+        const ai = it.visitedAt || 0;
+        if (ai !== ab) return ai > ab ? it : best;
+        return String(it.url).length < String(best.url).length ? it : best;
+      });
+    };
+    const out = [...noKey];
+    for (const arr of keyToList.values()) {
+      out.push(arr.length === 1 ? arr[0] : pickBest(arr));
+    }
+    return out;
+  }
+
   _scoreOmniboxItem(item, ql) {
     const q = (ql || '').trim().toLowerCase();
     let score = 0;
     if (item.badge === 'bookmark') score += 520;
     if (item.badge === 'search') score -= 280;
+
+    try {
+      const hostLower = new URL(item.url).hostname.toLowerCase();
+      const isLocal =
+        hostLower === 'localhost' ||
+        hostLower.endsWith('.localhost') ||
+        /^127\./.test(hostLower) ||
+        hostLower === '[::1]';
+      if (
+        isLocal &&
+        q &&
+        !/\b(local|localhost|127\.|::1|lan|dev)\b/i.test(q) &&
+        !/:\d{2,5}\b/.test(q)
+      ) {
+        score -= 170;
+      }
+    } catch {
+      /* ignore */
+    }
 
     if (q) {
       const title = String(item.title || '').toLowerCase();
@@ -494,7 +564,7 @@ class NavioApp {
           }
         }
 
-        return this._sortUrlSuggestionItems(out, ql).slice(0, 14);
+        return this._sortUrlSuggestionItems(this._collapseOmniboxSameHostTitle(out, ql), ql).slice(0, 14);
       }
 
       const { entries = [] } = await window.navio.historySearch('', 250);
@@ -535,7 +605,7 @@ class NavioApp {
           });
         }
       }
-      return this._sortUrlSuggestionItems(out, '').slice(0, 14);
+      return this._sortUrlSuggestionItems(this._collapseOmniboxSameHostTitle(out, ''), '').slice(0, 14);
     } catch (e) {
       console.warn('[Navio] url suggestions', e);
       return [];
