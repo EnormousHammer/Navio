@@ -171,8 +171,18 @@ const NAVIO_ASSISTANT_MAX_ATTACHMENTS = 8;
 const NAVIO_VOICE_END_SILENCE_MS = 4000;
 /** Extra silence when voice-conversation reuses the persistent mic (hands-free turns). */
 const NAVIO_VOICE_CONV_EXTRA_SILENCE_MS = 700;
-/** Silence used specifically during a voice-conversation turn — much shorter than toolbar dictation. */
-const NAVIO_VOICE_CONV_END_SILENCE_MS = 2200;
+/**
+ * Voice conversation: sustained quiet (below continuation gate) before we consider the turn over.
+ * Tuned for natural pauses, not a rigid "timer send".
+ */
+const NAVIO_VOICE_CONV_END_SILENCE_MS = 5200;
+/**
+ * After quiet exceeds NAVIO_VOICE_CONV_END_SILENCE_MS, keep the recorder open briefly so
+ * unvoiced word tails and room decay are not clipped before Whisper runs.
+ */
+const NAVIO_VOICE_CONV_VAD_TRAIL_MS = 380;
+/** EMA blend for RMS when deciding voice-conv VAD — dampens single-frame dips between syllables. */
+const NAVIO_VOICE_CONV_VAD_EMA_ALPHA = 0.38;
 /** After OpenAI TTS (or speech) ends in voice conversation, reopen the mic after this delay. */
 const NAVIO_VOICE_CONV_AFTER_TTS_MS = 200;
 /** Pause before auto TTS (voice conversation + Settings → read aloud) so the first syllable is not immediate. */
@@ -2281,8 +2291,10 @@ class AssistantManagerClass {
    * @param {Function} onUpdate - called with {state, level} during recording
    * @param {MediaStream|null} sharedStream - pre-opened mic stream to reuse (no getUserMedia, no track teardown).
    *   Pass this._vcPersistentStream in voice-conversation mode so barge-in has zero latency.
+   * @param {boolean} [voiceConvRelaxedVad=false] - hands-free mode: softer RMS gate after speech starts
+   *   so breaths and fillers still count as "talking"; avoids treating quiet gaps as end-of-utterance.
    */
-  _whisperListen(onTranscript, onUpdate, sharedStream = null, silenceMs = null) {
+  _whisperListen(onTranscript, onUpdate, sharedStream = null, silenceMs = null, voiceConvRelaxedVad = false) {
     /** True only when the user cancels — NOT when VAD / max-duration ends the take. */
     let userAborted = false;
     let ownedStream = null;  // only set when WE opened the mic
@@ -2333,7 +2345,7 @@ class AssistantManagerClass {
         const source = audioCtx.createMediaStreamSource(stream);
         const analyser = audioCtx.createAnalyser();
         analyser.fftSize = 1024;
-        analyser.smoothingTimeConstant = 0.2;
+        analyser.smoothingTimeConstant = voiceConvRelaxedVad ? 0.44 : 0.2;
         source.connect(analyser);
         const pcmBuf = new Uint8Array(analyser.frequencyBinCount);
 
@@ -2359,15 +2371,20 @@ class AssistantManagerClass {
           ? NAVIO_VOICE_END_SILENCE_MS + NAVIO_VOICE_CONV_EXTRA_SILENCE_MS
           : NAVIO_VOICE_END_SILENCE_MS);
         /** If we never cross `speakGate` after calibration, stop anyway (quiet room / mic gain / hung analyser). */
-        const NO_SPEECH_GIVEUP_MS = SILENCE_NEEDED_MS + 1200;
+        const NO_SPEECH_GIVEUP_MS = SILENCE_NEEDED_MS + (voiceConvRelaxedVad ? 2400 : 1200);
         const MAX_RECORD_MS = 90_000;   // 90 s safety cap
         const recordStart = Date.now();
         let speechThresh = 14;
-        // Sustained-speech gate: require audio above speakGate for at least this long
+        let speakGateLoud = 11;
+        let speakGateSoft = 11;
+        // Sustained-speech gate: require audio above speakGateLoud for at least this long
         // before treating it as real speech. Prevents single loud pops, key clicks,
         // or steady fan hum from falsely triggering end-of-silence detection.
-        const SPEECH_CONFIRM_MS = 150;
+        const SPEECH_CONFIRM_MS = voiceConvRelaxedVad ? 220 : 150;
+        const MIN_REC_MS_BEFORE_END = voiceConvRelaxedVad ? 720 : 0;
         let speechBurstStart = 0;
+        let vadEmaRms = 0;
+        let pendingTrailEnd = 0;
 
         const vadLoop = () => {
           if (userAborted) return;
@@ -2384,6 +2401,11 @@ class AssistantManagerClass {
           onUpdate?.({ state: 'recording', level: rms });
 
           const now = Date.now();
+          const a = NAVIO_VOICE_CONV_VAD_EMA_ALPHA;
+          const gateRms =
+            voiceConvRelaxedVad && vadCalibrated
+              ? (vadEmaRms = vadEmaRms === 0 ? rms : (1 - a) * vadEmaRms + a * rms)
+              : rms;
           // Collect RMS only until calibrated (avoids unbounded growth + keeps stats stable).
           if (!vadCalibrated) {
             vadCalSamples.push(rms);
@@ -2399,27 +2421,54 @@ class AssistantManagerClass {
               const qHi = pick(0.72);
               // Slightly gentler than qHi+6 so quiet laptops still register speech for end-of-utterance.
               speechThresh = Math.min(26, Math.max(10, qHi + 5));
+              speakGateLoud = Math.max(7.5, speechThresh - 4.5);
+              const qMid = pick(0.58);
+              const qLo = pick(0.48);
+              speakGateSoft = voiceConvRelaxedVad
+                ? Math.max(
+                    Math.max(6.0, qLo + 2.2),
+                    Math.min(speakGateLoud - 0.9, qMid + 4.2)
+                  )
+                : speakGateLoud;
               vadCalibrated = true;
               vadCalibratedAt = now;
             }
           } else {
-            // Gate below `speechThresh` so soft voices still arm VAD; silence still uses clock after last loud frame.
-            const speakGate = Math.max(7.5, speechThresh - 4.5);
-            if (rms > speakGate) {
-              // Require sustained audio (≥SPEECH_CONFIRM_MS) before treating as real speech.
-              // This filters out brief pops, clicks, keyboard noise and steady background hum
-              // that would otherwise prevent silence-detection from ever firing.
-              if (!speechBurstStart) speechBurstStart = now;
-              if (now - speechBurstStart >= SPEECH_CONFIRM_MS) {
-                hasSpoken = true;
-                lastLoudMs = now;
+            if (!hasSpoken) {
+              if (gateRms > speakGateLoud) {
+                if (!speechBurstStart) speechBurstStart = now;
+                if (now - speechBurstStart >= SPEECH_CONFIRM_MS) {
+                  hasSpoken = true;
+                  lastLoudMs = now;
+                  pendingTrailEnd = 0;
+                }
+              } else {
+                speechBurstStart = 0;
               }
-            } else {
-              // Audio dropped below gate — reset burst; lastLoudMs stays at last confirmed speech.
-              speechBurstStart = 0;
+            } else if (gateRms > speakGateSoft) {
+              // Hands-free: quiet syllables / breath noise often sit below speakGateLoud but above room floor;
+              // refreshing lastLoudMs here prevents a mid-sentence breath from starting the end timer.
+              lastLoudMs = now;
+              pendingTrailEnd = 0;
             }
           }
-          if (vadCalibrated && hasSpoken && lastLoudMs && now - lastLoudMs >= SILENCE_NEEDED_MS) {
+          const quietLongEnough =
+            vadCalibrated &&
+            hasSpoken &&
+            lastLoudMs &&
+            now - recordStart >= MIN_REC_MS_BEFORE_END &&
+            now - lastLoudMs >= SILENCE_NEEDED_MS;
+          if (voiceConvRelaxedVad) {
+            if (!quietLongEnough || gateRms > speakGateSoft) {
+              pendingTrailEnd = 0;
+            } else if (quietLongEnough && gateRms <= speakGateSoft) {
+              if (!pendingTrailEnd) pendingTrailEnd = now + NAVIO_VOICE_CONV_VAD_TRAIL_MS;
+            }
+            if (pendingTrailEnd && now >= pendingTrailEnd && gateRms <= speakGateSoft) {
+              endRecording();
+              return;
+            }
+          } else if (quietLongEnough) {
             endRecording();
             return;
           }
@@ -2519,7 +2568,7 @@ class AssistantManagerClass {
     const startWhisper = () => {
       active = true;
       btn.classList.add('listening');
-      if (hint) hint.textContent = 'Listening… pause ~4s when done — text goes in the box; you press Send';
+      if (hint) hint.textContent = 'Listening… pause when you finish your thought — text goes in the box; you press Send';
       stopFn = this._whisperListen(onGotTranscript, ({ state }) => {
         if (state === 'processing' && hint) hint.textContent = 'Transcribing…';
       });
@@ -2686,8 +2735,9 @@ class AssistantManagerClass {
   // ── Interrupt listener — stays active during thinking/speaking so the user can speak at any time ──
 
   /**
-   * Opens a lightweight parallel mic stream that watches for sustained speech.
-   * When detected during thinking/speaking states, immediately stops the AI and starts listening.
+   * Opens a lightweight parallel analyser on the persistent mic stream that watches for sustained speech.
+   * When detected during thinking/speaking, stops TTS so the assistant does not talk over the user;
+   * during model work it also cancels the agent unless we are in read-aloud-only state (see _handleVoiceConvInterrupt).
    * Called automatically by _voiceConvSetState when entering non-listening states.
    */
   _startVoiceConvInterruptListener() {
@@ -2711,7 +2761,10 @@ class AssistantManagerClass {
     // Adaptive noise floor: sample ambient audio (including TTS bleed) for 350ms,
     // then set the trigger threshold above it. This handles rooms where speaker audio
     // leaks into the mic without causing false triggers or missing the user's voice.
-    const INTERRUPT_CONFIRM_MS = 200; // ms of sustained speech above threshold → fire
+    // Shorter during TTS so we duck the assistant quickly; longer while the model runs so
+    // brief noise does not abort the whole agent turn mid-tool.
+    const interruptConfirmMs = (st) => (st === 'speaking' ? 130 : 400);
+
     let speechStart = null;
     let noiseSamples = [];
     let noiseFloor = 8;
@@ -2755,12 +2808,15 @@ class AssistantManagerClass {
         return;
       }
 
-      // Dynamic threshold: must be meaningfully above measured noise floor
-      const threshold = Math.max(noiseFloor * 1.9 + 5, 12);
+      // Dynamic threshold: stricter while thinking (fewer false aborts); TTS state re-calibrates with bleed in the room
+      const mult = vcState === 'speaking' ? 1.9 : 2.08;
+      const floorPad = vcState === 'speaking' ? 5 : 7;
+      const minThresh = vcState === 'speaking' ? 12 : 14;
+      const threshold = Math.max(noiseFloor * mult + floorPad, minThresh);
 
       if (rms > threshold) {
         if (!speechStart) speechStart = Date.now();
-        else if (Date.now() - speechStart >= INTERRUPT_CONFIRM_MS) {
+        else if (Date.now() - speechStart >= interruptConfirmMs(vcState)) {
           this._handleVoiceConvInterrupt();
           return; // loop stops; interrupt handler takes over
         }
@@ -2783,26 +2839,39 @@ class AssistantManagerClass {
   }
 
   /**
+   * Abort streaming / tool loop and drop busy locks so a new voice turn can call sendMessage().
+   * Used on barge-in while the model is working, and right before sending a non-empty voice utterance.
+   */
+  _voiceConvDiscardInFlightGeneration() {
+    try { this.stopGeneration?.(); } catch { /* ignore */ }
+    const tKey = this._turnConversationKey || this._conversationKey?.();
+    if (tKey) this._busyTabs.delete(tKey);
+    if (this._sidebarThreadKey) this._busyTabs.delete(this._sidebarThreadKey);
+  }
+
+  /**
    * Fires when the user speaks during thinking/speaking states.
-   * Kills current AI work + TTS immediately, then starts fresh listening.
+   * Stops TTS immediately so the assistant never talks over the user.
+   * While the model is still working (thinking), also cancels in-flight generation.
+   * During read-aloud only (speaking), keeps the agent run alive until we have real follow-up text.
    * The user is still speaking when this fires, so Whisper captures their full command.
    */
   _handleVoiceConvInterrupt() {
     if (!this._voiceConvActive) return;
 
+    const priorVcState = document.getElementById('voice-conv-hud')?.dataset.vcState || '';
+
     // Stop interrupt listener first (prevents re-triggering)
     this._stopVoiceConvInterruptListener();
 
-    // Cancel any in-flight AI generation
-    try { this.stopGeneration?.(); } catch { /* ignore */ }
-
-    // Immediately release busy locks — stopGeneration() is an async IPC and the flag
-    // won't clear until the stream closes, which can be seconds later. Without this,
-    // sendMessage() in the upcoming transcript callback hits the busy guard and bails,
-    // leaving the transcript text stuck in the input box.
-    const tKey = this._turnConversationKey || this._conversationKey?.();
-    if (tKey) this._busyTabs.delete(tKey);
-    if (this._sidebarThreadKey) this._busyTabs.delete(this._sidebarThreadKey);
+    // During TTS playback, only duck audio — aborting here made every cough kill the whole turn
+    // and left replies half-finished. A real new command aborts in _voiceConvDiscardInFlightGeneration
+    // when the transcript is ready to send.
+    if (priorVcState !== 'speaking') {
+      this._voiceConvDiscardInFlightGeneration();
+    } else {
+      this._clearPendingAutoTts();
+    }
 
     // Clear thinking-filler timers so they don't fire and start speaking over the user.
     this._clearVoiceConvThinkingTimers();
@@ -2845,6 +2914,7 @@ class AssistantManagerClass {
           if (text.trim()) {
             this._voiceConvSetState('thinking');
             this._applyVoiceTranscriptToInput(text, { replace: true });
+            this._voiceConvDiscardInFlightGeneration();
             // Await so the safety-net below runs only after sendMessage has had a chance
             // to read and clear the input — prevents the async race that leaves voice-conv
             // stuck in 'thinking' with no message sent.
@@ -2871,7 +2941,8 @@ class AssistantManagerClass {
           }
         },
         this._vcPersistentStream,       // ← shared stream, zero latency
-        NAVIO_VOICE_CONV_END_SILENCE_MS // ← shorter silence for barge-in turns
+        NAVIO_VOICE_CONV_END_SILENCE_MS,
+        true // relaxed continuation VAD — breaths / fillers do not fake "done speaking"
       );
       this._voiceConvRec = { stop: stopFn };
     } else {
@@ -3048,6 +3119,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           if (text.trim()) {
             this._voiceConvSetState('thinking');
             this._applyVoiceTranscriptToInput(text, { replace: false });
+            this._voiceConvDiscardInFlightGeneration();
             // MUST await — sendMessage is async and clears the input at its first internal await.
             // Without await the safety-net below fires before sendMessage reads the input, sees
             // it non-empty, clears it, then sendMessage resumes with an empty field and bails,
@@ -3078,7 +3150,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           }
         },
         this._vcPersistentStream,       // ← reuse persistent stream, no getUserMedia per turn
-        NAVIO_VOICE_CONV_END_SILENCE_MS // ← shorter silence for hands-free turns
+        NAVIO_VOICE_CONV_END_SILENCE_MS,
+        true
       );
       this._voiceConvRec = { stop: stopFn };
     } else {
@@ -3106,7 +3179,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       // Prevents the mic staying open forever when isFinal never fires (common on Windows/Chromium).
       let vcSilenceTimer = null;
       let vcLastText = '';
-      const VC_SILENCE_MS = NAVIO_VOICE_END_SILENCE_MS + NAVIO_VOICE_CONV_EXTRA_SILENCE_MS;
+      const VC_SILENCE_MS = NAVIO_VOICE_CONV_END_SILENCE_MS;
       const submitVoiceText = (text) => {
         clearTimeout(vcSilenceTimer);
         if (!this._voiceConvActive) return;
@@ -3122,6 +3195,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           } else {
             this._applyVoiceTranscriptToInput(text, { replace: false });
           }
+          this._voiceConvDiscardInFlightGeneration();
           this.sendMessage();
           if (this.inputEl && this.inputEl.value.trim()) {
             this.inputEl.value = '';
