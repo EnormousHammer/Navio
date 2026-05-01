@@ -70,6 +70,10 @@ class TabManager {
     this._shellElevateQueued = false;
     /** If `_queueElevateShellAboveTabViews` runs again while a microtask is pending, run once more after. */
     this._shellElevatePendingAgain = false;
+    /** Delayed stabilization timers for late native re-ordering on Windows/Electron. */
+    this._shellElevateTimer80 = null;
+    this._shellElevateTimer220 = null;
+    this._shellElevateTimer420 = null;
   }
 
   // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -196,9 +200,7 @@ class TabManager {
       const wc = this._getWc(tabId);
       if (wc) wc.focus();
       // Guest focus can reorder native views so the tab paints above the shell; fix immediately.
-      this._elevateShellAboveTabViews();
-      this._queueElevateShellAboveTabViews();
-      this._deferElevateShellAboveTabViews();
+      this._stabilizeShellAboveTabViews();
     });
 
     ipcMain.on('wcv-set-muted', (_event, { tabId, muted }) => {
@@ -224,16 +226,12 @@ class TabManager {
       }
       // setBounds can briefly put the guest above the shell (Windows / some Electron builds).
       // Elevate synchronously so the next click on the tab strip / navbar hits the shell, not the page.
-      this._elevateShellAboveTabViews();
-      this._queueElevateShellAboveTabViews();
-      this._deferElevateShellAboveTabViews();
+      this._stabilizeShellAboveTabViews();
     });
 
     /** Renderer: call after opening menus/modals so the shell paints above tab WCVs (see _elevateShellAboveTabViews). */
     ipcMain.on('wcv-ensure-shell-on-top', () => {
-      this._elevateShellAboveTabViews();
-      this._queueElevateShellAboveTabViews();
-      this._deferElevateShellAboveTabViews();
+      this._stabilizeShellAboveTabViews();
     });
 
     ipcMain.on('wcv-discard-tab', (_event, tabId) => {
@@ -334,6 +332,24 @@ class TabManager {
         /* ignore */
       }
     });
+  }
+
+  /**
+   * Some guest surfaces reorder *after* normal layout/focus hooks. Keep re-stacking
+   * the shell across short delayed ticks so overlays stay above page content.
+   */
+  _stabilizeShellAboveTabViews() {
+    this._elevateShellAboveTabViews();
+    this._queueElevateShellAboveTabViews();
+    this._deferElevateShellAboveTabViews();
+
+    if (this._shellElevateTimer80) clearTimeout(this._shellElevateTimer80);
+    if (this._shellElevateTimer220) clearTimeout(this._shellElevateTimer220);
+    if (this._shellElevateTimer420) clearTimeout(this._shellElevateTimer420);
+
+    this._shellElevateTimer80 = setTimeout(() => this._deferElevateShellAboveTabViews(), 80);
+    this._shellElevateTimer220 = setTimeout(() => this._deferElevateShellAboveTabViews(), 220);
+    this._shellElevateTimer420 = setTimeout(() => this._deferElevateShellAboveTabViews(), 420);
   }
 
   /**
@@ -473,11 +489,7 @@ class TabManager {
      * across immediate + deferred ticks so top chrome stays clickable.
      */
     const stabilizeShellLayering = () => {
-      this._elevateShellAboveTabViews();
-      this._queueElevateShellAboveTabViews();
-      this._deferElevateShellAboveTabViews();
-      setTimeout(() => this._deferElevateShellAboveTabViews(), 80);
-      setTimeout(() => this._deferElevateShellAboveTabViews(), 220);
+      this._stabilizeShellAboveTabViews();
     };
 
     wc.on('dom-ready', () => {
