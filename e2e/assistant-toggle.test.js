@@ -82,7 +82,6 @@ describe('e2e assistant', () => {
       const raw = fs.readFileSync(resultPath, 'utf8');
       const data = JSON.parse(raw);
       if (!data.ok) {
-        // eslint-disable-next-line no-console
         console.error('[navio-e2e-assistant] failure payload:\n', JSON.stringify(data, null, 2));
       }
       assert.strictEqual(data.ok, true, data.error || JSON.stringify(data.details));
