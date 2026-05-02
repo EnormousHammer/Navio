@@ -113,14 +113,15 @@ const NTP = (() => {
       bg:   'linear-gradient(145deg,#0f4c2a 0%,#1a7a40 55%,#0d3d22 100%)',
       glow: 'rgba(26,180,80,0.60)',
       svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="24" cy="24" r="18" stroke="rgba(255,255,255,0.80)" stroke-width="2" fill="rgba(255,255,255,0.06)"/>
-        <path d="M6.5 24 Q24 12 41.5 24" stroke="rgba(255,255,255,0.70)" stroke-width="1.8" fill="none" stroke-linecap="round"/>
-        <path d="M6.5 24 Q24 36 41.5 24" stroke="rgba(255,255,255,0.70)" stroke-width="1.8" fill="none" stroke-linecap="round"/>
-        <line x1="24" y1="6" x2="24" y2="42" stroke="rgba(255,255,255,0.55)" stroke-width="1.8" stroke-linecap="round"/>
-        <circle cx="37" cy="11" r="6.5" fill="#ff3b30"/>
-        <circle cx="37" cy="11" r="6.5" fill="url(#lg)" opacity="0.4"/>
-        <circle cx="37" cy="11" r="3.2" fill="rgba(255,255,255,0.92)"/>
-        <defs><radialGradient id="lg" cx="40%" cy="35%"><stop offset="0%" stop-color="white" stop-opacity="0.6"/><stop offset="100%" stop-color="transparent"/></radialGradient></defs>
+        <ellipse cx="27.5" cy="33.5" rx="6.5" ry="5.5" fill="rgba(236,242,238,0.92)" stroke="rgba(0,0,0,0.2)" stroke-width="0.9" transform="rotate(-20 27.5 33.5)"/>
+        <rect x="5" y="11.5" width="20.5" height="29.5" rx="3.5" fill="rgba(255,255,255,0.97)" stroke="rgba(0,0,0,0.18)" stroke-width="1"/>
+        <rect x="14.6" y="22.2" width="3.2" height="11.4" rx="0.65" fill="rgba(10,40,24,0.93)"/>
+        <path fill="rgba(10,40,24,0.93)" d="M14.6 22.2L16.2 19.4L17.8 22.2H14.6z"/>
+        <path fill="rgba(255,255,255,0.98)" stroke="rgba(0,0,0,0.24)" stroke-width="1" d="M23.5 22.5c1.2-2.8 6-4 10.5-2.2s7.5 5.8 7.5 10.5v1.8c0 3.9-3.1 7-7 7h-1.6c-4.2 0-7.6-3.4-7.6-7.7v-1.6c0-3.6 1.5-6.5 3.2-7.8z"/>
+        <ellipse cx="20.5" cy="20.5" rx="4.2" ry="5.3" fill="rgba(255,255,255,0.98)" stroke="rgba(0,0,0,0.22)" stroke-width="0.85"/>
+        <path stroke="rgba(0,0,0,0.15)" stroke-width="0.8" fill="none" stroke-linecap="round" d="M26.5 26.5q4.5 1.6 8.5 0.2M27.5 30q3.8 1.2 7.2 0"/>
+        <circle cx="40" cy="8.5" r="4.5" fill="#ff3b30"/>
+        <circle cx="40" cy="8.5" r="1.9" fill="rgba(255,255,255,0.92)"/>
       </svg>`
     },
   };
