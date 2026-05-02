@@ -425,7 +425,9 @@ function isStreamingVideoOpenerOrigin(openerOrigin) {
       'streamed.su',
       'embedme.today',
       'embedsports.me',
-      'watchsports.today'
+      'watchsports.today',
+      // MMA / fight replay aggregators (same window.open patterns as other sports embed sites)
+      'watchmmafull.com'
     ];
     return roots.some((s) => h === s || h.endsWith('.' + s));
   } catch {

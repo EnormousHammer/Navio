@@ -152,6 +152,19 @@ test('shouldBlockWebPopup: streaming site script-style popup not blocked (stay o
   );
 });
 
+test('shouldBlockWebPopup: watchmmafull script-style blank popup allowed (player shell)', () => {
+  assert.strictEqual(
+    shouldBlockWebPopup({
+      url: 'about:blank',
+      disposition: 'new-window',
+      features: 'menubar=no,toolbar=no,width=800,height=600',
+      openerOrigin: 'https://watchmmafull.com',
+      cfg: baseCfg
+    }),
+    false
+  );
+});
+
 test('isLikelyDocumentPictureInPictureShape: widescreen PiP yes, IAB 400x250 no', () => {
   assert.strictEqual(isLikelyDocumentPictureInPictureShape(400, 225), true);
   assert.strictEqual(isLikelyDocumentPictureInPictureShape(360, 270), true);
