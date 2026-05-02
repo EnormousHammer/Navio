@@ -151,6 +151,7 @@
               <button type="button" class="browser-menu-item" role="menuitem" data-menu="bookmarks">Bookmarks <span class="browser-menu-kbd">Ctrl+Shift+B</span></button>
               <button type="button" class="browser-menu-item" role="menuitem" data-menu="history">History <span class="browser-menu-kbd">Ctrl+H</span></button>
               <button type="button" class="browser-menu-item" role="menuitem" data-menu="downloads">Downloads <span class="browser-menu-kbd">Ctrl+J</span></button>
+              <button type="button" class="browser-menu-item" role="menuitem" data-menu="allow-popups-site">Allow pop-ups for this site</button>
               <div class="browser-menu-sep" role="separator" aria-hidden="true"></div>
               <button type="button" class="browser-menu-item" role="menuitem" data-menu="settings">Settings <span class="browser-menu-kbd">Ctrl+,</span></button>
             </div>
@@ -1243,17 +1244,17 @@
                 <input type="checkbox" id="setting-popup-blocker" checked>
                 <span>Block pop-ups (recommended)</span>
               </label>
-              <p class="settings-inline-hint" style="margin-top:4px">Like Chrome or Brave: stops script-driven and chrome-stripped windows. Forms that open a new tab and sign-in flows are allowed. You can allow a site from the address bar when Navio blocks a pop-up.</p>
+              <p class="settings-inline-hint" style="margin-top:4px">Like Chrome or Brave: stops script-driven and chrome-stripped windows. Forms that open a new tab and sign-in flows are allowed. Allow one site anytime from the <strong>⋮</strong> browser menu (Allow pop-ups for this site) or the <strong>Pop-up blocked</strong> chip next to the address bar after a block.</p>
               <label class="setting-toggle-row" style="margin-top:10px">
                 <input type="checkbox" id="setting-ad-block" checked>
                 <span>Block ads and trackers</span>
               </label>
               <label class="setting-toggle-row" style="margin-top:10px">
-                <input type="checkbox" id="setting-ad-strict-popup" checked>
-                <span>Strict size rules for pop-ups</span>
+                <input type="checkbox" id="setting-ad-strict-popup">
+                <span>Strict size rules for pop-ups (optional)</span>
               </label>
               <p class="settings-inline-hint" id="ad-block-stats-hint">Blocks requests and ad pop-up windows from known ad networks, tracking pixels, and data brokers.</p>
-              <p class="settings-inline-hint" style="margin-top:6px">Strict mode also targets small or empty script pop-ups (common for ads). Turn off if a rare sign-in window is blocked.</p>
+              <p class="settings-inline-hint" style="margin-top:6px">When enabled, also blocks small or empty script-driven windows (more ad-like noise blocked, more risk a legitimate window is stopped). Leave off unless you want that extra layer.</p>
             </div>
             <div class="settings-section">
               <h3>Your data</h3>

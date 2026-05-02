@@ -527,6 +527,36 @@
         case 'downloads':
           window.__navioToggleDownloadsDrawer?.();
           break;
+        case 'allow-popups-site': {
+          const tab = typeof TabManager !== 'undefined' && TabManager.getActiveTab ? TabManager.getActiveTab() : null;
+          const raw = (tab && tab.url) || '';
+          let origin = '';
+          if (raw && /^https?:\/\//i.test(raw)) {
+            try {
+              origin = new URL(raw).origin;
+            } catch {
+              /* ignore */
+            }
+          }
+          if (!origin || typeof window.navio?.sitePopupsSet !== 'function') {
+            if (typeof _showAppToast === 'function') {
+              _showAppToast('Open an http(s) page in this tab first, then try again.', 'warning');
+            }
+            break;
+          }
+          void window.navio.sitePopupsSet(origin, true).then((r) => {
+            if (r && r.ok) {
+              if (typeof _showAppToast === 'function') {
+                _showAppToast('Pop-ups allowed for this site — try the action again.', 'success');
+              }
+            } else if (typeof _showAppToast === 'function') {
+              _showAppToast('Could not save pop-up permission.', 'error');
+            }
+          }).catch(() => {
+            if (typeof _showAppToast === 'function') _showAppToast('Could not save pop-up permission.', 'error');
+          });
+          break;
+        }
         case 'settings':
           if (typeof SettingsManager !== 'undefined' && typeof SettingsManager.open === 'function') {
             SettingsManager.open();

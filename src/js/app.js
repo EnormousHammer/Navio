@@ -1495,10 +1495,24 @@ ${badgeHtml(it.badge)}
   }
 
   updateUrlBar(url) {
+    // Keep "Pop-up blocked" visible until the user leaves that site or allows pop-ups.
+    // Previously we cleared the chip on every navigation — it disappeared before you could click it.
     const popupChip = document.getElementById('url-popup-blocked');
-    if (popupChip) {
-      popupChip.hidden = true;
-      delete popupChip.dataset.origin;
+    if (popupChip && popupChip.dataset.origin) {
+      const blockedOrigin = String(popupChip.dataset.origin).trim();
+      let currentOrigin = '';
+      if (url && /^https?:\/\//i.test(url)) {
+        try {
+          currentOrigin = new URL(url).origin;
+        } catch {
+          /* ignore */
+        }
+      }
+      const stillOnBlockedSite = currentOrigin && blockedOrigin && currentOrigin === blockedOrigin;
+      if (!stillOnBlockedSite) {
+        popupChip.hidden = true;
+        delete popupChip.dataset.origin;
+      }
     }
     const urlInput = document.getElementById('url-input');
     const sslIndicator = document.getElementById('url-ssl');

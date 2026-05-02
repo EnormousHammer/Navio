@@ -71,8 +71,8 @@ const DEFAULT_CONFIG = {
   adBlockEnabled: true,
   /** When true, block unsolicited pop-ups (independent of ad list blocking). */
   popupBlockerEnabled: true,
-  /** When true (and pop-up blocking on), also block small / blank script pop-ups unless URL looks like OAuth/SSO. */
-  adStrictPopupBlock: true,
+  /** When true (and pop-up blocking on), also block small / blank script pop-ups unless URL looks like OAuth/SSO. Off by default — fewer false positives; turn on under Privacy for stricter ad-style windows. */
+  adStrictPopupBlock: false,
   /** Read AI replies aloud (sidebar + compatible surfaces). */
   ttsEnabled: false,
   /** OpenAI speech voice id (see `navio-tts-voice-catalog.js`). */

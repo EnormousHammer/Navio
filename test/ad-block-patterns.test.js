@@ -84,6 +84,20 @@ test('shouldBlockWebPopup: site allow list', () => {
   );
 });
 
+test('shouldBlockWebPopup: siteAllowsPopups allows cross-origin watch URL from embed opener', () => {
+  assert.strictEqual(
+    shouldBlockWebPopup({
+      url: 'https://watchmmafull.com/',
+      disposition: 'new-window',
+      features: 'width=900,height=700',
+      openerOrigin: 'https://embedme.today',
+      siteAllowsPopups: true,
+      cfg: baseCfg
+    }),
+    false
+  );
+});
+
 test('shouldBlockWebPopup: chrome-stripped blank window blocked (pop-under shell)', () => {
   assert.strictEqual(
     shouldBlockWebPopup({
@@ -322,7 +336,7 @@ test('shouldBlockAdNetworkRequest: non-ad URL is never blocked', () => {
   );
 });
 
-test('shouldBlockWebPopup: cross-origin popup from streaming embed is blocked (casino/redirect)', () => {
+test('shouldBlockWebPopup: cross-origin real-URL popup from embed host not blocked by origin heuristics', () => {
   assert.strictEqual(
     shouldBlockWebPopup({
       url: 'https://bizcasino.com/landing',
@@ -331,7 +345,7 @@ test('shouldBlockWebPopup: cross-origin popup from streaming embed is blocked (c
       openerOrigin: 'https://embedme.today',
       cfg: baseCfg
     }),
-    true
+    false
   );
 });
 
@@ -348,10 +362,23 @@ test('shouldBlockWebPopup: same-origin popup from streaming embed is allowed (pl
   );
 });
 
-test('shouldBlockWebPopup: cross-origin popup from Predicta blocked when ad-block on', () => {
+test('shouldBlockWebPopup: cross-origin from Predicta hub to external watch site allowed', () => {
   assert.strictEqual(
     shouldBlockWebPopup({
-      url: 'https://some-redirect-ad.net/click',
+      url: 'https://watchmmafull.com/',
+      disposition: 'new-window',
+      features: 'width=900,height=700',
+      openerOrigin: 'https://predicta-bet.vercel.app',
+      cfg: baseCfg
+    }),
+    false
+  );
+});
+
+test('shouldBlockWebPopup: Predicta hub popup to ad-listed host still blocked', () => {
+  assert.strictEqual(
+    shouldBlockWebPopup({
+      url: 'https://doubleclick.net/foo',
       disposition: 'new-window',
       features: 'width=900,height=700',
       openerOrigin: 'https://predicta-bet.vercel.app',
@@ -361,15 +388,3 @@ test('shouldBlockWebPopup: cross-origin popup from Predicta blocked when ad-bloc
   );
 });
 
-test('shouldBlockWebPopup: cross-origin popup from streaming embed allowed when ad-block off', () => {
-  assert.strictEqual(
-    shouldBlockWebPopup({
-      url: 'https://bizcasino.com/landing',
-      disposition: 'new-window',
-      features: 'menubar=no,toolbar=no,width=800,height=600',
-      openerOrigin: 'https://embedme.today',
-      cfg: { ...baseCfg, adBlockEnabled: false }
-    }),
-    false
-  );
-});
