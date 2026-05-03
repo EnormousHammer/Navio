@@ -402,6 +402,9 @@ contextBridge.exposeInMainWorld('navio', {
 
   agentRunPlan: (payload) => ipcRenderer.invoke('agent-run-plan', payload),
 
+  /** Plaintext JSON: config, API keys, connectors, OAuth, IMAP, password vault, bookmarks, … */
+  exportFullMigration: () => ipcRenderer.invoke('navio-export-full-migration'),
+
   syncExportProfile: (opts) => ipcRenderer.invoke('sync-export-profile', opts || {}),
   syncImportProfile: (opts) => ipcRenderer.invoke('sync-import-profile', opts || {}),
   syncPickFolder: () => ipcRenderer.invoke('sync-pick-folder'),

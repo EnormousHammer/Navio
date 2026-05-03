@@ -57,6 +57,8 @@ class SettingsManagerClass {
       extLoadUnpacked: document.getElementById('btn-ext-load-unpacked'),
       extensionsListSettings: document.getElementById('extensions-list-settings'),
       syncExport: document.getElementById('btn-sync-export'),
+      fullMigrationExport: document.getElementById('btn-full-migration-export'),
+      fullMigrationExportStatus: document.getElementById('full-migration-export-status'),
       syncImport: document.getElementById('btn-sync-import'),
       syncPassphrase: document.getElementById('sync-passphrase'),
       toggleKey: document.getElementById('btn-toggle-key'),
@@ -849,6 +851,7 @@ class SettingsManagerClass {
     this._bindExtensionsSettings();
     this._bindProfilesSettings();
     this._bindSyncButtons();
+    this._bindFullMigrationExport();
     this._bindCloudSyncControls();
     this._refreshExtensionsList();
     this._refreshWorkflowsList();
@@ -1097,6 +1100,38 @@ class SettingsManagerClass {
         this._refreshProfilesList();
       } else {
         alert((r && r.error) || 'Could not create profile');
+      }
+    });
+  }
+
+  _bindFullMigrationExport() {
+    const btn = this.elements.fullMigrationExport;
+    const status = this.elements.fullMigrationExportStatus;
+    if (!btn || btn._bound) return;
+    btn._bound = true;
+    btn.addEventListener('click', async () => {
+      if (
+        !confirm(
+          'Export one JSON file with ALL secrets in plaintext (API keys, OAuth, passwords)? Only continue if you will store or delete that file carefully.'
+        )
+      ) {
+        return;
+      }
+      if (status) status.textContent = 'Exporting…';
+      try {
+        const r = await window.navio.exportFullMigration();
+        if (r && r.ok) {
+          if (status) status.textContent = 'Folder: ' + r.path;
+          alert('Migration folder:\n' + r.path + '\n\nDelete the whole folder after you import it into your new app.');
+        } else if (r && r.cancelled) {
+          if (status) status.textContent = '';
+        } else {
+          if (status) status.textContent = '';
+          alert((r && r.error) || 'Export failed');
+        }
+      } catch (e) {
+        if (status) status.textContent = '';
+        alert(e && e.message ? e.message : String(e));
       }
     });
   }

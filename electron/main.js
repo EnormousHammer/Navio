@@ -44,6 +44,7 @@ const { wcCanGoBack, wcCanGoForward } = require('./wc-nav-history');
 const { ensureGuestWebviewKeyboardFocus } = require('./agent-input-focus');
 const { BINARY_MAX_BYTES, shouldDownloadAndExtract, extractDriveFileText } = require('./drive-file-text');
 const { tabManager } = require('./tab-manager');
+const { exportMigrationToFolder, createTimestampedMigrationDir } = require('./migration');
 
 function getProfileIdFromLaunch() {
   const a = process.argv.find((x) => typeof x === 'string' && x.startsWith('--navio-profile='));
@@ -1561,6 +1562,25 @@ ipcMain.handle('save-config', (event, partial) => {
     /* ignore */
   }
   return true;
+});
+
+/** One folder under a parent you pick: settings, secrets, bookmarks, workflows, skills, … */
+ipcMain.handle('navio-export-full-migration', async (event) => {
+  try {
+    const userData = app.getPath('userData');
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const r = await dialog.showOpenDialog(win && !win.isDestroyed() ? win : undefined, {
+      title: 'Choose folder — Navio creates a migration subfolder here',
+      properties: ['openDirectory', 'createDirectory']
+    });
+    if (r.canceled || !r.filePaths || !r.filePaths[0]) return { ok: false, cancelled: true };
+    const parentDir = r.filePaths[0];
+    const destDir = createTimestampedMigrationDir(parentDir);
+    const manifest = exportMigrationToFolder(userData, destDir);
+    return { ok: true, path: destDir, manifest };
+  } catch (e) {
+    return { ok: false, error: e && e.message ? e.message : String(e) };
+  }
 });
 
 let _navioDiagReportLast = 0;

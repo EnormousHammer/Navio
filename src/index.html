@@ -1230,6 +1230,14 @@
               <div id="settings-workflows-list" class="settings-workflows-list"></div>
             </div>
             <div class="settings-section">
+              <h3>Full export (leave Navio / new engine)</h3>
+              <p class="settings-inline-hint">Pick a <strong>parent folder</strong>; Navio creates <code>navio-browser-migration-…</code> with <strong>manifest.json</strong>, <strong>settings.json</strong>, <strong>secrets.json</strong> (keys, OAuth, IMAP, vault, OEM Stremio file, sync passphrase), data JSONs, <strong>skills/</strong>, <strong>recorded-workflows/</strong>, <strong>extensions-unpacked-index.json</strong> (manifest snapshots only), <strong>extra-userdata/</strong> for any other top-level JSON/JSONL/navbak, cloud/local <strong>navio-sync</strong> copies when present, action ledger, e2e fixtures. Plan: <code>electron/migration/MIGRATION_PLAN.md</code>. <strong>Anyone with that folder owns your accounts.</strong> Delete after import.</p>
+              <div class="setting-row setting-row-actions">
+                <button type="button" class="btn btn-secondary" id="btn-full-migration-export">Export everything…</button>
+              </div>
+              <p class="settings-inline-hint" id="full-migration-export-status" style="margin-top:8px;margin-bottom:0"></p>
+            </div>
+            <div class="settings-section">
               <h3>Import (migration)</h3>
               <p class="settings-inline-hint">Detect Chromium-based profiles and import bookmarks JSON-side (same as onboarding). Full extension migration is not available yet — see docs/EXTENSIONS.md.</p>
               <button type="button" class="btn btn-secondary" id="btn-settings-import-scan">Scan browsers for import</button>
