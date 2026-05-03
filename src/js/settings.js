@@ -403,6 +403,14 @@ class SettingsManagerClass {
   showPanel(panelId) {
     if (!this.panelIds.includes(panelId)) return;
 
+    const navBtn = this.elements.nav.querySelector(`.settings-nav-item[data-panel="${panelId}"]`);
+    const pageTitle = document.getElementById('settings-page-title');
+    if (pageTitle && navBtn) {
+      const span = navBtn.querySelector('span');
+      const label = span ? String(span.textContent).trim() : '';
+      pageTitle.textContent = label || panelId;
+    }
+
     this.elements.nav.querySelectorAll('.settings-nav-item').forEach((btn) => {
       const on = btn.dataset.panel === panelId;
       btn.classList.toggle('active', on);

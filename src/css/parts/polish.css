@@ -1493,40 +1493,42 @@
 }
 
 /* ---------------------------------------------
-   9) Settings — structured sidebar + calm content (chrome-like)
+   9) Settings — Chromium-style (polish tokens; structure matches index shell)
    --------------------------------------------- */
 .modal.modal-settings {
-  width: min(960px, calc(100vw - 32px));
-  max-height: min(820px, max(240px, calc(100vh - 48px)));
-  border-radius: 12px;
+  width: min(960px, calc(100vw - 40px));
+  max-height: min(820px, max(260px, calc(100vh - 52px)));
+  border-radius: 8px;
   border: 1px solid var(--p-border);
   box-shadow: var(--p-shadow), 0 0 0 1px rgba(0, 0, 0, 0.1);
   background: var(--p-surface-2);
 }
 
-.modal-header-settings {
-  padding: 16px 22px 14px;
-  border-bottom: 1px solid var(--p-border);
-  background: var(--p-surface-1);
-  align-items: center;
+.settings-chrome-close {
+  color: var(--text-secondary);
 }
 
-.modal-header-text h2 {
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+.settings-nav-head {
+  padding: 16px 2px 8px 0;
 }
 
-.modal-settings-subtitle {
-  margin-top: 4px;
-  font-size: 12px;
-  line-height: 1.45;
-  max-width: 42rem;
+.settings-nav-heading {
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+
+.settings-page-header {
+  border-bottom-color: var(--p-border);
+}
+
+.settings-page-title {
+  letter-spacing: -0.04em;
 }
 
 .settings-nav {
-  width: 210px;
-  padding: 12px 10px 20px;
+  width: 244px;
+  padding: 6px 10px 20px 10px;
   gap: 2px;
   border-right: 1px solid var(--p-border);
   background: var(--p-surface-1);
@@ -1539,25 +1541,24 @@
 
 .settings-nav-search {
   height: 36px;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid var(--p-border);
   background: var(--p-surface-3);
 }
 
 .settings-nav-item {
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px solid transparent;
+  padding: 8px 11px;
+  border-radius: 6px;
+  border: none;
   border-left: 3px solid transparent;
   font-weight: 500;
   font-size: 13px;
 }
 
 .settings-nav-item.active {
-  background: var(--p-hover);
+  background: color-mix(in srgb, var(--accent) 12%, var(--p-surface-1));
   color: var(--text-primary);
-  border-color: transparent;
-  border-left-color: color-mix(in srgb, var(--accent) 70%, var(--text-tertiary));
+  border-left-color: color-mix(in srgb, var(--accent) 75%, var(--text-tertiary));
   box-shadow: none;
 }
 
@@ -1566,8 +1567,12 @@
   color: var(--text-primary);
 }
 
+.settings-main-column {
+  background: var(--p-surface-2);
+}
+
 .settings-panels {
-  padding: 20px 26px 28px;
+  padding: 18px 26px 28px;
   background: var(--p-surface-2);
 }
 

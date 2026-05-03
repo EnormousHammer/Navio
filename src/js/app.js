@@ -2437,8 +2437,6 @@ const PageWatcher = (() => {
     let url = '';
     let title = '';
     try {
-      // In WCV mode tabs are not real DOM elements — use TabManager model directly.
-      // Falls back to DOM query for classic <webview> mode.
       const activeTab = typeof TabManager !== 'undefined' ? TabManager.getActiveTab?.() : null;
       if (activeTab && activeTab.webview) {
         url = (typeof activeTab.webview.getURL === 'function'
@@ -2448,7 +2446,6 @@ const PageWatcher = (() => {
           ? activeTab.webview.getTitle()
           : activeTab.title) || url;
       } else {
-        // Legacy fallback: query DOM for a real webview element
         const activeWv = document.querySelector('.tab-content:not([hidden]) webview');
         if (activeWv) {
           url = activeWv.getURL?.() || '';
@@ -2479,7 +2476,6 @@ const PageWatcher = (() => {
     const btn = document.getElementById('btn-watch-page-save');
     if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
     try {
-      // Use the scheduler to add a recurring watch workflow
       const prompt = `Check the page at ${_currentUrl} and determine if the following condition is met: "${condition}". If the condition IS met, start your reply with [WATCH-TRIGGERED] and describe what changed. If it is NOT met, start with [WATCH-PENDING] and briefly confirm what you observed.`;
       await window.navio.schedulerAdd({
         workflowName: `Watch: ${(_currentTitle || _currentUrl).slice(0, 50)}`,
@@ -2497,6 +2493,13 @@ const PageWatcher = (() => {
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = 'Start watching'; }
     }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const el = _overlay();
+    if (!el || el.hidden) return;
+    close();
   });
 
   return { open, close };

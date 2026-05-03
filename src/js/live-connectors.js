@@ -109,7 +109,7 @@ class LiveConnectorManagerClass {
     };
 
     this._ensureDOM();
-    this._load();
+    void this._load();
   }
 
   // ── Init ────────────────────────────────────────────────────────────────

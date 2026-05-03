@@ -714,20 +714,17 @@
     </div>
   </div>
 
-  <!-- Settings Modal -->
+  <!-- Settings — Chromium-style: sidebar + page title + content (not a centered “marketing” header) -->
   <div id="settings-modal" class="modal-overlay">
     <div class="modal modal-settings">
-      <div class="modal-header modal-header-settings">
-        <div class="modal-header-text">
-          <h2 id="settings-modal-title">Settings</h2>
-          <p class="modal-settings-subtitle">Profiles, browsing, assistant, appearance, and privacy — organized in one place. Use search to jump to a category.</p>
-        </div>
-        <button type="button" class="icon-btn modal-header-close" id="btn-close-settings" aria-label="Close settings">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
+      <button type="button" class="icon-btn settings-chrome-close" id="btn-close-settings" aria-label="Close settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
       <div class="modal-body settings-modal-body">
         <nav class="settings-nav" id="settings-nav" aria-label="Settings sections">
+          <div class="settings-nav-head">
+            <h1 class="settings-nav-heading" id="settings-modal-title">Settings</h1>
+          </div>
           <div class="settings-nav-search-wrap">
             <label class="sr-only" for="settings-nav-search">Search settings</label>
             <input type="search" id="settings-nav-search" class="settings-nav-search" placeholder="Search settings…" autocomplete="off" spellcheck="false" />
@@ -769,7 +766,11 @@
             <span>About</span>
           </button>
         </nav>
-        <div class="settings-panels">
+        <div class="settings-main-column">
+          <header class="settings-page-header">
+            <h2 class="settings-page-title" id="settings-page-title">General</h2>
+          </header>
+          <div class="settings-panels">
           <div class="settings-panel active" id="settings-panel-general" role="tabpanel">
             <div class="settings-section">
               <h3>Startup</h3>
@@ -1425,6 +1426,7 @@
               <p class="text-muted" style="font-size:12px;margin-top:8px">On macOS, use <kbd>⌘</kbd> in place of <kbd>Ctrl</kbd> where shown.</p>
             </div>
           </div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -1867,28 +1869,8 @@
       </div>
     </aside>
 
-  <script src="js/onboarding.js"></script>
-  <script src="js/email-assistant.js"></script>
-  <script src="js/navio-tts-voice-catalog.js"></script>
-  <script src="js/wcv-webview-shim.js"></script>
-  <script src="js/tabs.js"></script>
-  <script src="js/ntp.js"></script>
-  <script src="js/ui-shell-extras.js"></script>
-  <script src="js/navio-intent-router.js"></script>
-  <script src="js/assistant.js"></script>
-  <script src="js/app.js"></script>
-  <script src="js/command-palette.js"></script>
-  <script src="js/workspace.js"></script>
-  <script src="js/reading-mode.js"></script>
-  <script src="js/screenshot-tool.js"></script>
-  <script src="js/settings.js"></script>
-  <script src="js/connectors.js"></script>
-  <script src="js/live-connectors.js"></script>
-  <script src="js/navio-ai-boost.js"></script>
-
-  <!-- Toasts (downloads, certs, etc.) — must exist at startup; live-connectors also uses this id -->
+  <!-- Shell overlays that JS binds at load — MUST appear before <script> tags so ids exist during sync init -->
   <div id="live-notif-stack" class="live-notif-stack" aria-live="polite"></div>
-  <!-- Chrome-style bottom bar: visible while files download or briefly after completion -->
   <div id="download-shelf" class="download-shelf" hidden role="region" aria-label="Downloads">
     <div class="download-shelf-head">
       <span class="download-shelf-head-title">Downloads</span>
@@ -1896,8 +1878,6 @@
     </div>
     <div id="download-shelf-list" class="download-shelf-list"></div>
   </div>
-
-  <!-- Watch Page Dialog -->
   <div id="watch-page-overlay" class="watch-page-overlay" hidden>
     <div class="watch-page-dialog" role="dialog" aria-modal="true" aria-labelledby="watch-page-title">
       <div class="watch-page-header">
@@ -1928,5 +1908,24 @@
       </div>
     </div>
   </div>
+
+  <script src="js/onboarding.js"></script>
+  <script src="js/email-assistant.js"></script>
+  <script src="js/navio-tts-voice-catalog.js"></script>
+  <script src="js/wcv-webview-shim.js"></script>
+  <script src="js/tabs.js"></script>
+  <script src="js/ntp.js"></script>
+  <script src="js/ui-shell-extras.js"></script>
+  <script src="js/navio-intent-router.js"></script>
+  <script src="js/assistant.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/command-palette.js"></script>
+  <script src="js/workspace.js"></script>
+  <script src="js/reading-mode.js"></script>
+  <script src="js/screenshot-tool.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/connectors.js"></script>
+  <script src="js/live-connectors.js"></script>
+  <script src="js/navio-ai-boost.js"></script>
 </body>
 </html>
