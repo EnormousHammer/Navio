@@ -1178,6 +1178,9 @@
   color: rgba(226, 232, 248, 0.55);
   opacity: 1;
 }
+.new-tab-page .ntp-sports-widget .ntp-widget-header img.ntp-sports-widget-header-icon {
+  opacity: 1;
+}
 
 .new-tab-page .ntp-news-widget .ntp-widget-body,
 .new-tab-page .ntp-email-widget .ntp-widget-body,
@@ -3314,6 +3317,14 @@ body.navio-vertical-tabs .tab-item.in-group.group-last {
   height: 74%;
   display: block;
   overflow: visible;
+}
+
+/* Custom PNG (e.g. Live Sports) — same footprint as custom SVG */
+.shortcut-icon--custom-img img {
+  width: 76%;
+  height: 76%;
+  object-fit: contain;
+  display: block;
 }
 
 /* Hover: lift + brand glow */

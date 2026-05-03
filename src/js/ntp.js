@@ -112,17 +112,8 @@ const NTP = (() => {
     'predicta-bet.vercel.app': {
       bg:   'linear-gradient(145deg,#0f4c2a 0%,#1a7a40 55%,#0d3d22 100%)',
       glow: 'rgba(26,180,80,0.60)',
-      svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <ellipse cx="27.5" cy="33.5" rx="6.5" ry="5.5" fill="rgba(236,242,238,0.92)" stroke="rgba(0,0,0,0.2)" stroke-width="0.9" transform="rotate(-20 27.5 33.5)"/>
-        <rect x="5" y="11.5" width="20.5" height="29.5" rx="3.5" fill="rgba(255,255,255,0.97)" stroke="rgba(0,0,0,0.18)" stroke-width="1"/>
-        <rect x="14.6" y="22.2" width="3.2" height="11.4" rx="0.65" fill="rgba(10,40,24,0.93)"/>
-        <path fill="rgba(10,40,24,0.93)" d="M14.6 22.2L16.2 19.4L17.8 22.2H14.6z"/>
-        <path fill="rgba(255,255,255,0.98)" stroke="rgba(0,0,0,0.24)" stroke-width="1" d="M23.5 22.5c1.2-2.8 6-4 10.5-2.2s7.5 5.8 7.5 10.5v1.8c0 3.9-3.1 7-7 7h-1.6c-4.2 0-7.6-3.4-7.6-7.7v-1.6c0-3.6 1.5-6.5 3.2-7.8z"/>
-        <ellipse cx="20.5" cy="20.5" rx="4.2" ry="5.3" fill="rgba(255,255,255,0.98)" stroke="rgba(0,0,0,0.22)" stroke-width="0.85"/>
-        <path stroke="rgba(0,0,0,0.15)" stroke-width="0.8" fill="none" stroke-linecap="round" d="M26.5 26.5q4.5 1.6 8.5 0.2M27.5 30q3.8 1.2 7.2 0"/>
-        <circle cx="40" cy="8.5" r="4.5" fill="#ff3b30"/>
-        <circle cx="40" cy="8.5" r="1.9" fill="rgba(255,255,255,0.92)"/>
-      </svg>`
+      /* Same artwork as public/icons/live_sports.png — copied under src/assets for file:// loads from index.html */
+      iconSrc: 'assets/icons/live_sports.png',
     },
   };
 
@@ -1654,26 +1645,36 @@ const NTP = (() => {
       let brandBg = '';
       let brandGlow = '';
       let brandSvg = '';
+      let brandIconSrc = '';
       try {
         const u = new URL(item.url);
         favicon = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(u.hostname)}&sz=256`;
         const host = u.hostname.replace(/^www\./, '');
         const brand = _SHORTCUT_BRANDS[host] || _SHORTCUT_BRANDS[u.hostname];
-        if (brand) { brandBg = brand.bg; brandGlow = brand.glow; brandSvg = brand.svg || ''; }
+        if (brand) {
+          brandBg = brand.bg;
+          brandGlow = brand.glow;
+          brandSvg = brand.svg || '';
+          brandIconSrc = brand.iconSrc || '';
+        }
       } catch {
         favicon = '';
       }
-      const hasBrand  = !!brandBg;
-      const hasCustom = hasBrand && !!brandSvg;
+      const hasBrand = !!brandBg;
+      const hasCustomSvg = hasBrand && !!brandSvg;
+      const hasCustomImg = hasBrand && !!brandIconSrc && !hasCustomSvg;
+      const brandIconClass = hasCustomSvg ? ' shortcut-icon--custom-svg' : hasCustomImg ? ' shortcut-icon--custom-img' : '';
       const iconClass = hasBrand
-        ? `shortcut-icon shortcut-icon--branded${hasCustom ? ' shortcut-icon--custom-svg' : ''}`
+        ? `shortcut-icon shortcut-icon--branded${brandIconClass}`
         : 'shortcut-icon';
       const iconStyle = hasBrand
         ? `style="background:${brandBg};--shortcut-glow:${brandGlow}"`
         : `style="--shortcut-glow:rgba(0,216,255,0.35)"`;
-      const iconContent = hasCustom
+      const iconContent = hasCustomSvg
         ? brandSvg
-        : `<img src="${favicon}" alt="${_esc(item.title)}" loading="lazy" draggable="false">`;
+        : hasCustomImg
+          ? `<img src="${_escAttr(brandIconSrc)}" alt="${_esc(item.title)}" loading="lazy" draggable="false">`
+          : `<img src="${favicon}" alt="${_esc(item.title)}" loading="lazy" draggable="false">`;
       btn.innerHTML = `
         <div class="${iconClass}" ${iconStyle}>${iconContent}</div>
         <span>${_esc(item.title)}</span>
