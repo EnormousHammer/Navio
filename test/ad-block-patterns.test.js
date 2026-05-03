@@ -246,6 +246,36 @@ test('shouldBlockWebPopup: small real URL popup from FedEx opener allowed', () =
   );
 });
 
+test('shouldBlockWebPopup: enterprise opener blank script shell allowed (Office)', () => {
+  assert.strictEqual(
+    shouldBlockWebPopup({
+      url: 'about:blank',
+      disposition: 'new-window',
+      optionsWidth: 400,
+      optionsHeight: 320,
+      features: 'menubar=no,toolbar=no,width=400,height=320',
+      openerOrigin: 'https://www.office.com',
+      cfg: baseCfg
+    }),
+    false
+  );
+});
+
+test('shouldBlockWebPopup: Stripe checkout destination treated as login-class', () => {
+  assert.strictEqual(
+    shouldBlockWebPopup({
+      url: 'https://checkout.stripe.com/c/pay/cs_live_abc',
+      disposition: 'new-window',
+      optionsWidth: 520,
+      optionsHeight: 640,
+      features: 'scrollbars=yes',
+      openerOrigin: 'https://merchant.example.com',
+      cfg: baseCfg
+    }),
+    false
+  );
+});
+
 test('urlMatchesAdBlock: scam download-gate host', () => {
   assert.strictEqual(
     urlMatchesAdBlock('https://continue2download.com/continue.html?sid=1'),

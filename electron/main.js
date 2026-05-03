@@ -788,8 +788,10 @@ function buildActionFixMessages(originalMessages, brokenResponse) {
 
 function navioOpenerOriginFromGuest(guestContents) {
   try {
-    const u = (guestContents && guestContents.getURL && guestContents.getURL()) || '';
-    if (/^https?:/i.test(u)) return new URL(u).origin;
+    const u0 = (guestContents && guestContents.getURL && guestContents.getURL()) || '';
+    const u = String(u0).trim().split('#')[0];
+    if (!/^https?:\/\//i.test(u)) return '';
+    return new URL(u).origin;
   } catch {
     /* ignore */
   }
@@ -1073,16 +1075,31 @@ function bindNavioGuestWindowOpenOnce(guestContents) {
       try {
         const win = mainWindow;
         if (win && typeof win.isDestroyed === 'function' && !win.isDestroyed()) {
+          let openerUrl = '';
+          try {
+            openerUrl = guestContents.getURL() || '';
+          } catch {
+            openerUrl = '';
+          }
+          let effectiveOrigin = openerOrigin;
+          if (!effectiveOrigin && /^https?:\/\//i.test(String(openerUrl || '').trim())) {
+            try {
+              effectiveOrigin = new URL(String(openerUrl).trim().split('#')[0]).origin;
+            } catch {
+              effectiveOrigin = '';
+            }
+          }
+          let openerWebContentsId = null;
+          try {
+            openerWebContentsId = typeof guestContents.id === 'number' ? guestContents.id : null;
+          } catch {
+            openerWebContentsId = null;
+          }
           win.webContents.send('navio-popup-blocked', {
             blockedUrl: url,
-            openerOrigin,
-            openerUrl: (() => {
-              try {
-                return guestContents.getURL() || '';
-              } catch {
-                return '';
-              }
-            })()
+            openerOrigin: effectiveOrigin,
+            openerUrl,
+            openerWebContentsId
           });
         }
       } catch {

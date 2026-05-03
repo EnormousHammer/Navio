@@ -547,7 +547,12 @@
           void window.navio.sitePopupsSet(origin, true).then((r) => {
             if (r && r.ok) {
               if (typeof _showAppToast === 'function') {
-                _showAppToast('Pop-ups allowed for this site — try the action again.', 'success');
+                _showAppToast('Pop-ups allowed — reloading tab', 'success');
+              }
+              try {
+                if (tab && tab.webview && typeof tab.webview.reload === 'function') tab.webview.reload();
+              } catch {
+                /* ignore */
               }
             } else if (typeof _showAppToast === 'function') {
               _showAppToast('Could not save pop-up permission.', 'error');

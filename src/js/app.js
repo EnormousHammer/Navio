@@ -3,6 +3,42 @@
  * Orchestrates all browser components: tabs, navigation, AI assistant, settings
  */
 
+function _navioHttpOriginFromUrl(url) {
+  const s = String(url || '').trim();
+  if (!/^https?:\/\//i.test(s)) return '';
+  try {
+    return new URL(s.split('#')[0]).origin;
+  } catch {
+    return '';
+  }
+}
+
+/** Reload the guest tab that opened a blocked pop-up (may not be the active tab). */
+function _navioReloadTabByGuestWebContentsId(wcId) {
+  const id = Number(wcId);
+  if (!Number.isFinite(id) || typeof TabManager === 'undefined') return false;
+  try {
+    const tab = TabManager.tabs.find((t) => {
+      try {
+        return (
+          t.webview &&
+          typeof t.webview.getWebContentsId === 'function' &&
+          t.webview.getWebContentsId() === id
+        );
+      } catch {
+        return false;
+      }
+    });
+    if (tab && tab.webview && typeof tab.webview.reload === 'function') {
+      tab.webview.reload();
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
 class NavioApp {
   constructor() {
     this.config = {};
@@ -744,23 +780,47 @@ ${badgeHtml(it.badge)}
     const popupBlockedBtn = document.getElementById('url-popup-blocked');
     if (popupBlockedBtn && typeof window.navio.onPopupBlocked === 'function') {
       window.navio.onPopupBlocked((data) => {
-        const origin = (data && data.openerOrigin) || '';
-        if (origin) {
-          popupBlockedBtn.hidden = false;
-          popupBlockedBtn.dataset.origin = origin;
+        const openerUrl = data && data.openerUrl != null ? String(data.openerUrl) : '';
+        let origin = data && data.openerOrigin != null ? String(data.openerOrigin).trim() : '';
+        if (!origin) origin = _navioHttpOriginFromUrl(openerUrl);
+        if (data && Number.isFinite(Number(data.openerWebContentsId))) {
+          popupBlockedBtn.dataset.wcId = String(Number(data.openerWebContentsId));
+        } else {
+          delete popupBlockedBtn.dataset.wcId;
         }
+        if (openerUrl) popupBlockedBtn.dataset.openerUrl = openerUrl;
+        else delete popupBlockedBtn.dataset.openerUrl;
+        if (origin) popupBlockedBtn.dataset.origin = origin;
+        else delete popupBlockedBtn.dataset.origin;
+        popupBlockedBtn.hidden = false;
         const tip = data && data.blockedUrl ? String(data.blockedUrl).slice(0, 72) : '';
         _showAppToast(tip ? `Pop-up blocked: ${tip}` : 'Pop-up blocked', 'warning');
       });
       popupBlockedBtn.addEventListener('click', async () => {
-        const o = popupBlockedBtn.dataset.origin || '';
-        if (!o || typeof window.navio.sitePopupsSet !== 'function') return;
+        const rawOrigin = (popupBlockedBtn.dataset.origin && String(popupBlockedBtn.dataset.origin).trim()) || '';
+        const fromPage = _navioHttpOriginFromUrl(popupBlockedBtn.dataset.openerUrl || '');
+        const o = rawOrigin || fromPage;
+        if (!o || typeof window.navio.sitePopupsSet !== 'function') {
+          _showAppToast('Could not determine this page’s site — navigate to an https page and try again.', 'warning');
+          return;
+        }
+        const wcId = popupBlockedBtn.dataset.wcId;
         try {
           const r = await window.navio.sitePopupsSet(o, true);
           if (r && r.ok) {
             popupBlockedBtn.hidden = true;
             delete popupBlockedBtn.dataset.origin;
-            _showAppToast('Pop-ups allowed for this site', 'success');
+            delete popupBlockedBtn.dataset.openerUrl;
+            delete popupBlockedBtn.dataset.wcId;
+            _showAppToast('Pop-ups allowed — reloading tab', 'success');
+            if (!_navioReloadTabByGuestWebContentsId(wcId)) {
+              try {
+                const tab = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
+                if (tab && tab.webview && typeof tab.webview.reload === 'function') tab.webview.reload();
+              } catch {
+                /* ignore */
+              }
+            }
           } else {
             _showAppToast('Could not save site permission', 'error');
           }
@@ -1498,8 +1558,10 @@ ${badgeHtml(it.badge)}
     // Keep "Pop-up blocked" visible until the user leaves that site or allows pop-ups.
     // Previously we cleared the chip on every navigation — it disappeared before you could click it.
     const popupChip = document.getElementById('url-popup-blocked');
-    if (popupChip && popupChip.dataset.origin) {
-      const blockedOrigin = String(popupChip.dataset.origin).trim();
+    if (popupChip && (popupChip.dataset.origin || popupChip.dataset.openerUrl)) {
+      const blockedOrigin = String(popupChip.dataset.origin || '').trim();
+      const blockedPage = String(popupChip.dataset.openerUrl || '').trim();
+      const blockedKey = blockedOrigin || _navioHttpOriginFromUrl(blockedPage);
       let currentOrigin = '';
       if (url && /^https?:\/\//i.test(url)) {
         try {
@@ -1508,10 +1570,12 @@ ${badgeHtml(it.badge)}
           /* ignore */
         }
       }
-      const stillOnBlockedSite = currentOrigin && blockedOrigin && currentOrigin === blockedOrigin;
+      const stillOnBlockedSite = currentOrigin && blockedKey && currentOrigin === blockedKey;
       if (!stillOnBlockedSite) {
         popupChip.hidden = true;
         delete popupChip.dataset.origin;
+        delete popupChip.dataset.openerUrl;
+        delete popupChip.dataset.wcId;
       }
     }
     const urlInput = document.getElementById('url-input');

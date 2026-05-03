@@ -72,8 +72,6 @@
   max-height: calc(100vh - 16px);
   overflow-y: auto;
   box-shadow: var(--p-shadow), 0 0 0 1px var(--p-border);
-  backdrop-filter: blur(24px) saturate(140%);
-  -webkit-backdrop-filter: blur(24px) saturate(140%);
   animation: tcm-pop var(--dur-mid) var(--ease-pop);
   font-size: 13px;
   font-family: var(--font-sans);
@@ -425,8 +423,6 @@
   border: 1px solid var(--p-border);
   border-radius: 12px;
   box-shadow: var(--p-shadow);
-  backdrop-filter: blur(24px) saturate(140%);
-  -webkit-backdrop-filter: blur(24px) saturate(140%);
   animation: tcm-pop var(--dur-mid) var(--ease-pop);
 }
 .nav-history-menu .nhm-item {
@@ -495,8 +491,6 @@
   border: 1px solid var(--p-border);
   border-radius: 12px;
   box-shadow: var(--p-shadow);
-  backdrop-filter: blur(24px) saturate(140%);
-  -webkit-backdrop-filter: blur(24px) saturate(140%);
   animation: tcm-pop var(--dur-mid) var(--ease-pop);
 }
 .screenshot-menu .sm-item {
@@ -543,8 +537,6 @@
   inset: 0;
   z-index: 99999;
   background: rgba(5, 8, 16, 0.68);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -713,8 +705,6 @@
   color: var(--text-primary);
   font-size: 12.5px;
   box-shadow: var(--p-shadow);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   animation: sp-toast-in var(--dur-mid) var(--ease-pop);
 }
 .screenshot-toast.is-out { animation: sp-toast-out var(--dur-mid) var(--ease-soft) forwards; }
@@ -900,8 +890,6 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(12, 14, 22, 0.72);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
-  backdrop-filter: blur(20px) saturate(1.05);
-  -webkit-backdrop-filter: blur(20px) saturate(1.05);
   padding: 6px 12px;
   gap: 8px;
   max-width: min(560px, 100%);
@@ -992,8 +980,6 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(10, 12, 18, 0.72);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(18px) saturate(1.02);
-  -webkit-backdrop-filter: blur(18px) saturate(1.02);
   color-scheme: dark;
 }
 .new-tab-page .ntp-shortcuts-editor-head {
@@ -1140,8 +1126,6 @@
   border: 1px solid rgba(255, 255, 255, 0.065);
   background: rgba(8, 10, 16, 0.38);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
-  backdrop-filter: blur(22px) saturate(1.04);
-  -webkit-backdrop-filter: blur(22px) saturate(1.04);
 }
 .new-tab-page .ntp-widget:hover {
   transform: none;
@@ -1339,8 +1323,6 @@
   justify-content: center;
   padding: max(16px, 3vh) 16px;
   background: rgba(8, 10, 16, 0.52);
-  backdrop-filter: blur(10px) saturate(1.12);
-  -webkit-backdrop-filter: blur(10px) saturate(1.12);
 }
 
 .shell-overlay-panel {
@@ -1350,8 +1332,6 @@
   border: 1px solid var(--p-border);
   background: var(--p-surface-1);
   box-shadow: var(--p-shadow);
-  backdrop-filter: blur(22px) saturate(1.1);
-  -webkit-backdrop-filter: blur(22px) saturate(1.1);
 }
 
 .shell-overlay-panel-history {
@@ -1604,14 +1584,12 @@ html[data-theme="light"] .assistant-panel {
   --border: rgba(255, 255, 255, 0.08);
   --border-hover: rgba(255, 255, 255, 0.14);
   --glass-border: rgba(255, 255, 255, 0.1);
-  --glass-bg: rgba(14, 18, 28, 0.92);
+  --glass-bg: #1a1f2e;
   color-scheme: dark;
   background: rgba(10, 12, 18, 0.94);
   border-left-color: rgba(255, 255, 255, 0.09);
   border-right: 1px solid rgba(0, 0, 0, 0.38);
   box-shadow: 8px 0 40px rgba(0, 0, 0, 0.42), inset 1px 0 0 rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(14px) saturate(1.06);
-  -webkit-backdrop-filter: blur(14px) saturate(1.06);
 }
 
 html[data-theme="light"] .assistant-panel::before {
@@ -1797,8 +1775,6 @@ html[data-theme="dark"] .assistant-panel {
   border-left-color: rgba(255, 255, 255, 0.08);
   border-right: 1px solid rgba(0, 0, 0, 0.42);
   box-shadow: 8px 0 40px rgba(0, 0, 0, 0.48), inset 1px 0 0 rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(14px) saturate(1.06);
-  -webkit-backdrop-filter: blur(14px) saturate(1.06);
 }
 
 /* Agent “Working” card + tools — readable glass (fixes light-theme #f5f6fa slab) */
@@ -2190,8 +2166,6 @@ html[data-theme="light"] .assistant-panel {
 
 .connectors-hub-overlay {
   background: rgba(4, 8, 18, 0.62);
-  backdrop-filter: blur(14px) saturate(1.04);
-  -webkit-backdrop-filter: blur(14px) saturate(1.04);
 }
 
 .connectors-hub {
@@ -2201,8 +2175,6 @@ html[data-theme="light"] .assistant-panel {
   box-shadow:
     0 24px 72px rgba(0, 0, 0, 0.55),
     0 0 0 1px rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(22px) saturate(1.06);
-  -webkit-backdrop-filter: blur(22px) saturate(1.06);
 }
 
 .connectors-hub .connectors-hub-header {
@@ -2912,8 +2884,6 @@ body.navio-vertical-tabs .tab-item.in-group.group-last {
   border: 1px solid var(--p-border);
   background: var(--p-surface-2);
   box-shadow: var(--p-shadow);
-  backdrop-filter: blur(18px) saturate(1.1);
-  -webkit-backdrop-filter: blur(18px) saturate(1.1);
 }
 
 .live-notif-btn {
@@ -2953,8 +2923,6 @@ body.navio-vertical-tabs .tab-item.in-group.group-last {
   border: 1px solid var(--p-border);
   background: var(--p-surface-1);
   box-shadow: var(--p-shadow), 0 0 0 1px rgba(255,255,255,0.04);
-  backdrop-filter: blur(28px) saturate(1.12);
-  -webkit-backdrop-filter: blur(28px) saturate(1.12);
 }
 
 .command-palette-input {
@@ -2978,8 +2946,6 @@ body.navio-vertical-tabs .tab-item.in-group.group-last {
   border: 1px solid var(--p-border);
   background: var(--p-surface-1);
   box-shadow: var(--p-shadow);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
 }
 
 .find-input {
@@ -3006,22 +2972,16 @@ body.navio-vertical-tabs .tab-item.in-group.group-last {
   border: 1px solid var(--p-border);
   background: var(--p-surface-1);
   box-shadow: var(--p-shadow);
-  backdrop-filter: blur(20px) saturate(1.1);
-  -webkit-backdrop-filter: blur(20px) saturate(1.1);
 }
 
 /* ── Workspace overlay — remove inline-style smell via cascade ──────────── */
 #workspace-overlay {
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
 }
 
 /* ── Reading list panel — refined ──────────────────────────────────────── */
 .reading-list-panel {
   border-left: 1px solid var(--p-border);
   background: var(--p-surface-1);
-  backdrop-filter: blur(20px) saturate(1.08);
-  -webkit-backdrop-filter: blur(20px) saturate(1.08);
 }
 
 /* ── Token system bridge — p-surface tokens as bg-* aliases ─────────────── */
@@ -3084,8 +3044,6 @@ body.navio-vertical-tabs .tab-item.in-group.group-last {
   border: 1px solid var(--p-border);
   background: var(--p-surface-1);
   box-shadow: var(--p-shadow);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
 }
 
 /* ── Download shelf — tighter ───────────────────────────────────────────── */
@@ -3094,16 +3052,12 @@ body.navio-vertical-tabs .tab-item.in-group.group-last {
   border: 1px solid var(--p-border);
   background: var(--p-surface-1);
   box-shadow: var(--p-shadow);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
 }
 
 /* ── Password / site bar — consistent with overlay family ───────────────── */
 #pwd-save-bar {
   border-bottom: 1px solid var(--p-border);
   background: var(--p-surface-1);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
 }
 
 /* ── Reduced motion — honour OS preference ───────────────────────────────── */
@@ -3367,7 +3321,6 @@ body.navio-vertical-tabs .tab-item.in-group.group-last {
   border: 1px solid rgba(255, 255, 255, 0.10);
   border-radius: 10px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.60), 0 2px 8px rgba(0, 0, 0, 0.40);
-  backdrop-filter: blur(18px);
   padding: 5px;
   animation: ctxFadeIn 0.12s ease;
 }
@@ -3427,8 +3380,6 @@ body.navio-vertical-tabs .tab-item.in-group.group-last {
   border: 1px solid rgba(255, 255, 255, 0.1) !important;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18) !important;
   border-radius: 16px !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
 }
 #assistant-panel .assistant-input-container:focus-within {
   border-color: rgba(0, 216, 255, 0.32) !important;

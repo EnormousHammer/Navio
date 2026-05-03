@@ -94,7 +94,8 @@
   --bg-hover: #222a3a;
   --bg-active: #2a3348;
 
-  --glass-bg: rgba(14, 18, 28, 0.92);
+  /* Opaque “glass” tokens — no backdrop-filter (browser-like, cheaper on GPU) */
+  --glass-bg: #1a1f2e;
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-hover: rgba(255, 255, 255, 0.05);
 
@@ -138,7 +139,7 @@
   --bg-hover: #eaedf7;
   --bg-active: #dde2f0;
 
-  --glass-bg: rgba(255, 255, 255, 0.94);
+  --glass-bg: #ffffff;
   --glass-border: rgba(50, 70, 160, 0.09);
   --glass-hover: rgba(50, 70, 160, 0.05);
 
@@ -524,7 +525,7 @@ body.navio-vertical-tabs .top-chrome-drag {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--duration) var(--ease);
+  transition: background var(--duration) var(--ease), color var(--duration) var(--ease);
   -webkit-app-region: no-drag;
   flex-shrink: 0;
   position: relative;
@@ -564,7 +565,8 @@ body.navio-vertical-tabs .top-chrome-drag {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--duration) var(--ease);
+  transition: background var(--duration) var(--ease), color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease);
   -webkit-app-region: no-drag;
   margin-right: 8px;
 }
@@ -1485,6 +1487,8 @@ body.navio-vertical-tabs .tab-group-header:hover {
   /* Stay above the webview compositor and any in-page overlays that leak hit-testing */
   position: relative;
   z-index: 2500;
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* Chrome-style fused back / forward / reload cluster */
@@ -1497,6 +1501,7 @@ body.navio-vertical-tabs .tab-group-header:hover {
   background: color-mix(in srgb, var(--bg-surface) 55%, transparent);
   border: 1px solid var(--border);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  flex-shrink: 0;
 }
 .nav-controls .nav-btn {
   border-radius: 8px;
@@ -1515,7 +1520,7 @@ body.navio-vertical-tabs .tab-group-header:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--duration) var(--ease);
+  transition: background var(--duration) var(--ease), color var(--duration) var(--ease), opacity var(--duration) var(--ease);
   position: relative;
 }
 
@@ -1543,11 +1548,16 @@ body.navio-vertical-tabs .tab-group-header:hover {
   border-radius: var(--radius-sm);
   border: 1px solid var(--accent);
   opacity: 0;
-  animation: pulse-ring 3s var(--ease) infinite;
   pointer-events: none;
 }
 
-.url-bar-container { flex: 1; min-width: 0; }
+.url-bar-container {
+  flex: 1 1 0%;
+  min-width: 0;
+  /* Lets @container rules respond to actual omnibox width (split-screen, assistant dock). */
+  container-type: inline-size;
+  container-name: urlbar;
+}
 
 .url-bar-row {
   display: flex;
@@ -1555,11 +1565,16 @@ body.navio-vertical-tabs .tab-group-header:hover {
   gap: 10px;
   flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 .url-bar-row .url-bar {
   flex: 1;
   min-width: 0;
+}
+
+.url-chat-ai-btn-label {
+  white-space: nowrap;
 }
 
 .url-chat-ai-btn {
@@ -1611,6 +1626,8 @@ body.navio-vertical-tabs .tab-group-header:hover {
   gap: 8px;
   min-height: 38px;
   height: 38px;
+  min-width: 0;
+  overflow: hidden;
   padding: 0 16px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
@@ -1681,7 +1698,8 @@ body.navio-vertical-tabs .tab-group-header:hover {
 .url-site-compat-badge svg { flex-shrink: 0; }
 
 #url-input {
-  flex: 1;
+  flex: 1 1 0%;
+  min-width: 0;
   border: none;
   background: transparent;
   color: var(--text-primary);
@@ -1690,6 +1708,8 @@ body.navio-vertical-tabs .tab-group-header:hover {
   font-family: var(--font-sans);
   outline: none;
   letter-spacing: 0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 #url-input::placeholder {
@@ -1737,9 +1757,60 @@ body.navio-vertical-tabs .tab-group-header:hover {
   padding-left: 10px;
   border-left: 1px solid var(--border);
   -webkit-app-region: no-drag;
+  flex-shrink: 1;
+  min-width: 0;
+  flex-wrap: nowrap;
+  align-items: center;
 }
 .nav-actions .nav-btn {
   border-radius: 9px;
+}
+
+/* Split-screen / narrow window: cap toolbar width so the omnibox keeps space; scroll extras horizontally. */
+@media (max-width: 1180px) {
+  .nav-actions {
+    max-width: min(340px, 46vw);
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+  .nav-actions::-webkit-scrollbar {
+    height: 4px;
+  }
+  .nav-actions::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+  }
+}
+
+@media (max-width: 720px) {
+  .nav-actions {
+    max-width: min(260px, 52vw);
+  }
+}
+
+/* Omnibox column tight (half-width Navio, assistant open, etc.): icon-only AI chip. */
+@container urlbar (max-width: 520px) {
+  .url-chat-ai-btn-label {
+    display: none;
+  }
+  .url-chat-ai-btn {
+    padding: 0 11px;
+    gap: 0;
+  }
+}
+
+@container urlbar (max-width: 420px) {
+  .url-bar {
+    padding: 0 11px;
+    gap: 5px;
+  }
+}
+
+.nav-actions .rl-nav-badge {
+  /* Keep badge inside the read-later cell when the strip scrolls (avoids painting over neighbors). */
+  z-index: 1;
 }
 /* Read Later / zoom cluster: ensure clicks aren’t eaten by frameless-window drag hit-testing */
 #btn-read-later,
@@ -2220,8 +2291,6 @@ body.navio-wcv-tabs-below #browser-container .split-divider {
   max-width: min(640px, 100%);
   min-width: 0;
   box-sizing: border-box;
-  backdrop-filter: blur(24px) saturate(1.25);
-  -webkit-backdrop-filter: blur(24px) saturate(1.25);
   box-shadow: 0 0 25px rgba(0,216,255,0.10), 0 4px 24px rgba(0,0,0,0.4), inset 0 0 20px rgba(0,216,255,0.03);
   animation: ntp-search-breathe 4s ease-in-out infinite;
 }
@@ -3222,8 +3291,6 @@ body.ntp-chat-active .ntp-model-selector { margin-bottom: 6px; }
   align-self: start;
   width: 100%;
   position: relative;
-  backdrop-filter: blur(34px) saturate(1.12);
-  -webkit-backdrop-filter: blur(34px) saturate(1.12);
   transition: border-color 0.28s ease, box-shadow 0.28s ease, transform 0.28s ease;
   box-shadow:
     0 8px 28px rgba(0, 0, 0, 0.42),
@@ -3374,8 +3441,6 @@ body.ntp-chat-active .ntp-model-selector { margin-bottom: 6px; }
   max-height: var(--ntp-widget-list-max-h);
   min-height: 0;
   border-radius: 12px;
-  backdrop-filter: blur(12px) saturate(1.08);
-  -webkit-backdrop-filter: blur(12px) saturate(1.08);
   background:
     linear-gradient(90deg, rgba(200, 70, 70, 0.12) 0px, rgba(200, 70, 70, 0.04) 3px, transparent 4px),
     linear-gradient(180deg, rgba(42, 36, 34, 0.22) 0%, transparent 48%),
@@ -3495,8 +3560,6 @@ body.ntp-chat-active .ntp-model-selector { margin-bottom: 6px; }
   padding: 10px 8px 12px;
   min-height: 108px;
   border-radius: 12px;
-  backdrop-filter: blur(12px) saturate(1.08);
-  -webkit-backdrop-filter: blur(12px) saturate(1.08);
   background:
     linear-gradient(165deg, rgba(30, 58, 90, 0.38), rgba(18, 28, 48, 0.68));
   border: 1px solid rgba(100, 180, 255, 0.18);
@@ -3620,8 +3683,6 @@ body.ntp-chat-active .ntp-model-selector { margin-bottom: 6px; }
   max-height: var(--ntp-widget-list-max-h);
   min-height: 0;
   border-radius: 12px;
-  backdrop-filter: blur(12px) saturate(1.08);
-  -webkit-backdrop-filter: blur(12px) saturate(1.08);
   background: linear-gradient(168deg, rgba(24, 42, 68, 0.62), rgba(16, 30, 52, 0.72));
   border: 1px solid rgba(90, 150, 220, 0.2);
   box-shadow:
@@ -3651,8 +3712,6 @@ body.ntp-chat-active .ntp-model-selector { margin-bottom: 6px; }
   margin: 0 10px 10px;
   padding: 6px 0;
   border-radius: 12px;
-  backdrop-filter: blur(12px) saturate(1.08);
-  -webkit-backdrop-filter: blur(12px) saturate(1.08);
   background: linear-gradient(168deg, rgba(22, 48, 52, 0.62), rgba(14, 34, 40, 0.72));
   border: 1px solid rgba(70, 185, 175, 0.2);
   box-shadow:
@@ -3708,8 +3767,6 @@ body.ntp-chat-active .ntp-model-selector { margin-bottom: 6px; }
   margin: 0 10px 10px;
   padding: 6px 0;
   border-radius: 12px;
-  backdrop-filter: blur(12px) saturate(1.08);
-  -webkit-backdrop-filter: blur(12px) saturate(1.08);
   background: linear-gradient(168deg, rgba(24, 52, 38, 0.62), rgba(16, 40, 28, 0.72));
   border: 1px solid rgba(90, 190, 120, 0.2);
   box-shadow:
@@ -3754,8 +3811,6 @@ body.ntp-chat-active .ntp-model-selector { margin-bottom: 6px; }
   padding: 0;
   border-radius: 12px;
   overflow: hidden;
-  backdrop-filter: blur(12px) saturate(1.08);
-  -webkit-backdrop-filter: blur(12px) saturate(1.08);
   background:
     radial-gradient(ellipse 85% 65% at 50% 0%, rgba(124, 58, 237, 0.18), transparent 55%),
     radial-gradient(ellipse 70% 55% at 100% 100%, rgba(0, 212, 255, 0.12), transparent 45%),
@@ -4348,8 +4403,6 @@ body.ntp-chat-active .ntp-model-selector { margin-bottom: 6px; }
   left: 0;
   right: 0;
   z-index: 9999;
-  backdrop-filter: blur(18px) saturate(1.1);
-  -webkit-backdrop-filter: blur(18px) saturate(1.1);
   /* Hidden by default — shown only when NTP is open */
   opacity: 0;
   pointer-events: none;
@@ -4605,8 +4658,6 @@ button.ntp-ticker-sport--stream:focus-visible {
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
   box-sizing: border-box;
   gap: 0;
   column-gap: 0;
@@ -5015,7 +5066,6 @@ button.ntp-ticker-sport--stream:focus-visible {
   padding: 10px;
   transition: all 0.2s ease;
   box-shadow: 0 2px 12px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.10);
-  backdrop-filter: blur(12px);
   overflow: hidden;
 }
 
@@ -5101,8 +5151,6 @@ button.ntp-ticker-sport--stream:focus-visible {
   /* Above page / webview; below Read Later panel when open (5600) and full-window modals (Connectors hub 100010+, Settings 100011+). */
   z-index: 5000;
   /* Softer blur keeps sidecar type sharper than heavy glass (still reads “premium”). */
-  backdrop-filter: blur(14px) saturate(1.1);
-  -webkit-backdrop-filter: blur(14px) saturate(1.1);
   padding-bottom: var(--ntp-ticker-reserve, 0px);
   box-sizing: border-box;
 }
@@ -5157,7 +5205,6 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   flex-shrink: 0;
   background: linear-gradient(180deg, rgba(20, 28, 48, 0.72) 0%, rgba(12, 16, 28, 0.52) 100%);
-  backdrop-filter: none;
   position: relative;
   z-index: 1;
   overflow: hidden;
@@ -5413,8 +5460,6 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   flex-shrink: 0;
   letter-spacing: 0.01em;
   line-height: 1.45;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
   min-height: 2.25rem;
 }
 
@@ -5427,7 +5472,6 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
   background: rgba(255, 255, 255, 0.018);
-  backdrop-filter: none;
   min-width: 0;
 }
 
@@ -5573,8 +5617,6 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   width: 100%;
   overflow: hidden;
   isolation: isolate;
-  backdrop-filter: blur(6px) saturate(1.06);
-  -webkit-backdrop-filter: blur(6px) saturate(1.06);
   animation: historyPanelIn 0.18s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 .assistant-session-history-popover[hidden] {
@@ -6475,7 +6517,6 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   color: #dde6f8;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px 14px 14px 14px;
-  backdrop-filter: none;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
   font-size: 13.5px;
   line-height: 1.62;
@@ -6872,7 +6913,6 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   border: 1px solid var(--glass-border);
   border-radius: 12px;
   background: var(--glass-bg);
-  backdrop-filter: blur(12px);
   overflow: hidden;
   margin: 8px 0;
   transition: border-color 0.2s ease;
@@ -7695,7 +7735,6 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 13px;
   transition: opacity 0.15s ease, border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
-  backdrop-filter: none;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
   position: relative;
   min-width: 0;
@@ -7860,7 +7899,6 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   inset: 0;
   box-sizing: border-box;
   background: var(--overlay-bg);
-  backdrop-filter: blur(8px);
   display: none;
   /* Tall dialogs must not be vertically “centered” into body overflow:hidden — top gets clipped.
      Padding + scroll + margin-block:auto on the child centers when short, pins to padded top when tall. */
@@ -8755,12 +8793,6 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-@keyframes pulse-ring {
-  0% { opacity: 0; transform: scale(0.8); }
-  50% { opacity: 0.5; }
-  100% { opacity: 0; transform: scale(1.3); }
-}
-
 @keyframes context-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
@@ -8775,7 +8807,6 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   inset: 0;
   box-sizing: border-box;
   background: var(--overlay-bg);
-  backdrop-filter: blur(12px);
   display: none;
   z-index: 100010;
   -webkit-app-region: no-drag;
@@ -9487,7 +9518,6 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   box-sizing: border-box;
   z-index: 100012;
   background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(6px);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -10159,7 +10189,6 @@ body.onboarding-active #app {
   border: 1px solid rgba(80, 160, 255, 0.12);
   border-radius: var(--radius-lg);
   padding: 40px 36px 32px;
-  backdrop-filter: blur(24px);
   box-shadow: 0 20px 60px rgba(0, 8, 30, 0.55), 0 0 40px rgba(0, 216, 255, 0.06);
   animation: ob-card-in 500ms var(--ease) both;
   text-align: center;
@@ -11631,7 +11660,6 @@ button.navio-followup-chip:active {
   text-align: left;
   transition: border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease);
   cursor: default;
-  backdrop-filter: blur(4px);
 }
 
 .welcome-cap:hover {
@@ -12484,8 +12512,6 @@ button.navio-followup-chip:active {
   border: 1px solid var(--glass-border);
   border-radius: 14px;
   background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
 }
 
 .reading-head-main {
@@ -13117,7 +13143,6 @@ button:focus-visible,
   z-index: 100013;
   display: none;
   background: rgba(8, 12, 24, 0.72);
-  backdrop-filter: blur(6px);
   -webkit-app-region: no-drag;
 }
 .live-draft-modal.active,
@@ -14090,8 +14115,6 @@ button:focus-visible,
   border: 1px solid rgba(0,212,255,0.2);
   border-radius: 16px;
   overflow: hidden;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   position: relative;
   z-index: 2;
   animation: ntp-results-in 0.2s ease;
@@ -14856,7 +14879,6 @@ button:focus-visible,
   background: rgba(17, 23, 37, 0.9);
   border-color: rgba(255, 255, 255, 0.1);
   color: #dde6f8;
-  backdrop-filter: none;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
 }
 [data-theme="dark"] .user-message .message-content {
@@ -14966,7 +14988,6 @@ button:focus-visible,
 [data-theme="dark"] .connector-card {
   background: rgba(20,32,52,0.85);
   border-color: rgba(80,160,255,0.12);
-  backdrop-filter: blur(4px);
 }
 [data-theme="dark"] .connector-card.connected {
   border-color: rgba(34,197,94,0.30);
@@ -15890,7 +15911,6 @@ button:focus-visible,
   color: #c8d4f0;
   flex-shrink: 0;
   z-index: 900;
-  backdrop-filter: blur(10px);
   animation: pwdBarIn 0.2s ease;
 }
 
@@ -16080,8 +16100,6 @@ button:focus-visible,
   align-items: center;
   gap: 2px;
   background: var(--glass-bg, var(--bg-elevated));
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border-accent);
   border-radius: 22px;
   padding: 4px 6px;
@@ -16134,8 +16152,6 @@ button:focus-visible,
   width: 360px;
   max-height: 340px;
   background: var(--glass-bg, var(--bg-elevated));
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--border-accent);
   border-radius: 14px;
   box-shadow: var(--shadow-lg);
@@ -16240,7 +16256,6 @@ button:focus-visible,
   right: 0;
   margin-top: 4px;
   background: var(--glass-bg);
-  backdrop-filter: blur(20px) saturate(1.3);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg), 0 0 30px rgba(0,216,255,0.06);
@@ -16309,8 +16324,6 @@ button:focus-visible,
   margin-top: 6px;
   padding: 4px;
   background: var(--glass-bg);
-  backdrop-filter: blur(22px) saturate(1.28);
-  -webkit-backdrop-filter: blur(22px) saturate(1.28);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
@@ -16527,7 +16540,6 @@ button:focus-visible,
   gap: 10px;
   padding: 10px 16px;
   background: var(--bg-elevated);
-  backdrop-filter: blur(14px) saturate(1.1);
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
   box-shadow: var(--shadow-md);
@@ -16780,7 +16792,6 @@ button:focus-visible,
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg), 0 0 20px rgba(0,216,255,0.08);
-  backdrop-filter: blur(16px);
   animation: iaiToolbarIn 0.15s cubic-bezier(0.2,0,0.2,1);
 }
 
@@ -17200,10 +17211,8 @@ button:focus-visible,
 }
 
 [data-theme="light"] .url-suggestions {
-  background: rgba(255, 255, 255, 0.76);
-  backdrop-filter: blur(26px) saturate(1.35);
-  -webkit-backdrop-filter: blur(26px) saturate(1.35);
-  border-color: var(--glass-border);
+  background: #ffffff;
+  border-color: rgba(50, 70, 160, 0.12);
   box-shadow: var(--shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.65) inset;
 }
 
@@ -17402,7 +17411,6 @@ button:focus-visible,
   display: flex;
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(4px);
   animation: iaiToolbarIn 0.15s ease;
 }
 .watch-page-overlay[hidden] { display: none !important; }

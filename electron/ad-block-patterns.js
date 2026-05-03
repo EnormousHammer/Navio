@@ -366,6 +366,76 @@ function isMailGoogleOpenerOrigin(openerOrigin) {
  * label preview, print, or quote PDF — same pattern as Gmail downloads. Allow when the opener
  * is a known carrier/shipping domain so Navio can route to a new tab instead of denying silently.
  */
+/**
+ * SaaS / enterprise portals often use the same stripped-chrome window.open(about:blank)
+ * pattern as ads (print preview, SSO shells, embedded PDFs). Allow when the opener is a
+ * known work app host so users are not forced to hunt Compatibility Mode per site.
+ */
+function isEnterprisePortalOpenerOrigin(openerOrigin) {
+  if (!openerOrigin || typeof openerOrigin !== 'string') return false;
+  try {
+    const h = new URL(openerOrigin).hostname.toLowerCase();
+    const roots = [
+      'microsoft.com',
+      'office.com',
+      'sharepoint.com',
+      'office365.com',
+      'dynamics.com',
+      'powerapps.com',
+      'powerbi.com',
+      'azure.com',
+      'live.com',
+      'outlook.com',
+      'atlassian.net',
+      'atlassian.com',
+      'jira.com',
+      'trello.com',
+      'bitbucket.org',
+      'salesforce.com',
+      'force.com',
+      'site.com',
+      'servicenow.com',
+      'workday.com',
+      'adp.com',
+      'paychex.com',
+      'bamboohr.com',
+      'intuit.com',
+      'turbotax.com',
+      'quickbooks.com',
+      'notion.so',
+      'airtable.com',
+      'asana.com',
+      'monday.com',
+      'clickup.com',
+      'zoom.us',
+      'zoom.com',
+      'webex.com',
+      'gotomeeting.com',
+      'box.com',
+      'dropbox.com',
+      'egnyte.com',
+      'docusign.net',
+      'docusign.com',
+      'adobe.com',
+      'oracle.com',
+      'oraclecloud.com',
+      'sap.com',
+      'github.com',
+      'gitlab.com',
+      'slack.com',
+      'figma.com',
+      'canva.com',
+      'okta.com',
+      'auth0.com',
+      'pingidentity.com',
+      'duosecurity.com'
+    ];
+    return roots.some((s) => h === s || h.endsWith('.' + s));
+  } catch {
+    return false;
+  }
+}
+
 function isShippingCarrierOpenerOrigin(openerOrigin) {
   if (!openerOrigin || typeof openerOrigin !== 'string') return false;
   try {
@@ -443,7 +513,12 @@ function isOAuthOrLoginUrl(url) {
     const h = u.hostname.toLowerCase();
     const p = `${u.pathname}${u.search}`.toLowerCase();
     if (h === 'accounts.google.com' || (h.endsWith('.google.com') && /\/(o\/oauth|accounts\/)/.test(p))) return true;
-    if (h.endsWith('login.microsoftonline.com')) return true;
+    if (h.endsWith('login.microsoftonline.com') || h.endsWith('login.microsoft.com')) return true;
+    if (h === 'signin.aws.amazon.com' || h.endsWith('.signin.aws.amazon.com')) return true;
+    if (h === 'checkout.stripe.com' || h.endsWith('.stripe.com')) return true;
+    if (h.endsWith('paypal.com') && (p.includes('/signin') || p.includes('/checkoutnow'))) return true;
+    if (h.endsWith('amazon.com') && p.includes('/ap/')) return true;
+    if (h.endsWith('linkedin.com') && p.includes('/oauth')) return true;
     if (h.endsWith('github.com') && p.includes('/login/oauth')) return true;
     if (h.endsWith('facebook.com') && p.includes('/dialog/oauth')) return true;
     if (h.includes('auth0.com')) return true;
@@ -525,7 +600,7 @@ function shouldBlockWebPopup(payload) {
     noUrl &&
     typeof width === 'number' &&
     typeof height === 'number' &&
-    (width >= 480 || height >= 520);
+    (width >= 420 || height >= 480);
   if (oauthSizedBlank) return false;
 
   if (noUrl && isLikelyDocumentPictureInPictureShape(width, height)) return false;
@@ -533,6 +608,7 @@ function shouldBlockWebPopup(payload) {
   if (featuresSuggestScriptPopup(features)) {
     if (noUrl && isMailGoogleOpenerOrigin(openerOrigin)) return false;
     if (noUrl && isShippingCarrierOpenerOrigin(openerOrigin)) return false;
+    if (noUrl && isEnterprisePortalOpenerOrigin(openerOrigin)) return false;
     if (noUrl && isStreamingVideoOpenerOrigin(openerOrigin)) return false;
     // Real navigation URL: ad hosts are already blocked above. Many legitimate sites use
     // stripped chrome (print, preview, docs); blocking those caused "blocks everything but ads".
@@ -545,6 +621,7 @@ function shouldBlockWebPopup(payload) {
   if (noUrl && small) {
     if (isMailGoogleOpenerOrigin(openerOrigin)) return false;
     if (isShippingCarrierOpenerOrigin(openerOrigin)) return false;
+    if (isEnterprisePortalOpenerOrigin(openerOrigin)) return false;
     if (isStreamingVideoOpenerOrigin(openerOrigin)) return false;
     return true;
   }
@@ -559,6 +636,7 @@ module.exports = {
   isGoogleMailDownloadOrContentUrl,
   isMailGoogleOpenerOrigin,
   isShippingCarrierOpenerOrigin,
+  isEnterprisePortalOpenerOrigin,
   isStreamingVideoOpenerOrigin,
   isLikelyAdSizedPopup,
   isLikelyDocumentPictureInPictureShape,
