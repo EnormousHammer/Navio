@@ -1112,7 +1112,7 @@ class SettingsManagerClass {
     btn.addEventListener('click', async () => {
       if (
         !confirm(
-          'Export one JSON file with ALL secrets in plaintext (API keys, OAuth, passwords)? Only continue if you will store or delete that file carefully.'
+          'Export a migration folder (with ALL secrets in plaintext: API keys, OAuth, passwords)? Pick a parent directory — Navio creates navio-browser-migration-… inside it. Only continue if you will protect or delete that folder after import.'
         )
       ) {
         return;

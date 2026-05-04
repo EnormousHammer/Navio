@@ -2,6 +2,8 @@
 
 Futuristic AI-powered Chromium browser. Intelligence meets the internet.
 
+**Native (non-Electron) follow-on — one file only:** [`NAVIO_NATIVE/README.md`](NAVIO_NATIVE/README.md) *(new chat: read that file end-to-end)*.
+
 ## Navio vs Chrome (honest comparison)
 
 Navio is built on **Electron and Chromium**, so core browsing (tabs, rendering, many sites) feels familiar. It is **not** a Google Chrome distribution: there is **no Chrome sync** (passwords, tabs, history across devices via Google), **no Google Safe Browsing** binary feed as shipped in Chrome, and **extension support is best-effort** (Manifest V3 unpacked / store ID install; many store extensions rely on APIs or behaviors Electron does not mirror). Navio adds a **local-first AI assistant** and connectors (where you attach keys and OAuth) without sending your keys to Navio’s servers. For day-to-day trade-offs and manual verification, see [docs/SMOKE.md](docs/SMOKE.md) and [docs/TRUE_BROWSER_IMPLEMENTATION_PLAN.md](docs/TRUE_BROWSER_IMPLEMENTATION_PLAN.md).
