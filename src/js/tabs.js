@@ -393,14 +393,24 @@ class TabManagerClass {
       zoomFactor: null
     };
 
-    // Match session-setup.js: no Electron or app suffix after Safari/ — webview
-    // useragent must align with Sec-CH-UA-* or Cloudflare-style checks fail.
-    const cleanUA = navigator.userAgent
-      .replace(/\s*Electron\/[\d.]+\s*/gi, '')
-      .replace(/\s*NavioBrowser\/[\d.]+\s*/gi, '')
-      .replace(/(Safari\/[^\s]+)\s+.*$/i, '$1')
-      .replace(/\s+/g, ' ')
-      .trim();
+    // Tab partition uses persist:navio (main) — its UA + Sec-CH-UA are set in session-setup.js.
+    // Shell renderer uses defaultSession; navigator.userAgent can diverge and Cloudflare loops.
+    let cleanUA = '';
+    try {
+      if (window.navio && typeof window.navio.getGuestUserAgentSync === 'function') {
+        cleanUA = window.navio.getGuestUserAgentSync(incognito) || '';
+      }
+    } catch {
+      /* ignore */
+    }
+    if (!cleanUA) {
+      cleanUA = navigator.userAgent
+        .replace(/\s*Electron\/[\d.]+\s*/gi, '')
+        .replace(/\s*NavioBrowser\/[\d.]+\s*/gi, '')
+        .replace(/(Safari\/[^\s]+)\s+.*$/i, '$1')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
 
     // ── WCV mode (Phase 1 migration) ────────────────────────────────────────
     // When tab-manager.js is running in main, window.navio.wcvCreateTab exists.

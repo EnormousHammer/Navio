@@ -6,6 +6,19 @@ contextBridge.exposeInMainWorld('navio', {
   close: () => ipcRenderer.send('window-close'),
   /** Echo a line to the terminal (main process stdout). For debugging shell UI (e.g. assistant toggle). */
   shellLog: (message) => ipcRenderer.send('navio-shell-log', String(message)),
+  /**
+   * User-Agent for tab guests — read from the same session as partition persist:navio / incognito.
+   * Must align with session-setup Sec-CH-UA overrides (shell navigator.userAgent can differ).
+   * @param {boolean} [incognito]
+   */
+  getGuestUserAgentSync: (incognito) => {
+    try {
+      const v = ipcRenderer.sendSync('navio-guest-user-agent-sync', !!incognito);
+      return typeof v === 'string' && v.trim() ? v.trim() : '';
+    } catch {
+      return '';
+    }
+  },
   onWindowStateChanged: (callback) => {
     ipcRenderer.on('window-state-changed', (_, state) => callback(state));
   },

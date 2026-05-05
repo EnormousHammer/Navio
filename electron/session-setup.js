@@ -95,6 +95,9 @@ function _navioFormatEta(sec) {
   return `${m}m ${s}s left`;
 }
 
+/** Ensures sendSync handler for tab UA is registered only once (tests may call setup twice). */
+let navioGuestUaSyncListenerRegistered = false;
+
 /** Count of pop-ups denied by shouldBlockWebPopup (main + sync IPC). */
 let adPopupBlockedCount = 0;
 
@@ -299,6 +302,21 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   attachChromeAlignedClientHints(navioSession);
   attachChromeAlignedClientHints(incognitoSession);
   attachChromeAlignedClientHints(session.defaultSession);
+
+  // Tab <webview useragent> must match the partition session UA — renderer shell uses
+  // defaultSession, so navigator.userAgent can diverge from persist:navio and break
+  // Cloudflare / bot checks vs our Sec-CH-UA overrides.
+  if (!navioGuestUaSyncListenerRegistered) {
+    navioGuestUaSyncListenerRegistered = true;
+    ipcMain.on('navio-guest-user-agent-sync', (event, incognito) => {
+      try {
+        const ses = incognito ? incognitoSession : navioSession;
+        event.returnValue = typeof ses.getUserAgent === 'function' ? ses.getUserAgent() : '';
+      } catch {
+        event.returnValue = '';
+      }
+    });
+  }
 
   /**
    * Pick a non-colliding save path in the default downloads dir. Up to 99 " (n)"
