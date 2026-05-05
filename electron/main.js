@@ -37,7 +37,7 @@ const { loadWorkflow, saveWorkflow, listWorkflows, deleteWorkflow } = require('.
 const { getMcpTools, callMcpTool, isMcpTool, initFromConfig: initMcpFromConfig, registerMcpIpc } = require('./navio-mcp');
 const { getSiteIntelForUrl, extractActiveUrl } = require('./navio-site-intel');
 const { initScheduler, registerSchedulerIpc, stopAll: stopAllSchedulers } = require('./navio-scheduler');
-const { shouldBlockWebPopup, isStreamingVideoOpenerOrigin } = require('./ad-block-patterns');
+const { shouldBlockWebPopup, isStreamingVideoOpenerOrigin, isShippingCarrierOpenerOrigin, isEnterprisePortalOpenerOrigin } = require('./ad-block-patterns');
 const { redactPII } = require('./pii-redact');
 const navioCrashReporter = require('./navio-crash-reporter');
 const { wcCanGoBack, wcCanGoForward } = require('./wc-nav-history');
@@ -1122,6 +1122,28 @@ function bindNavioGuestWindowOpenOnce(guestContents) {
       return { action: 'deny' };
     }
 
+    // Carrier-portal and enterprise-portal popups (e.g. Purolator address-book,
+    // TQL load boards) use window.opener to pass selected data back to the calling
+    // page.  Converting these to a new tab sets window.opener = null and silently
+    // breaks the "Select" / "Apply" button.  Allow them as real Electron popup
+    // windows so the opener relationship is preserved.
+    if (isShippingCarrierOpenerOrigin(openerOrigin) || isEnterprisePortalOpenerOrigin(openerOrigin)) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: (width && width >= 400) ? width : 960,
+          height: (height && height >= 300) ? height : 720,
+          center: true,
+          autoHideMenuBar: true,
+          webPreferences: {
+            sandbox: true,
+            nodeIntegration: false,
+            contextIsolation: true
+          }
+        }
+      };
+    }
+
     let incognito = false;
     try {
       incognito = guestContents.session === session.fromPartition(NAVIO_PARTITION_INCOGNITO);
@@ -1154,6 +1176,12 @@ function bindNavioGuestWindowOpenOnce(guestContents) {
       /* ignore */
     }
     return { action: 'deny' };
+  });
+
+  // Minimal cleanup for carrier/enterprise popup windows opened via { action: 'allow' }:
+  // hide the native menu bar so the popup looks like a utility dialog rather than a full browser.
+  guestContents.on('did-create-window', (childWin) => {
+    try { childWin.setMenuBarVisibility(false); } catch { /* ignore */ }
   });
 }
 
