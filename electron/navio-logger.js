@@ -127,4 +127,38 @@ function getLogPath() {
   return _logPath || null;
 }
 
-module.exports = { init, setMainWindow, setExtraLogBroadcast, log, readRecent, getLogPath };
+/**
+ * Chromium surfaces many third-party / policy messages as console "error" (level 3).
+ * Downgrade the noisy benign ones to `warn` so navio-debug.log and the shell error
+ * badge stay useful for real breakages.
+ *
+ * @param {string} line Full log line including `[source:line] message`
+ * @returns {'error'|'warn'}
+ */
+function guestConsoleLogLevel(line) {
+  const s = String(line || '');
+  if (s.includes('Blocked aria-hidden')) return 'warn';
+  if (s.includes("Unrecognized Content-Security-Policy directive 'prefetch-src'")) return 'warn';
+  if (s.includes('violates the following Content Security Policy directive')) return 'warn';
+  if (s.includes('https://www.google.com/g/collect')) return 'warn';
+  if (s.includes('https://www.google-analytics.com/')) return 'warn';
+  if (s.includes('https://stats.g.doubleclick.net/')) return 'warn';
+  if (s.includes('strict MIME checking is enabled')) return 'warn';
+  if (s.includes('not a supported stylesheet MIME type')) return 'warn';
+  if (s.includes('is not executable, and strict MIME type checking')) return 'warn';
+  if (s.includes('js2c/sandbox_bundle') && s.includes("Failed to construct 'URL'")) return 'warn';
+  if (s.includes('bat.bing.com') && s.includes('Invalid pagetype')) return 'warn';
+  if (s.includes('AppContext is disposed')) return 'warn';
+  if (s.includes('popout') && s.includes("Cannot read properties of null (reading 'js')")) return 'warn';
+  return 'error';
+}
+
+module.exports = {
+  init,
+  setMainWindow,
+  setExtraLogBroadcast,
+  log,
+  readRecent,
+  getLogPath,
+  guestConsoleLogLevel
+};

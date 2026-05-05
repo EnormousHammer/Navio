@@ -1316,8 +1316,10 @@ function bindNavioGuestWindowOpenOnce(guestContents) {
     if (level !== 3) return; // 0=verbose 1=info 2=warn 3=error
     try {
       const src = String(sourceId || '').split('/').slice(-2).join('/');
-      const msg = String(message || '').slice(0, 300);
-      navioLogger.log('error', 'page', `[${src}:${line}] ${msg}`);
+      const msg = String(message || '').slice(0, 1800);
+      const lineStr = `[${src}:${line}] ${msg}`;
+      const outLevel = navioLogger.guestConsoleLogLevel(lineStr);
+      navioLogger.log(outLevel, 'page', lineStr);
     } catch { /* ignore */ }
   });
 }
