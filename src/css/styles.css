@@ -1881,7 +1881,8 @@ body.navio-wcv-tabs-below #browser-container .split-divider {
 
 #browser-container webview.split-left {
   right: auto;
-  border-right: 1px solid var(--border);
+  /* Inset shadow keeps the seam without consuming width (avoids 1px overflow vs partner pane). */
+  box-shadow: inset -1px 0 0 var(--border);
   box-sizing: border-box;
   min-width: 0;
 }

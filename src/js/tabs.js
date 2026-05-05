@@ -1916,7 +1916,27 @@ class TabManagerClass {
   unsplitTab(tabId) {
     const t = this.tabs.find((x) => x.id === tabId);
     if (!t || !t.splitPartnerId) return;
+    const partner = this.tabs.find((x) => x.id === t.splitPartnerId);
+    const gid = t.groupId;
+    const dissolveGroup =
+      partner &&
+      gid &&
+      partner.groupId === gid &&
+      this.tabs.filter((x) => x.groupId === gid).length === 2;
+
     this._clearSplitPartner(tabId);
+
+    if (dissolveGroup && partner) {
+      t.groupId = null;
+      partner.groupId = null;
+      if (typeof AssistantManager !== 'undefined' && AssistantManager.onTabLeftGroup) {
+        AssistantManager.onTabLeftGroup(t.id, gid);
+        AssistantManager.onTabLeftGroup(partner.id, gid);
+      }
+      if (this.groups[gid]) delete this.groups[gid];
+      this._reRenderTabList();
+    }
+
     const cur = this.activeTabId;
     if (cur) this.switchToTab(cur);
     else if (this.tabs.length) this.switchToTab(this.tabs[0].id);
@@ -2452,6 +2472,18 @@ class TabManagerClass {
     const tab = this.tabs.find(t => t.id === tabId);
     if (!tab || !tab.groupId) return;
     const prevGid = tab.groupId;
+    const partnerId = tab.splitPartnerId || null;
+    const partner = partnerId ? this.tabs.find(t => t.id === partnerId) : null;
+    const dissolveSplitPairGroup =
+      !!partnerId &&
+      !!partner &&
+      partner.groupId === prevGid &&
+      this.tabs.filter((t) => t.groupId === prevGid).length === 2;
+
+    if (partnerId) {
+      this._clearSplitPartner(tabId);
+    }
+
     tab.groupId = null;
     if (
       !skipAssistantHooks &&
@@ -2460,6 +2492,19 @@ class TabManagerClass {
     ) {
       AssistantManager.onTabLeftGroup(tabId, prevGid);
     }
+
+    if (dissolveSplitPairGroup && partner) {
+      partner.groupId = null;
+      if (
+        !skipAssistantHooks &&
+        typeof AssistantManager !== 'undefined' &&
+        AssistantManager.onTabLeftGroup
+      ) {
+        AssistantManager.onTabLeftGroup(partner.id, prevGid);
+      }
+      if (this.groups[prevGid]) delete this.groups[prevGid];
+    }
+
     if (!skipRender) this._reRenderTabList();
   }
 
