@@ -40,6 +40,7 @@ const { initScheduler, registerSchedulerIpc, stopAll: stopAllSchedulers } = requ
 const { shouldBlockWebPopup, isStreamingVideoOpenerOrigin, isShippingCarrierOpenerOrigin, isEnterprisePortalOpenerOrigin } = require('./ad-block-patterns');
 const { redactPII } = require('./pii-redact');
 const navioCrashReporter = require('./navio-crash-reporter');
+const navioLogger = require('./navio-logger');
 const { wcCanGoBack, wcCanGoForward } = require('./wc-nav-history');
 const { ensureGuestWebviewKeyboardFocus } = require('./agent-input-focus');
 const { BINARY_MAX_BYTES, shouldDownloadAndExtract, extractDriveFileText } = require('./drive-file-text');
@@ -75,11 +76,14 @@ if (!navioGotSingleInstanceLock) {
 /** Surface main-process failures and renderer exits in logs (especially when no dev terminal). */
 function installNavioProductionDiagnostics() {
   process.on('uncaughtException', (err) => {
-    console.error('[navio] uncaughtException:', err && err.stack ? err.stack : String(err));
+    const stack = err && err.stack ? err.stack : String(err);
+    console.error('[navio] uncaughtException:', stack);
+    navioLogger.log('error', 'process', 'uncaughtException: ' + (err && err.message ? err.message : String(err)), stack.slice(0, 800));
   });
   process.on('unhandledRejection', (reason) => {
     const msg = reason instanceof Error ? reason.stack : String(reason);
     console.error('[navio] unhandledRejection:', msg);
+    navioLogger.log('error', 'process', 'unhandledRejection: ' + (reason instanceof Error ? reason.message : String(reason).slice(0, 200)), msg.slice(0, 800));
   });
 }
 installNavioProductionDiagnostics();
@@ -1183,6 +1187,25 @@ function bindNavioGuestWindowOpenOnce(guestContents) {
   guestContents.on('did-create-window', (childWin) => {
     try { childWin.setMenuBarVisibility(false); } catch { /* ignore */ }
   });
+
+  // Log hard navigation failures (skip -3 = ERR_ABORTED which is a normal user/redirect cancel).
+  guestContents.on('did-fail-load', (_ev, errorCode, errorDescription, validatedURL) => {
+    if (errorCode === -3) return; // ERR_ABORTED — benign
+    try {
+      const urlShort = String(validatedURL || '').slice(0, 120);
+      navioLogger.log('warn', 'navigation', `Load failed (${errorCode}): ${errorDescription} — ${urlShort}`);
+    } catch { /* ignore */ }
+  });
+
+  // Log JavaScript errors and console.error calls from guest pages (level 3 = error).
+  guestContents.on('console-message', (_ev, level, message, line, sourceId) => {
+    if (level !== 3) return; // 0=verbose 1=info 2=warn 3=error
+    try {
+      const src = String(sourceId || '').split('/').slice(-2).join('/');
+      const msg = String(message || '').slice(0, 300);
+      navioLogger.log('error', 'page', `[${src}:${line}] ${msg}`);
+    } catch { /* ignore */ }
+  });
 }
 
 /**
@@ -1862,6 +1885,14 @@ ipcMain.handle('clear-browsing-data', async () => {
   } catch (err) {
     return { ok: false, error: err.message };
   }
+});
+
+ipcMain.handle('navio-log-get-recent', (_ev, n) => {
+  return navioLogger.readRecent(typeof n === 'number' ? n : 200);
+});
+
+ipcMain.handle('navio-log-get-path', () => {
+  return navioLogger.getLogPath();
 });
 
 ipcMain.handle('get-memory-info', () => {
@@ -7001,6 +7032,7 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
         return { error: `Unknown action: ${action}` };
     }
   } catch (err) {
+    navioLogger.log('error', 'browser-action', `action="${action}" threw: ${err.message}`, err.stack ? err.stack.slice(0, 600) : null);
     return { error: err.message };
   }
 });
@@ -9824,6 +9856,8 @@ app.whenReady().then(async () => {
 
   store = createStore(app.getPath('userData'));
 
+  navioLogger.init(app.getPath('userData'));
+
   _ensureAutoCompatOrigins(app.getPath('userData'));
 
   await maybeOfferLegacyProfileImport({
@@ -9858,6 +9892,7 @@ app.whenReady().then(async () => {
   installNavioGuestHistoryShortcutForward();
 
   createMainWindow();
+  navioLogger.setMainWindow(mainWindow);
 
   startNavioCloudSync(app, loadConfig, saveConfig, () => mainWindow);
 

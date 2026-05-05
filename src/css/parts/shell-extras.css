@@ -1483,3 +1483,200 @@ body.navio-vertical-tabs .tab-item {
 .workspace-note-row:last-child {
   border-bottom: none;
 }
+
+/* ── Debug Log Panel ──────────────────────────────────────────────────────── */
+.debug-log-panel {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 9200;
+  height: 220px;
+  display: flex;
+  flex-direction: column;
+  background: #0d1117;
+  border-top: 1px solid #30363d;
+  font-family: 'Consolas', 'Cascadia Code', 'Fira Mono', monospace;
+  font-size: 11.5px;
+  box-shadow: 0 -4px 24px rgba(0,0,0,.5);
+  resize: vertical;
+  overflow: hidden;
+}
+.debug-log-panel[hidden] {
+  display: none !important;
+}
+.debug-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+  flex-shrink: 0;
+  user-select: none;
+}
+.debug-log-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8b949e;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.debug-log-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.debug-log-btn {
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  font-family: inherit;
+}
+.debug-log-btn:hover {
+  background: #21262d;
+  color: #e6edf3;
+}
+.debug-log-btn.active {
+  background: #1f3a5f;
+  color: #79c0ff;
+  border-color: #1f6feb;
+}
+.debug-log-close {
+  background: transparent;
+  border: none;
+  color: #8b949e;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 4px;
+  transition: color .15s;
+}
+.debug-log-close:hover {
+  color: #f85149;
+}
+.debug-log-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0;
+  scrollbar-width: thin;
+  scrollbar-color: #30363d transparent;
+}
+.debug-log-list::-webkit-scrollbar {
+  width: 6px;
+}
+.debug-log-list::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 3px;
+}
+.debug-log-empty {
+  color: #484f58;
+  padding: 16px 12px;
+  font-style: italic;
+  font-size: 11px;
+}
+.debug-log-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 10px;
+  line-height: 1.55;
+  border-bottom: 1px solid rgba(48,54,61,.5);
+  flex-wrap: wrap;
+}
+.debug-log-row:last-child {
+  border-bottom: none;
+}
+.debug-log-row.debug-log-error {
+  background: rgba(248, 81, 73, .07);
+}
+.debug-log-row.debug-log-warn {
+  background: rgba(210, 153, 34, .07);
+}
+.debug-log-row.debug-log-info {
+  background: transparent;
+}
+.debug-log-ts {
+  color: #484f58;
+  flex-shrink: 0;
+  font-size: 10.5px;
+}
+.debug-log-level {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  min-width: 36px;
+}
+.debug-log-error .debug-log-level  { color: #f85149; }
+.debug-log-warn  .debug-log-level  { color: #d29922; }
+.debug-log-info  .debug-log-level  { color: #3fb950; }
+.debug-log-source {
+  color: #79c0ff;
+  flex-shrink: 0;
+  font-size: 10.5px;
+}
+.debug-log-msg {
+  color: #e6edf3;
+  word-break: break-all;
+  flex: 1;
+}
+.debug-log-detail {
+  width: 100%;
+  margin-top: 2px;
+}
+.debug-log-detail summary {
+  color: #8b949e;
+  font-size: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.debug-log-detail pre {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  color: #8b949e;
+  font-size: 10px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+/* Error badge — appears bottom-right when errors occur and panel is closed */
+.debug-log-badge {
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  z-index: 9210;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #da3633;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 4px 10px 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,.5);
+  transition: background .15s, transform .1s;
+}
+.debug-log-badge:hover {
+  background: #f85149;
+  transform: translateY(-1px);
+}
+.debug-log-badge[hidden] {
+  display: none !important;
+}
+/* ────────────────────────────────────────────────────────────────────────── */

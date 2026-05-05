@@ -6,6 +6,19 @@ contextBridge.exposeInMainWorld('navio', {
   close: () => ipcRenderer.send('window-close'),
   /** Echo a line to the terminal (main process stdout). For debugging shell UI (e.g. assistant toggle). */
   shellLog: (message) => ipcRenderer.send('navio-shell-log', String(message)),
+
+  // ── Debug log panel ────────────────────────────────────────────────────────
+  /** Subscribe to live log entries pushed from the main process. Returns an unsubscribe fn. */
+  onLogEntry: (callback) => {
+    const h = (_, entry) => { try { callback(entry); } catch { /* ignore */ } };
+    ipcRenderer.on('navio-log-entry', h);
+    return () => ipcRenderer.removeListener('navio-log-entry', h);
+  },
+  /** Fetch the most recent N log entries persisted on disk. */
+  getRecentLogs: (n) => ipcRenderer.invoke('navio-log-get-recent', n || 200),
+  /** Get the absolute path to the log file (for "open in folder" button). */
+  getLogPath: () => ipcRenderer.invoke('navio-log-get-path'),
+  // ──────────────────────────────────────────────────────────────────────────
   /**
    * User-Agent for tab guests — read from the same session as partition persist:navio / incognito.
    * Must align with session-setup Sec-CH-UA overrides (shell navigator.userAgent can differ).
