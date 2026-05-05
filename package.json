@@ -7,7 +7,7 @@
     "test": "node --test ./test/*.test.js",
     "test:e2e": "node --test ./e2e/*.test.js",
     "test:e2e:assistant": "node --test ./e2e/assistant-toggle.test.js",
-    "lint": "eslint electron/pii-redact.js electron/navio-crash-reporter.js electron/config-store.js electron/migration/ test e2e",
+    "lint": "eslint electron/pii-redact.js electron/navio-crash-reporter.js electron/config-store.js electron/gmail-html-sanitize.js electron/migration/ test e2e",
     "ci": "npm test && npm run lint && npx electron-forge package",
     "start": "electron .",
     "dev": "electron . --dev",

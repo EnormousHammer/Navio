@@ -47,6 +47,7 @@ const { BINARY_MAX_BYTES, shouldDownloadAndExtract, extractDriveFileText } = req
 const { tabManager } = require('./tab-manager');
 const { exportMigrationToFolder, createTimestampedMigrationDir } = require('./migration');
 const { maybeOfferLegacyProfileImport } = require('./navio-offer-legacy-profile-import');
+const { navioSanitizeEmailHtmlFragment } = require('./gmail-html-sanitize');
 
 function getProfileIdFromLaunch() {
   const a = process.argv.find((x) => typeof x === 'string' && x.startsWith('--navio-profile='));
@@ -5005,8 +5006,9 @@ const toolExecutors = {
       const mid = (args.message_id || '').trim();
       if (!mid) return { error: 'message_id is required.' };
 
-      let bodyText = navioRepairUtf8Mojibake((args.body || '').trim());
-      if (!bodyText) return { error: 'body is required.' };
+      const norm = navioNormalizeGmailToolBodies(args);
+      if (norm.error) return { error: norm.error };
+      const { bodyText, bodyHtmlSan } = norm;
 
       const r = await fetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(mid)}?format=full`,
@@ -5042,7 +5044,8 @@ const toolExecutors = {
           inReplyTo: msgIdHdr || '',
           references: refs
         },
-        bodyText
+        bodyText,
+        bodyHtmlSan
       );
       const raw = gmailBase64UrlEncode(mime);
 
@@ -5082,8 +5085,9 @@ const toolExecutors = {
       if (!toAddr) return { error: 'to is required.' };
 
       const subjOut = (args.subject || '').trim() || '(no subject)';
-      let bodyText = navioRepairUtf8Mojibake((args.body || '').trim());
-      if (!bodyText) return { error: 'body is required.' };
+      const norm = navioNormalizeGmailToolBodies(args);
+      if (norm.error) return { error: norm.error };
+      const { bodyText, bodyHtmlSan } = norm;
 
       const cc = (args.cc || '').trim();
       const bcc = (args.bcc || '').trim();
@@ -5096,7 +5100,8 @@ const toolExecutors = {
           bcc: bcc || undefined,
           subject: subjOut
         },
-        bodyText
+        bodyText,
+        bodyHtmlSan
       );
       const raw = gmailBase64UrlEncode(mime);
 
@@ -9706,12 +9711,45 @@ async function gmailFetchSendAsSignaturePlainResult(token) {
   }
 }
 
+/** Normalize tool / IPC draft body + optional HTML fragment for Gmail MIME builders. */
+function navioNormalizeGmailToolBodies(args) {
+  let bodyText = navioRepairUtf8Mojibake(String(args.body || '').trim());
+  const bodyHtmlRaw = navioRepairUtf8Mojibake(String(args.body_html || '').trim());
+  const bodyHtmlSan = bodyHtmlRaw ? navioSanitizeEmailHtmlFragment(bodyHtmlRaw) : '';
+  if (bodyHtmlRaw && !bodyHtmlSan) {
+    return {
+      error:
+        'body_html was removed entirely by safety filtering; use tables and inline styles only (no scripts or iframes).'
+    };
+  }
+  if (!bodyText && !bodyHtmlSan) {
+    return { error: 'body or body_html is required.' };
+  }
+  if (!bodyText && bodyHtmlSan) {
+    bodyText = gmailHtmlSignatureToPlain(bodyHtmlSan).trim();
+    if (!bodyText) {
+      return {
+        error:
+          'body is required when body_html has no extractable plain text; add a plain-text body or visible text inside the HTML.'
+      };
+    }
+  }
+  return { bodyText, bodyHtmlSan: bodyHtmlSan || '' };
+}
+
 /**
  * Builds RFC822 for Gmail API drafts: multipart/alternative (plain + HTML) when Send-as
  * includes HTML so signatures keep colors/layout in compose; otherwise text/plain only.
  */
-async function gmailComposeSignedDraftMime(token, headerFields, userBodyPlain) {
-  const rawBody = navioRepairUtf8Mojibake(String(userBodyPlain ?? '').trim());
+async function gmailComposeSignedDraftMime(token, headerFields, userBodyPlain, userBodyHtml) {
+  const trimmedHtmlIn = navioRepairUtf8Mojibake(String(userBodyHtml ?? '').trim());
+  const richHtml = trimmedHtmlIn ? navioSanitizeEmailHtmlFragment(trimmedHtmlIn) : '';
+  const hasRichHtml = !!richHtml;
+
+  let rawBody = navioRepairUtf8Mojibake(String(userBodyPlain ?? '').trim());
+  if (!rawBody && hasRichHtml) {
+    rawBody = gmailHtmlSignatureToPlain(richHtml).trim();
+  }
   if (!rawBody) return { mime: '', bodyWithSigPlain: '' };
 
   const sigRes = await gmailFetchSendAsSignaturePlainResult(token);
@@ -9725,6 +9763,7 @@ async function gmailComposeSignedDraftMime(token, headerFields, userBodyPlain) {
   const signatureAlreadyInBody = !!(plainSig && sigNorm && bodyNorm.endsWith(sigNorm));
   const appendPlain = !!(plainSig && sigNorm && !signatureAlreadyInBody);
   const appendHtmlOnly = !plainSig && !!htmlSig;
+  const appendAnySignatureHtml = !!(htmlSig && (appendPlain || appendHtmlOnly));
 
   let fullPlain = rawBody;
   if (appendPlain) {
@@ -9732,12 +9771,15 @@ async function gmailComposeSignedDraftMime(token, headerFields, userBodyPlain) {
   }
 
   let mime;
-  if (signatureAlreadyInBody || (!htmlSig && !appendPlain && !appendHtmlOnly)) {
+  if (!hasRichHtml && (signatureAlreadyInBody || (!htmlSig && !appendPlain && !appendHtmlOnly))) {
     mime = gmailBuildPlainTextMime({ ...headerFields, bodyText: rawBody });
-  } else if (htmlSig && (appendPlain || appendHtmlOnly)) {
+  } else if (hasRichHtml || (htmlSig && (appendPlain || appendHtmlOnly))) {
     const userOnly = rawBody.replace(/\r\n/g, '\n').trimEnd();
     const plainForMime = appendPlain ? fullPlain : rawBody;
-    const htmlInner = gmailPlainUserBodyToHtmlFragment(userOnly) + '<br><br>' + htmlSig;
+    const wrapUser =
+      '<div style="font-family:Roboto,Helvetica,Arial,sans-serif;font-size:14px;color:#202124;line-height:1.5;">';
+    const userHtmlPart = hasRichHtml ? wrapUser + richHtml + '</div>' : gmailPlainUserBodyToHtmlFragment(userOnly);
+    const htmlInner = userHtmlPart + (appendAnySignatureHtml ? '<br><br>' + htmlSig : '');
     mime = gmailBuildMultipartAlternativeMime({
       ...headerFields,
       plainBody: plainForMime,
@@ -9770,8 +9812,9 @@ async function gmailUpdateDraftApi(draftId, bodyText, args = {}) {
   if (!token) return { error: error || navioGmailNotConnectedMessage(gmailToolOAuthProviderId(args)) };
   const id = (draftId || '').trim();
   if (!id) return { error: 'draft_id is required.' };
-  const text = navioRepairUtf8Mojibake((bodyText || '').trim());
-  if (!text) return { error: 'body is empty.' };
+  const normBodies = navioNormalizeGmailToolBodies({ body: bodyText, body_html: args.body_html });
+  if (normBodies.error) return { error: normBodies.error };
+  const { bodyText: text, bodyHtmlSan } = normBodies;
 
   const getRes = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/drafts/${encodeURIComponent(id)}?format=full`,
@@ -9798,7 +9841,8 @@ async function gmailUpdateDraftApi(draftId, bodyText, args = {}) {
   const { mime, bodyWithSigPlain: textWithSig } = await gmailComposeSignedDraftMime(
     token,
     { toAddr, cc, bcc, subject, inReplyTo, references },
-    text
+    text,
+    bodyHtmlSan
   );
   const raw = gmailBase64UrlEncode(mime);
   const threadId = draft.message?.threadId;
@@ -9838,9 +9882,9 @@ ipcMain.handle('gmail-send-draft', async (_, { draftId }) => {
 });
 
 // ── Gmail API: update draft body (assistant edits before send) ─────────────
-ipcMain.handle('gmail-update-draft', async (_, { draftId, body }) => {
+ipcMain.handle('gmail-update-draft', async (_, { draftId, body, body_html }) => {
   try {
-    return await gmailUpdateDraftApi(draftId, body, {});
+    return await gmailUpdateDraftApi(draftId, body, { body_html });
   } catch (e) {
     return { error: e.message };
   }
@@ -9873,7 +9917,7 @@ ipcMain.handle('gmail-delete-draft', async (_, { draftId }) => {
 });
 
 // ── Gmail API: create a threaded reply draft (no UI automation) ─────────────
-ipcMain.handle('gmail-create-reply-draft', async (_, { messageId, body: replyBody }) => {
+ipcMain.handle('gmail-create-reply-draft', async (_, { messageId, body: replyBody, body_html }) => {
   try {
     const token = await getValidOAuthToken('google');
     if (!token) return { error: navioGmailNotConnectedMessage('google') };
@@ -9881,8 +9925,9 @@ ipcMain.handle('gmail-create-reply-draft', async (_, { messageId, body: replyBod
     const mid = (messageId || '').trim();
     if (!mid) return { error: 'Missing Gmail message id' };
 
-    const text = navioRepairUtf8Mojibake((replyBody || '').trim());
-    if (!text) return { error: 'Empty reply body' };
+    const norm = navioNormalizeGmailToolBodies({ body: replyBody, body_html });
+    if (norm.error) return { error: norm.error };
+    const { bodyText: text, bodyHtmlSan } = norm;
 
     const r = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(mid)}?format=full`,
@@ -9918,7 +9963,8 @@ ipcMain.handle('gmail-create-reply-draft', async (_, { messageId, body: replyBod
         inReplyTo: msgIdHdr || '',
         references: refs
       },
-      text
+      text,
+      bodyHtmlSan
     );
     const raw = gmailBase64UrlEncode(mime);
 

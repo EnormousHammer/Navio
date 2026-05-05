@@ -606,16 +606,26 @@ const NAVIO_TOOLS = [
   {
     name: 'gmail_update_draft',
     description:
-      'Update the plain-text body of an existing Gmail draft (same draft ID from gmail_create_draft or gmail_create_reply_draft). ' +
-      'Use when the user revised the draft text in chat before sending. Preserves To/Cc/Bcc and reply threading headers. ' +
-      'Same automatic Send-as signature append as create (plain + HTML multipart when available; omitted if plain signature text already appears at end of body).',
+      'Update the body of an existing Gmail draft (same draft ID from gmail_create_draft or gmail_create_reply_draft). ' +
+      'Use when the user revised the draft in chat before sending. Preserves To/Cc/Bcc and reply threading headers. ' +
+      'Same automatic Send-as signature append as create (plain + HTML multipart when available; omitted if plain signature text already appears at end of body). ' +
+      'Pass **body_html** for tables or rich layout (email-safe HTML fragment: inline styles on table/td/th encouraged). **body** is still required for the plain-text alternative unless body_html contains extractable text.',
     parameters: {
       type: 'object',
       properties: {
         draft_id: { type: 'string', description: 'Gmail draft ID to update.' },
-        body: { type: 'string', description: 'New full plain-text body only (no Markdown/HTML).' }
+        body: {
+          type: 'string',
+          description:
+            'Plain-text body for the text/plain part. When using body_html, include the same wording (or a short plain summary) for non-HTML clients.'
+        },
+        body_html: {
+          type: 'string',
+          description:
+            'Optional HTML fragment (no full document). Use for **data tables** (`<table>`, `<tr>`, `<td>`, inline `style=`), lists, emphasis. Scripts/iframes are stripped.'
+        }
       },
-      required: ['draft_id', 'body']
+      required: ['draft_id']
     }
   },
 
@@ -626,7 +636,7 @@ const NAVIO_TOOLS = [
       'and is NOT sent — the user reviews and sends it manually. ' +
       'Navio appends the user’s Gmail **Send mail as** signature after your body (multipart plain + HTML when Gmail stores HTML, so rich signature styling appears in compose). Skip duplicating sign-offs the signature already contains. ' +
       'Write only the message text — no "Best regards", name block, or footer unless the user explicitly asked for that wording in the body. ' +
-      'Body must be **plain text** (no Markdown/HTML). ' +
+      '**body** is plain text (no Markdown). For **tables or rich layout**, also pass **body_html** with an HTML fragment (inline styles on table cells; scripts stripped). ' +
       'Prefer this for bulk or threaded replies. If the user explicitly wants text in the Gmail compose window, use read_page + click + **insert_text** (plain) on the message body. ' +
       'If one call returns an error, continue with the remaining messages unless the error is SCOPE_ERROR or not_signed_in. ' +
       'Requires Google OAuth with gmail.compose (reconnect Google in Navio Settings → Connected Apps if drafts fail).',
@@ -639,11 +649,17 @@ const NAVIO_TOOLS = [
         },
         body: {
           type: 'string',
-          description: 'Plain-text body only (no Markdown/HTML). Line breaks are fine.'
+          description:
+            'Plain-text body for the text/plain part. When using body_html, mirror the same content in plain form when possible.'
+        },
+        body_html: {
+          type: 'string',
+          description:
+            'Optional HTML fragment for rich replies (tables, inline-styled `<table>`/`<td>`, etc.). No `<html>` wrapper; scripts/iframes stripped.'
         },
         ...GMAIL_ACCOUNT_CHOICE
       },
-      required: ['message_id', 'body']
+      required: ['message_id']
     }
   },
 
@@ -653,18 +669,28 @@ const NAVIO_TOOLS = [
       'Create a **new** Gmail draft (not a reply) via the API: standalone compose with To, Subject, body, optional Cc/Bcc. ' +
       'Saved to Drafts, not sent. Use for pickup requests, first-contact emails, or any message that is **not** a reply to an existing thread. ' +
       'For replies to mail already in Gmail, use **gmail_create_reply_draft** with message_id instead. ' +
-      'Navio appends the user’s Gmail **Send mail as** signature after the body (plain + HTML multipart when available). Requires Google OAuth with gmail.compose.',
+      'Navio appends the user’s Gmail **Send mail as** signature after the body (plain + HTML multipart when available). ' +
+      'For **tables or formatted data**, pass **body_html** (HTML fragment with inline styles on cells) plus **body** as a plain-text version for accessibility and plain clients. Requires Google OAuth with gmail.compose.',
     parameters: {
       type: 'object',
       properties: {
         to: { type: 'string', description: 'Recipient email address (To).' },
         subject: { type: 'string', description: 'Email subject line.' },
-        body: { type: 'string', description: 'Plain-text body only (no Markdown/HTML).' },
+        body: {
+          type: 'string',
+          description:
+            'Plain-text body. Required unless body_html alone yields extractable text; when using tables in body_html, include a matching plain summary here.'
+        },
+        body_html: {
+          type: 'string',
+          description:
+            'Optional HTML fragment (no document wrapper). Use for tables (`<table>`, `<tr>`, `<td>` with inline `style`), lists. Scripts/iframes stripped.'
+        },
         cc: { type: 'string', description: 'Optional Cc addresses (comma-separated).' },
         bcc: { type: 'string', description: 'Optional Bcc addresses (comma-separated).' },
         ...GMAIL_ACCOUNT_CHOICE
       },
-      required: ['to', 'subject', 'body']
+      required: ['to', 'subject']
     }
   },
 

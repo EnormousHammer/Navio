@@ -466,9 +466,10 @@
       display: flex;
       flex-direction: column;
     }
+    /* Empty state: never clip the composer (old center + overflow:hidden hid the textarea
+       below the fold with no scroll). Center welcome inside the flex region above composer. */
     body.state-empty .stage {
-      justify-content: center;
-      overflow: hidden;
+      justify-content: flex-start;
     }
     .stage-inner {
       max-width: 880px;
@@ -479,6 +480,12 @@
     body.state-empty .stage-inner {
       max-width: 780px;
       padding: 0 24px;
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      overflow-y: auto;
     }
 
     /* Empty-state welcome — mirrors AIVON layout */
@@ -987,10 +994,9 @@
       max-width: 880px;
       width: 100%;
       margin: 0 auto;
-    }
-    body.state-chat .composer-wrap {
       position: sticky;
       bottom: 0;
+      z-index: 4;
       background: linear-gradient(180deg, rgba(18, 18, 20, 0) 0%, rgba(18, 18, 20, 0.88) 38%, var(--bg-2) 100%);
       padding-bottom: calc(22px + env(safe-area-inset-bottom, 0px));
     }
