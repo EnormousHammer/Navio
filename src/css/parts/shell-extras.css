@@ -1652,6 +1652,30 @@ body.navio-vertical-tabs .tab-item {
   overflow-y: auto;
 }
 
+/* Per-row copy button — hidden until the row is hovered */
+.debug-log-row-copy {
+  display: none;
+  margin-left: auto;
+  flex-shrink: 0;
+  background: rgba(139,148,158,.12);
+  border: 1px solid rgba(139,148,158,.25);
+  color: #8b949e;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-family: inherit;
+  line-height: 1.6;
+  transition: background .12s, color .12s;
+}
+.debug-log-row:hover .debug-log-row-copy {
+  display: inline-block;
+}
+.debug-log-row-copy:hover {
+  background: rgba(139,148,158,.25);
+  color: #e6edf3;
+}
+
 /* Error badge — appears bottom-right when errors occur and panel is closed */
 .debug-log-badge {
   position: fixed;

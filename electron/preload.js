@@ -179,6 +179,8 @@ contextBridge.exposeInMainWorld('navio', {
   contextGraph: (payload) => ipcRenderer.invoke('context-graph', payload),
   assistantChatLoad: () => ipcRenderer.invoke('assistant-chat-load'),
   assistantChatSave: (payload) => ipcRenderer.invoke('assistant-chat-save', payload),
+  getPopupWindows: () => ipcRenderer.invoke('get-popup-windows'),
+  focusPopupWindow: (popupId) => ipcRenderer.invoke('focus-popup-window', { popupId }),
   workspace: (payload) => ipcRenderer.invoke('workspace', payload),
   mcpConfig: (payload) => ipcRenderer.invoke('mcp-config', payload),
   proactiveTick: (payload) => ipcRenderer.invoke('proactive-tick', payload),
@@ -291,6 +293,12 @@ contextBridge.exposeInMainWorld('navio', {
     const handler = (_, data) => callback(data || {});
     ipcRenderer.on('navio-popup-blocked', handler);
     return () => ipcRenderer.removeListener('navio-popup-blocked', handler);
+  },
+
+  onPopupWindow: (callback) => {
+    const handler = (_, data) => callback(data || {});
+    ipcRenderer.on('navio-popup-window', handler);
+    return () => ipcRenderer.removeListener('navio-popup-window', handler);
   },
   sitePopupsSet: (origin, allowed) =>
     ipcRenderer.invoke('navio-site-popups-set', { origin: String(origin || ''), allowed: !!allowed }),

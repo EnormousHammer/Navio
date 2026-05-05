@@ -1494,8 +1494,10 @@ class AssistantManagerClass {
 
   /**
    * `assistant-chat-load` IPC can stall (disk / main). Awaiting it indefinitely leaves the guest
-   * chat stuck on "busy" before the host runs the model. Time out and drop the hung promise so a
-   * later load can retry; any in-flight `_loadPersistedChat` may still complete and merge data.
+   * chat stuck on "busy" before the host runs the model. On timeout we stop WAITING but do NOT
+   * reset `_assistantHistoryLoadPromise` to null — resetting it would allow a second `_loadPersistedChat`
+   * to fire later and overwrite any in-memory turns the user already produced this session.
+   * The in-flight load (if any) is still allowed to complete and merge persisted data.
    */
   async _ensureAssistantHistoryLoadedBounded(maxMs = 8000) {
     try {
@@ -1507,7 +1509,9 @@ class AssistantManagerClass {
       const msg = e && e.message != null ? String(e.message) : String(e || '');
       if (msg === 'navio-assistant-history-timeout') {
         navioAssistantDebug('_ensureAssistantHistoryLoadedBounded: timeout', { maxMs });
-        this._assistantHistoryLoadPromise = null;
+        // Seal the promise slot with a resolved promise so future calls skip re-loading.
+        // A re-load could overwrite in-memory turns the user has already added this session.
+        this._assistantHistoryLoadPromise = Promise.resolve();
       } else {
         console.warn('[navio-assistant] history load bounded wait failed', e);
       }
@@ -1531,7 +1535,14 @@ class AssistantManagerClass {
             messages.push({ role: m.role, content: m.content });
           }
           if (messages.length) {
-            this._conversationsByTab.set(k, messages);
+            // Only restore persisted history if the key has no live in-memory turns.
+            // A prior timeout in _ensureAssistantHistoryLoadedBounded may have let
+            // the user send messages before this load completed; overwriting those
+            // turns would make the AI appear to "forget" the current session.
+            const live = this._conversationsByTab.get(k);
+            if (!live || !live.length) {
+              this._conversationsByTab.set(k, messages);
+            }
           }
         }
         const order = Array.isArray(data.sidebarSessionOrder) ? data.sidebarSessionOrder : [];
@@ -5008,14 +5019,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     }
     const histKey = String(this._turnConversationKey || this._conversationKey());
     this._ensureConversationEntry(histKey);
-    const recentHistory = (this._conversationsByTab.get(histKey) || [])
-      .slice(-72)
-      .filter((m) => {
-        if (m.role === 'system' && typeof m.content === 'string' && m.content.startsWith('[Page elements')) {
-          return false;
-        }
-        return true;
-      });
+    const recentHistory = this._buildRelevantHistory(
+      text,
+      histKey,
+      (m) => !(m.role === 'system' && typeof m.content === 'string' && m.content.startsWith('[Page elements'))
+    );
     messages.push(...recentHistory);
     this._maybePushAttachmentSystemHint(messages);
     const userContent = this._buildAttachmentPayloadForApi(text);
@@ -5654,12 +5662,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     // gap cannot accidentally use `_currentHistory()` with a key that no longer matches the user’s turn.
     const historyKey = String(this._turnConversationKey || this._conversationKey());
     this._ensureConversationEntry(historyKey);
-    const recentHistory = (this._conversationsByTab.get(historyKey) || [])
-      .slice(-72)
-      .filter(m => {
-        if (m.role === 'system' && typeof m.content === 'string' && m.content.startsWith('[Page elements')) return false;
-        return true;
-      });
+    const recentHistory = this._buildRelevantHistory(
+      text,
+      historyKey,
+      (m) => !(m.role === 'system' && typeof m.content === 'string' && m.content.startsWith('[Page elements'))
+    );
     messages.push(...recentHistory);
     this._maybePushAttachmentSystemHint(messages);
     messages.push({ role: 'user', content: this._buildAttachmentPayloadForApi(text) });
@@ -6072,8 +6079,17 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (!this._takeoverMode) TabManager.setAgentControlledTab?.(null);
       TabManager.ensureBrowserContextTab?.();
     }
+    // Check if there is an active popup window the user might be asking about.
+    // When the popup registry has an entry, prefer its webContentsId so the AI's
+    // CDP tools (read_page, click, type_text, etc.) target the popup, not the tab.
+    const activePopupWcId =
+      typeof window._navioActivePopupWebContentsId === 'number' &&
+      window._navioActivePopupWebContentsId > 0
+        ? window._navioActivePopupWebContentsId
+        : null;
+
     let toolWv = typeof TabManager !== 'undefined' ? TabManager.getBrowserTargetWebview?.() : null;
-    if (typeof TabManager !== 'undefined') {
+    if (!activePopupWcId && typeof TabManager !== 'undefined') {
       let wait = 0;
       const toolWvReady = (wv) => {
         if (!wv || typeof wv.getWebContentsId !== 'function') return false;
@@ -6091,6 +6107,25 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       }
       TabManager.setAgentControlledTab?.(TabManager.findTabIdForWebview?.(toolWv));
     }
+
+    // Inject popup context so the AI knows it is targeting a popup window, not a browser tab.
+    if (activePopupWcId) {
+      let popupInfo = `[Popup window context]\nYou are controlling a popup window (not a browser tab).\nWebContents ID: ${activePopupWcId}.`;
+      try {
+        const popups = await window.navio.getPopupWindows?.() || [];
+        const p = popups.find((x) => x.webContentsId === activePopupWcId);
+        if (p) {
+          if (p.url) popupInfo += `\nURL: ${p.url}`;
+          if (p.title) popupInfo += `\nTitle: ${p.title}`;
+          if (p.openerOrigin) popupInfo += `\nOpened by: ${p.openerOrigin}`;
+        }
+      } catch { /* ignore */ }
+      popupInfo +=
+        '\n\nUse read_page, click, type_text, and screenshot to interact with this popup.\n' +
+        'The opener page expects this popup to POST data back via window.opener; do NOT close the popup prematurely.';
+      messages.push({ role: 'system', content: popupInfo });
+    }
+
     this._clearVoiceConvThinkingTimers();
     this._vcThinkingAudioGen = (this._vcThinkingAudioGen | 0) + 1;
     const vcSoundRun = this._vcThinkingAudioGen;
@@ -6100,7 +6135,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     this._turnStartedAt = performance.now();
     const response = await window.navio.aiRequestWithTools({
       messages,
-      webContentsId: toolWv?.getWebContentsId?.(),
+      webContentsId: activePopupWcId ?? toolWv?.getWebContentsId?.(),
       tabId: tk
     });
     const toolTurnMs =
@@ -6682,6 +6717,108 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     }
     this._maybeRefreshSidebarSessionMeta(k);
     this._schedulePersistAssistantHistory();
+  }
+
+  /**
+   * Build a relevant, topic-aware subset of conversation history to send to the AI.
+   *
+   * Problem with plain `slice(-N)`: the AI blindly gets the last N messages regardless
+   * of topic. If the user discussed cooking 20 turns ago and now asks a code question,
+   * all that cooking context poisons the new answer.
+   *
+   * Strategy (Comet-class relevance retrieval):
+   *   1. Always keep the last RECENT_ALWAYS turns — these guarantee immediate continuity.
+   *   2. For anything older: score by keyword overlap with the current query.
+   *      Only inject older messages whose score > 0 (they mention something in the query).
+   *   3. Preserve pairs — if we pull an assistant turn, also pull its preceding user turn
+   *      (and vice versa) so the AI never sees a dangling half-exchange.
+   *   4. Return everything in original chronological order.
+   *   5. Apply caller-supplied filter (e.g. drop stale page snapshots).
+   *
+   * @param {string} queryText   Current user input
+   * @param {string} historyKey  Key in _conversationsByTab
+   * @param {function} [msgFilter]  Optional per-message predicate (return false to skip)
+   * @returns {Array<{role:string,content:string}>}
+   */
+  _buildRelevantHistory(queryText, historyKey, msgFilter) {
+    const RECENT_ALWAYS = 10;   // last N messages always included (5 turns)
+    const MAX_OLDER_RELEVANT = 14; // cap on topic-matched older messages
+
+    const all = (this._conversationsByTab.get(historyKey) || [])
+      .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string');
+
+    // Apply caller filter (e.g. strip stale page snapshots)
+    const filtered = msgFilter ? all.filter(msgFilter) : all;
+
+    if (filtered.length <= RECENT_ALWAYS) return filtered.slice();
+
+    const recent = filtered.slice(-RECENT_ALWAYS);
+    const older  = filtered.slice(0, -RECENT_ALWAYS);
+
+    if (!older.length) return recent;
+
+    // ── Keyword extraction ──────────────────────────────────────────────────
+    // Common English stopwords that add zero signal for relevance scoring.
+    const STOP = new Set([
+      'the','a','an','is','it','in','on','at','to','for','of','and','or','but',
+      'not','with','this','that','what','how','why','when','where','who','can',
+      'do','did','does','has','have','had','will','would','could','should','i',
+      'you','we','they','my','your','their','its','me','him','her','us','them',
+      'be','am','are','was','were','been','get','got','go','went','use','using',
+      'used','make','made','just','also','about','from','by','as','so','if',
+      'then','than','up','out','no','yes','okay','ok','please','let','want',
+      'need','like','know','think','see','look','say','said','tell','told',
+      'into','over','after','before','again','now','here','there','some','any',
+      'all','more','very','much','many','one','two','three','first','last','new',
+      'old','good','great','sure','right','way','time','thing','things','work',
+      'help','still','even','back','really','actually'
+    ]);
+
+    const extractTerms = (text) => {
+      const words = new Set();
+      for (const raw of text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)) {
+        if (raw.length >= 3 && !STOP.has(raw)) words.add(raw);
+      }
+      return words;
+    };
+
+    const queryTerms = extractTerms(queryText || '');
+    if (!queryTerms.size) return [...older.slice(-MAX_OLDER_RELEVANT), ...recent];
+
+    // ── Score older messages ────────────────────────────────────────────────
+    const scored = older.map((m, idx) => {
+      const terms = extractTerms(m.content);
+      let hits = 0;
+      for (const t of queryTerms) { if (terms.has(t)) hits++; }
+      // Normalise slightly: reward messages with multiple hits vs. single accidental match
+      const score = hits === 0 ? 0 : hits + Math.min(hits - 1, 2) * 0.5;
+      return { m, idx, score };
+    });
+
+    // Pick top-scoring older messages (only those with at least 1 hit)
+    const relevant = scored
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score || b.idx - a.idx)
+      .slice(0, MAX_OLDER_RELEVANT);
+
+    // ── Pair-preservation ──────────────────────────────────────────────────
+    // If we pulled an assistant turn, also include its immediately preceding user
+    // turn (and vice-versa) so the AI never sees a dangling half-exchange.
+    const includedIdx = new Set(relevant.map((x) => x.idx));
+    for (const { idx } of [...relevant]) {
+      if (older[idx]?.role === 'assistant' && idx > 0 && !includedIdx.has(idx - 1)) {
+        includedIdx.add(idx - 1);
+        relevant.push({ m: older[idx - 1], idx: idx - 1, score: 0 });
+      } else if (older[idx]?.role === 'user' && idx + 1 < older.length && !includedIdx.has(idx + 1)) {
+        includedIdx.add(idx + 1);
+        relevant.push({ m: older[idx + 1], idx: idx + 1, score: 0 });
+      }
+    }
+
+    // Restore chronological order before concatenating with recent
+    relevant.sort((a, b) => a.idx - b.idx);
+
+    return [...relevant.map((x) => x.m), ...recent];
   }
 
   _appendCitationChips(msgEl, urls) {
@@ -11253,6 +11390,26 @@ ${pageInfo}${snapText}`;
 }
 
 const AssistantManager = new AssistantManagerClass();
+
+// Flush chat history to disk immediately before the window/app closes.
+// The normal 400 ms debounce in _schedulePersistAssistantHistory can miss
+// the last turn(s) if the user closes the window right after a response.
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    try {
+      // Cancel any pending debounce — we're about to save right now.
+      if (AssistantManager._assistantPersistTimer) {
+        clearTimeout(AssistantManager._assistantPersistTimer);
+        AssistantManager._assistantPersistTimer = null;
+      }
+      // _persistAssistantHistoryNow is async but IPC is fire-and-forget here;
+      // Electron will keep the renderer alive briefly during window close.
+      void AssistantManager._persistAssistantHistoryNow();
+    } catch {
+      /* non-critical — best effort flush */
+    }
+  });
+}
 
 /** DevTools / emergency: `__navioToggleAssistant()` if the toolbar shortcut fails. */
 if (typeof window !== 'undefined') {

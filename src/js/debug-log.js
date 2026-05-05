@@ -43,6 +43,18 @@
       e.currentTarget.textContent = _errorsOnly ? 'All levels' : 'Errors only';
       _render();
     });
+    document.getElementById('debug-log-copy-all').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const visible = _errorsOnly ? _entries.filter((x) => x.level === 'error') : _entries;
+      const text = visible.map((x) => _entryToText(x)).join('\n');
+      try {
+        await navigator.clipboard.writeText(text);
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+      } catch { /* ignore */ }
+    });
+
     document.getElementById('debug-log-open-file').addEventListener('click', async () => {
       try {
         const p = await window.navio.getLogPath();
@@ -144,10 +156,25 @@
     msg.className = 'debug-log-msg';
     msg.textContent = entry.message || '';
 
+    // Per-row copy button — visible on hover
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'debug-log-row-copy';
+    copyBtn.title = 'Copy this entry';
+    copyBtn.textContent = 'Copy';
+    copyBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        await navigator.clipboard.writeText(_entryToText(entry));
+        copyBtn.textContent = '✓';
+        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1200);
+      } catch { /* ignore */ }
+    });
+
     row.appendChild(ts);
     row.appendChild(lvl);
     row.appendChild(src);
     row.appendChild(msg);
+    row.appendChild(copyBtn);
 
     if (entry.detail) {
       const detail = document.createElement('details');
@@ -172,6 +199,18 @@
     } catch {
       return iso.slice(11, 19);
     }
+  }
+
+  function _entryToText(entry) {
+    const parts = [
+      _shortTs(entry.ts),
+      (entry.level || 'info').toUpperCase(),
+      entry.source || '',
+      entry.message || ''
+    ].filter(Boolean);
+    let line = parts.join('  ');
+    if (entry.detail) line += '\n  ' + String(entry.detail).replace(/\n/g, '\n  ');
+    return line;
   }
 
   // ── Panel open / close ────────────────────────────────────────────────────

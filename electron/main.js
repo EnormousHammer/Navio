@@ -838,6 +838,14 @@ let navioGuestZoomShortcutForwardInstalled = false;
 let navioGuestHistoryShortcutForwardInstalled = false;
 
 /**
+ * Registry of popup windows created via `action: 'allow'` (carrier/enterprise portals that
+ * require `window.opener`). Keyed by a numeric id assigned at creation time.
+ * Each entry: { id, win, webContentsId, url, title, openerOrigin }
+ */
+const navioPopupWindowRegistry = new Map();
+let _navioPopupWindowNextId = 1;
+
+/**
  * When a page tab (<webview>) has focus, Ctrl/Cmd+Shift+A does not reach the shell
  * renderer, so globalShortcut alone is unreliable. Forward the same accelerator from
  * guest webContents to the main window (deduped in AssistantManager.toggle).
@@ -1182,10 +1190,62 @@ function bindNavioGuestWindowOpenOnce(guestContents) {
     return { action: 'deny' };
   });
 
-  // Minimal cleanup for carrier/enterprise popup windows opened via { action: 'allow' }:
-  // hide the native menu bar so the popup looks like a utility dialog rather than a full browser.
+  // Carrier/enterprise popup windows (action: 'allow') — register for AI takeover and
+  // notify the main renderer so the sidebar can offer assistance.
   guestContents.on('did-create-window', (childWin) => {
     try { childWin.setMenuBarVisibility(false); } catch { /* ignore */ }
+    try {
+      const popupId = _navioPopupWindowNextId++;
+      let popupUrl = '';
+      let popupTitle = '';
+      try { popupUrl = childWin.webContents.getURL() || ''; } catch { /* ignore */ }
+      try { popupTitle = childWin.getTitle() || ''; } catch { /* ignore */ }
+      const entry = {
+        id: popupId,
+        win: childWin,
+        webContentsId: childWin.webContents.id,
+        url: popupUrl,
+        title: popupTitle,
+        openerOrigin
+      };
+      navioPopupWindowRegistry.set(popupId, entry);
+
+      // Keep url/title fresh as the popup navigates.
+      const updateMeta = () => {
+        try {
+          if (childWin && !childWin.isDestroyed()) {
+            entry.url = childWin.webContents.getURL() || entry.url;
+            entry.title = childWin.getTitle() || entry.title;
+          }
+        } catch { /* ignore */ }
+      };
+      childWin.webContents.on('did-finish-load', updateMeta);
+      childWin.on('page-title-updated', (_ev, t) => { entry.title = t || entry.title; });
+
+      // Notify the main renderer that a popup has opened so the sidebar can show an AI offer.
+      const notifyPopupState = (type) => {
+        try {
+          const mw = mainWindow;
+          if (mw && typeof mw.isDestroyed === 'function' && !mw.isDestroyed()) {
+            mw.webContents.send('navio-popup-window', {
+              type,
+              popupId,
+              webContentsId: entry.webContentsId,
+              url: entry.url,
+              title: entry.title,
+              openerOrigin
+            });
+          }
+        } catch { /* ignore */ }
+      };
+
+      notifyPopupState('opened');
+
+      childWin.on('close', () => {
+        navioPopupWindowRegistry.delete(popupId);
+        notifyPopupState('closed');
+      });
+    } catch { /* ignore */ }
   });
 
   // Log hard navigation failures (skip -3 = ERR_ABORTED which is a normal user/redirect cancel).
@@ -7101,6 +7161,40 @@ ipcMain.handle('assistant-chat-save', (_, payload) => {
   } catch (e) {
     console.error('[navio] assistant-chat-save', e.message);
     return { ok: false };
+  }
+});
+
+// ── Popup window AI takeover ─────────────────────────────────────────────────
+
+/** Return the list of open carrier/enterprise popup windows (for AI to discover them). */
+ipcMain.handle('get-popup-windows', () => {
+  const list = [];
+  for (const [, entry] of navioPopupWindowRegistry) {
+    try {
+      const alive = entry.win && !entry.win.isDestroyed();
+      if (!alive) continue;
+      list.push({
+        id: entry.id,
+        webContentsId: entry.webContentsId,
+        url: entry.url,
+        title: entry.title || entry.url,
+        openerOrigin: entry.openerOrigin || ''
+      });
+    } catch { /* ignore */ }
+  }
+  return list;
+});
+
+/** Bring a popup window to front so the user can see the AI working in it. */
+ipcMain.handle('focus-popup-window', (_, { popupId }) => {
+  try {
+    const entry = navioPopupWindowRegistry.get(popupId);
+    if (!entry || !entry.win || entry.win.isDestroyed()) return { ok: false, error: 'Popup not found' };
+    entry.win.show();
+    entry.win.focus();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
   }
 });
 

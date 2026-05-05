@@ -13046,6 +13046,23 @@ button:focus-visible,
   line-height: 1.4;
 }
 
+.live-toast-action {
+  background: rgba(0, 216, 255, 0.12);
+  border: 1px solid rgba(0, 216, 255, 0.4);
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 10.5px;
+  padding: 2px 9px;
+  border-radius: 5px;
+  font-family: inherit;
+  flex-shrink: 0;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.live-toast-action:hover {
+  background: rgba(0, 216, 255, 0.22);
+}
+
 
 /* ── Connector card live decorations ─────────────────────────────────────── */
 

@@ -2924,13 +2924,48 @@ const NTP = (() => {
     messagesEl.appendChild(aiBubble);
     messagesEl.scrollTop = messagesEl.scrollHeight;
 
-    // Build messages array for the API
+    // Build messages array for the API — smart relevance selection.
     _ntpChatMessages.push({ role: 'user', content: q });
     const messages = [{ role: 'user', content: q }];
-    if (_ntpChatMessages.length > 2) {
-      // Include prior context (last 10 turns)
-      const history = _ntpChatMessages.slice(0, -1).slice(-10);
-      messages.unshift(...history);
+    if (_ntpChatMessages.length > 1) {
+      // Always include the 8 most recent messages for continuity; for older turns,
+      // only include those that share keywords with the current query so the AI
+      // doesn't get confused by unrelated earlier topics.
+      const prior = _ntpChatMessages.slice(0, -1); // everything before current user msg
+      const RECENT = 8;
+      const recent = prior.slice(-RECENT);
+      const older  = prior.slice(0, -RECENT);
+      let relevant = [];
+      if (older.length && q.length > 3) {
+        const STOP = new Set(['the','a','an','is','it','in','on','at','to','for','of',
+          'and','or','but','not','with','this','that','what','how','why','when','where',
+          'who','can','do','did','does','has','have','had','will','would','could','should',
+          'i','you','we','they','my','your','its','be','am','are','was','were','been',
+          'get','use','make','just','also','about','from','by','as','so','if','then',
+          'than','up','out','no','yes','please','let','want','need','like','know',
+          'think','see','look','say','said','tell','told','now','here','there','some',
+          'any','all','more','very','much','many','one','two','really','actually']);
+        const terms = new Set(
+          q.toLowerCase().replace(/[^a-z0-9\s]/g,' ').split(/\s+/)
+           .filter(w => w.length >= 3 && !STOP.has(w))
+        );
+        if (terms.size) {
+          const scored = older.map((m, idx) => {
+            const ws = new Set(
+              (m.content || '').toLowerCase().replace(/[^a-z0-9\s]/g,' ').split(/\s+/)
+            );
+            let hits = 0; for (const t of terms) { if (ws.has(t)) hits++; }
+            return { m, idx, score: hits };
+          });
+          relevant = scored
+            .filter(x => x.score > 0)
+            .sort((a, b) => b.score - a.score || b.idx - a.idx)
+            .slice(0, 12)
+            .sort((a, b) => a.idx - b.idx)
+            .map(x => x.m);
+        }
+      }
+      messages.unshift(...relevant, ...recent);
     }
 
     _ntpChatStreaming = true;

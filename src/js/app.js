@@ -885,6 +885,49 @@ ${badgeHtml(it.badge)}
       });
     }
 
+    // Popup window AI takeover — when a carrier/enterprise portal popup opens, offer
+    // AI assistance via the sidebar.  The main process sends 'navio-popup-window' with
+    // type 'opened' / 'closed' and the popup's webContentsId for CDP targeting.
+    if (typeof window.navio.onPopupWindow === 'function') {
+      // Track the most recently opened popup so the AI can target it.
+      window._navioActivePopupWebContentsId = null;
+      window._navioActivePopupId = null;
+
+      window.navio.onPopupWindow((data) => {
+        if (!data || !data.type) return;
+        if (data.type === 'opened') {
+          window._navioActivePopupWebContentsId = data.webContentsId || null;
+          window._navioActivePopupId = data.popupId != null ? data.popupId : null;
+          const title = (data.title || data.url || 'popup').slice(0, 60);
+          // Show a toast with an "Ask AI" button so the user can quickly get help.
+          _showAppToastWithAction(
+            `Popup opened: ${title}`,
+            'Ask AI',
+            () => {
+              try {
+                if (typeof AssistantManager !== 'undefined') {
+                  AssistantManager.open();
+                  const inp = document.getElementById('assistant-input');
+                  if (inp) {
+                    const popupUrl = data.url || '';
+                    inp.value = `Help me with the popup window that just opened${popupUrl ? ` (${popupUrl})` : ''}: `;
+                    inp.focus();
+                    inp.selectionStart = inp.selectionEnd = inp.value.length;
+                    inp.dispatchEvent(new Event('input'));
+                  }
+                }
+              } catch { /* ignore */ }
+            }
+          );
+        } else if (data.type === 'closed') {
+          if (window._navioActivePopupId === data.popupId) {
+            window._navioActivePopupWebContentsId = null;
+            window._navioActivePopupId = null;
+          }
+        }
+      });
+    }
+
     // Per-site Compatibility Mode badge — click to disable + reload.
     const compatBadge = document.getElementById('url-site-compat-badge');
     if (compatBadge && typeof window.navio.siteCompatSet === 'function') {
@@ -1753,6 +1796,37 @@ function _showAppToast(msg, type = 'info') {
   el.appendChild(x);
   stack.prepend(el);
   setTimeout(() => el.remove(), 5000);
+}
+
+function _showAppToastWithAction(msg, actionLabel, onAction, type = 'info') {
+  const stack = document.getElementById('live-notif-stack');
+  if (!stack) return;
+  const icons = { success: '✓', info: 'ℹ', error: '✗', warning: '⚠' };
+  const el = document.createElement('div');
+  el.className = `live-notification live-toast live-toast-${type}`;
+  const iconEl = document.createElement('span');
+  iconEl.className = 'live-toast-icon';
+  iconEl.textContent = icons[type] || '•';
+  const msgEl = document.createElement('span');
+  msgEl.className = 'live-toast-msg';
+  msgEl.textContent = String(msg == null ? '' : msg);
+  const actionBtn = document.createElement('button');
+  actionBtn.className = 'live-toast-action';
+  actionBtn.textContent = String(actionLabel || 'Action');
+  actionBtn.addEventListener('click', () => {
+    try { onAction && onAction(); } catch { /* ignore */ }
+    el.remove();
+  });
+  const x = document.createElement('button');
+  x.className = 'live-notif-x';
+  x.textContent = '×';
+  x.addEventListener('click', () => el.remove());
+  el.appendChild(iconEl);
+  el.appendChild(msgEl);
+  el.appendChild(actionBtn);
+  el.appendChild(x);
+  stack.prepend(el);
+  setTimeout(() => el.remove(), 8000);
 }
 
 // ── Reading List Manager ───────────────────────────────────────────────────
