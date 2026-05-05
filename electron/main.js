@@ -259,6 +259,18 @@ const RISKY_BROWSER_ACTIONS = new Set(['navigate', 'click', 'type']);
 const AUTH_GATE_URL_RE =
   /\/(login|signin|sign-in|auth|account\/login|session\/new|oauth|sso)\b|accounts\.google\.com\/(signin|ServiceLogin)|login\.microsoftonline\.com|login\.live\.com|signin\.aws\.amazon\.com/i;
 
+/**
+ * Detect bot-protection / CAPTCHA challenge pages after navigation.
+ * Cloudflare managed challenges redirect to cdn-cgi paths; some sites use
+ * dedicated /security-check or /verify-human routes. When these are detected
+ * the agent must stop and tell the user — clicking inside a challenge page
+ * never works from automation and loops the AI indefinitely.
+ */
+const BOT_CHALLENGE_URL_RE =
+  /cdn-cgi\/(challenge-platform|bm\/cv|l\/chk)|\/security-check|\/verify-human|\/challenge(\?|\/|$)|\/bot-detection|\/anti-robot|\/robot-check/i;
+const BOT_CHALLENGE_TITLE_RE =
+  /just a moment\.\.\.|checking your browser|attention required|security check|verifying you are human|are you a robot|ddos protection|please (wait|enable javascript)|browser.*check|enable cookies to continue/i;
+
 /** After a click, wait for navigation if it starts within timeoutMs; else resolve when timeout elapses. */
 function waitForOptionalNavigationAfterClick(wc, timeoutMs = 2000) {
   return new Promise((resolve) => {
@@ -6526,6 +6538,17 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
         const authGate =
           AUTH_GATE_URL_RE.test(finalUrl) ||
           /\bsign.?in\b|log.?in\b|authenticate\b/i.test(pageTitle);
+        const botChallenge =
+          BOT_CHALLENGE_URL_RE.test(finalUrl) ||
+          BOT_CHALLENGE_TITLE_RE.test(pageTitle);
+        if (botChallenge) {
+          return {
+            success: true,
+            botChallenge: true,
+            url: finalUrl,
+            note: 'Bot/Cloudflare challenge page detected. The page is showing a human-verification or security challenge that automation cannot solve. STOP immediately — do NOT attempt to read_page, click, or navigate again. Take a screenshot and tell the user they must solve this challenge manually in the browser, then resume.'
+          };
+        }
         return { success: true, authGate, url: finalUrl };
       }
 
@@ -9739,11 +9762,41 @@ registerExtensionsIpc(ipcMain, { app, getMainWindow: () => mainWindow });
 registerSyncIpc(ipcMain, { app, loadConfig, saveConfig });
 registerProfilesIpc(ipcMain, { profilesBase: NAVIO_PROFILES_BASE });
 
+/**
+ * Carrier / logistics portals that must always run in Compatibility Mode.
+ * Auto-registered into navio-site-compat.json at startup so the synchronous
+ * IPC probe in webview-preload.js returns true before the user has to
+ * manually enable it. Only adds origins that are not already present —
+ * existing user preferences (including explicit disables stored via context
+ * menu) are not overwritten.
+ *
+ * See also NAVIO_ALWAYS_COMPAT_RE in webview-preload.js (belt-and-suspenders).
+ */
+const NAVIO_AUTO_COMPAT_ORIGINS = [
+  'https://www.purolator.com',
+  'https://eshiponline.purolator.com',
+  'https://www.tql.com',
+];
+
+function _ensureAutoCompatOrigins(userData) {
+  try {
+    for (const origin of NAVIO_AUTO_COMPAT_ORIGINS) {
+      if (!navioSiteCompat.isCompat(userData, origin)) {
+        navioSiteCompat.setCompat(userData, origin, true);
+      }
+    }
+  } catch (e) {
+    console.warn('[navio] auto-compat origin registration:', e && e.message ? e.message : String(e));
+  }
+}
+
 app.whenReady().then(async () => {
   console.log('[navio] main.js v7 loaded; system prompt injected from main process');
   await clearRendererCodeCachesIfDev(app, session, fs, path);
 
   store = createStore(app.getPath('userData'));
+
+  _ensureAutoCompatOrigins(app.getPath('userData'));
 
   await maybeOfferLegacyProfileImport({
     app,

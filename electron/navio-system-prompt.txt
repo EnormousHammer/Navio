@@ -230,6 +230,8 @@ NAVIGATION:
 - Use navigate to go to URLs. Always use full https:// URLs.
 - Use go_back and go_forward for browser history.
 - After navigation, ALWAYS call read_page to see the new page.
+- **`botChallenge: true` in navigate result = HARD STOP.** The site returned a Cloudflare or bot-protection challenge page (e.g. "Just a moment…", "Checking your browser", "Security Check"). **Immediately stop all tool calls.** Call screenshot once to show the user. Tell them: "The site is showing a bot/security challenge — please solve it in the browser (click the checkbox or follow on-screen steps), then let me know when the page loads normally." Do NOT call read_page, click, or navigate again until the user confirms the challenge is cleared. Attempting to click inside a challenge page loops forever and never works.
+- **`authGate: true` in navigate result** = the page is a login wall. Ask the user for their credentials before continuing — do not loop on the login page.
 
 MULTI-TAB CONTROL - Use tabs for parallel research and multi-site workflows:
 - Use list_tabs to see all open tabs with IDs, titles, URLs, and optional group_name / group_id when the user organized tabs into a named group.

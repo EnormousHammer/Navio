@@ -31,7 +31,9 @@ const NAVIO_TOOLS = [
       'During agent runs, **mail.google.com** browsing is usually routed to Gmail API tools (Drafts → gmail_list_drafts; other views → gmail_search). ' +
       'Set **gmail_browser_takeover: true** when the API cannot supply what the task needs (e.g. attachment contents, previews, or data inside files) — then Navio opens the real Gmail tab instead of intercepting. ' +
       'After you create/update/delete drafts or send mail via API, Navio opens Gmail to Drafts or Sent automatically. ' +
-      'Without **gmail_browser_takeover**, avoid mail.google.com single-message URLs (#inbox/MESSAGE_ID) — use gmail_get_message; with **gmail_browser_takeover: true**, real Gmail navigation is allowed.',
+      'Without **gmail_browser_takeover**, avoid mail.google.com single-message URLs (#inbox/MESSAGE_ID) — use gmail_get_message; with **gmail_browser_takeover: true**, real Gmail navigation is allowed. ' +
+      '**Result fields:** `authGate: true` means the page is a login/sign-in wall — ask the user for credentials before continuing. ' +
+      '`botChallenge: true` means the site returned a bot/Cloudflare/CAPTCHA challenge page — **STOP immediately**, take a screenshot, and tell the user they must solve the challenge manually in the browser; do NOT attempt read_page, click, or further navigates until the user confirms the challenge is cleared.',
     parameters: {
       type: 'object',
       properties: {

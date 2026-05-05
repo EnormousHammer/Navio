@@ -239,6 +239,14 @@ COMMON PITFALLS — PICKUP FORMS
 **Login walls:**
 - Purolator pickup scheduling, UPS On-Call, and FedEx scheduled pickup all require a logged-in account. If the page redirects to login, ask the user for credentials BEFORE continuing. Do NOT loop on the login page without asking.
 
+**Bot / Cloudflare challenge pages (CRITICAL — do not loop):**
+- If navigate returns `botChallenge: true`, OR the page title contains "Just a moment", "Checking your browser", "Security Check", "Verifying you are human", or "Attention Required" — you are on a Cloudflare or carrier anti-bot challenge page. This applies to **all** carrier and broker sites including Purolator, TQL, FedEx, UPS, DHL, Echo, Coyote, Day & Ross, and Manitoulin.
+- **STOP all tool calls immediately.** Do not call read_page, click, or navigate again.
+- Call screenshot once to show the user what the page looks like.
+- Tell the user: "[Site name] is showing a bot-protection challenge. Please solve it manually in the browser — click the checkbox or follow any on-screen instructions. Let me know once the page loads normally and I'll continue."
+- After the user confirms the challenge is cleared, resume from the step where you left off.
+- **Never** attempt to click inside a Cloudflare challenge iframe — those clicks are always ignored by automation and will loop forever.
+
 **Final commit rule:**
 - NEVER click "Confirm Pickup", "Schedule Pickup", "Submit", or "Book" on the final confirmation screen without the user explicitly approving. Summarize what is about to be submitted (date, time window, address, pieces, weight, carrier) and wait for "yes, confirm" or equivalent.
 
