@@ -110,9 +110,39 @@ function serializeProfileForExport(payload, passphrase) {
   });
 }
 
+function _bookmarkNodeCount(data) {
+  if (!data || typeof data !== 'object') return 0;
+  let n = (data.bar || []).filter((b) => b && b.url).length;
+  const walk = (nodes) => {
+    for (const node of nodes || []) {
+      if (node && node.url) n++;
+      if (node && node.children && node.children.length) walk(node.children);
+    }
+  };
+  walk(data.tree || []);
+  return n;
+}
+
 function applyBookmarksHistory(userData, json) {
-  saveBookmarks(userData, json.bookmarks);
-  saveHistory(userData, json.history);
+  const incomingBm = json && json.bookmarks;
+  const localBm = loadBookmarks(userData);
+  const inB = _bookmarkNodeCount(incomingBm);
+  const locB = _bookmarkNodeCount(localBm);
+  if (locB > 0 && inB === 0 && incomingBm) {
+    console.warn('[navio-sync] skip applying empty remote bookmarks; local has', locB, 'items');
+  } else if (incomingBm) {
+    saveBookmarks(userData, incomingBm);
+  }
+
+  const incomingHist = (json && json.history) || { version: 1, entries: [] };
+  const localHist = loadHistory(userData);
+  const inH = Array.isArray(incomingHist.entries) ? incomingHist.entries.length : 0;
+  const locH = Array.isArray(localHist.entries) ? localHist.entries.length : 0;
+  if (locH > 0 && inH === 0) {
+    console.warn('[navio-sync] skip applying empty remote history; local has', locH, 'entries');
+  } else {
+    saveHistory(userData, incomingHist);
+  }
 }
 
 function readRemoteExportedAt(raw, passphrase) {

@@ -50,17 +50,46 @@ try {
 
   /** Full-page in-tab chat — host runs the full agent (tools, connectors); guest only renders + postToHost. */
   if (isNavioChatTabPage()) {
+    const navioChatTabApi = {
+      getConfig: () => ipcRenderer.invoke('get-config'),
+      saveConfig: (partial) => ipcRenderer.invoke('save-config', partial),
+      postToHost: (payload) => _sendToTabHost('navio-chat-host', payload),
+      navioTTS: (params) => ipcRenderer.invoke('navio-tts', params),
+      readFileForAttachment: (filePath) => ipcRenderer.invoke('read-file-for-attachment', filePath),
+      extractAttachmentText: (args) => ipcRenderer.invoke('extract-attachment-text', args)
+    };
+    /** After reload / in-place navigations, a stale bridged key can make the second expose throw — chat then has no postToHost. */
+    function _stripStaleNavioChatTabFromMainWorld() {
+      try {
+        if (typeof contextBridge.executeInMainWorld !== 'function') return;
+        contextBridge.executeInMainWorld({
+          func: () => {
+            try {
+              Reflect.deleteProperty(window, 'navioChatTab');
+            } catch (_) {
+              /* ignore */
+            }
+          }
+        });
+      } catch (_) {
+        /* ignore */
+      }
+    }
     try {
-      contextBridge.exposeInMainWorld('navioChatTab', {
-        getConfig: () => ipcRenderer.invoke('get-config'),
-        saveConfig: (partial) => ipcRenderer.invoke('save-config', partial),
-        postToHost: (payload) => _sendToTabHost('navio-chat-host', payload),
-        navioTTS: (params) => ipcRenderer.invoke('navio-tts', params),
-        readFileForAttachment: (filePath) => ipcRenderer.invoke('read-file-for-attachment', filePath),
-        extractAttachmentText: (args) => ipcRenderer.invoke('extract-attachment-text', args)
-      });
+      _stripStaleNavioChatTabFromMainWorld();
+      contextBridge.exposeInMainWorld('navioChatTab', navioChatTabApi);
     } catch (e) {
-      console.error('[navio] navioChatTab preload bridge failed:', e && e.message ? e.message : e);
+      const msg = String(e && e.message != null ? e.message : e || '');
+      if (/exists|already|duplicate|registered/i.test(msg)) {
+        try {
+          _stripStaleNavioChatTabFromMainWorld();
+          contextBridge.exposeInMainWorld('navioChatTab', navioChatTabApi);
+        } catch (e2) {
+          console.error('[navio] navioChatTab preload re-bridge failed:', e2 && e2.message ? e2.message : e2);
+        }
+      } else {
+        console.error('[navio] navioChatTab preload bridge failed:', msg);
+      }
     }
   }
 

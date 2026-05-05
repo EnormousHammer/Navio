@@ -43,7 +43,7 @@ class NavioApp {
   constructor() {
     this.config = {};
     this._initialShellReadyScheduled = false;
-    this._urlSuggest = { index: -1, items: [], debounce: null, listEl: null };
+    this._urlSuggest = { index: -1, items: [], debounce: null, listEl: null, _suggestRestore: null };
     this.init();
   }
 
@@ -319,11 +319,54 @@ class NavioApp {
     return true;
   }
 
+  /** Keep dropdown above NTP/webview — #main-content / #browser-container use overflow:hidden. */
+  _layoutUrlSuggestionsLayer(list) {
+    const slot = document.querySelector('.url-bar-container');
+    if (!list || !slot) return;
+    const r = slot.getBoundingClientRect();
+    const pad = 6;
+    list.style.position = 'fixed';
+    list.style.left = `${Math.max(4, r.left)}px`;
+    list.style.top = `${r.bottom + pad}px`;
+    list.style.width = `${r.width}px`;
+    list.style.right = 'auto';
+    list.style.zIndex = '2147483646';
+    if (list.parentElement !== document.body) {
+      this._urlSuggest._suggestRestore = { parent: list.parentElement, next: list.nextSibling };
+      document.body.appendChild(list);
+    }
+  }
+
+  _restoreUrlSuggestionsToShell(list) {
+    if (!list) return;
+    const rs = this._urlSuggest._suggestRestore;
+    if (rs && rs.parent && list.parentElement === document.body) {
+      try {
+        if (rs.next && rs.next.parentNode === rs.parent) rs.parent.insertBefore(list, rs.next);
+        else rs.parent.appendChild(list);
+      } catch {
+        try {
+          rs.parent.appendChild(list);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    list.style.position = '';
+    list.style.left = '';
+    list.style.top = '';
+    list.style.width = '';
+    list.style.right = '';
+    list.style.zIndex = '';
+    this._urlSuggest._suggestRestore = null;
+  }
+
   _hideUrlSuggestions() {
     const list = this._urlSuggest.listEl || document.getElementById('url-suggestions');
     if (list) {
       list.hidden = true;
       list.innerHTML = '';
+      this._restoreUrlSuggestionsToShell(list);
     }
     this._urlSuggest.index = -1;
     this._urlSuggest.items = [];
@@ -712,6 +755,7 @@ ${badgeHtml(it.badge)}
       })
       .join('');
     this._wireUrlSuggestionImgFallbacks(list);
+    this._layoutUrlSuggestionsLayer(list);
     list.hidden = false;
     list.querySelectorAll('.url-suggestion-row').forEach((row) => {
       row.addEventListener('mousedown', (e) => {
@@ -733,6 +777,17 @@ ${badgeHtml(it.badge)}
     const btnForward = document.getElementById('btn-forward');
     const btnReload = document.getElementById('btn-reload');
     this._urlSuggest.listEl = document.getElementById('url-suggestions');
+
+    window.addEventListener(
+      'resize',
+      () => {
+        const list = this._urlSuggest.listEl;
+        if (list && !list.hidden && list.parentElement === document.body) {
+          this._layoutUrlSuggestionsLayer(list);
+        }
+      },
+      { passive: true }
+    );
 
     // Show AI hint badge when input looks like a question; debounce history/bookmark suggestions
     const aiHint = document.getElementById('url-ai-hint');

@@ -45,6 +45,7 @@ const { ensureGuestWebviewKeyboardFocus } = require('./agent-input-focus');
 const { BINARY_MAX_BYTES, shouldDownloadAndExtract, extractDriveFileText } = require('./drive-file-text');
 const { tabManager } = require('./tab-manager');
 const { exportMigrationToFolder, createTimestampedMigrationDir } = require('./migration');
+const { maybeOfferLegacyProfileImport } = require('./navio-offer-legacy-profile-import');
 
 function getProfileIdFromLaunch() {
   const a = process.argv.find((x) => typeof x === 'string' && x.startsWith('--navio-profile='));
@@ -9743,6 +9744,12 @@ app.whenReady().then(async () => {
   await clearRendererCodeCachesIfDev(app, session, fs, path);
 
   store = createStore(app.getPath('userData'));
+
+  await maybeOfferLegacyProfileImport({
+    app,
+    getMainWindow: () => mainWindow,
+    profilesBase: NAVIO_PROFILES_BASE
+  });
 
   try {
     maybeImportOemStremioCredentials();
