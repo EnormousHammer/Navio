@@ -3596,7 +3596,9 @@
   }
 
   function triggerNewChat() {
-    if (busy) return;
+    if (busy) {
+      stopGeneration();
+    }
     newSession();
     messagesEl.innerHTML = '';
     resetAgentPanel();

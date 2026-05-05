@@ -1140,18 +1140,48 @@ function bindNavioGuestWindowOpenOnce(guestContents) {
     // breaks the "Select" / "Apply" button.  Allow them as real Electron popup
     // windows so the opener relationship is preserved.
     if (isShippingCarrierOpenerOrigin(openerOrigin) || isEnterprisePortalOpenerOrigin(openerOrigin)) {
+      let openerBrowserWin = null;
+      try {
+        openerBrowserWin =
+          typeof BrowserWindow.fromWebContents === 'function'
+            ? BrowserWindow.fromWebContents(guestContents)
+            : null;
+      } catch {
+        openerBrowserWin = null;
+      }
+      if (
+        openerBrowserWin &&
+        typeof openerBrowserWin.isDestroyed === 'function' &&
+        openerBrowserWin.isDestroyed()
+      ) {
+        openerBrowserWin = null;
+      }
+      let guestSession = null;
+      try {
+        guestSession = guestContents.session || null;
+      } catch {
+        guestSession = null;
+      }
+      const popupWebPrefs = {
+        sandbox: false,
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, 'webview-preload.js')
+      };
+      if (guestSession) {
+        popupWebPrefs.session = guestSession;
+      }
       return {
         action: 'allow',
         overrideBrowserWindowOptions: {
           width: (width && width >= 400) ? width : 960,
           height: (height && height >= 300) ? height : 720,
           center: true,
+          show: true,
+          parent: openerBrowserWin || undefined,
           autoHideMenuBar: true,
-          webPreferences: {
-            sandbox: true,
-            nodeIntegration: false,
-            contextIsolation: true
-          }
+          backgroundThrottling: false,
+          webPreferences: popupWebPrefs
         }
       };
     }
@@ -1194,6 +1224,30 @@ function bindNavioGuestWindowOpenOnce(guestContents) {
   // notify the main renderer so the sidebar can offer assistance.
   guestContents.on('did-create-window', (childWin) => {
     try { childWin.setMenuBarVisibility(false); } catch { /* ignore */ }
+    try {
+      bindNavioGuestWindowOpenOnce(childWin.webContents);
+      const syncPopupAutoDark = () => {
+        try {
+          navioApplyGuestAutoDarkFromContents(childWin.webContents);
+        } catch {
+          /* ignore */
+        }
+      };
+      queueMicrotask(syncPopupAutoDark);
+      childWin.webContents.on('did-finish-load', syncPopupAutoDark);
+      childWin.webContents.on('did-navigate', syncPopupAutoDark);
+      childWin.webContents.on('did-navigate-in-page', syncPopupAutoDark);
+    } catch {
+      /* ignore */
+    }
+    try {
+      if (childWin && !childWin.isDestroyed()) {
+        childWin.show();
+        childWin.focus();
+      }
+    } catch {
+      /* ignore */
+    }
     try {
       const popupId = _navioPopupWindowNextId++;
       let popupUrl = '';
@@ -1333,6 +1387,7 @@ function navioGuestUrlShouldOptOutAutoDark(urlStr) {
       host.includes('ontrac') ||
       host.includes('shipstation') ||
       host.includes('freightcom') ||
+      host.includes('tql') ||
       host.includes('tforce') ||
       host.includes('xpo.com') ||
       host.includes('odfl.com') ||
@@ -1340,7 +1395,9 @@ function navioGuestUrlShouldOptOutAutoDark(urlStr) {
       host.includes('rlcarriers')
     );
   } catch {
-    return /\b(purolator|fedex|ups\.com|dhl|canadapost|usps|ontrac|shipstation)\b/i.test(String(urlStr || ''));
+    return /\b(purolator|fedex|ups\.com|dhl|canadapost|usps|ontrac|shipstation|tql)\b/i.test(
+      String(urlStr || '')
+    );
   }
 }
 
@@ -2214,17 +2271,29 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
     return { error: `Unknown provider: ${provider}` };
   }
 
+  // Combine the caller's abort signal with a hard 30-second timeout so a
+  // hung API request (server unresponsive, no streaming data, etc.) cannot
+  // leave the UI stuck in "busy" indefinitely.
+  const FETCH_TIMEOUT_MS = 30000;
+  const timeoutSignal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+  const fetchSignal = fetchOpts.signal
+    ? AbortSignal.any([fetchOpts.signal, timeoutSignal])
+    : timeoutSignal;
+
   let response;
   try {
     response = await net.fetch(url, {
       method: 'POST',
       headers,
       body,
-      signal: fetchOpts.signal
+      signal: fetchSignal
     });
   } catch (e) {
     if (e && (e.name === 'AbortError' || fetchOpts.signal?.aborted)) {
       return { error: 'Stopped', aborted: true };
+    }
+    if (e && e.name === 'TimeoutError') {
+      return { error: 'The AI request timed out (no response from OpenAI after 30 seconds). Check your internet connection and that your API key has access to the configured model.' };
     }
     const cause = e.cause?.message || e.cause?.code || '';
     console.error('[navio] AI fetch network error:', e.message, cause ? `(${cause})` : '', url);
@@ -2788,6 +2857,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
       if (result.aborted || result.error === 'Stopped') {
         return finishAgentRun({ content: '**Stopped.**', cancelled: true, toolLog });
       }
+      console.error('[navio] AI API error at step', step, ':', result.error);
       let errMsg = result.error;
       if (navioTransientAiError(errMsg)) {
         errMsg = `${errMsg}\n\nIf this was a short-lived network or rate-limit issue, wait a few seconds and say **continue** to retry.`;

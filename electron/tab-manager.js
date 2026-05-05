@@ -369,7 +369,8 @@ class TabManager {
         nodeIntegration: false,
         contextIsolation: true,
         preload: this._preloadPath,
-        sandbox: false
+        sandbox: false,
+        backgroundThrottling: false
       }
     });
 
