@@ -1714,7 +1714,13 @@ ipcMain.on('window-maximize', () => {
 ipcMain.on('window-close', () => mainWindow?.close());
 
 ipcMain.on('navio-shell-log', (_, message) => {
-  console.log(typeof message === 'string' ? message : String(message));
+  const msg = typeof message === 'string' ? message : String(message);
+  console.log(msg);
+  try {
+    navioLogger.log('info', 'shell', msg);
+  } catch {
+    /* ignore */
+  }
 });
 
 ipcMain.handle('get-config', () => {
@@ -2858,6 +2864,11 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
         return finishAgentRun({ content: '**Stopped.**', cancelled: true, toolLog });
       }
       console.error('[navio] AI API error at step', step, ':', result.error);
+      try {
+        navioLogger.log('error', 'ai-chat', `tool-loop step ${step}: ${String(result.error).slice(0, 2000)}`, null);
+      } catch {
+        /* ignore */
+      }
       let errMsg = result.error;
       if (navioTransientAiError(errMsg)) {
         errMsg = `${errMsg}\n\nIf this was a short-lived network or rate-limit issue, wait a few seconds and say **continue** to retry.`;
@@ -3502,6 +3513,16 @@ ipcMain.handle('extract-page-content', async (event, webContentsId) => {
 // ── Tool-calling AI request (agentic loop) ──────────────────────────────────
 ipcMain.handle('ai-request-with-tools', async (event, { messages, webContentsId, tabId: toolTabId }) => {
   const cfg = loadConfig();
+  try {
+    navioLogger.log(
+      'info',
+      'ai-chat',
+      `ai-request-with-tools start model=${String(cfg.aiModel || '')} wcId=${webContentsId != null ? webContentsId : 'none'} toolTab=${toolTabId != null ? String(toolTabId) : ''}`,
+      null
+    );
+  } catch {
+    /* ignore */
+  }
   if (cfg.aiKillSwitch) {
     return { error: 'AI is turned off (kill switch). Enable it in Settings → AI.' };
   }
@@ -3541,16 +3562,34 @@ ipcMain.handle('ai-request-with-tools', async (event, { messages, webContentsId,
 
   const wc = webContentsId ? electronWebContents.fromId(webContentsId) : null;
   if (!wc) {
+    try {
+      navioLogger.log(
+        'warn',
+        'ai-chat',
+        'ai-request-with-tools: no WebContents for tool context (missing/closed tab). Open a normal tab or retry.',
+        webContentsId != null ? String(webContentsId) : null
+      );
+    } catch {
+      /* ignore */
+    }
     return { error: 'No active tab — open a page first.' };
   }
 
   const tid = toolTabId != null && String(toolTabId).length ? String(toolTabId) : '__default__';
   const ac = registerAiAbortController(event.sender, tid);
   try {
-    return await executeToolLoop(cfg, apiKey, processed, wc, event.sender, undefined, {
+    const out = await executeToolLoop(cfg, apiKey, processed, wc, event.sender, undefined, {
       signal: ac.signal,
       tabId: tid
     });
+    if (out && out.error) {
+      try {
+        navioLogger.log('error', 'ai-chat', String(out.error).slice(0, 2000), null);
+      } catch {
+        /* ignore */
+      }
+    }
+    return out;
   } catch (err) {
     if (err && (err.name === 'AbortError' || ac.signal.aborted)) {
       return { content: '**Stopped.**', cancelled: true, toolLog: [] };
@@ -3561,6 +3600,11 @@ ipcMain.handle('ai-request-with-tools', async (event, { messages, webContentsId,
       ? `Network error connecting to AI provider${detail}. Check your internet connection and API key, then try again.`
       : err.message;
     console.error('[navio] ai-request-with-tools error:', err.message, detail);
+    try {
+      navioLogger.log('error', 'ai-chat', `${userMsg}${detail}`, err.stack ? err.stack.slice(0, 600) : null);
+    } catch {
+      /* ignore */
+    }
     return { error: userMsg };
   } finally {
     releaseAiAbortController(event.sender, tid);
@@ -10057,6 +10101,13 @@ app.whenReady().then(async () => {
 
   createMainWindow();
   navioLogger.setMainWindow(mainWindow);
+  navioLogger.setExtraLogBroadcast((entry) => {
+    try {
+      tabManager.broadcastNavioLogEntry(entry);
+    } catch {
+      /* ignore */
+    }
+  });
 
   startNavioCloudSync(app, loadConfig, saveConfig, () => mainWindow);
 

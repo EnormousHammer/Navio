@@ -54,6 +54,26 @@ try {
       getConfig: () => ipcRenderer.invoke('get-config'),
       saveConfig: (partial) => ipcRenderer.invoke('save-config', partial),
       postToHost: (payload) => _sendToTabHost('navio-chat-host', payload),
+      getRecentLogs: (n) => ipcRenderer.invoke('navio-log-get-recent', n || 200),
+      /** Same live stream as the shell debug panel (Ctrl+Shift+L), forwarded by main. */
+      onLogEntry: (callback) => {
+        if (typeof callback !== 'function') return () => {};
+        const handler = (_event, entry) => {
+          try {
+            callback(entry);
+          } catch (_) {
+            /* ignore */
+          }
+        };
+        ipcRenderer.on('navio-log-entry', handler);
+        return () => {
+          try {
+            ipcRenderer.removeListener('navio-log-entry', handler);
+          } catch (_) {
+            /* ignore */
+          }
+        };
+      },
       navioTTS: (params) => ipcRenderer.invoke('navio-tts', params),
       readFileForAttachment: (filePath) => ipcRenderer.invoke('read-file-for-attachment', filePath),
       extractAttachmentText: (args) => ipcRenderer.invoke('extract-attachment-text', args)

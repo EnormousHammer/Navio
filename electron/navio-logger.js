@@ -22,6 +22,8 @@ const TRIM_KEEP_LINES = 600;             // keep the most recent N lines after t
 
 let _logPath = null;
 let _mainWin = null;
+/** Optional (entry) => void — e.g. mirror logs to Navio AI guest tabs. */
+let _extraBroadcast = null;
 
 /** Call once in app.whenReady() before any logging. */
 function init(userData, win) {
@@ -36,6 +38,11 @@ function init(userData, win) {
 /** Update the reference whenever mainWindow is (re)created. */
 function setMainWindow(win) {
   _mainWin = win;
+}
+
+/** Register a second sink for every log line (same payload as `navio-log-entry`). */
+function setExtraLogBroadcast(fn) {
+  _extraBroadcast = typeof fn === 'function' ? fn : null;
 }
 
 /**
@@ -88,6 +95,11 @@ function _pushToRenderer(entry) {
   } catch {
     /* ignore */
   }
+  try {
+    if (_extraBroadcast) _extraBroadcast(entry);
+  } catch {
+    /* ignore */
+  }
 }
 
 /**
@@ -115,4 +127,4 @@ function getLogPath() {
   return _logPath || null;
 }
 
-module.exports = { init, setMainWindow, log, readRecent, getLogPath };
+module.exports = { init, setMainWindow, setExtraLogBroadcast, log, readRecent, getLogPath };

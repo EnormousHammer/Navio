@@ -380,6 +380,73 @@
       gap: 6px;
     }
     .tb-btn:hover { background: rgba(255, 255, 255, 0.09); color: var(--text); border-color: var(--border-3); }
+    #btn-live-log.active {
+      border-color: var(--cyan-border);
+      color: var(--cyan);
+      background: var(--cyan-soft);
+    }
+    .live-log {
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      border-top: 1px solid var(--border);
+      background: var(--bg-panel);
+      max-height: 42vh;
+      min-height: 0;
+    }
+    .live-log[hidden] { display: none !important; }
+    .live-log-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-2);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .live-log-head .live-log-hint {
+      flex: 1;
+      font-weight: 500;
+      color: var(--dim);
+      font-size: 11px;
+    }
+    .live-log-head button {
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border-2);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-3);
+      font-size: 11px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .live-log-head button:hover { color: var(--text); border-color: var(--border-3); }
+    .live-log-body-wrap {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .live-log-body {
+      margin: 0;
+      padding: 10px 14px 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--text-3);
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      flex: 1;
+      min-height: 120px;
+    }
+    .live-log-body .lv-error { color: #fca5a5; }
+    .live-log-body .lv-warn { color: #fcd34d; }
     #btn-activity { display: none; }
     #btn-activity.visible { display: inline-flex; }
     #btn-activity::before {
@@ -1791,6 +1858,7 @@
           <label for="guest-tts-voice">Voice</label>
           <select id="guest-tts-voice" class="guest-tts-voice" aria-label="Read-aloud voice"></select>
         </div>
+        <button type="button" class="tb-btn" id="btn-live-log" title="Live log (same stream as shell Ctrl+Shift+L)" aria-expanded="false">Live log</button>
         <button type="button" class="tb-btn" id="btn-activity" title="Agent activity">Activity</button>
         <div class="tb-kebab-wrap">
           <button type="button" class="tb-icon-btn" id="btn-kebab" title="Chat options" aria-label="Chat options" aria-haspopup="menu" aria-expanded="false">
@@ -1898,6 +1966,18 @@
           </p>
         </div>
       </div>
+
+      <div class="live-log" id="live-log-wrap" hidden>
+        <div class="live-log-head">
+          <span>Live log</span>
+          <span class="live-log-hint">Main + shell (mirrored here)</span>
+          <button type="button" id="live-log-clear">Clear view</button>
+          <button type="button" id="live-log-hide">Hide</button>
+        </div>
+        <div class="live-log-body-wrap">
+          <pre class="live-log-body" id="live-log-body"></pre>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1921,6 +2001,82 @@
       return null;
     }
   }
+
+  var _liveLogUnsub = null;
+  var _liveLogStreamStarted = false;
+  var _liveLogBuffer = [];
+  var _LIVE_LOG_BUF_MAX = 500;
+
+  function formatLogEntry(en) {
+    var ts = String(en && en.ts != null ? en.ts : '').replace('T', ' ').slice(5, 23);
+    var lv = String(en && en.level != null ? en.level : 'info').slice(0, 5);
+    var src = String(en && en.source != null ? en.source : '').slice(0, 18);
+    var msg = String(en && en.message != null ? en.message : '').replace(/\s+/g, ' ').trim().slice(0, 480);
+    var det = en && en.detail ? (' | ' + String(en.detail).slice(0, 220)) : '';
+    return ts + ' ' + lv + ' ' + src + ' ' + msg + det;
+  }
+
+  function appendLiveLogLine(line) {
+    _liveLogBuffer.push(line);
+    if (_liveLogBuffer.length > _LIVE_LOG_BUF_MAX) _liveLogBuffer.shift();
+    var body = document.getElementById('live-log-body');
+    var wrap = document.getElementById('live-log-wrap');
+    if (!body || !wrap || wrap.hidden) return;
+    body.textContent += line + '\n';
+    body.scrollTop = body.scrollHeight;
+  }
+
+  function pushLiveLogEntry(entry) {
+    appendLiveLogLine(formatLogEntry(entry));
+  }
+
+  function startLiveLogStream() {
+    if (_liveLogStreamStarted) return;
+    var api = navioChatTabApi();
+    if (!api || typeof api.onLogEntry !== 'function') return;
+    _liveLogStreamStarted = true;
+    _liveLogUnsub = api.onLogEntry(function (entry) {
+      pushLiveLogEntry(entry);
+    });
+  }
+
+  function openLiveLogPanel() {
+    var wrap = document.getElementById('live-log-wrap');
+    var btn = document.getElementById('btn-live-log');
+    if (!wrap) return;
+    wrap.hidden = false;
+    if (btn) {
+      btn.setAttribute('aria-expanded', 'true');
+      btn.classList.add('active');
+    }
+    startLiveLogStream();
+    var body = document.getElementById('live-log-body');
+    var api = navioChatTabApi();
+    if (body && _liveLogBuffer.length) {
+      body.textContent = _liveLogBuffer.join('\n') + '\n';
+      body.scrollTop = body.scrollHeight;
+    } else if (api && typeof api.getRecentLogs === 'function') {
+      void Promise.resolve(api.getRecentLogs(220))
+        .then(function (arr) {
+          var b = document.getElementById('live-log-body');
+          if (!b || !Array.isArray(arr) || !arr.length) return;
+          b.textContent = arr.map(formatLogEntry).join('\n') + '\n';
+          b.scrollTop = b.scrollHeight;
+        })
+        .catch(function () {});
+    }
+  }
+
+  function closeLiveLogPanel() {
+    var wrap = document.getElementById('live-log-wrap');
+    var btn = document.getElementById('btn-live-log');
+    if (wrap) wrap.hidden = true;
+    if (btn) {
+      btn.setAttribute('aria-expanded', 'false');
+      btn.classList.remove('active');
+    }
+  }
+
   var __navioGuestChatActivated = false;
   const messagesEl = document.getElementById('messages');
   const stageEl = document.getElementById('stage');
@@ -2680,7 +2836,25 @@
   function toggleDrawer(){ document.body.classList.contains('drawer-open') ? closeDrawer() : openDrawer(); }
   function post(payload) {
     var n = navioChatTabApi();
-    if (n && n.postToHost) n.postToHost(payload);
+    if (n && n.postToHost) {
+      try {
+        n.postToHost(payload);
+        var act = payload && payload.action ? String(payload.action) : '?';
+        appendLiveLogLine(
+          formatLogEntry({
+            ts: new Date().toISOString(),
+            level: 'info',
+            source: 'chat-tab',
+            message: '→ host action=' + act,
+            detail: null
+          })
+        );
+      } catch (err) {
+        toast('Could not reach Navio: ' + (err && err.message ? err.message : String(err)));
+      }
+    } else {
+      toast('Chat bridge unavailable. Open **Chat with AI** from inside Navio (do not open this file in an external browser).');
+    }
   }
   function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -3834,6 +4008,26 @@
         }
       });
     }
+
+    var btnLiveLog = document.getElementById('btn-live-log');
+    var liveLogHide = document.getElementById('live-log-hide');
+    var liveLogClear = document.getElementById('live-log-clear');
+    if (btnLiveLog) {
+      btnLiveLog.addEventListener('click', function () {
+        var w = document.getElementById('live-log-wrap');
+        if (!w) return;
+        if (w.hidden) openLiveLogPanel();
+        else closeLiveLogPanel();
+      });
+    }
+    if (liveLogHide) liveLogHide.addEventListener('click', closeLiveLogPanel);
+    if (liveLogClear) {
+      liveLogClear.addEventListener('click', function () {
+        _liveLogBuffer.length = 0;
+        var body = document.getElementById('live-log-body');
+        if (body) body.textContent = '';
+      });
+    }
   }
 
   function toggleKebab(forceState) {
@@ -3880,6 +4074,7 @@
       if (__navioGuestChatActivated) return;
       __navioGuestChatActivated = true;
       wire();
+      startLiveLogStream();
       loadModelHint();
       updateCharCount();
       setBusy(false);

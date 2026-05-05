@@ -45,6 +45,7 @@ const { WebContentsView, ipcMain, session } = require('electron');
 const path = require('path');
 const { wcCanGoBack, wcCanGoForward } = require('./wc-nav-history');
 const { NAVIO_PARTITION_MAIN, NAVIO_PARTITION_INCOGNITO } = require('./navio-partitions');
+const navioLogger = require('./navio-logger');
 
 class TabManager {
   constructor() {
@@ -607,6 +608,14 @@ class TabManager {
     // IPC from tab preload (replaces sendToHost in the old webview model)
     // webview-preload.js sends: ipcRenderer.send('wcv-tab-preload-message', { channel, args })
     wc.ipc.on('wcv-tab-preload-message', (_event, { channel, args }) => {
+      if (channel === 'navio-chat-host' && args && args[0] && typeof args[0] === 'object') {
+        const act = String(args[0].action || '?');
+        try {
+          navioLogger.log('info', 'chat-host', `guest→host tab=${tabId} action=${act}`, null);
+        } catch {
+          /* ignore */
+        }
+      }
       send('ipc-message', { channel: channel || '', args: args || [] });
     });
 
@@ -649,6 +658,25 @@ class TabManager {
       });
     }
     return result;
+  }
+
+  /**
+   * Mirror `navio-log-entry` to every full-page Navio AI chat tab so live diagnostics
+   * work while that guest surface is focused (shell log panel is not visible there).
+   */
+  broadcastNavioLogEntry(entry) {
+    if (!entry || typeof entry !== 'object') return;
+    for (const [, tabEntry] of this._tabs) {
+      try {
+        const wc = tabEntry.wcv?.webContents;
+        if (!wc || wc.isDestroyed()) continue;
+        const live = (wc.getURL() || tabEntry.url || '').toLowerCase();
+        if (!live.includes('navio-chat-tab.html')) continue;
+        wc.send('navio-log-entry', entry);
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   _getWc(tabId) {

@@ -5116,7 +5116,13 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         return;
       } catch (e) {
         if (attempt === 3) {
-          console.warn('[navio-assistant] guest deliver failed after retries', e && e.message ? e.message : e);
+          const detail = e && e.message ? e.message : e;
+          console.warn('[navio-assistant] guest deliver failed after retries', detail);
+          try {
+            window.navio?.shellLog?.(`[Navio AI page] guestDeliver failed: ${detail}`);
+          } catch {
+            /* ignore */
+          }
         }
         await new Promise((r) => setTimeout(r, 50 + attempt * 45));
       }
@@ -5215,6 +5221,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (payload.action === 'send' && (payload.text || (Array.isArray(payload.files) && payload.files.length))) {
       const text = payload.text != null ? String(payload.text).trim() : '';
       const files = Array.isArray(payload.files) ? payload.files : null;
+      try {
+        window.navio?.shellLog?.('[Navio AI page] host received send (routing to AssistantManager)');
+      } catch {
+        /* ignore */
+      }
       void this.processGuestChatMessage(guestWv, text, files);
     }
   }
@@ -5307,14 +5318,19 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const hasFiles = Array.isArray(files) && files.length > 0;
     if (!text && !hasFiles) return;
     const guestKey = this._guestConversationKey();
+    try {
+      window.navio?.shellLog?.(`[Navio AI page] processGuestChatMessage start conv=${guestKey}`);
+    } catch {
+      /* ignore */
+    }
     await this._awaitGuestChatInterruptIfBusy(guestKey);
     const config = await window.navio.getConfig();
     if (config.aiKillSwitch) {
-      this._guestDeliver(guestWv, { type: 'assistant', error: true, content: 'AI is turned off (kill switch). Enable it in Settings → AI → Policy.' });
+      await this._guestDeliver(guestWv, { type: 'assistant', error: true, content: 'AI is turned off (kill switch). Enable it in Settings → AI → Policy.' });
       return;
     }
     if (!config.hasApiKey) {
-      this._guestDeliver(guestWv, { type: 'assistant', error: true, content: 'Add an API key in **Settings → AI** first.' });
+      await this._guestDeliver(guestWv, { type: 'assistant', error: true, content: 'Add an API key in **Settings → AI** first.' });
       return;
     }
     // Stage attachments for this turn so `_buildAttachmentPayloadForApi` / `_maybePushAttachmentSystemHint`
@@ -5344,7 +5360,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         await this._processGuestLegacyAi(guestWv, effectiveText, config);
       }
     } catch (err) {
-      this._guestDeliver(guestWv, { type: 'assistant', error: true, content: err.message || String(err) });
+      await this._guestDeliver(guestWv, { type: 'assistant', error: true, content: err.message || String(err) });
     } finally {
       this._guestChatWebview = null;
       const busyClear =
@@ -5361,7 +5377,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (this._guestAnchoredTabId) {
         void this._syncPanelToTab(this._guestAnchoredTabId);
       }
-      void this._guestDeliver(guestWv, { type: 'hostTurnEnd' });
+      await this._guestDeliver(guestWv, { type: 'hostTurnEnd' });
     }
   }
 
@@ -5516,7 +5532,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const tk = String(this._turnConversationKey || '__default__');
     if (this.inputEl && typeof this.inputEl.blur === 'function') this.inputEl.blur();
     if (guestWv) {
-      void this._guestDeliver(guestWv, { type: 'activityStart' });
+      await this._guestDeliver(guestWv, { type: 'activityStart' });
     }
 
     // ── Agent Router — detect domain and add focused context ────────────────
@@ -6216,10 +6232,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
 
     // Display final response
     if (response.error) {
-      if (guestWv) this._guestDeliver(guestWv, { type: 'assistant', error: true, content: response.error });
+      if (guestWv) await this._guestDeliver(guestWv, { type: 'assistant', error: true, content: response.error });
       else this.addMessage('assistant', response.error, 'error', toolTurnMs != null ? { durationMs: toolTurnMs } : null);
     } else if (response.content) {
-      if (guestWv) this._guestDeliver(guestWv, { type: 'assistant', content: response.content });
+      if (guestWv) await this._guestDeliver(guestWv, { type: 'assistant', content: response.content });
       else {
         // Collect citations from web_search tool calls in this run
         const toolSearchCitations = (response.toolLog || [])
@@ -6259,7 +6275,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       const emptyMsg =
         'No reply from the model. Open another tab with a page, or try again.';
       if (guestWv) {
-        void this._guestDeliver(guestWv, { type: 'assistant', error: true, content: emptyMsg });
+        await this._guestDeliver(guestWv, { type: 'assistant', error: true, content: emptyMsg });
       } else {
         this.addMessage(
           'assistant',
