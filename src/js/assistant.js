@@ -1672,16 +1672,21 @@ class AssistantManagerClass {
   }
 
   /**
-   * When the user switches tabs: show that tab’s conversation. Do **not** cancel in-flight work —
-   * automation stays on the agent-controlled tab via TabManager; API history stays keyed by the tab
-   * that started the turn (`_turnConversationKey`). Sidebar DOM only updates for the tab being viewed
-   * (`_panelDisplayTabId`) so another tab’s stream does not append into this transcript.
+   * When the user switches tabs: show that tab’s conversation (or its tab-group bucket). Do **not**
+   * cancel in-flight work — automation stays on the agent-controlled tab via TabManager; API history
+   * stays keyed by the tab that started the turn (`_turnConversationKey`). Sidebar DOM follows the
+   * focused tab; a detached “New chat” / Saved session (`_sidebarThreadKey`) must **not** keep
+   * showing across tab switches (that felt like one worker following every tab).
    */
   onActiveTabChanged(prevTabId, nextTabId) {
     if (!nextTabId || prevTabId === nextTabId) return;
     if (this._sidebarThreadKey) {
-      navioAssistantDebug('onActiveTabChanged: sidebar session — keep transcript', { prevTabId, nextTabId });
-      return;
+      navioAssistantDebug('onActiveTabChanged: drop detached sidebar session for tab scope', {
+        prevTabId,
+        nextTabId,
+        hadSidebarKey: this._sidebarThreadKey
+      });
+      this._sidebarThreadKey = null;
     }
     void this._syncPanelToTab(String(nextTabId));
     navioAssistantDebug('onActiveTabChanged', { prevTabId, nextTabId });
@@ -1829,9 +1834,10 @@ class AssistantManagerClass {
 
   /**
    * Swap the sidebar transcript to match `tabId` (conversation + attachments cleared for that view).
+   * Caller clears `_sidebarThreadKey` when leaving a detached session; do not gate on it here or
+   * tab switches could not attach the panel to the active tab.
    */
   async _syncPanelToTab(tabId) {
-    if (this._sidebarThreadKey) return;
     const k = String(tabId || '');
     if (!k) return;
     const storageKey = this._storageKeyForTabId(k);
