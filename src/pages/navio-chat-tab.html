@@ -462,30 +462,26 @@
     .stage {
       flex: 1;
       min-height: 0;
-      overflow-y: auto;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
-    }
-    /* Empty state: never clip the composer (old center + overflow:hidden hid the textarea
-       below the fold with no scroll). Center welcome inside the flex region above composer. */
-    body.state-empty .stage {
-      justify-content: flex-start;
     }
     .stage-inner {
       max-width: 880px;
       width: 100%;
       margin: 0 auto;
       padding: 16px 24px 24px;
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
     }
+    /* Empty state: center the welcome prompt vertically inside the scroll region. */
     body.state-empty .stage-inner {
       max-width: 780px;
       padding: 0 24px;
-      flex: 1;
-      min-height: 0;
       display: flex;
       flex-direction: column;
       justify-content: center;
-      overflow-y: auto;
     }
 
     /* Empty-state welcome — mirrors AIVON layout */
@@ -1899,7 +1895,7 @@
       <div class="drawer-backdrop" id="drawer-backdrop" aria-hidden="true"></div>
 
       <div class="stage" id="stage">
-        <div class="stage-inner">
+        <div class="stage-inner" id="stage-inner">
           <div class="welcome" id="welcome">
             <div class="welcome-logo" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -2085,7 +2081,7 @@
 
   var __navioGuestChatActivated = false;
   const messagesEl = document.getElementById('messages');
-  const stageEl = document.getElementById('stage');
+  const stageEl = document.getElementById('stage-inner');
   const welcomeEl = document.getElementById('welcome');
   const agentStepsEl = document.getElementById('agent-steps');
   const drawerStatus = document.getElementById('drawer-status');

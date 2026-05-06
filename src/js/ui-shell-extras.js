@@ -749,7 +749,33 @@
         e.preventDefault();
         openFind();
       }
-      if (!bar.hidden && e.key === 'Escape') closeFind();
+      if (!bar.hidden && e.key === 'Escape') {
+        e.preventDefault();
+        closeFind();
+      }
+      // F3 / Shift+F3 → next / previous result (works even when find bar has focus)
+      if (!bar.hidden && e.key === 'F3') {
+        e.preventDefault();
+        if (!lastWc || !lastQ) return;
+        if (e.shiftKey) {
+          window.navio.webviewFindInPage(lastWc, lastQ, { forward: false, findNext: true }).catch(() => {});
+        } else {
+          window.navio.webviewFindInPage(lastWc, lastQ, { forward: true, findNext: true }).catch(() => {});
+        }
+      }
+    });
+
+    // Enter → next result, Shift+Enter → previous (standard browser behaviour)
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (!lastWc || !lastQ) return;
+        if (e.shiftKey) {
+          window.navio.webviewFindInPage(lastWc, lastQ, { forward: false, findNext: true }).catch(() => {});
+        } else {
+          window.navio.webviewFindInPage(lastWc, lastQ, { forward: true, findNext: true }).catch(() => {});
+        }
+      }
     });
 
     input.addEventListener('input', () => {

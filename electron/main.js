@@ -2166,12 +2166,14 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
     } else if (ntpBrief) {
       bodyObj.temperature = 0.55;
     }
-    // Send reasoning_effort for all o-series and gpt-5 models.
-    // For gpt-5 + tools, force 'low' effort so the model doesn't use max reasoning
-    // on every tool call (which causes 60-120+ second hangs in the tool loop).
+    // Send reasoning_effort for o-series and gpt-5 models, but NOT when gpt-5 has
+    // function tools — the /v1/chat/completions endpoint rejects that combination
+    // ("Function tools with reasoning_effort are not supported for gpt-5.x").
     const hasTools = !!(fetchOpts.tools && !ntpBrief);
     if (reasoning && reasoning.provider === 'openai') {
-      bodyObj.reasoning_effort = (hasTools && isGpt5) ? 'low' : reasoning.reasoning_effort;
+      if (!(hasTools && isGpt5)) {
+        bodyObj.reasoning_effort = reasoning.reasoning_effort;
+      }
     }
     body = JSON.stringify(bodyObj);
   } else if (provider === 'anthropic') {

@@ -5252,6 +5252,14 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       this.disableTakeover();
       return;
     }
+    if (payload.action === 'openSidebarAssistant') {
+      try {
+        this.open();
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
     if (payload.action === 'openUrl') {
       const url = String(payload.url || '').trim();
       if (url && /^https?:\/\//i.test(url)) {
