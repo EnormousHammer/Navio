@@ -985,15 +985,17 @@ const NAVIO_TOOLS = [
     description:
       'Read a file from the user\'s local disk and return its text content. ' +
       'Supports: Excel (.xlsx, .xls), PDF, Word (.docx, .doc), PowerPoint (.pptx), CSV, plain text, JSON, Markdown, and most code files. ' +
-      'Use this when the user says "look at" or "check" a file on their computer (e.g. C:\\\\Users\\\\...\\\\file.xlsx). ' +
+      'Use this when the user asks to look at, check, audit, analyse, or sample a file on their computer. ' +
       'Returns the full text/CSV representation of every sheet for spreadsheets. ' +
-      'Pass the exact absolute path the user provided — do not guess or modify it.',
+      'Use the file path from the user\'s current message OR any file path visible anywhere in the conversation history — ' +
+      'do NOT refuse to act just because the path was mentioned in an earlier message rather than the current one. ' +
+      'If no path is available at all, ask for it once in one short message.',
     parameters: {
       type: 'object',
       properties: {
         path: {
           type: 'string',
-          description: 'Absolute path to the file on the user\'s local disk (e.g. "C:\\\\Users\\\\Haron\\\\Downloads\\\\contacts.xlsx").'
+          description: 'Absolute path to the file on the user\'s local disk. Use the path from the current message or any earlier message in this conversation.'
         }
       },
       required: ['path']
