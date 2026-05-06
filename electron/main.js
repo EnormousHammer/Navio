@@ -2160,11 +2160,12 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
     } else if (ntpBrief) {
       bodyObj.temperature = 0.55;
     }
-    // OpenAI chat/completions currently rejects GPT-5 tool calls when
-    // reasoning_effort is present; keep tools working by omitting it there.
+    // Send reasoning_effort for all o-series and gpt-5 models.
+    // For gpt-5 + tools, force 'low' effort so the model doesn't use max reasoning
+    // on every tool call (which causes 60-120+ second hangs in the tool loop).
     const hasTools = !!(fetchOpts.tools && !ntpBrief);
-    if (reasoning && reasoning.provider === 'openai' && !(hasTools && isGpt5)) {
-      bodyObj.reasoning_effort = reasoning.reasoning_effort;
+    if (reasoning && reasoning.provider === 'openai') {
+      bodyObj.reasoning_effort = (hasTools && isGpt5) ? 'low' : reasoning.reasoning_effort;
     }
     body = JSON.stringify(bodyObj);
   } else if (provider === 'anthropic') {
@@ -2299,11 +2300,17 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
       signal: fetchSignal
     });
   } catch (e) {
+    // A timeout fires as TimeoutError (or AbortError with a TimeoutError cause).
+    // Check for timeout BEFORE the generic AbortError so we don't swallow it as "Stopped".
+    const isTimeout =
+      (e && e.name === 'TimeoutError') ||
+      (e && e.cause && e.cause.name === 'TimeoutError');
+    if (isTimeout) {
+      const timeoutSec = Math.round(FETCH_TIMEOUT_MS / 1000);
+      return { error: `The AI request timed out (no response after ${timeoutSec}s). Check your internet connection and that your API key has access to the configured model.` };
+    }
     if (e && (e.name === 'AbortError' || fetchOpts.signal?.aborted)) {
       return { error: 'Stopped', aborted: true };
-    }
-    if (e && e.name === 'TimeoutError') {
-      return { error: 'The AI request timed out (no response from OpenAI after 30 seconds). Check your internet connection and that your API key has access to the configured model.' };
     }
     const cause = e.cause?.message || e.cause?.code || '';
     console.error('[navio] AI fetch network error:', e.message, cause ? `(${cause})` : '', url);
@@ -2888,6 +2895,14 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
 
     if (!result.toolCalls || !result.toolCalls.length) {
       if (result.content) extractAndSaveMemory(result.content);
+      try {
+        navioLogger.log(
+          'info',
+          'ai-chat',
+          `ai-request-with-tools done model=${String(cfg.aiModel || '')} steps=${step} chars=${(result.content || '').length}`,
+          null
+        );
+      } catch { /* ignore */ }
       return finishAgentRun({ content: result.content || '', toolLog });
     }
 
