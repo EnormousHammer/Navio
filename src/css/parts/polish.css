@@ -3634,3 +3634,335 @@ body.navio-vertical-tabs .tab-item.in-group.group-last {
 html[data-theme="light"] #assistant-panel.assistant-panel {
   color-scheme: dark;
 }
+
+/* ============================================
+   PREMIUM PRODUCTION POLISH — May 2026
+   All surfaces upgraded for a "wow" standard:
+   depth · color identity · micro-interactions
+   ============================================ */
+
+/* ── 1. URL Suggestions Dropdown ────────────────────────────────────────── */
+
+/* Dark-mode shadow: lift the panel clearly off the toolbar */
+[data-theme="dark"] .url-suggestions {
+  background: rgba(14, 17, 26, 0.99);
+  border-color: rgba(255, 255, 255, 0.10);
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.72),
+    0 8px 24px rgba(0, 0, 0, 0.50),
+    0 2px 8px rgba(0, 0, 0, 0.40),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+}
+
+/* Larger, more spacious rows */
+.url-suggestion-row {
+  padding: 9px 12px;
+  border-radius: 9px;
+  gap: 11px;
+}
+
+/* Accent-tinted hover — clearly distinct from neutral background */
+[data-theme="dark"] .url-suggestion-row:hover,
+[data-theme="dark"] .url-suggestion-row[aria-selected="true"] {
+  background: rgba(126, 184, 255, 0.09);
+  box-shadow: 0 0 0 1px rgba(126, 184, 255, 0.10) inset;
+}
+
+/* Favicon letter-avatar: bigger, more vibrant, modern corners */
+.url-suggestion-fav--letter {
+  width: 28px;
+  height: 28px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 8px;
+  /* More vibrant: was 38% sat / 34% light */
+  background: hsl(var(--letter-hue, 210) 58% 42%);
+  border: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.25),
+    0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.url-suggestion-fav-wrap {
+  width: 28px;
+  height: 28px;
+}
+
+.url-suggestion-fav--img {
+  border-radius: 8px;
+}
+
+/* Slightly larger favicon slot for search icon */
+.url-suggestion-fav--search {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+/* Polished badge pills */
+.url-suggestion-badge {
+  font-size: 9.5px;
+  padding: 3px 8px;
+  letter-spacing: 0.025em;
+  border-radius: 999px;
+}
+
+/* Title & URL text refinement */
+.url-suggestion-title {
+  font-size: 13px;
+  letter-spacing: -0.015em;
+}
+
+.url-suggestion-url {
+  font-size: 11px;
+  letter-spacing: 0;
+  color: var(--text-muted);
+}
+
+/* ── 2. Widget Cards — color identity per widget type ───────────────────── */
+
+/* Each widget type gets its own hue for instant recognition */
+.new-tab-page .ntp-email-widget .ntp-widget-header {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(14, 165, 233, 0.06)) !important;
+  border-bottom-color: rgba(59, 130, 246, 0.18) !important;
+}
+.new-tab-page .ntp-email-widget .ntp-widget-header svg {
+  color: #60a5fa !important;
+  opacity: 1 !important;
+}
+
+.new-tab-page .ntp-news-widget .ntp-widget-header {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(99, 102, 241, 0.06)) !important;
+  border-bottom-color: rgba(139, 92, 246, 0.18) !important;
+}
+.new-tab-page .ntp-news-widget .ntp-widget-header svg {
+  color: #a78bfa !important;
+  opacity: 1 !important;
+}
+
+.new-tab-page .ntp-stocks-widget .ntp-widget-header {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(5, 150, 105, 0.06)) !important;
+  border-bottom-color: rgba(16, 185, 129, 0.18) !important;
+}
+.new-tab-page .ntp-stocks-widget .ntp-widget-header svg {
+  color: #34d399 !important;
+  opacity: 1 !important;
+}
+
+.new-tab-page .ntp-sports-widget .ntp-widget-header {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(220, 38, 38, 0.06)) !important;
+  border-bottom-color: rgba(239, 68, 68, 0.18) !important;
+}
+.new-tab-page .ntp-sports-widget .ntp-widget-header svg {
+  color: #f87171 !important;
+  opacity: 1 !important;
+}
+.new-tab-page .ntp-sports-widget .ntp-widget-header img.ntp-sports-widget-header-icon {
+  opacity: 0.95 !important;
+  filter: drop-shadow(0 0 3px rgba(239, 68, 68, 0.35));
+}
+
+/* Widget header text: more readable */
+.new-tab-page .ntp-widget-header {
+  font-size: 11px !important;
+  letter-spacing: 0.04em !important;
+  padding: 8px 12px !important;
+}
+
+/* Widget hover: subtle lift + color-tinted border per type */
+.new-tab-page .ntp-widget {
+  transition:
+    transform 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 220ms ease !important;
+}
+
+.new-tab-page .ntp-widget:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.40), 0 3px 10px rgba(0, 0, 0, 0.28) !important;
+}
+
+.new-tab-page .ntp-email-widget:hover  { border-color: rgba(59, 130, 246, 0.28) !important; }
+.new-tab-page .ntp-news-widget:hover   { border-color: rgba(139, 92, 246, 0.28) !important; }
+.new-tab-page .ntp-stocks-widget:hover { border-color: rgba(16, 185, 129, 0.28) !important; }
+.new-tab-page .ntp-sports-widget:hover { border-color: rgba(239, 68, 68, 0.28) !important; }
+
+/* Widget shimmer top-line: color-tinted on hover */
+.new-tab-page .ntp-widget::before {
+  transition: opacity 220ms ease, background 220ms ease !important;
+}
+.new-tab-page .ntp-email-widget:hover::before {
+  opacity: 0.8 !important;
+  background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.28), transparent) !important;
+}
+.new-tab-page .ntp-news-widget:hover::before {
+  opacity: 0.8 !important;
+  background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.28), transparent) !important;
+}
+.new-tab-page .ntp-stocks-widget:hover::before {
+  opacity: 0.8 !important;
+  background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.28), transparent) !important;
+}
+.new-tab-page .ntp-sports-widget:hover::before {
+  opacity: 0.8 !important;
+  background: linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.28), transparent) !important;
+}
+
+/* ── 3. Widget Body Inner Surfaces ──────────────────────────────────────── */
+
+/* Slightly more depth when hovered */
+.new-tab-page .ntp-email-widget:hover .ntp-widget-body,
+.new-tab-page .ntp-news-widget:hover .ntp-widget-body,
+.new-tab-page .ntp-stocks-widget:hover .ntp-widget-body,
+.new-tab-page .ntp-sports-widget:hover .ntp-widget-body {
+  border-color: rgba(255, 255, 255, 0.07) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Email unread: more vivid blue indicator */
+.new-tab-page .ntp-email-item.unread {
+  border-left-color: rgba(96, 165, 250, 0.85) !important;
+  background: rgba(59, 130, 246, 0.06) !important;
+}
+.new-tab-page .ntp-email-item.unread .ntp-email-sender {
+  color: #93c5fd !important;
+}
+
+/* Email item hover */
+.new-tab-page .ntp-email-item:hover {
+  background: rgba(59, 130, 246, 0.05);
+  border-left-color: rgba(96, 165, 250, 0.50);
+}
+
+/* News items: tighter hover accent */
+.new-tab-page .ntp-news-item:hover {
+  background: rgba(139, 92, 246, 0.06) !important;
+  border-left-color: rgba(167, 139, 250, 0.50) !important;
+}
+
+/* News title slightly larger */
+.new-tab-page .ntp-news-title {
+  font-size: 12.5px !important;
+  line-height: 1.38 !important;
+}
+
+/* News category: bump from 8px to 9px for legibility */
+.new-tab-page .ntp-news-category {
+  font-size: 9px !important;
+  letter-spacing: 0.05em !important;
+  color: rgba(167, 139, 250, 0.80) !important;
+  text-shadow: none !important;
+}
+
+/* Stocks: accent left border on hover */
+.new-tab-page .ntp-stocks-widget .ntp-stock-row:hover {
+  border-left-color: rgba(52, 211, 153, 0.65) !important;
+  background: rgba(16, 185, 129, 0.05) !important;
+}
+
+/* Sports: LIVE badge more vivid */
+.new-tab-page .ntp-live-badge {
+  background: rgba(239, 68, 68, 0.22) !important;
+  color: #fca5a5 !important;
+  border: 1px solid rgba(239, 68, 68, 0.32) !important;
+  font-weight: 700 !important;
+  animation: none !important;
+}
+
+/* Widget action buttons: more clickable */
+.new-tab-page .ntp-widget-action {
+  transition: all 160ms ease !important;
+}
+.new-tab-page .ntp-widget-action:hover {
+  background: rgba(126, 184, 255, 0.14) !important;
+  border-color: rgba(126, 184, 255, 0.28) !important;
+  color: #ddeeff !important;
+  box-shadow: none !important;
+}
+
+/* ── 4. Address Bar & Toolbar ────────────────────────────────────────────── */
+
+/* More dramatic focus ring in dark mode */
+[data-theme="dark"] .url-bar:focus-within {
+  border-color: rgba(126, 184, 255, 0.60) !important;
+  box-shadow:
+    0 0 0 3px rgba(126, 184, 255, 0.14),
+    0 0 0 1px rgba(126, 184, 255, 0.30),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+  background: rgba(14, 18, 30, 0.98) !important;
+}
+
+/* Nav buttons: subtle accent on hover */
+[data-theme="dark"] .nav-btn:hover {
+  background: rgba(126, 184, 255, 0.10) !important;
+  color: rgba(200, 224, 255, 0.96) !important;
+}
+
+/* ── 5. Tab Strip ────────────────────────────────────────────────────────── */
+
+/* Active tab: accent background tint */
+[data-theme="dark"] .tab-item.active {
+  background: rgba(126, 184, 255, 0.075) !important;
+}
+
+/* Active tab indicator: glow on the gradient line */
+[data-theme="dark"] .tab-item.active::after {
+  height: 2px !important;
+  background: linear-gradient(90deg, #00d8ff 0%, #5468ff 55%, #9f6fff 100%) !important;
+  box-shadow: 0 0 8px rgba(0, 216, 255, 0.40) !important;
+  border-radius: 1px !important;
+}
+
+/* ── 6. NTP Search / Hero ────────────────────────────────────────────────── */
+
+/* Stronger focus ring on the NTP search bar */
+.new-tab-page .ntp-search:focus-within {
+  border-color: rgba(126, 184, 255, 0.55) !important;
+  box-shadow:
+    0 0 0 1px rgba(126, 184, 255, 0.20),
+    0 0 0 4px rgba(126, 184, 255, 0.09),
+    0 12px 40px rgba(0, 0, 0, 0.38) !important;
+  animation: none !important;
+}
+
+/* Slightly more prominent search send button */
+.new-tab-page .ntp-search-send {
+  background: rgba(96, 165, 250, 0.26) !important;
+  border-color: rgba(96, 165, 250, 0.42) !important;
+  color: #e0efff !important;
+}
+.new-tab-page .ntp-search-send:hover {
+  background: rgba(96, 165, 250, 0.38) !important;
+  box-shadow: 0 0 12px rgba(96, 165, 250, 0.20) !important;
+}
+
+/* ── 7. Widget Badge (count badge, e.g. unread count) ───────────────────── */
+.new-tab-page .ntp-widget-badge {
+  background: rgba(96, 165, 250, 0.16) !important;
+  color: #93c5fd !important;
+  border-color: rgba(96, 165, 250, 0.28) !important;
+}
+
+/* ── 8. Light theme overrides ────────────────────────────────────────────── */
+[data-theme="light"] .url-suggestion-fav--letter {
+  background: hsl(var(--letter-hue, 210) 52% 50%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.30),
+    0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="light"] .url-suggestion-row:hover,
+[data-theme="light"] .url-suggestion-row[aria-selected="true"] {
+  background: rgba(50, 100, 200, 0.07);
+  box-shadow: 0 0 0 1px rgba(50, 100, 200, 0.08) inset;
+}
+
+[data-theme="light"] .tab-item.active {
+  background: rgba(26, 115, 232, 0.08) !important;
+}
+
+[data-theme="light"] .tab-item.active::after {
+  background: linear-gradient(90deg, #0070d8 0%, #5468ff 60%, #9f6fff 100%) !important;
+  box-shadow: 0 0 6px rgba(0, 112, 216, 0.35) !important;
+}

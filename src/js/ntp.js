@@ -1127,8 +1127,9 @@ const NTP = (() => {
           const homeLogo = g.homeLogo;
           const awayAb = _esc(g.away || '');
           const homeAb = _esc(g.home || '');
-          const metaBits = [g.status, g.statusDetail].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i);
-          const st = _esc(metaBits.join(' · '));
+          // Prefer statusDetail (longer/cleaner label); fall back to status.
+          // Avoids duplication like "MID 3RD · MIDDLE 3RD" from APIs that send both fields.
+          const st = _esc(((g.statusDetail && g.statusDetail.trim()) || (g.status && g.status.trim()) || '').trim());
           const timeEt = g.startTimeEt
             ? `<div class="ntp-sport-et">${_esc(g.startTimeEt)} <span class="ntp-sport-et-label">(ET)</span></div>`
             : '';
