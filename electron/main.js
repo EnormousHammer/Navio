@@ -98,6 +98,12 @@ app.commandLine.appendSwitch(
   'CrossOriginOpenerPolicy,CrossOriginEmbedderPolicy,CrossOriginEmbedderPolicyCredentialless'
 );
 
+// Remove the AutomationControlled blink feature that Chromium enables by default
+// in Electron. Without this, navigator.webdriver === true in every guest page,
+// which is the primary signal Cloudflare Turnstile uses to trigger an infinite
+// "Verifying you are human" loop that never completes.
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+
 const INTRO_VIDEO_PATH = path.join(__dirname, '..', 'public', 'intro_video', 'intro_final.mp4');
 
 let mainWindow = null;

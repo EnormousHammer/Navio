@@ -16,6 +16,34 @@
 try {
   const { ipcRenderer, contextBridge } = require('electron');
 
+  // ── Anti-bot-detection hardening ─────────────────────────────────────────
+  // These run for EVERY page (including compat-mode sites) because Cloudflare
+  // Turnstile checks them before any challenge script runs. Placing them here
+  // (before the compat-mode bail-out) ensures they are always active.
+  //
+  // 1. navigator.webdriver — Chromium sets this to true when AutomationControlled
+  //    is active. The commandLine switch (--disable-blink-features=AutomationControlled)
+  //    is the primary fix; this JS override is a belt-and-suspenders second layer.
+  try {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined, configurable: true });
+  } catch { /* ignore if already non-configurable */ }
+  //
+  // 2. window.chrome — Real Chrome exposes window.chrome.runtime. Cloudflare's
+  //    challenge script checks its presence; Electron may not populate it fully.
+  try {
+    if (typeof window.chrome === 'undefined' || !window.chrome) {
+      Object.defineProperty(window, 'chrome', {
+        value: { runtime: {}, loadTimes: function () {}, csi: function () {}, app: {} },
+        configurable: true,
+        writable: true,
+        enumerable: true
+      });
+    } else if (!window.chrome.runtime) {
+      window.chrome.runtime = {};
+    }
+  } catch { /* ignore */ }
+  // ─────────────────────────────────────────────────────────────────────────
+
   /**
    * In classic <webview> mode, process.guestInstanceId is set to a non-zero integer.
    * In WebContentsView (WCV) mode, there is no embedding webview, so it is falsy.
