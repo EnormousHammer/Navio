@@ -202,10 +202,10 @@ const NAVIO_VOICE_CONV_HOLD_SILENCE_MS = 7800;
 /** How often we check for that awkward silence (ms). */
 const NAVIO_VOICE_CONV_HOLD_POLL_MS = 3200;
 /**
- * Voice-conv barge-in while TTS plays: min time RMS must stay above the adaptive gate.
- * Short windows treated laptop keyboard as “speech” and cut the assistant off mid-sentence.
+ * Voice-conv barge-in while TTS plays: RMS above the gate for this long stops playback.
+ * Short window so the assistant yields quickly; speaking path uses RMS-only (no HF gate on bleed).
  */
-const NAVIO_VOICE_CONV_INTERRUPT_SPEAKING_MS = 420;
+const NAVIO_VOICE_CONV_INTERRUPT_SPEAKING_MS = 260;
 /** Same listener during model work / wrap-up — typing can still spike RMS; slightly longer than legacy 400ms. */
 const NAVIO_VOICE_CONV_INTERRUPT_NONSPEAKING_MS = 520;
 
@@ -2265,7 +2265,8 @@ class AssistantManagerClass {
       'Address **this** user message. Do not start a different goal, topic, or side task. ' +
       'Do not use tools for things they did not ask for in this turn. ' +
       'If they only say something short because the thread is continuing, keep the **same** task as before — do not invent a new one. ' +
-      'If any part of the request is ambiguous or you are not fully sure what they want, ask one short confirmation question before acting.\n\n'
+      'Infer missing detail from **earlier turns in this thread** when possible (tone, length, format, audience, deadlines). ' +
+      'Ask **one** question only when a fact is missing that makes **any** correct action impossible — not for style preferences already stated, not for permission between steps, not to re-choose options they already picked.\n\n'
     );
   }
 
@@ -2790,7 +2791,14 @@ class AssistantManagerClass {
     // Open ONE persistent mic stream for the entire conversation.
     // Shared by both the interrupt VAD analyser and Whisper recorder so barge-in
     // starts capturing at the exact moment the user's voice is detected — zero getUserMedia latency.
-    navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+    navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      },
+      video: false
+    })
       .then(stream => {
         if (!this._voiceConvActive) { stream.getTracks().forEach(t => t.stop()); return; }
         this._vcPersistentStream = stream;
@@ -2911,20 +2919,28 @@ class AssistantManagerClass {
           // 90th-percentile of samples = noise ceiling; trigger must be clearly above it
           noiseSamples.sort((a, b) => a - b);
           noiseFloor = noiseSamples[Math.floor(noiseSamples.length * 0.9)] || 8;
+          // While TTS plays, bleed dominates the mic — uncapped floor makes the gate unreachable.
+          const vcsCal = document.getElementById('voice-conv-hud')?.dataset.vcState;
+          if (vcsCal === 'speaking') noiseFloor = Math.min(noiseFloor, 22);
           noiseMeasured = true;
         }
         this._vcInterruptRaf = requestAnimationFrame(loop);
         return;
       }
 
-      // Dynamic threshold: stricter while thinking (fewer false aborts); TTS state re-calibrates with bleed in the room
-      const mult = vcState === 'speaking' ? 1.9 : 2.08;
-      const floorPad = vcState === 'speaking' ? 5 : 7;
-      const minThresh = vcState === 'speaking' ? 12 : 14;
-      const threshold = Math.max(noiseFloor * mult + floorPad, minThresh);
+      // Dynamic threshold: stricter while thinking (fewer false aborts).
+      // During TTS, use a gentler multiplier + ceiling — bleed already raised the floor;
+      // we must still see user speech on top of playback (echoCancellation helps).
+      const mult = vcState === 'speaking' ? 1.32 : 2.08;
+      const floorPad = vcState === 'speaking' ? 4 : 7;
+      const minThresh = vcState === 'speaking' ? 11 : 14;
+      let threshold = Math.max(noiseFloor * mult + floorPad, minThresh);
+      if (vcState === 'speaking') threshold = Math.min(threshold, 40);
 
+      // During TTS, RMS-only (see above). While the model runs (no assistant audio),
+      // reject clicky transients that spike RMS but are not voiced speech.
       let loudEnough = rms > threshold;
-      if (loudEnough && vcState === 'speaking') {
+      if (loudEnough && (vcState === 'thinking' || vcState === 'summarizing')) {
         analyser.getByteFrequencyData(freqBuf);
         loudEnough = navioVcMicFrameLooksLikeHumanVoiceForBargeIn(freqBuf, audioCtx.sampleRate);
       }
@@ -2979,14 +2995,10 @@ class AssistantManagerClass {
     // Stop interrupt listener first (prevents re-triggering)
     this._stopVoiceConvInterruptListener();
 
-    // During TTS playback, only duck audio — aborting here made every cough kill the whole turn
-    // and left replies half-finished. A real new command aborts in _voiceConvDiscardInFlightGeneration
-    // when the transcript is ready to send.
-    if (priorVcState !== 'speaking') {
-      this._voiceConvDiscardInFlightGeneration();
-    } else {
-      this._clearPendingAutoTts();
-    }
+    // Always stop the agent + pending speech: otherwise the model keeps streaming and
+    // queued TTS continues after the user has started talking.
+    this._voiceConvDiscardInFlightGeneration();
+    this._clearPendingAutoTts();
 
     // Clear thinking-filler timers so they don't fire and start speaking over the user.
     this._clearVoiceConvThinkingTimers();
@@ -3097,8 +3109,7 @@ NARRATE YOUR WORK (this is the most important rule):
 - Anchor each line to what is literally happening (which mailbox, which site, which attachment, what you're opening next) so uniqueness comes naturally from the task, not from random fluff.
 - After each meaningful tool result, say what you actually found using real titles — never vague "the first email" alone. Name the subject, sender, company, order, flight, or amount when the data gives you one.
 - Between tool calls, one short new line is enough; make it different from the line before it in both words and rhythm.
-- Before starting a distinct new phase of a task, tell the user what you're about to do and ask if they want you to continue — again, phrase it in your own words, not the same template every time.
-- This is not permission-seeking between micro-steps — it's a natural pause at logical checkpoints (e.g. between login and checkout, between search and booking, between filling and submitting).
+- At a real phase change (e.g. moving from search to checkout), one short spoken line of what you are doing next is fine — do **not** ask whether to continue; keep going until done, blocked, or an irreversible step needs their explicit OK (same spirit as typed chat: no permission theater).
 
 END WITH A SPOKEN SUMMARY:
 - When a task completes, give a 2–3 sentence spoken summary of what was done.
@@ -5063,7 +5074,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         '[Thread discipline]\nThe **latest user message** (see **What to do now** on it) is the only target. ' +
         'Do not do work they did not ask for. Do not switch to a new goal mid-turn. ' +
         'Earlier messages are context only; short replies mean “continue the same task,” not “start something new.” ' +
-        'If intent is unclear, ask a brief confirmation question first instead of guessing.'
+        'If intent is unclear: prefer one-line assumption + proceed, or **one** blocking question if you truly cannot act. ' +
+        'Do not re-ask tone, length, format, or style choices already fixed in this thread; do not permission-theater (“continue?”, “short or detailed?”).'
     });
     // Pre-work acknowledgment: for multi-step tool tasks, output one brief natural sentence before
     // the first tool call so the user knows you heard them. Text surfaces as a chat bubble.
@@ -5496,7 +5508,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         '[Thread discipline]\nThe **latest user message** (see **What to do now** on it) is the only target. ' +
         'Do not do work they did not ask for. Do not switch to a new goal mid-turn. ' +
         'Earlier messages are context only; short replies mean “continue the same task,” not “start something new.” ' +
-        'If intent is unclear, ask a brief confirmation question first instead of guessing.'
+        'If intent is unclear: prefer one-line assumption + proceed, or **one** blocking question if you truly cannot act. ' +
+        'Do not re-ask tone, length, format, or style choices already fixed in this thread; do not permission-theater (“continue?”, “short or detailed?”).'
     });
     const recentHistory = this._currentHistory().slice(-72);
     messages.push(...recentHistory);
@@ -5727,7 +5740,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         '[Thread discipline]\nThe **latest user message** (see **What to do now** on it) is the only target. ' +
         'Do not do work they did not ask for. Do not switch to a new goal mid-turn. ' +
         'Earlier messages are context only; short replies mean “continue the same task,” not “start something new.” ' +
-        'If intent is unclear, ask a brief confirmation question first instead of guessing.'
+        'If intent is unclear: prefer one-line assumption + proceed, or **one** blocking question if you truly cannot act. ' +
+        'Do not re-ask tone, length, format, or style choices already fixed in this thread; do not permission-theater (“continue?”, “short or detailed?”).'
     });
     // Pre-work acknowledgment: output one brief sentence before first tool call so the user isn't silent.
     // This text is sent via tr() as bubble:true and surfaced as a chat message above the Working card.
