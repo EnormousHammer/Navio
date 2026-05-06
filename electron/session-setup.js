@@ -161,6 +161,67 @@ async function showScreenSourcePickerDialog(win) {
 }
 
 /**
+ * Cloudflare managed challenges and `/cdn-cgi/*` bot assets rely on intact response
+ * headers (CSP, COOP, CORP, etc.). Navio strips some of those globally so sites
+ * can embed in our shell — but that can break challenge scripts and trap the user
+ * on a permanent "Verifying…" / reload loop. Do not rewrite responses for these URLs.
+ */
+function navioPreserveResponseHeadersForBotChecks(url) {
+  if (!url || typeof url !== 'string') return false;
+  try {
+    const u = new URL(url);
+    const h = u.hostname.toLowerCase();
+    const p = u.pathname.toLowerCase();
+    if (h === 'challenges.cloudflare.com' || h.endsWith('.challenges.cloudflare.com')) {
+      return true;
+    }
+    return (
+      p.includes('/cdn-cgi/challenge-platform') ||
+      p.includes('/cdn-cgi/challenge/') ||
+      p.includes('/cdn-cgi/bm/') ||
+      p.includes('/cdn-cgi/l/chk')
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Shallow copy — Electron passes string[] header values. */
+function navioCloneResponseHeaders(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const k of Object.keys(raw)) {
+    const v = raw[k];
+    out[k] = Array.isArray(v) ? v.slice() : v;
+  }
+  return out;
+}
+
+/** Any response from behind Cloudflare — used to relax our embed header stripping. */
+function navioResponseLooksLikeCloudflare(responseHeaders) {
+  if (!responseHeaders || typeof responseHeaders !== 'object') return false;
+  for (const key of Object.keys(responseHeaders)) {
+    const lk = key.toLowerCase();
+    if (lk === 'cf-ray') return true;
+    if (lk === 'server') {
+      const vals = responseHeaders[key];
+      const joined = Array.isArray(vals) ? vals.join(' ') : String(vals || '');
+      if (/cloudflare/i.test(joined)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Some carrier sites sit behind bot checks but occasionally omit cf-ray on a hop;
+ * use the same soft header policy as Cloudflare when we know the host is problematic.
+ */
+function navioHostnameUsesSoftEmbedHeaderPolicy(hostname) {
+  const h = String(hostname || '').toLowerCase();
+  return h === 'purolator.com' || h.endsWith('.purolator.com');
+}
+
+/**
  * Webview session, downloads, certs, ad blocker, permissions, global shortcuts.
  * Call after createStore + createMainWindow from main.js.
  */
@@ -198,8 +259,24 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
     }
 
     ses.webRequest.onHeadersReceived({ urls: ['*://*/*'] }, (details, callback) => {
-      const headers = details.responseHeaders || {};
-      const drop = [
+      const orig = details.responseHeaders || {};
+      if (navioPreserveResponseHeadersForBotChecks(details.url)) {
+        callback({ responseHeaders: orig });
+        return;
+      }
+      const headers = navioCloneResponseHeaders(orig);
+      let softCrossOrigin = false;
+      try {
+        const host = new URL(details.url).hostname;
+        softCrossOrigin =
+          navioResponseLooksLikeCloudflare(orig) || navioHostnameUsesSoftEmbedHeaderPolicy(host);
+      } catch {
+        softCrossOrigin = navioResponseLooksLikeCloudflare(orig);
+      }
+      // Full strip: remove frame-blocking + cross-origin isolation headers so https sites
+      // load inside our <webview>. Cloudflare / Turnstile interstitials often break if we
+      // strip COOP/COEP/CORP on the *document* HTML (only /cdn-cgi/* got a pass-through before).
+      const dropHard = [
         'x-frame-options',
         'cross-origin-opener-policy',
         'cross-origin-opener-policy-report-only',
@@ -207,6 +284,8 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
         'cross-origin-embedder-policy-report-only',
         'cross-origin-resource-policy'
       ];
+      const dropSoft = ['x-frame-options'];
+      const drop = softCrossOrigin ? dropSoft : dropHard;
       for (const key of Object.keys(headers)) {
         if (drop.includes(key.toLowerCase())) delete headers[key];
         if (key.toLowerCase() === 'content-security-policy') {

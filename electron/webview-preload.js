@@ -125,7 +125,7 @@ try {
   // file — the user can still manually toggle compat off if needed (their
   // explicit choice in the JSON file overrides this default).
   const NAVIO_ALWAYS_COMPAT_RE =
-    /[./]purolator\.com(\/|$)|[./]eshiponline\.purolator\.com(\/|$)|[./]tql\.com(\/|$)/i;
+    /[./]purolator\.com(\/|$)|[./]eshiponline\.purolator\.com(\/|$)|[./]tql\.com(\/|$)|^https?:\/\/challenges\.cloudflare\.com\//i;
 
   if (!isNavioChatTabPage()) {
     let _navioCompatEnabled = false;
