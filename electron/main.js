@@ -2125,7 +2125,7 @@ function navioReasoningParamsForRequest(cfg, model) {
 
 async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) {
   const provider = cfg.aiProvider || 'openai';
-  const model = cfg.aiModel || 'gpt-5.4';
+  const model = cfg.aiModel || 'gpt-4o';
   const endpoint = cfg.customEndpoint || '';
   const ntpBrief = !!fetchOpts.ntpBrief;
   // NTP brief stays a fast non-reasoning path; everywhere else honors aiReasoningEffort.
@@ -2146,7 +2146,7 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
     const isGpt5 = /^gpt-?5/i.test(model || '');
     const completionCap = ntpBrief ? 900 : (isGpt5 ? 16384 : 8192);
     const bodyObj = {
-      model: model || 'gpt-5.4',
+      model: model || 'gpt-4o',
       messages,
       max_completion_tokens: completionCap,
       stream: !!useStream
@@ -3637,7 +3637,7 @@ ipcMain.handle('deep-research', async (event, { query }) => {
   const apiKey = secureConfig.getApiKey(app.getPath('userData'));
   if (!apiKey) return { error: 'No API key configured.' };
 
-  const plannerCfg = { ...cfg, aiModel: cfg.aiPlannerModel || 'gpt-5.4-mini' };
+  const plannerCfg = { ...cfg, aiModel: cfg.aiPlannerModel || 'gpt-4o-mini' };
 
   const planRes = await performAiFetch(
     plannerCfg,
@@ -5916,6 +5916,63 @@ const toolExecutors = {
       };
     } catch (e) {
       return { error: 'save_local_file: write failed: ' + e.message };
+    }
+  },
+
+  async read_local_file(_wc, args) {
+    try {
+      const rawPath = String((args && args.path) || '').trim();
+      if (!rawPath) return { error: 'path is required.' };
+      const filePath = path.normalize(rawPath);
+      if (!fs.existsSync(filePath)) {
+        return { error: `File not found: ${filePath}` };
+      }
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) return { error: `Not a file: ${filePath}` };
+      if (stat.size > BINARY_MAX_BYTES) {
+        return {
+          error: `File is too large (${Math.round(stat.size / (1024 * 1024))} MB). Maximum is ${Math.round(BINARY_MAX_BYTES / (1024 * 1024))} MB.`
+        };
+      }
+      const buf = fs.readFileSync(filePath);
+      const fileName = path.basename(filePath);
+      const ext = (path.extname(filePath) || '').replace('.', '').toLowerCase();
+      const mimeByExt = {
+        xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        xlsm: 'application/vnd.ms-excel.sheet.macroenabled.12',
+        xls: 'application/vnd.ms-excel',
+        pdf: 'application/pdf',
+        docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        doc: 'application/msword',
+        pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        rtf: 'application/rtf',
+        odt: 'application/vnd.oasis.opendocument.text',
+        ods: 'application/vnd.oasis.opendocument.spreadsheet',
+        html: 'text/html',
+        htm: 'text/html',
+        epub: 'application/epub+zip',
+        zip: 'application/zip'
+      };
+      const mimeType = mimeByExt[ext] || 'application/octet-stream';
+      const extracted = await extractDriveFileText({ buffer: buf, mimeType, fileName });
+      if (!extracted.ok) {
+        return { error: extracted.note };
+      }
+      const MAX_CHARS = 200000;
+      let text = extracted.text;
+      const wasTruncated = text.length > MAX_CHARS;
+      if (wasTruncated) text = text.slice(0, MAX_CHARS) + `\n… [truncated — ${text.length - MAX_CHARS} more chars]`;
+      return {
+        path: filePath,
+        name: fileName,
+        size_bytes: stat.size,
+        content: text,
+        chars: text.length,
+        truncated: wasTruncated,
+        note: extracted.note
+      };
+    } catch (e) {
+      return { error: 'read_local_file failed: ' + e.message };
     }
   },
 
@@ -8465,7 +8522,7 @@ async function queryBraveSearch(apiKey, query) {
  */
 async function queryProviderWebSearch(cfg, apiKey, query) {
   const provider = cfg.aiProvider || 'openai';
-  const model = cfg.aiModel || 'gpt-5.4';
+  const model = cfg.aiModel || 'gpt-4o';
   const endpoint = cfg.customEndpoint || '';
 
   if (!apiKey) {

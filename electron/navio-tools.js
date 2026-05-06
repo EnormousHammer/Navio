@@ -981,6 +981,26 @@ const NAVIO_TOOLS = [
   },
 
   {
+    name: 'read_local_file',
+    description:
+      'Read a file from the user\'s local disk and return its text content. ' +
+      'Supports: Excel (.xlsx, .xls), PDF, Word (.docx, .doc), PowerPoint (.pptx), CSV, plain text, JSON, Markdown, and most code files. ' +
+      'Use this when the user says "look at" or "check" a file on their computer (e.g. C:\\\\Users\\\\...\\\\file.xlsx). ' +
+      'Returns the full text/CSV representation of every sheet for spreadsheets. ' +
+      'Pass the exact absolute path the user provided — do not guess or modify it.',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Absolute path to the file on the user\'s local disk (e.g. "C:\\\\Users\\\\Haron\\\\Downloads\\\\contacts.xlsx").'
+        }
+      },
+      required: ['path']
+    }
+  },
+
+  {
     name: 'calendar_create_event',
     description:
       'Create a new Google Calendar event. Saves to the calendar — confirm with user before calling for real bookings. ' +
