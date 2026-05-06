@@ -2166,14 +2166,11 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
     } else if (ntpBrief) {
       bodyObj.temperature = 0.55;
     }
-    // Send reasoning_effort for o-series and gpt-5 models, but NOT when gpt-5 has
-    // function tools — the /v1/chat/completions endpoint rejects that combination
-    // ("Function tools with reasoning_effort are not supported for gpt-5.x").
+    // Never mix reasoning_effort with function tools on /v1/chat/completions — the API
+    // rejects it for multiple families (e.g. gpt-5.x, gpt-3.5) and says to use /v1/responses.
     const hasTools = !!(fetchOpts.tools && !ntpBrief);
-    if (reasoning && reasoning.provider === 'openai') {
-      if (!(hasTools && isGpt5)) {
-        bodyObj.reasoning_effort = reasoning.reasoning_effort;
-      }
+    if (reasoning && reasoning.provider === 'openai' && !hasTools) {
+      bodyObj.reasoning_effort = reasoning.reasoning_effort;
     }
     body = JSON.stringify(bodyObj);
   } else if (provider === 'anthropic') {
