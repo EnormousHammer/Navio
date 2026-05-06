@@ -163,6 +163,8 @@ function navioAssistantDebug(label, detail) {
 const NAVIO_ASSISTANT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 const NAVIO_ASSISTANT_PDF_MAX_BYTES = 12 * 1024 * 1024;
 const NAVIO_ASSISTANT_TEXT_MAX_CHARS = 180000;
+/** Text from attachments re-embedded into stored user rows so later turns still see file bodies. */
+const NAVIO_HISTORY_ATTACH_EMBED_CHARS = 36000;
 const NAVIO_ASSISTANT_MAX_ATTACHMENTS = 8;
 /**
  * Silence after speech before we treat the utterance as finished (Whisper VAD + Web Speech debounce).
@@ -582,6 +584,59 @@ function navioAttachmentDocIconSvg(variant) {
     default:
       return `${S}<path fill="#64748B" d="M8 2h8l4 4v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm1 4v10h6V6H9z"/></svg>`;
   }
+}
+
+function navioEscapeHtml(text) {
+  try {
+    if (typeof document !== 'undefined' && document.createElement) {
+      const div = document.createElement('div');
+      div.textContent = text == null ? '' : String(text);
+      return div.innerHTML;
+    }
+  } catch {
+    /* fall through */
+  }
+  return String(text == null ? '' : text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * One “ready” attachment card — same structure as the composer chips (`_renderAttachmentChips`).
+ * @param {{ name?: string, kind?: string, thumb?: string, bytesSize?: number, id?: string }} entry
+ * @param {{ popIn?: boolean, includeRemove?: boolean }} [opts]
+ */
+function navioAssistantReadyAttachmentChipHtml(entry, opts = {}) {
+  const e = entry || {};
+  const popIn = opts.popIn ? ' assistant-att-pop-in' : '';
+  const sentCls = opts.includeRemove ? '' : ' assistant-att-chip--sent';
+  const dataIdAttr =
+    e.id != null && String(e.id).length && opts.includeRemove
+      ? ` data-id="${navioEscapeHtml(String(e.id))}"`
+      : '';
+  const safe = navioEscapeHtml(e.name || 'file');
+  const meta = navioAttachmentDocMeta(e.name, e.kind);
+  const v = meta.variant;
+  const sz = navioFormatAttachmentBytes(e.bytesSize);
+  const szHtml = sz ? `<span class="assistant-att-size">${navioEscapeHtml(sz)}</span>` : '';
+  const thumb = e.thumb
+    ? `<img class="assistant-att-thumb assistant-att-doc-thumb" src="${String(e.thumb).replace(/"/g, '&quot;')}" alt="">`
+    : `<div class="assistant-att-doc-icon">${navioAttachmentDocIconSvg(v)}</div>`;
+  const remove = opts.includeRemove
+    ? `<button type="button" class="assistant-att-remove" data-id="${navioEscapeHtml(String(e.id))}" aria-label="Remove attachment">×</button>`
+    : '';
+  return (
+    `<div class="assistant-att-chip assistant-att-chip--doc assistant-att-chip--${v}${sentCls}${popIn}"${dataIdAttr} title="${safe}">` +
+    thumb +
+    `<div class="assistant-att-doc-body">` +
+    `<span class="assistant-att-name">${safe}</span>` +
+    `<span class="assistant-att-kind-row"><span class="assistant-att-kind">${navioEscapeHtml(meta.label)}</span>${szHtml}</span>` +
+    `</div>` +
+    remove +
+    `</div>`
+  );
 }
 
 /** Same logic as main process — fix UTF-8 mojibake in draft bodies before display/send. */
@@ -2060,19 +2115,7 @@ class AssistantManagerClass {
             `</div>`
           );
         }
-        const thumb = e.thumb
-          ? `<img class="assistant-att-thumb assistant-att-doc-thumb" src="${e.thumb.replace(/"/g, '&quot;')}" alt="">`
-          : `<div class="assistant-att-doc-icon">${navioAttachmentDocIconSvg(v)}</div>`;
-        return (
-          `<div class="assistant-att-chip assistant-att-chip--doc assistant-att-chip--${v} assistant-att-pop-in" data-id="${e.id}" title="${safe}">` +
-          thumb +
-          `<div class="assistant-att-doc-body">` +
-          `<span class="assistant-att-name">${safe}</span>` +
-          `<span class="assistant-att-kind-row"><span class="assistant-att-kind">${this._escapeHtml(meta.label)}</span>${szHtml}</span>` +
-          `</div>` +
-          `<button type="button" class="assistant-att-remove" data-id="${e.id}" aria-label="Remove attachment">×</button>` +
-          `</div>`
-        );
+        return navioAssistantReadyAttachmentChipHtml(e, { includeRemove: true, popIn: true });
       })
       .join('');
     row.querySelectorAll('.assistant-att-remove').forEach((btn) => {
@@ -2287,13 +2330,32 @@ class AssistantManagerClass {
   _historyLabelForAttachments(text) {
     const ready = (this._attachmentsSnapshot || this._attachmentQueue).filter((a) => a.status === 'ready');
     if (!ready.length) return text;
-    const tags = ready.map((a) => {
-      if (a.kind === 'image') return `[Image: ${a.name}]`;
-      if (a.kind === 'pdf') return `[PDF: ${a.name}]`;
-      if (a.kind === 'text') return `[File: ${a.name}]`;
-      return `[File: ${a.name}]`;
-    });
-    return `${text || '(attachment)'}\n${tags.join(' ')}`;
+    const head = String(text || '').trim() || '(attachment)';
+    const blocks = [];
+    for (const a of ready) {
+      if (a.kind === 'text' && typeof a.text === 'string' && a.text.trim()) {
+        let body = a.text;
+        if (body.length > NAVIO_HISTORY_ATTACH_EMBED_CHARS) {
+          body =
+            body.slice(0, NAVIO_HISTORY_ATTACH_EMBED_CHARS) +
+            '\n\n… [attachment truncated for thread storage — original was sent in full to the model on this turn]';
+        }
+        blocks.push(`\n\n--- Attached file: ${a.name} ---\n${body}`);
+      } else if (a.kind === 'image') {
+        blocks.push(
+          `\n[Image attached: **${a.name}** — pixels were sent with this message; ask the user to **re-attach** the image if you need to inspect it again in a later turn.]`
+        );
+      } else if (a.kind === 'pdf') {
+        blocks.push(
+          `\n[PDF attached: **${a.name}** — document bytes were sent with this message; ask the user to **re-attach** the PDF if you need exact page quotes in a later turn.]`
+        );
+      } else {
+        blocks.push(
+          `\n[File attached: **${a.name}** (${a.kind || 'file'}) — binary was sent with this message; re-attach if you need the raw file again.]`
+        );
+      }
+    }
+    return head + blocks.join('');
   }
 
   _clearAttachmentQueue() {
@@ -4325,7 +4387,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           files: this._attachmentQueue.filter((a) => a.status === 'ready').map((a) => ({
             name: a.name,
             thumb: a.thumb,
-            kind: a.kind
+            kind: a.kind,
+            bytesSize: typeof a.bytesSize === 'number' ? a.bytesSize : 0
           }))
         }
       : text;
@@ -6110,18 +6173,45 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       const toolWvReady = (wv) => {
         if (!wv || typeof wv.getWebContentsId !== 'function') return false;
         try {
-          return wv.getWebContentsId() != null;
+          const id = wv.getWebContentsId();
+          return id != null && Number.isFinite(Number(id)) && Number(id) > 0;
         } catch {
           return false;
         }
       };
-      while (!toolWvReady(toolWv) && wait < 25) {
+      // Background about:blank can take >1s to expose a guest webContents id; without this
+      // ai-request-with-tools bails with "No active tab" and never hits the model.
+      while (!toolWvReady(toolWv) && wait < 75) {
         TabManager.ensureBrowserContextTab?.();
         await new Promise((r) => setTimeout(r, 40));
         toolWv = TabManager.getBrowserTargetWebview?.();
         wait++;
       }
       TabManager.setAgentControlledTab?.(TabManager.findTabIdForWebview?.(toolWv));
+    }
+
+    let toolTabWebContentsId = activePopupWcId;
+    if (!toolTabWebContentsId && toolWv && typeof toolWv.getWebContentsId === 'function') {
+      try {
+        const twId = toolWv.getWebContentsId();
+        if (twId != null && Number.isFinite(Number(twId)) && Number(twId) > 0) toolTabWebContentsId = twId;
+      } catch {
+        /* ignore */
+      }
+    }
+    // Last resort for full-page Navio AI: main requires *some* WebContents for the tool loop/CDP.
+    // Prefer a real browsing tab above; this only applies when none is ready yet.
+    if (
+      !toolTabWebContentsId &&
+      guestWv &&
+      typeof guestWv.getWebContentsId === 'function'
+    ) {
+      try {
+        const gid = guestWv.getWebContentsId();
+        if (gid != null && Number.isFinite(Number(gid)) && Number(gid) > 0) toolTabWebContentsId = gid;
+      } catch {
+        /* ignore */
+      }
     }
 
     // Inject popup context so the AI knows it is targeting a popup window, not a browser tab.
@@ -6151,7 +6241,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     this._turnStartedAt = performance.now();
     const response = await window.navio.aiRequestWithTools({
       messages,
-      webContentsId: activePopupWcId ?? toolWv?.getWebContentsId?.(),
+      webContentsId: toolTabWebContentsId,
       tabId: tk
     });
     const toolTurnMs =
@@ -6757,7 +6847,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
    * @returns {Array<{role:string,content:string}>}
    */
   _buildRelevantHistory(queryText, historyKey, msgFilter) {
-    const RECENT_ALWAYS = 10;   // last N messages always included (5 turns)
+    const RECENT_ALWAYS = 20;   // last N messages always included (≈10 turns; attachment threads need continuity)
     const MAX_OLDER_RELEVANT = 14; // cap on topic-matched older messages
 
     const all = (this._conversationsByTab.get(historyKey) || [])
@@ -7242,15 +7332,23 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         parts.push(`<div class="user-msg-text">${this.formatMessage(String(content.text), false)}</div>`);
       }
       const chips = (content.files || [])
-        .map((f) => {
-          const nm = this._escapeHtml(f.name || 'file');
-          if (f.thumb) {
-            return `<div class="user-att-preview"><img src="${String(f.thumb).replace(/"/g, '&quot;')}" alt="">${nm}</div>`;
-          }
-          return `<div class="user-att-preview user-att-preview--file"><span class="user-att-file-label">${f.kind === 'pdf' ? 'PDF' : 'FILE'}</span>${nm}</div>`;
-        })
+        .map((f) =>
+          navioAssistantReadyAttachmentChipHtml(
+            {
+              name: f.name,
+              kind: f.kind,
+              thumb: f.thumb || '',
+              bytesSize: f.bytesSize
+            },
+            { includeRemove: false, popIn: false }
+          )
+        )
         .join('');
-      if (chips) parts.push(`<div class="user-att-row">${chips}</div>`);
+      if (chips) {
+        parts.push(
+          `<div class="assistant-attachment-row assistant-attachment-row--has-docs assistant-attachment-row--bubble">${chips}</div>`
+        );
+      }
       contentEl.innerHTML = parts.length ? parts.join('') : '<div class="user-msg-text">(attachment)</div>';
       msgEl.appendChild(contentEl);
       this.messagesEl.appendChild(msgEl);

@@ -7719,6 +7719,21 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   color: var(--accent);
 }
 
+/* Sidebar sent messages: same attachment “document cards” as the composer */
+.user-message .assistant-attachment-row--bubble {
+  margin-top: 10px;
+  width: 100%;
+}
+
+.user-message .assistant-att-chip--sent.assistant-att-chip--doc {
+  padding: 8px 10px 8px 8px;
+  max-width: 100%;
+}
+
+.user-message .assistant-att-chip--sent .assistant-att-name {
+  max-width: min(260px, 82vw);
+}
+
 .user-msg-text {
   font-size: 12.5px;
   line-height: 1.5;

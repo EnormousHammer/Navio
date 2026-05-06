@@ -3563,7 +3563,20 @@ ipcMain.handle('ai-request-with-tools', async (event, { messages, webContentsId,
     });
   }
 
-  const wc = webContentsId ? electronWebContents.fromId(webContentsId) : null;
+  let wc = null;
+  if (webContentsId != null && webContentsId !== '') {
+    const wid = Number(webContentsId);
+    if (Number.isFinite(wid) && wid > 0) {
+      try {
+        const candidate = electronWebContents.fromId(wid);
+        if (candidate && typeof candidate.isDestroyed === 'function' && !candidate.isDestroyed()) {
+          wc = candidate;
+        }
+      } catch {
+        wc = null;
+      }
+    }
+  }
   if (!wc) {
     try {
       navioLogger.log(
