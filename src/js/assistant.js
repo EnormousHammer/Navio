@@ -7,6 +7,12 @@
 const NAVIO_AUTH_GATE_URL_RE =
   /\/(login|signin|sign-in|auth|account\/login|session\/new|oauth|sso)\b|accounts\.google\.com\/(signin|ServiceLogin)|login\.microsoftonline\.com|login\.live\.com|signin\.aws\.amazon\.com/i;
 
+/** User+assistant messages from *this* thread sent to the model each turn (chronological tail). */
+const NAVIO_ASSISTANT_API_HISTORY_MAX = 120;
+/** In-memory thread length before trimming oldest rows (after each turn). */
+const NAVIO_ASSISTANT_LOCAL_HISTORY_TRIM_THRESHOLD = 260;
+const NAVIO_ASSISTANT_LOCAL_HISTORY_KEEP = 220;
+
 /** Natural-language mailbox ask — shared by Gmail + Outlook connector prefetch. */
 function navioDetectMailboxIntent(text) {
   const s = (text || '').trim();
@@ -5517,7 +5523,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         'If intent is unclear: prefer one-line assumption + proceed, or **one** blocking question if you truly cannot act. ' +
         'Do not re-ask tone, length, format, or style choices already fixed in this thread; do not permission-theater (“continue?”, “short or detailed?”).'
     });
-    const recentHistory = this._currentHistory().slice(-72);
+    const recentHistory = this._currentHistory().slice(-NAVIO_ASSISTANT_API_HISTORY_MAX);
     messages.push(...recentHistory);
     messages.push({ role: 'user', content: this._taskAnchorPrefix() + (text || '') });
     const userHistory = this._historyLabelForAttachments(text);
@@ -6836,8 +6842,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const k = this._turnConversationKey ?? this._conversationKey();
     let h = this._conversationsByTab.get(k);
     if (!h) return;
-    if (h.length > 96) {
-      h = h.slice(-72);
+    if (h.length > NAVIO_ASSISTANT_LOCAL_HISTORY_TRIM_THRESHOLD) {
+      h = h.slice(-NAVIO_ASSISTANT_LOCAL_HISTORY_KEEP);
       this._conversationsByTab.set(k, h);
     }
     const len = h.length;
@@ -6854,105 +6860,24 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   /**
-   * Build a relevant, topic-aware subset of conversation history to send to the AI.
+   * Build conversation history for the model from *this* chat thread.
    *
-   * Problem with plain `slice(-N)`: the AI blindly gets the last N messages regardless
-   * of topic. If the user discussed cooking 20 turns ago and now asks a code question,
-   * all that cooking context poisons the new answer.
+   * Older Navio builds used keyword “relevance” over messages before the last window; that dropped
+   * critical context on short follow-ups (“yes”, “same zip”, “now ship-to”) because they share no
+   * tokens with earlier turns. For same-chat continuity we send the **chronological tail** only
+   * (capped by `NAVIO_ASSISTANT_API_HISTORY_MAX`), after optional `msgFilter` (e.g. stale page trees).
    *
-   * Strategy (Comet-class relevance retrieval):
-   *   1. Always keep the last RECENT_ALWAYS turns — these guarantee immediate continuity.
-   *   2. For anything older: score by keyword overlap with the current query.
-   *      Only inject older messages whose score > 0 (they mention something in the query).
-   *   3. Preserve pairs — if we pull an assistant turn, also pull its preceding user turn
-   *      (and vice versa) so the AI never sees a dangling half-exchange.
-   *   4. Return everything in original chronological order.
-   *   5. Apply caller-supplied filter (e.g. drop stale page snapshots).
-   *
-   * @param {string} queryText   Current user input
-   * @param {string} historyKey  Key in _conversationsByTab
+   * @param {string} _queryText  Reserved (same signature as prior relevance pass)
+   * @param {string} historyKey  Key in `_conversationsByTab`
    * @param {function} [msgFilter]  Optional per-message predicate (return false to skip)
    * @returns {Array<{role:string,content:string}>}
    */
-  _buildRelevantHistory(queryText, historyKey, msgFilter) {
-    const RECENT_ALWAYS = 20;   // last N messages always included (≈10 turns; attachment threads need continuity)
-    const MAX_OLDER_RELEVANT = 14; // cap on topic-matched older messages
-
+  _buildRelevantHistory(_queryText, historyKey, msgFilter) {
     const all = (this._conversationsByTab.get(historyKey) || [])
       .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string');
-
-    // Apply caller filter (e.g. strip stale page snapshots)
     const filtered = msgFilter ? all.filter(msgFilter) : all;
-
-    if (filtered.length <= RECENT_ALWAYS) return filtered.slice();
-
-    const recent = filtered.slice(-RECENT_ALWAYS);
-    const older  = filtered.slice(0, -RECENT_ALWAYS);
-
-    if (!older.length) return recent;
-
-    // ── Keyword extraction ──────────────────────────────────────────────────
-    // Common English stopwords that add zero signal for relevance scoring.
-    const STOP = new Set([
-      'the','a','an','is','it','in','on','at','to','for','of','and','or','but',
-      'not','with','this','that','what','how','why','when','where','who','can',
-      'do','did','does','has','have','had','will','would','could','should','i',
-      'you','we','they','my','your','their','its','me','him','her','us','them',
-      'be','am','are','was','were','been','get','got','go','went','use','using',
-      'used','make','made','just','also','about','from','by','as','so','if',
-      'then','than','up','out','no','yes','okay','ok','please','let','want',
-      'need','like','know','think','see','look','say','said','tell','told',
-      'into','over','after','before','again','now','here','there','some','any',
-      'all','more','very','much','many','one','two','three','first','last','new',
-      'old','good','great','sure','right','way','time','thing','things','work',
-      'help','still','even','back','really','actually'
-    ]);
-
-    const extractTerms = (text) => {
-      const words = new Set();
-      for (const raw of text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)) {
-        if (raw.length >= 3 && !STOP.has(raw)) words.add(raw);
-      }
-      return words;
-    };
-
-    const queryTerms = extractTerms(queryText || '');
-    if (!queryTerms.size) return [...older.slice(-MAX_OLDER_RELEVANT), ...recent];
-
-    // ── Score older messages ────────────────────────────────────────────────
-    const scored = older.map((m, idx) => {
-      const terms = extractTerms(m.content);
-      let hits = 0;
-      for (const t of queryTerms) { if (terms.has(t)) hits++; }
-      // Normalise slightly: reward messages with multiple hits vs. single accidental match
-      const score = hits === 0 ? 0 : hits + Math.min(hits - 1, 2) * 0.5;
-      return { m, idx, score };
-    });
-
-    // Pick top-scoring older messages (only those with at least 1 hit)
-    const relevant = scored
-      .filter((x) => x.score > 0)
-      .sort((a, b) => b.score - a.score || b.idx - a.idx)
-      .slice(0, MAX_OLDER_RELEVANT);
-
-    // ── Pair-preservation ──────────────────────────────────────────────────
-    // If we pulled an assistant turn, also include its immediately preceding user
-    // turn (and vice-versa) so the AI never sees a dangling half-exchange.
-    const includedIdx = new Set(relevant.map((x) => x.idx));
-    for (const { idx } of [...relevant]) {
-      if (older[idx]?.role === 'assistant' && idx > 0 && !includedIdx.has(idx - 1)) {
-        includedIdx.add(idx - 1);
-        relevant.push({ m: older[idx - 1], idx: idx - 1, score: 0 });
-      } else if (older[idx]?.role === 'user' && idx + 1 < older.length && !includedIdx.has(idx + 1)) {
-        includedIdx.add(idx + 1);
-        relevant.push({ m: older[idx + 1], idx: idx + 1, score: 0 });
-      }
-    }
-
-    // Restore chronological order before concatenating with recent
-    relevant.sort((a, b) => a.idx - b.idx);
-
-    return [...relevant.map((x) => x.m), ...recent];
+    if (filtered.length <= NAVIO_ASSISTANT_API_HISTORY_MAX) return filtered.slice();
+    return filtered.slice(-NAVIO_ASSISTANT_API_HISTORY_MAX);
   }
 
   _appendCitationChips(msgEl, urls) {
