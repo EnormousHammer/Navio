@@ -2280,10 +2280,11 @@ async function performAiFetch(cfg, apiKey, messages, useStream, fetchOpts = {}) 
     return { error: `Unknown provider: ${provider}` };
   }
 
-  // Combine the caller's abort signal with a hard 30-second timeout so a
-  // hung API request (server unresponsive, no streaming data, etc.) cannot
-  // leave the UI stuck in "busy" indefinitely.
-  const FETCH_TIMEOUT_MS = 30000;
+  // Combine the caller's abort signal with a hard timeout so a hung API
+  // request cannot leave the UI stuck in "busy" indefinitely.
+  // 120 s gives reasoning models (gpt-5, o-series) enough time to finish
+  // even on complex tool-loop steps with large context.
+  const FETCH_TIMEOUT_MS = 120000;
   const timeoutSignal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
   const fetchSignal = fetchOpts.signal
     ? AbortSignal.any([fetchOpts.signal, timeoutSignal])
