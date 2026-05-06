@@ -1,0 +1,13 @@
+---
+description: Never pause mid-task to ask for confirmation or permission
+alwaysApply: true
+---
+
+# Task Completion Behavior
+
+- NEVER stop mid-task to ask "should I continue?" or "do you want me to proceed?"
+- NEVER summarize progress and wait for approval before continuing
+- Complete the ENTIRE task from start to finish before responding
+- Only message the user when the full job is 100% done
+- If you hit an issue, handle it and keep going — do not stop to report minor blockers
+- The user gave the instruction once — that is enough to complete the full job
