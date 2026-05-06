@@ -279,8 +279,56 @@ const AUTH_GATE_URL_RE =
  */
 const BOT_CHALLENGE_URL_RE =
   /cdn-cgi\/(challenge-platform|bm\/cv|l\/chk)|\/security-check|\/verify-human|\/challenge(\?|\/|$)|\/bot-detection|\/anti-robot|\/robot-check/i;
+/** Title often uses Unicode ellipsis (…) not three ASCII dots — keep substring match. */
 const BOT_CHALLENGE_TITLE_RE =
-  /just a moment\.\.\.|checking your browser|attention required|security check|verifying you are human|are you a robot|ddos protection|please (wait|enable javascript)|browser.*check|enable cookies to continue/i;
+  /just a moment|checking your browser|attention required|security check|verifying you are human|are you a robot|ddos protection|please (wait|enable javascript)|browser.*check|enable cookies to continue|human verification|security verification/i;
+
+const BOT_CHALLENGE_NOTE =
+  'Bot/Cloudflare challenge detected. Automation cannot pass this screen. STOP — do not read_page, click, or navigate again. Tell the user to complete verification in the tab (checkbox / Turnstile), wait until the real site loads, then continue.';
+
+/** Body copy on interstitial pages when `document.title` is still generic or delayed. */
+function _navioBodyLooksLikeBotWall(text) {
+  if (!text || String(text).length < 24) return false;
+  const s = String(text).slice(0, 12000);
+  return (
+    /\bverify you are human\b/i.test(s) ||
+    /\bperforming security verification\b/i.test(s) ||
+    /\bchecking your browser before accessing\b/i.test(s) ||
+    /\bcf-turnstile\b/i.test(s) ||
+    /\bcf_chl_/i.test(s) ||
+    /\bchallenges\.cloudflare\.com\b/i.test(s) ||
+    /\bone more step\b[^.\n]{0,120}\bcloudflare\b/is.test(s)
+  );
+}
+
+/** Add `botChallenge` to read_page / get_page_text payloads when the guest is a CF interstitial. */
+async function navioAttachBotChallengeToPageSnapshot(wc, snapshot) {
+  const out = snapshot && typeof snapshot === 'object' ? { ...snapshot } : {};
+  const url = String(out.url || wc.getURL?.() || '').toLowerCase();
+  const title = String(out.title || wc.getTitle?.() || '').toLowerCase();
+  if (BOT_CHALLENGE_URL_RE.test(url) || BOT_CHALLENGE_TITLE_RE.test(title)) {
+    out.botChallenge = true;
+    out.note = BOT_CHALLENGE_NOTE;
+    return out;
+  }
+  if (typeof out.text === 'string' && _navioBodyLooksLikeBotWall(out.text)) {
+    out.botChallenge = true;
+    out.note = BOT_CHALLENGE_NOTE;
+    return out;
+  }
+  try {
+    const body = await wc.executeJavaScript(
+      `(function(){try{var b=document.body;return(b&&b.innerText)?String(b.innerText).slice(0,4500):''}catch(e){return ''}})()`
+    );
+    if (_navioBodyLooksLikeBotWall(body)) {
+      out.botChallenge = true;
+      out.note = BOT_CHALLENGE_NOTE;
+    }
+  } catch {
+    /* ignore */
+  }
+  return out;
+}
 
 /** After a click, wait for navigation if it starts within timeoutMs; else resolve when timeout elapses. */
 function waitForOptionalNavigationAfterClick(wc, timeoutMs = 2000) {
@@ -4519,12 +4567,21 @@ const toolExecutors = {
             return items.join('\\n');
           })()
         `);
-        return { fallback: true, elements: snap, url: wc.getURL(), title: wc.getTitle() };
+        return await navioAttachBotChallengeToPageSnapshot(wc, {
+          fallback: true,
+          elements: snap,
+          url: wc.getURL(),
+          title: wc.getTitle()
+        });
       } catch (e) {
         return { error: 'Could not read page: ' + e.message };
       }
     }
-    return { tree: result.yaml, url: result.url, title: result.title };
+    return await navioAttachBotChallengeToPageSnapshot(wc, {
+      tree: result.yaml,
+      url: result.url,
+      title: result.title
+    });
   },
 
   async get_page_text(wc, args) {
@@ -4537,7 +4594,12 @@ const toolExecutors = {
         })()
       `);
       const maxChars = args.max_chars || 20000;
-      return { text: (text || '').slice(0, maxChars), url: wc.getURL(), title: wc.getTitle() };
+      const slice = (text || '').slice(0, maxChars);
+      return await navioAttachBotChallengeToPageSnapshot(wc, {
+        text: slice,
+        url: wc.getURL(),
+        title: wc.getTitle()
+      });
     } catch (e) {
       return { error: 'Could not extract text: ' + e.message };
     }
@@ -6865,19 +6927,40 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
           });
         });
         const finalUrl = wc.getURL?.() || '';
-        const pageTitle = (await wc.executeJavaScript('document.title').catch(() => '')).toLowerCase();
+        let pageTitle = '';
+        try {
+          pageTitle = String(await wc.executeJavaScript(`(document.title || '').trim().toLowerCase()`)).trim();
+        } catch {
+          pageTitle = '';
+        }
+        if (!pageTitle) {
+          try {
+            pageTitle = String(wc.getTitle?.() || '').trim().toLowerCase();
+          } catch {
+            pageTitle = '';
+          }
+        }
         const authGate =
           AUTH_GATE_URL_RE.test(finalUrl) ||
           /\bsign.?in\b|log.?in\b|authenticate\b/i.test(pageTitle);
-        const botChallenge =
-          BOT_CHALLENGE_URL_RE.test(finalUrl) ||
-          BOT_CHALLENGE_TITLE_RE.test(pageTitle);
+        let botChallenge =
+          BOT_CHALLENGE_URL_RE.test(finalUrl) || BOT_CHALLENGE_TITLE_RE.test(pageTitle);
+        if (!botChallenge) {
+          try {
+            const body = await wc.executeJavaScript(
+              `(function(){try{var b=document.body;return(b&&b.innerText)?String(b.innerText).slice(0,4500):''}catch(e){return ''}})()`
+            );
+            botChallenge = _navioBodyLooksLikeBotWall(body);
+          } catch {
+            /* ignore */
+          }
+        }
         if (botChallenge) {
           return {
             success: true,
             botChallenge: true,
             url: finalUrl,
-            note: 'Bot/Cloudflare challenge page detected. The page is showing a human-verification or security challenge that automation cannot solve. STOP immediately — do NOT attempt to read_page, click, or navigate again. Take a screenshot and tell the user they must solve this challenge manually in the browser, then resume.'
+            note: BOT_CHALLENGE_NOTE
           };
         }
         return { success: true, authGate, url: finalUrl };

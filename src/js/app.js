@@ -2063,6 +2063,7 @@ const PasswordManager = (() => {
 
   // ── Show "Save password?" / "Replace password?" after submit ─────────────
   async function showSavePrompt({ username, password, url }, wv) {
+    _hideAutofill();
     if (!saveBar) return;
     if (_isStremioSilentAutofillUrl(url)) {
       try {
@@ -2117,6 +2118,7 @@ const PasswordManager = (() => {
 
   // ── Check if we have credentials for the current URL ──────────────────────
   async function checkAutofill(url, wv) {
+    _hideSave();
     try {
       const r = await window.navio.passwordsGet(url);
       if (!r.ok || !r.entries.length) return;

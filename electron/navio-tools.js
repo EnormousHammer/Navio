@@ -33,7 +33,7 @@ const NAVIO_TOOLS = [
       'After you create/update/delete drafts or send mail via API, Navio opens Gmail to Drafts or Sent automatically. ' +
       'Without **gmail_browser_takeover**, avoid mail.google.com single-message URLs (#inbox/MESSAGE_ID) — use gmail_get_message; with **gmail_browser_takeover: true**, real Gmail navigation is allowed. ' +
       '**Result fields:** `authGate: true` means the page is a login/sign-in wall — ask the user for credentials before continuing. ' +
-      '`botChallenge: true` means the site returned a bot/Cloudflare/CAPTCHA challenge page — **STOP immediately**, take a screenshot, and tell the user they must solve the challenge manually in the browser; do NOT attempt read_page, click, or further navigates until the user confirms the challenge is cleared.',
+      '`botChallenge: true` on navigate, read_page, or get_page_text means a bot/Cloudflare interstitial — **STOP immediately**, take a screenshot, and tell the user to complete verification in the tab; do NOT read_page, click, or navigate again until the real site loads.',
     parameters: {
       type: 'object',
       properties: {

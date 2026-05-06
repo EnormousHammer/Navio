@@ -224,25 +224,9 @@
         </div>
       </div>
 
-      <!-- Password save prompt (shown below nav when a login form is submitted) -->
-      <div id="pwd-save-bar" class="pwd-save-bar" hidden>
-        <svg class="pwd-save-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        <span class="pwd-save-msg">Save password for <strong id="pwd-save-site"></strong>?</span>
-        <span class="pwd-save-user" id="pwd-save-user"></span>
-        <button id="pwd-save-btn" class="pwd-save-action">Save</button>
-        <button id="pwd-never-btn" class="pwd-save-never">Never</button>
-        <button id="pwd-dismiss-btn" class="pwd-save-dismiss" title="Dismiss">×</button>
-      </div>
-
-      <!-- Autofill offer bar (shown when a login form is found and we have credentials) -->
-      <div id="pwd-autofill-bar" class="pwd-autofill-bar" hidden>
-        <svg class="pwd-save-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <span class="pwd-autofill-msg">Saved credentials available</span>
-        <span class="pwd-autofill-user" id="pwd-autofill-user"></span>
-        <button id="pwd-autofill-btn" class="pwd-save-action">Autofill</button>
-        <button id="pwd-autofill-dismiss" class="pwd-save-dismiss" title="Dismiss">×</button>
-      </div>
-
+      <!-- Guest webviews + password UI: bars live inside this wrapper *after* #browser-container in the DOM
+           so Electron’s webview compositor does not paint over the save / autofill strip (Chrome-style infobar). -->
+      <div id="browser-area" class="browser-area">
       <!-- Browser Views Container -->
       <div id="browser-container">
         <div id="reading-mode-pane" class="reading-mode-pane" aria-hidden="true"></div>
@@ -533,6 +517,23 @@
           </div>
         </div>
       </div>
+
+      <div id="pwd-save-bar" class="pwd-save-bar pwd-bar-over-guest" hidden>
+        <svg class="pwd-save-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <span class="pwd-save-msg">Save password for <strong id="pwd-save-site"></strong>?</span>
+        <span class="pwd-save-user" id="pwd-save-user"></span>
+        <button id="pwd-save-btn" class="pwd-save-action">Save</button>
+        <button id="pwd-never-btn" class="pwd-save-never">Never</button>
+        <button id="pwd-dismiss-btn" class="pwd-save-dismiss" title="Dismiss">×</button>
+      </div>
+      <div id="pwd-autofill-bar" class="pwd-autofill-bar pwd-bar-over-guest" hidden>
+        <svg class="pwd-save-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span class="pwd-autofill-msg">Saved credentials available</span>
+        <span class="pwd-autofill-user" id="pwd-autofill-user"></span>
+        <button id="pwd-autofill-btn" class="pwd-save-action">Autofill</button>
+        <button id="pwd-autofill-dismiss" class="pwd-save-dismiss" title="Dismiss">×</button>
+      </div>
+      </div><!-- #browser-area -->
     </main>
 
     <!-- Inline AI Toolbar (appears above selected text) -->

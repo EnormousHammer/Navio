@@ -36,6 +36,32 @@ function _pwdOrigin(url) {
   try { return new URL(url).origin; } catch { return url; }
 }
 
+/**
+ * Same registrable site with/without `www` (e.g. `https://reddit.com` <-> `https://www.reddit.com`).
+ * Skips multi-label hosts (`accounts.google.com`) so we do not invent bogus realms.
+ */
+function _pwdOriginSiblings(origin) {
+  if (!origin || typeof origin !== 'string') return [];
+  const set = new Set([origin]);
+  try {
+    const u = new URL(origin);
+    const h = u.hostname;
+    const labels = h.split('.').filter(Boolean);
+    const apexPairOnly =
+      labels.length === 2 || (labels.length === 3 && String(labels[1]).length <= 3); // e.g. foo.co.uk
+    if (h.startsWith('www.')) {
+      u.hostname = h.slice(4);
+      set.add(u.origin);
+    } else if (apexPairOnly) {
+      u.hostname = `www.${h}`;
+      set.add(u.origin);
+    }
+  } catch {
+    /* ignore */
+  }
+  return [...set];
+}
+
 /** Origins where we allow managed (hidden-from-UI) vault rows and silent autofill. */
 const STREMIO_MANAGED_ORIGINS = new Set([
   'https://web.stremio.com',
@@ -130,13 +156,23 @@ function registerPasswordsIpc(ipcMain) {
     try {
       const vault = _pwdLoad();
       const origin = _pwdOrigin(url);
-      const list = vault[origin] || [];
-      const rows = list.map((e) => ({
-        username: e.username,
-        password: _pwdDecrypt(e.password),
-        created: e.created,
-        hidden: !!e.hidden,
-      }));
+      const origins = _pwdOriginSiblings(origin);
+      const byUser = new Map();
+      for (const o of origins) {
+        for (const e of vault[o] || []) {
+          const row = {
+            username: e.username,
+            password: _pwdDecrypt(e.password),
+            created: e.created,
+            hidden: !!e.hidden,
+          };
+          const prev = byUser.get(e.username);
+          if (!prev || String(row.created || '') > String(prev.created || '')) {
+            byUser.set(e.username, row);
+          }
+        }
+      }
+      const rows = [...byUser.values()];
       rows.sort((a, b) => Number(!!b.hidden) - Number(!!a.hidden));
       return { ok: true, entries: rows };
     } catch (e) {
@@ -147,9 +183,12 @@ function registerPasswordsIpc(ipcMain) {
   ipcMain.handle('passwords-delete', (_, { origin, username }) => {
     try {
       const vault = _pwdLoad();
-      if (vault[origin]) {
-        vault[origin] = vault[origin].filter(e => e.username !== username);
-        if (!vault[origin].length) delete vault[origin];
+      const keys = _pwdOriginSiblings(origin);
+      for (const o of keys) {
+        if (vault[o]) {
+          vault[o] = vault[o].filter((e) => e.username !== username);
+          if (!vault[o].length) delete vault[o];
+        }
       }
       _pwdSave(vault);
       return { ok: true };

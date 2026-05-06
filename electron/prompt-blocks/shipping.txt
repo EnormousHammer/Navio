@@ -73,6 +73,7 @@ UPS — ups.com / ups.ca
 - **Quote vs ship:** “**Calculate time and cost**” may be a **lighter** path than full **Create a shipment** — use what the user asked (estimate vs booking).
 - **Account vs guest:** logged-in flows show **saved addresses**, **payment accounts**, **defaults** — still verify **ship from** vs **ship to** every time.
 - **WorldShip** is desktop software — if the user mentions it, browser automation may not apply; clarify.
+- **Repair in place (critical):** UPS often **autocompletes the wrong city/country** or **changes country** after a dropdown and **clears** part of the block. That is **normal friction**, not a stop signal. **read_page** again, fix **Country/Territory** first, then re-enter postal + street from the user’s data, verify **From vs To** in the same snapshot before moving on. **Forbidden:** narrating “I’m stopping before I make it worse” or “tell me if you want me to continue” while the user already ordered a fill/repair — **use tools** to correct wrong US/CA mix-ups unless **SCOPE** hard-stops you (login, captcha, botChallenge).
 
 ──────────────────────────────────────────
 DHL — dhl.com (+ country sites dhl.de, etc.)

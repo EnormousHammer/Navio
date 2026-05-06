@@ -1832,9 +1832,18 @@ body.navio-vertical-tabs .tab-group-header:hover {
   overflow: hidden;
 }
 
-#browser-container {
+/* Fills #main-content below chrome; guest webviews live in #browser-container. */
+.browser-area {
   flex: 1 1 0;
   position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#browser-container {
+  position: absolute;
+  inset: 0;
   background: var(--bg-void);
   min-width: 0;
   min-height: 0;
@@ -1844,6 +1853,11 @@ body.navio-vertical-tabs .tab-group-header:hover {
 /* WebContentsView tabs: shell is composited above guest views; keep this region
    transparent and non–hit-target so the page shows through and receives clicks.
    NTP and reading mode re-enable pointer-events on their own roots. */
+body.navio-wcv-tabs-below .browser-area {
+  background: transparent;
+  pointer-events: none;
+}
+
 body.navio-wcv-tabs-below #browser-container {
   background: transparent;
   pointer-events: none;
@@ -15946,6 +15960,21 @@ button:focus-visible,
   flex-shrink: 0;
   z-index: 900;
   animation: pwdBarIn 0.2s ease;
+}
+
+/* Chrome-style keychain bar: sit above the guest webview compositor (see #browser-area in index.html). */
+.pwd-bar-over-guest {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 12050;
+  pointer-events: auto;
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.45);
+}
+
+body.navio-wcv-tabs-below .pwd-bar-over-guest {
+  pointer-events: auto;
 }
 
 .pwd-save-bar[hidden],
