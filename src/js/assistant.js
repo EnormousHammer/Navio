@@ -133,6 +133,36 @@ function navioMailContextActiveForTurn(text, getHistoryFn) {
   return false;
 }
 
+/**
+ * Short session title for sidebar / saved-chat list: strip Navio task-anchor prefix, collapse noise.
+ * @param {string} raw
+ * @returns {string}
+ */
+function navioSessionTitleFromUserContent(raw) {
+  let s = String(raw || '').replace(/\r\n/g, '\n').trim();
+  if (!s) return '';
+  if (/^\[What to do now/i.test(s)) {
+    const cut = s.indexOf('\n\n');
+    if (cut !== -1) s = s.slice(cut + 2).trim();
+  }
+  s = s.replace(/^>>\s+/, '').trim();
+  let line = (s.split(/\n+/).map((x) => x.trim()).find((x) => x.length) || s).replace(/\s+/g, ' ').trim();
+  const imgM = s.match(/\[Image attached:\s*\*\*([^*]+)\*\*/i);
+  const pdfM = s.match(/\[PDF attached:\s*\*\*([^*]+)\*\*/i);
+  const attM =
+    s.match(/\[Attached(?:\s+file)?:\s*\*\*([^*]+)\*\*/i) || s.match(/---\s*attached:\s*([^\n`]+)/i);
+  if ((!line || line.length < 3) && (imgM || pdfM || attM)) {
+    const fn = String((imgM && imgM[1]) || (pdfM && pdfM[1]) || (attM && attM[1]) || '').trim();
+    line = fn ? `File: ${fn}` : 'Attachment';
+  }
+  if (!line) return '';
+  const max = 56;
+  if (line.length <= max) return line;
+  const slice = line.slice(0, max - 1);
+  const sp = slice.lastIndexOf(' ');
+  return (sp > 22 ? slice.slice(0, sp) : slice) + '\u2026';
+}
+
 /** First token after "… mail to " when user names a person without an email address (for tighter prompts). */
 function navioMailComposeRecipientToken(text) {
   const s = (text || '').trim();
@@ -184,7 +214,7 @@ const NAVIO_ASSISTANT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 const NAVIO_ASSISTANT_PDF_MAX_BYTES = 12 * 1024 * 1024;
 const NAVIO_ASSISTANT_TEXT_MAX_CHARS = 180000;
 /** Text from attachments re-embedded into stored user rows so later turns still see file bodies. */
-const NAVIO_HISTORY_ATTACH_EMBED_CHARS = 36000;
+const NAVIO_HISTORY_ATTACH_EMBED_CHARS = 88000;
 const NAVIO_ASSISTANT_MAX_ATTACHMENTS = 8;
 /**
  * Silence after speech before we treat the utterance as finished (Whisper VAD + Web Speech debounce).
@@ -1693,9 +1723,10 @@ class AssistantManagerClass {
   /**
    * When the user switches tabs: show that tab’s conversation (or its tab-group bucket). Do **not**
    * cancel in-flight work — automation stays on the agent-controlled tab via TabManager; API history
-   * stays keyed by the tab that started the turn (`_turnConversationKey`). Sidebar DOM follows the
-   * focused tab; a detached “New chat” / Saved session (`_sidebarThreadKey`) must **not** keep
-   * showing across tab switches (that felt like one worker following every tab).
+   * stays keyed by the tab that started the turn (`_turnConversationKey`). The sidebar **follows the
+   * focused tab** even while another tab’s turn is in flight (streaming updates only when that tab’s
+   * storage key matches the visible panel). A detached “New chat” / Saved session (`_sidebarThreadKey`)
+   * must **not** keep showing across tab switches.
    */
   onActiveTabChanged(prevTabId, nextTabId) {
     if (!nextTabId || prevTabId === nextTabId) return;
@@ -1743,11 +1774,9 @@ class AssistantManagerClass {
     }
     this._conversationsByTab.set(id, copy);
     const firstUser = copy.find((m) => m && m.role === 'user' && String(m.content || '').trim());
-    let title = firstUser
-      ? String(firstUser.content).replace(/\s+/g, ' ').trim().slice(0, 56)
-      : '';
-    const hint = String(titleHint || '').replace(/\s+/g, ' ').trim();
-    if (!title && hint) title = hint.slice(0, 56);
+    let title = firstUser ? navioSessionTitleFromUserContent(String(firstUser.content)) : '';
+    const hint = navioSessionTitleFromUserContent(String(titleHint || ''));
+    if (!title && hint) title = hint;
     if (!title) title = 'Saved chat';
     this._sidebarSessionOrder = (this._sidebarSessionOrder || []).filter((x) => x.id !== id);
     this._sidebarSessionOrder.unshift({ id, title, updatedAt: Date.now() });
@@ -1861,12 +1890,9 @@ class AssistantManagerClass {
     if (!k) return;
     const storageKey = this._storageKeyForTabId(k);
     const turn = this._turnConversationKey;
-    // Comet-style: an in-flight tool/stream run is tied to `turn` (the tab that started it).
-    // Switching the *browser* to another tab must not wipe the sidebar or silence progress —
-    // main-process tools still target the agent-controlled webview.
-    if (turn && this._busyTabs.has(String(turn)) && storageKey !== String(turn)) {
-      return;
-    }
+    // In-flight work stays on `turn` for history + tools, but the sidebar always reflects the **focused**
+    // tab’s thread (`_panelShowsTurnDom` gates live stream / activity DOM so another tab’s run does not
+    // paint into this view).
 
     const prevPanelId = this._panelDisplayTabId;
     const prevStorageKey = prevPanelId ? this._storageKeyForTabId(String(prevPanelId)) : '';
@@ -4633,6 +4659,14 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
 
   _threadBusyForSend() {
     if (this._sidebarThreadKey && this._busyTabs.has(this._sidebarThreadKey)) return true;
+    try {
+      if (typeof TabManager !== 'undefined' && TabManager.activeTabId) {
+        const sk = this._storageKeyForTabId(String(TabManager.activeTabId));
+        if (sk && this._busyTabs.has(sk)) return true;
+      }
+    } catch {
+      /* ignore */
+    }
     return false;
   }
 
@@ -10361,7 +10395,7 @@ ${pageInfo}${snapText}`;
     if (!h || !h.length) return;
     const firstUser = h.find((m) => m && m.role === 'user' && String(m.content || '').trim());
     const title = firstUser
-      ? String(firstUser.content).replace(/\s+/g, ' ').trim().slice(0, 56) || 'Saved chat'
+      ? navioSessionTitleFromUserContent(String(firstUser.content)) || 'Saved chat'
       : 'Saved chat';
     let meta = this._sidebarSessionOrder.find((x) => x.id === storageKey);
     if (!meta) {
@@ -10419,8 +10453,8 @@ ${pageInfo}${snapText}`;
         (TabManager.getTabDisplayTitle && TabManager.getTabDisplayTitle(t)) || t.title || 'Tab';
       let title;
       if (firstUser) {
-        title = String(firstUser.content).replace(/\s+/g, ' ').trim().slice(0, 52);
-        if (String(firstUser.content).replace(/\s+/g, ' ').trim().length > 52) title += '\u2026';
+        title = navioSessionTitleFromUserContent(String(firstUser.content));
+        if (title.length > 52) title = title.slice(0, 51) + '\u2026';
       } else {
         title = tabLabel.slice(0, 56);
       }
@@ -10582,6 +10616,21 @@ ${pageInfo}${snapText}`;
     await this._ensureAssistantHistoryLoadedBounded();
     const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
     if (this._threadBusyForSend() || (aid && this._tabIsBusy(aid))) return;
+
+    const prevSidebar = this._sidebarThreadKey;
+    const tabSk = aid ? this._storageKeyForTabId(aid) : '';
+    if (prevSidebar && String(prevSidebar).startsWith(NAVIO_SIDEBAR_THREAD_PREFIX)) {
+      const ph = this._conversationsByTab.get(prevSidebar) || [];
+      if (ph.length) this._maybeRefreshSidebarSessionMeta(prevSidebar);
+    } else if (!prevSidebar && tabSk && !String(tabSk).startsWith(NAVIO_SIDEBAR_THREAD_PREFIX)) {
+      const th = this._conversationsByTab.get(tabSk) || [];
+      if (th.length) {
+        const fu = th.find((m) => m && m.role === 'user' && String(m.content || '').trim());
+        this._archiveThreadToSavedHistory(th, fu ? navioSessionTitleFromUserContent(String(fu.content)) : '');
+        this._conversationsByTab.set(tabSk, []);
+      }
+    }
+
     let id;
     try {
       id =
@@ -10607,6 +10656,7 @@ ${pageInfo}${snapText}`;
     }
     await this._showGreeting();
     this._renderSidebarSessionList();
+    await this._persistAssistantHistoryNow();
     if (!this.isOpen) void this.open();
     setTimeout(() => this.inputEl?.focus(), 200);
   }
