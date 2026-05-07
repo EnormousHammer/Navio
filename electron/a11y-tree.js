@@ -718,8 +718,111 @@ function unregisterPersistentSession(wcId) {
   persistentSessions.delete(wcId);
 }
 
+/**
+ * Gather `document.body.innerText` from every frame via CDP (isolated world per frame).
+ * Top-level `webContents.executeJavaScript` only sees the root document — Gmail PDF
+ * previews (and similar) put the real PDF.js text layer inside a subframe, so the
+ * assistant otherwise only sees viewer chrome in the accessibility tree / main frame.
+ *
+ * @returns {{ text: string }} on success (possibly empty), or `null` if CDP is unavailable.
+ */
+async function getPageInnerTextAllFrames(wc, opts = {}) {
+  const maxChars = Math.max(2000, opts.maxChars || 20000);
+  let attachedHere = false;
+  try {
+    if (!wc.debugger.isAttached()) {
+      wc.debugger.attach('1.3');
+      attachedHere = true;
+    }
+    await wc.debugger.sendCommand('Page.enable').catch(() => {});
+
+    let frameDescriptors = [];
+    try {
+      const { frameTree } = await wc.debugger.sendCommand('Page.getFrameTree');
+      if (frameTree) {
+        const walk = (n) => {
+          if (!n) return;
+          if (n.frame && n.frame.id) {
+            frameDescriptors.push({
+              id: n.frame.id,
+              url: String(n.frame.url || '').slice(0, 240)
+            });
+          }
+          for (const c of n.childFrames || []) walk(c);
+        };
+        walk(frameTree);
+      }
+    } catch {
+      frameDescriptors = [];
+    }
+
+    const MAX_FRAMES = 45;
+    if (frameDescriptors.length > MAX_FRAMES) {
+      frameDescriptors = frameDescriptors.slice(0, MAX_FRAMES);
+    }
+    if (!frameDescriptors.length) return null;
+
+    const expression = `(function(){try{var b=document.body,r=document.documentElement;var t=(b&&b.innerText)?String(b.innerText):'';if(!t&&r)t=String(r.innerText||'');return (t||'').trim();}catch(e){return '';}})()`;
+    const worldSuffix = String(Date.now()) + '_' + String(Math.random()).slice(2, 9);
+    let combined = '';
+
+    for (let i = 0; i < frameDescriptors.length; i++) {
+      const remaining = maxChars - combined.length;
+      if (remaining < 1) break;
+
+      const { id: frameId, url: frameUrl } = frameDescriptors[i];
+      let ctxId;
+      try {
+        const iso = await wc.debugger.sendCommand('Page.createIsolatedWorld', {
+          frameId,
+          worldName: 'navio_text_collect_' + worldSuffix + '_' + i,
+          grantUniverseAccess: false
+        });
+        ctxId = iso.executionContextId;
+      } catch {
+        continue;
+      }
+
+      let piece = '';
+      try {
+        const ev = await wc.debugger.sendCommand('Runtime.evaluate', {
+          expression,
+          contextId: ctxId,
+          awaitPromise: false,
+          returnByValue: true
+        });
+        if (ev.exceptionDetails) continue;
+        piece = typeof ev.result?.value === 'string' ? ev.result.value : '';
+      } catch {
+        continue;
+      }
+      piece = (piece || '').trim();
+      if (!piece) continue;
+
+      const header = i > 0 && frameUrl ? '\n\n# --- Subframe: ' + frameUrl + ' ---\n\n' : '';
+      let block = header + piece;
+      if (block.length > remaining) block = block.slice(0, remaining);
+      combined += block;
+    }
+
+    return { text: combined.trim() };
+  } catch (err) {
+    console.log('[navio] getPageInnerTextAllFrames failed:', err.message);
+    return null;
+  } finally {
+    if (attachedHere && !persistentSessions.get(wc.id)) {
+      try {
+        wc.debugger.detach();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
+
 module.exports = {
   getAccessibilityTree,
+  getPageInnerTextAllFrames,
   clickByRef,
   typeByRef,
   readValueAtRef,

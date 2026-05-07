@@ -152,7 +152,7 @@ const NAVIO_TOOLS = [
           type: 'string',
           enum: ['interactive', 'all'],
           description:
-            '"interactive" returns only buttons, links, inputs, etc. "all" includes headings, text, images. Default: "interactive".'
+            '"interactive" returns only buttons, links, inputs, etc. "all" includes headings, text, images, and (when available) innerText from embedded iframes (e.g. Gmail PDF preview). Default: "interactive".'
         },
         ref: {
           type: 'string',
@@ -168,7 +168,7 @@ const NAVIO_TOOLS = [
   {
     name: 'get_page_text',
     description:
-      'Extract the raw text content of the current page. Useful for reading articles, search results, or data.',
+      'Extract raw visible text from the page, including text inside embedded iframes (Gmail PDF preview, nested viewers). Prefer this over read_page alone when you need document body content from a preview pane.',
     parameters: {
       type: 'object',
       properties: {

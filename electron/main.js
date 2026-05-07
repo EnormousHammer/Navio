@@ -30,7 +30,7 @@ const { registerBrowserImportIpc } = require('./browser-import-ipc');
 const { registerContextMenuIpc } = require('./context-menu-ipc');
 const { registerSearchSuggestionsIpc } = require('./search-suggestions-ipc');
 const { NAVIO_TOOLS, toOpenAITools, toAnthropicTools, toGeminiTools } = require('./navio-tools');
-const { getAccessibilityTree, clickByRef, typeByRef, readValueAtRef, selectByRef, getRefMap, clearRefMap, registerPersistentSession, unregisterPersistentSession } = require('./a11y-tree');
+const { getAccessibilityTree, getPageInnerTextAllFrames, clickByRef, typeByRef, readValueAtRef, selectByRef, getRefMap, clearRefMap, registerPersistentSession, unregisterPersistentSession } = require('./a11y-tree');
 const { snapshotPage, verifyAction, dismissOverlay, waitForIdle } = require('./navio-agent-verify');
 const { startMonitoring, getConsoleMessages, getNetworkRequests, stopMonitoring } = require('./cdp-inspector');
 const { loadWorkflow, saveWorkflow, listWorkflows, deleteWorkflow } = require('./navio-workflows');
@@ -3599,7 +3599,18 @@ ipcMain.handle('extract-page-content', async (event, webContentsId) => {
         });
       })()
     `);
-    return JSON.parse(result);
+    const parsed = JSON.parse(result);
+    try {
+      const inner = await getPageInnerTextAllFrames(wc, { maxChars: 15000 });
+      const innerText = inner && typeof inner.text === 'string' ? inner.text : '';
+      const mainLen = (parsed.text || '').length;
+      if (innerText.length > mainLen) {
+        parsed.text = innerText.slice(0, 15000);
+      }
+    } catch {
+      /* keep root-frame text */
+    }
+    return parsed;
   } catch (err) {
     return { error: err.message };
   }
@@ -4600,8 +4611,28 @@ const toolExecutors = {
         return { error: 'Could not read page: ' + e.message };
       }
     }
+    const maxTotal = args.max_chars || 50000;
+    let treeOut = result.yaml;
+    if ((args.filter || 'interactive') === 'all' && treeOut) {
+      const budget = Math.max(4000, maxTotal - treeOut.length - 120);
+      if (budget > 800) {
+        try {
+          const inner = await getPageInnerTextAllFrames(wc, { maxChars: Math.min(budget, 32000) });
+          const innerText = inner && typeof inner.text === 'string' ? inner.text.trim() : '';
+          if (innerText.length > 40) {
+            let extra = innerText;
+            if (treeOut.length + extra.length + 80 > maxTotal) {
+              extra = extra.slice(0, Math.max(0, maxTotal - treeOut.length - 120)) + '\n... (truncated)';
+            }
+            treeOut += '\n\n# --- Iframe / embedded text (innerText, all frames) ---\n' + extra;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    }
     return await navioAttachBotChallengeToPageSnapshot(wc, {
-      tree: result.yaml,
+      tree: treeOut,
       url: result.url,
       title: result.title
     });
@@ -4609,14 +4640,27 @@ const toolExecutors = {
 
   async get_page_text(wc, args) {
     await waitForWebContentsSettled(wc, { settleMs: 100 });
+    const maxChars = args.max_chars || 20000;
     try {
-      const text = await wc.executeJavaScript(`
-        (() => {
-          const t = document.body ? document.body.innerText : document.documentElement.innerText;
-          return (t || '').trim();
-        })()
-      `);
-      const maxChars = args.max_chars || 20000;
+      let text = '';
+      const multi = await getPageInnerTextAllFrames(wc, { maxChars });
+      if (multi != null && typeof multi.text === 'string') {
+        text = multi.text.trim();
+      }
+      if (multi == null || text.length < 80) {
+        try {
+          const fb = await wc.executeJavaScript(`
+            (() => {
+              const t = document.body ? document.body.innerText : document.documentElement.innerText;
+              return (t || '').trim();
+            })()
+          `);
+          const fbs = (fb || '').trim();
+          if (fbs.length > text.length) text = fbs;
+        } catch {
+          /* ignore */
+        }
+      }
       const slice = (text || '').slice(0, maxChars);
       return await navioAttachBotChallengeToPageSnapshot(wc, {
         text: slice,
