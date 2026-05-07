@@ -819,8 +819,8 @@
 }
 
 .new-tab-page .ntp-hero {
-  padding-top: clamp(6px, 1.4vh, 20px);
-  padding-bottom: 2px;
+  padding-top: clamp(2px, 0.9vh, 12px) !important;
+  padding-bottom: 0 !important;
 }
 
 .new-tab-page .ntp-brand {
@@ -828,8 +828,8 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 8px 12px;
-  margin-bottom: 2px;
+  gap: 5px 10px;
+  margin-bottom: 0 !important;
   text-align: center;
   max-width: min(720px, 100%);
 }
@@ -849,7 +849,7 @@
 .new-tab-page .ntp-subtitle {
   letter-spacing: 0 !important;
   font-size: 11px !important;
-  margin: 0 0 8px !important;
+  margin: 0 0 4px !important;
   color: var(--ntp-subtext) !important;
   max-width: 36em;
   flex: 1 1 100%;
@@ -890,6 +890,7 @@
   padding: 6px 12px;
   gap: 8px;
   max-width: min(560px, 100%);
+  margin-top: 2px;
   margin-bottom: 4px;
 }
 .new-tab-page .ntp-search input {
@@ -1309,7 +1310,7 @@
     padding-bottom: clamp(16px, 3.5vh, 40px);
   }
   .new-tab-page .ntp-hero {
-    padding-top: clamp(4px, 1vh, 14px);
+    padding-top: clamp(2px, 0.6vh, 10px) !important;
   }
   .new-tab-page .ntp-widgets {
     margin-top: clamp(4px, 1vh, 12px);
@@ -3205,10 +3206,10 @@ body.navio-vertical-tabs .tab-item.in-group.group-last {
 /* Remove subtitle entirely */
 .ntp-subtitle { display: none !important; }
 
-/* Hero: generous vertical breathing room */
+/* Hero: compact stack — orb + title sit close to the search bar */
 .ntp-hero {
-  padding-top: clamp(20px, 4.5vh, 48px) !important;
-  padding-bottom: 6px;
+  padding-top: clamp(4px, 1.2vh, 16px) !important;
+  padding-bottom: 2px !important;
 }
 
 /* Search bar: wider and taller */
@@ -3218,21 +3219,6 @@ body.navio-vertical-tabs .tab-item.in-group.group-last {
 }
 .ntp-search input {
   font-size: 16.5px !important;
-}
-
-/* Model selector: polished pill */
-.ntp-model-btn {
-  border-radius: 999px;
-  font-size: 11.5px;
-  padding: 5px 13px 5px 10px;
-  background: rgba(255, 255, 255, 0.055);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  transition: background 0.18s, border-color 0.18s, box-shadow 0.18s;
-}
-.ntp-model-btn:hover {
-  background: rgba(0, 216, 255, 0.10);
-  border-color: rgba(0, 216, 255, 0.30);
-  box-shadow: 0 0 14px rgba(0, 216, 255, 0.14);
 }
 
 /* ── Shortcuts header: invisible until you hover ────────────────────────── */
@@ -3428,8 +3414,9 @@ body.navio-vertical-tabs .tab-item.in-group.group-last {
   --ai-bg-0: #070910;
   --ai-bg-1: #0b1020;
   --ai-bg-2: #111a2f;
-  --ai-line: rgba(182, 213, 255, 0.16);
-  --ai-line-strong: rgba(182, 213, 255, 0.3);
+  /* Dock edge: readable against page content without competing with the input focus ring */
+  --ai-line: rgba(160, 210, 255, 0.34);
+  --ai-line-strong: rgba(182, 223, 255, 0.48);
   --ai-accent: #57ddff;
   --ai-accent-2: #8f9fff;
   border-left: 1px solid var(--ai-line);
@@ -3440,14 +3427,29 @@ body.navio-vertical-tabs .tab-item.in-group.group-last {
     radial-gradient(110% 72% at 102% -20%, rgba(143, 159, 255, 0.2), transparent 58%),
     linear-gradient(180deg, var(--ai-bg-2) 0%, var(--ai-bg-1) 52%, var(--ai-bg-0) 100%);
   box-shadow:
-    -18px 0 54px rgba(0, 0, 0, 0.55),
-    -1px 0 0 rgba(255, 255, 255, 0.05) inset;
+    -22px 0 64px rgba(0, 0, 0, 0.58),
+    -10px 0 40px rgba(87, 221, 255, 0.07),
+    -3px 0 14px rgba(87, 221, 255, 0.05),
+    inset 1px 0 0 rgba(255, 255, 255, 0.08),
+    inset 2px 0 0 rgba(87, 221, 255, 0.06);
 }
 
 #assistant-panel.assistant-panel::before {
   height: 150px;
   background:
     linear-gradient(180deg, rgba(87, 221, 255, 0.12) 0%, rgba(87, 221, 255, 0.02) 50%, transparent 100%);
+}
+
+/* Brighter accent rail on the page-facing edge (overrides generic .assistant-panel::after) */
+#assistant-panel.assistant-panel::after {
+  width: 2px;
+  background: linear-gradient(
+    180deg,
+    rgba(87, 221, 255, 0.42) 0%,
+    rgba(143, 159, 255, 0.28) 45%,
+    rgba(87, 221, 255, 0.12) 100%
+  );
+  box-shadow: 2px 0 18px rgba(87, 221, 255, 0.18);
 }
 
 #assistant-panel .assistant-header {
