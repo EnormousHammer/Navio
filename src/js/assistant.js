@@ -1631,7 +1631,8 @@ class AssistantManagerClass {
       this._sidebarSessionOrder = [];
       if (data && (data.version === 2 || data.version === 3) && data.byKey && typeof data.byKey === 'object') {
         for (const [k, raw] of Object.entries(data.byKey)) {
-          if (!k || k === NAVIO_PROFILE_CHAT_KEY || k.startsWith('__')) continue;
+          if (!k || k === NAVIO_PROFILE_CHAT_KEY) continue;
+          if (k.startsWith('__') && k !== '__guest__') continue;
           if (!Array.isArray(raw)) continue;
           const messages = [];
           for (const m of raw) {
@@ -1691,7 +1692,9 @@ class AssistantManagerClass {
       if (!window.navio || typeof window.navio.assistantChatSave !== 'function') return;
       const byKey = {};
       for (const [k, h] of this._conversationsByTab.entries()) {
-        if (!k || k === NAVIO_PROFILE_CHAT_KEY || k.startsWith('__')) continue;
+        if (!k || k === NAVIO_PROFILE_CHAT_KEY) continue;
+        // Internal scratch keys stay out of disk; full-page Navio AI uses `__guest__`.
+        if (k.startsWith('__') && k !== '__guest__') continue;
         if (!h || !h.length) continue;
         const messages = (h || [])
           .filter((m) => m && (m.role === 'user' || m.role === 'assistant'))

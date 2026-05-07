@@ -1125,9 +1125,12 @@ class TabManagerClass {
             return false;
           };
           if (payload && !deliverGuest()) {
-            setTimeout(() => {
-              void deliverGuest();
-            }, 80);
+            const delays = [50, 120, 280, 600, 1400];
+            delays.forEach((ms) => {
+              setTimeout(() => {
+                if (deliverGuest()) return;
+              }, ms);
+            });
           }
         }
       } catch (err) {

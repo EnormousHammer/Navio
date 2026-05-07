@@ -4180,7 +4180,13 @@
     function activateGuestChatShell() {
       if (__navioGuestChatActivated) return;
       __navioGuestChatActivated = true;
-      wire();
+      try {
+        wire();
+      } catch (err) {
+        __navioGuestChatActivated = false;
+        console.error('[navio-chat-tab] wire() failed', err);
+        return;
+      }
       startLiveLogStream();
       loadModelHint();
       updateCharCount();
@@ -4207,17 +4213,32 @@
     }
 
     if (!hasGuestBridge()) {
-      messagesEl.innerHTML = '<div class="msg assistant"><div class="role">Navio</div><div class="body">Open this tab from <strong>Navio</strong> (Home → Ask AI). It cannot run standalone.</div></div>';
+      messagesEl.innerHTML = '<div class="msg assistant"><div class="role">Navio</div><div class="body">Connecting to Navio… If this stays stuck, use <strong>Reload</strong> on the tab or open <strong>Chat with AI</strong> again from the toolbar.</div></div>';
       updateLayoutMode();
       scrollToLatestForced();
-      [0, 32, 96, 250, 600].forEach(function (ms) {
-        setTimeout(function () {
-          if (__navioGuestChatActivated || !hasGuestBridge()) return;
-          messagesEl.innerHTML = '';
-          renderActiveMessages();
-          activateGuestChatShell();
-        }, ms);
-      });
+      // Preload can attach after DOMContentLoaded (slow disk / first paint). A short fixed
+      // schedule (previously max 600 ms) left Send wired but `postToHost` missing — a "dead" chat.
+      var _bridgeWaitStart = Date.now();
+      var _bridgeWaitMaxMs = 15000;
+      var _bridgeTimer = setInterval(function () {
+        if (__navioGuestChatActivated) {
+          clearInterval(_bridgeTimer);
+          return;
+        }
+        if (!hasGuestBridge()) {
+          if (Date.now() - _bridgeWaitStart > _bridgeWaitMaxMs) {
+            clearInterval(_bridgeTimer);
+            messagesEl.innerHTML =
+              '<div class="msg assistant"><div class="role">Navio</div><div class="body">The in-tab bridge did not load. Reload this tab, or open <strong>Chat with AI</strong> from Navio’s toolbar (do not open this file in an external browser).</div></div>';
+            updateLayoutMode();
+          }
+          return;
+        }
+        clearInterval(_bridgeTimer);
+        messagesEl.innerHTML = '';
+        renderActiveMessages();
+        activateGuestChatShell();
+      }, 80);
       return;
     }
     activateGuestChatShell();
