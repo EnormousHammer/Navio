@@ -81,7 +81,17 @@ try {
     const navioChatTabApi = {
       getConfig: () => ipcRenderer.invoke('get-config'),
       saveConfig: (partial) => ipcRenderer.invoke('save-config', partial),
-      postToHost: (payload) => _sendToTabHost('navio-chat-host', payload),
+      /**
+       * Full-page chat → shell. Prefer main-process relay: `sendToHost` / `<webview>` `ipc-message`
+       * can fail in some embedder stacks; main forwards to the shell with a stable WebContents id.
+       */
+      postToHost: (payload) => {
+        try {
+          ipcRenderer.send('navio-chat-host-relay-from-guest', payload);
+        } catch {
+          _sendToTabHost('navio-chat-host', payload);
+        }
+      },
       getRecentLogs: (n) => ipcRenderer.invoke('navio-log-get-recent', n || 200),
       /** Same live stream as the shell debug panel (Ctrl+Shift+L), forwarded by main. */
       onLogEntry: (callback) => {

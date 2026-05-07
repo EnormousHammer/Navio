@@ -92,6 +92,8 @@ class TabManagerClass {
     this._boundDragPointerMove = this._onDragPointerMove.bind(this);
     this._boundDragPointerUp   = this._onDragPointerUp.bind(this);
 
+    this._installNavioChatHostRelayListener();
+
     setTimeout(() => {
       try {
         this.refreshNavioActivityBadge();
@@ -782,6 +784,43 @@ class TabManagerClass {
       return this.navigateBrowserContextAndWaitForLoad(resolvedUrl, options);
     }
     return this.navigateActiveAndWaitForLoad(resolvedUrl, options);
+  }
+
+  /**
+   * Guest `navio-chat-tab.html` posts via main (`navio-chat-host-relay-from-guest` →
+   * `navio-chat-host-relay-to-shell`). Routes to the same handler as `<webview>` `ipc-message`.
+   */
+  _installNavioChatHostRelayListener() {
+    if (this._navioChatHostRelayInstalled) return;
+    this._navioChatHostRelayInstalled = true;
+    if (!window.navio || typeof window.navio.onNavioChatHostRelay !== 'function') return;
+    window.navio.onNavioChatHostRelay((detail) => {
+      try {
+        const wid = detail && detail.webContentsId != null ? Number(detail.webContentsId) : NaN;
+        const payload = detail && detail.payload;
+        if (!Number.isFinite(wid) || wid <= 0 || !payload || typeof payload !== 'object') return;
+        const tab = this.tabs.find((t) => {
+          try {
+            return (
+              t.webview &&
+              typeof t.webview.getWebContentsId === 'function' &&
+              t.webview.getWebContentsId() === wid
+            );
+          } catch {
+            return false;
+          }
+        });
+        if (!tab || !tab.webview) return;
+        const AM =
+          (typeof window !== 'undefined' && window.AssistantManager) ||
+          (typeof AssistantManager !== 'undefined' ? AssistantManager : null);
+        if (AM && typeof AM.handleGuestChatHostMessage === 'function') {
+          AM.handleGuestChatHostMessage(tab, tab.webview, payload);
+        }
+      } catch {
+        /* ignore */
+      }
+    });
   }
 
   bindWebviewEvents(tab) {

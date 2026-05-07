@@ -40,6 +40,30 @@ contextBridge.exposeInMainWorld('navio', {
     ipcRenderer.on('shortcut', (_, action) => callback(action));
   },
 
+  /**
+   * Full-page AI chat guest → main → shell relay (see `navio-chat-host-relay-from-guest` in main).
+   * @param {(detail: { webContentsId: number, payload: object }) => void} callback
+   * @returns {() => void} unsubscribe
+   */
+  onNavioChatHostRelay: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const handler = (_evt, detail) => {
+      try {
+        callback(detail);
+      } catch {
+        /* ignore */
+      }
+    };
+    ipcRenderer.on('navio-chat-host-relay-to-shell', handler);
+    return () => {
+      try {
+        ipcRenderer.removeListener('navio-chat-host-relay-to-shell', handler);
+      } catch {
+        /* ignore */
+      }
+    };
+  },
+
   getConfig: () => ipcRenderer.invoke('get-config'),
   /** file:// URL of the full-page in-tab AI chat (Navio AI tab). */
   getInternalChatPageUrl: () => ipcRenderer.invoke('navio-internal-chat-page-url'),

@@ -30,7 +30,7 @@ const { registerBrowserImportIpc } = require('./browser-import-ipc');
 const { registerContextMenuIpc } = require('./context-menu-ipc');
 const { registerSearchSuggestionsIpc } = require('./search-suggestions-ipc');
 const { NAVIO_TOOLS, toOpenAITools, toAnthropicTools, toGeminiTools } = require('./navio-tools');
-const { getAccessibilityTree, clickByRef, typeByRef, selectByRef, getRefMap, clearRefMap, registerPersistentSession, unregisterPersistentSession } = require('./a11y-tree');
+const { getAccessibilityTree, clickByRef, typeByRef, readValueAtRef, selectByRef, getRefMap, clearRefMap, registerPersistentSession, unregisterPersistentSession } = require('./a11y-tree');
 const { snapshotPage, verifyAction, dismissOverlay, waitForIdle } = require('./navio-agent-verify');
 const { startMonitoring, getConsoleMessages, getNetworkRequests, stopMonitoring } = require('./cdp-inspector');
 const { loadWorkflow, saveWorkflow, listWorkflows, deleteWorkflow } = require('./navio-workflows');
@@ -1793,6 +1793,29 @@ ipcMain.handle('navio-internal-chat-page-url', () => {
     return pathToFileURL(p).href;
   } catch {
     return '';
+  }
+});
+
+/**
+ * Full-page Navio AI (`navio-chat-tab.html`) → shell: guest preload cannot rely solely on
+ * `sendToHost` / embedder `ipc-message` (OOPIF / timing / embedder quirks). Guest sends here;
+ * main validates URL and forwards to the BrowserWindow shell.
+ */
+ipcMain.on('navio-chat-host-relay-from-guest', (event, payload) => {
+  try {
+    const wc = event.sender;
+    if (!wc || typeof wc.getURL !== 'function') return;
+    if (typeof wc.isDestroyed === 'function' && wc.isDestroyed()) return;
+    const url = String(wc.getURL() || '').toLowerCase();
+    if (!url.includes('navio-chat-tab.html')) return;
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const safe = payload && typeof payload === 'object' ? payload : {};
+    mainWindow.webContents.send('navio-chat-host-relay-to-shell', {
+      webContentsId: wc.id,
+      payload: safe
+    });
+  } catch {
+    /* ignore */
   }
 });
 ipcMain.handle('save-config', (event, partial) => {
@@ -4640,7 +4663,60 @@ const toolExecutors = {
 
   async type_text(wc, args) {
     if (args.ref) {
-      return await typeByRef(wc, args.ref, args.value || '');
+      const val = args.value || '';
+      const before = await snapshotPage(wc).catch(() => null);
+      let beforeRead = null;
+      try {
+        beforeRead = await readValueAtRef(wc, args.ref);
+      } catch {
+        beforeRead = null;
+      }
+      const refResult = await typeByRef(wc, args.ref, val);
+      if (!refResult.success) return refResult;
+      await new Promise((r) => setTimeout(r, 120));
+      const verify = before ? await verifyAction(wc, before, { waitForNetworkIdle: false, typingMode: true }) : null;
+      let afterRead = null;
+      try {
+        afterRead = await readValueAtRef(wc, args.ref);
+      } catch {
+        afterRead = null;
+      }
+
+      const bv = beforeRead && !beforeRead.error ? String(beforeRead.value ?? '') : '';
+      const av = afterRead && !afterRead.error ? String(afterRead.value ?? '') : '';
+
+      let typingVerified = false;
+      if (!val.length) {
+        typingVerified = av !== bv;
+      } else if (av.includes(val)) {
+        typingVerified = true;
+      } else {
+        typingVerified = av.length >= bv.length + Math.max(1, Math.ceil(val.length * 0.5));
+      }
+
+      if (verify && verify.changed) {
+        return { ...refResult, changed: true, page_change: verify.summary };
+      }
+      if (typingVerified) {
+        return {
+          ...refResult,
+          changed: true,
+          page_change: verify && verify.changed ? verify.summary : 'typing_applied'
+        };
+      }
+      if (verify && !verify.changed && !typingVerified) {
+        return {
+          ...refResult,
+          changed: false,
+          no_change_warning:
+            'Page snapshot unchanged and the target field does not show the typed text. Call read_page for fresh refs or use a different ref.'
+        };
+      }
+      return {
+        ...refResult,
+        changed: !!typingVerified,
+        page_change: (verify && verify.summary) || (typingVerified ? 'typing_applied' : '')
+      };
     }
     const fieldLabel = args.text || '';
     if (!fieldLabel) return { error: 'type_text requires ref or text to identify the field' };
