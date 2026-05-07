@@ -16018,6 +16018,24 @@ body.navio-wcv-tabs-below .pwd-bar-over-guest {
   text-overflow: ellipsis;
 }
 
+.pwd-autofill-account-select {
+  font-size: 12px;
+  font-family: inherit;
+  color: #c8d4f0;
+  background: rgba(20, 35, 60, 0.95);
+  border: 1px solid rgba(80, 160, 255, 0.28);
+  border-radius: 6px;
+  padding: 4px 28px 4px 8px;
+  max-width: min(240px, 38vw);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.pwd-autofill-account-select:focus {
+  outline: 2px solid rgba(0, 216, 255, 0.45);
+  outline-offset: 1px;
+}
+
 .pwd-save-action {
   background: linear-gradient(135deg, #00b8db, #4c5fff);
   color: #fff;

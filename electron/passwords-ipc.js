@@ -2,7 +2,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { app, safeStorage } = require('electron');
+const { app, safeStorage, dialog, BrowserWindow } = require('electron');
 
 // Credentials stored in <userData>/navio-passwords.json.
 // Passwords are encrypted with Electron's safeStorage (OS keychain / DPAPI).
@@ -34,6 +34,35 @@ function _pwdDecrypt(enc) {
 
 function _pwdOrigin(url) {
   try { return new URL(url).origin; } catch { return url; }
+}
+
+/** Only http(s) with a real host — never persist credentials keyed as `null`, `javascript:`, etc. */
+function _pwdAllowedVaultOrigin(url) {
+  if (!url || typeof url !== 'string') return null;
+  try {
+    const u = new URL(url.trim());
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    if (!u.hostname) return null;
+    return u.origin;
+  } catch {
+    return null;
+  }
+}
+
+function _pwdParentWindow(event) {
+  try {
+    return BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getFocusedWindow();
+  } catch {
+    return null;
+  }
+}
+
+function _pwdSortEntriesForAutofill(rows) {
+  return rows.slice().sort((a, b) => {
+    const ho = Number(!!a.hidden) - Number(!!b.hidden);
+    if (ho !== 0) return ho;
+    return String(b.created || '').localeCompare(String(a.created || ''));
+  });
 }
 
 /**
@@ -123,12 +152,17 @@ function maybeImportOemStremioCredentials() {
 function registerPasswordsIpc(ipcMain) {
   ipcMain.handle('passwords-save', (_, { url, username, password, hidden }) => {
     try {
+      const origin = _pwdAllowedVaultOrigin(url);
+      if (!origin) return { ok: false, error: 'Only http(s) page URLs can store passwords.' };
+      const u = String(username || '').trim();
+      const p = String(password || '');
+      if (!u) return { ok: false, error: 'Username is required.' };
+      if (!p) return { ok: false, error: 'Password is empty.' };
       const vault = _pwdLoad();
-      const origin = _pwdOrigin(url);
       if (hidden === true && !_pwdOriginAllowsHiddenManaged(origin)) {
         return { ok: false, error: 'Managed hidden passwords are only supported for Stremio.' };
       }
-      _pwdUpsertEntry(vault, origin, username, password, { hidden: hidden === true });
+      _pwdUpsertEntry(vault, origin, u, p, { hidden: hidden === true });
       _pwdSave(vault);
       return { ok: true };
     } catch (e) {
@@ -158,16 +192,26 @@ function registerPasswordsIpc(ipcMain) {
     }
   });
 
-  // Reveal a single password on demand from the settings UI.
-  // Returns the plaintext password for the (origin, username) pair, or an error.
-  // No additional auth gate is added here because the on-disk vault is already
-  // protected by Electron safeStorage (Windows DPAPI / macOS Keychain) and the
-  // renderer can only invoke this via the preload-bridged IPC channel.
-  ipcMain.handle('passwords-reveal', (_, { origin, username }) => {
+  // Reveal a single password on demand from the settings UI (native confirm first).
+  ipcMain.handle('passwords-reveal', async (event, { origin, username }) => {
     try {
       if (!origin || !username) return { ok: false, error: 'origin and username required' };
+      const allowed = _pwdAllowedVaultOrigin(origin);
+      if (!allowed) return { ok: false, error: 'invalid origin' };
+      const win = _pwdParentWindow(event);
+      const { response } = await dialog.showMessageBox(win && !win.isDestroyed() ? win : undefined, {
+        type: 'question',
+        buttons: ['Cancel', 'Reveal password'],
+        defaultId: 0,
+        cancelId: 0,
+        title: 'Reveal saved password',
+        message: `Show the saved password for "${String(username)}"?`,
+        detail: `Site: ${allowed}\n\nAnyone who can use this device while you are away could see it.`,
+        noLink: true
+      });
+      if (response !== 1) return { ok: false, error: 'cancelled' };
       const vault = _pwdLoad();
-      const keys = _pwdOriginSiblings(origin);
+      const keys = _pwdOriginSiblings(allowed);
       for (const o of keys) {
         const list = vault[o] || [];
         const hit = list.find((e) => e.username === username);
@@ -184,8 +228,9 @@ function registerPasswordsIpc(ipcMain) {
 
   ipcMain.handle('passwords-get', (_, { url }) => {
     try {
+      const origin = _pwdAllowedVaultOrigin(url);
+      if (!origin) return { ok: true, entries: [] };
       const vault = _pwdLoad();
-      const origin = _pwdOrigin(url);
       const origins = _pwdOriginSiblings(origin);
       const byUser = new Map();
       for (const o of origins) {
@@ -202,8 +247,7 @@ function registerPasswordsIpc(ipcMain) {
           }
         }
       }
-      const rows = [...byUser.values()];
-      rows.sort((a, b) => Number(!!b.hidden) - Number(!!a.hidden));
+      const rows = _pwdSortEntriesForAutofill([...byUser.values()]);
       return { ok: true, entries: rows };
     } catch (e) {
       return { ok: false, error: e.message };
@@ -212,8 +256,10 @@ function registerPasswordsIpc(ipcMain) {
 
   ipcMain.handle('passwords-delete', (_, { origin, username }) => {
     try {
+      const allowed = _pwdAllowedVaultOrigin(origin);
+      if (!allowed) return { ok: false, error: 'invalid origin' };
       const vault = _pwdLoad();
-      const keys = _pwdOriginSiblings(origin);
+      const keys = _pwdOriginSiblings(allowed);
       for (const o of keys) {
         if (vault[o]) {
           vault[o] = vault[o].filter((e) => e.username !== username);
@@ -225,11 +271,24 @@ function registerPasswordsIpc(ipcMain) {
     } catch (e) { return { ok: false, error: e.message }; }
   });
 
-  ipcMain.handle('passwords-export-csv', () => {
+  ipcMain.handle('passwords-export-csv', async (event) => {
     try {
+      const win = _pwdParentWindow(event);
+      const { response } = await dialog.showMessageBox(win && !win.isDestroyed() ? win : undefined, {
+        type: 'warning',
+        buttons: ['Cancel', 'Export'],
+        defaultId: 0,
+        cancelId: 0,
+        title: 'Export passwords',
+        message: 'Export all saved passwords as a plaintext CSV file?',
+        detail: 'The file will contain readable passwords. Store it safely or delete it after use.',
+        noLink: true
+      });
+      if (response !== 1) return { ok: false, error: 'cancelled' };
       const vault = _pwdLoad();
       const rows = ['name,url,username,password'];
       for (const [origin, list] of Object.entries(vault)) {
+        if (!_pwdAllowedVaultOrigin(origin)) continue;
         const site = origin.replace(/^https?:\/\//, '');
         for (const e of list) {
           if (e.hidden) continue;
@@ -262,7 +321,8 @@ function registerPasswordsIpc(ipcMain) {
         const [, rawUrl, username, password] = parts;
         if (!rawUrl || !username || !password) continue;
         try {
-          const origin = _pwdOrigin(rawUrl);
+          const origin = _pwdAllowedVaultOrigin(rawUrl);
+          if (!origin) continue;
           if (!vault[origin]) vault[origin] = [];
           const idx = vault[origin].findIndex(e => e.username === username);
           const entry = { username, password: _pwdEncrypt(password), created: new Date().toISOString() };

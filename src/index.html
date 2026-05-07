@@ -529,6 +529,7 @@
       <div id="pwd-autofill-bar" class="pwd-autofill-bar pwd-bar-over-guest" hidden>
         <svg class="pwd-save-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         <span class="pwd-autofill-msg">Saved credentials available</span>
+        <select id="pwd-autofill-account" class="pwd-autofill-account-select" hidden aria-label="Saved account"></select>
         <span class="pwd-autofill-user" id="pwd-autofill-user"></span>
         <button id="pwd-autofill-btn" class="pwd-save-action">Autofill</button>
         <button id="pwd-autofill-dismiss" class="pwd-save-dismiss" title="Dismiss">×</button>
@@ -1379,7 +1380,7 @@
           <div class="settings-panel" id="settings-panel-passwords" role="tabpanel">
             <div class="settings-section">
               <h3>Saved passwords</h3>
-              <p class="text-muted" style="margin-bottom:12px">Passwords are encrypted with your OS keychain (Windows DPAPI / macOS Keychain). They never leave your device.</p>
+              <p class="text-muted" style="margin-bottom:12px">Passwords are encrypted with your OS keychain (Windows DPAPI / macOS Keychain). They never leave your device. Revealing a password or exporting CSV opens a system confirmation dialog first.</p>
               <div class="pwd-mgr-toolbar">
                 <button id="btn-pwd-export" class="btn-secondary btn-sm">Export CSV</button>
                 <button id="btn-pwd-import" class="btn-secondary btn-sm">Import CSV</button>

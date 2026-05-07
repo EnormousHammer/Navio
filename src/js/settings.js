@@ -293,7 +293,11 @@ class SettingsManagerClass {
     document.getElementById('btn-pwd-export')?.addEventListener('click', async () => {
       try {
         const r = await window.navio.passwordsExportCsv();
-        if (!r.ok) { alert('Export failed: ' + r.error); return; }
+        if (!r.ok) {
+          if (r.error === 'cancelled') return;
+          alert('Export failed: ' + r.error);
+          return;
+        }
         const blob = new Blob([r.csv], { type: 'text/csv' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
@@ -470,10 +474,12 @@ class SettingsManagerClass {
         </div>`;
       }).join('');
 
+      /** @returns {Promise<string|null>} password, empty string on error, null if user cancelled reveal dialog */
       const _ensurePwd = async (row) => {
         if (row.dataset.pwdLoaded === '1') return row.dataset.pwd || '';
         const r2 = await window.navio.passwordsReveal(row.dataset.origin, row.dataset.user);
         if (!r2 || !r2.ok) {
+          if (r2 && r2.error === 'cancelled') return null;
           row.dataset.pwdError = r2 && r2.error ? r2.error : 'unknown error';
           return '';
         }
@@ -499,6 +505,7 @@ class SettingsManagerClass {
             toggle.innerHTML = eyeOpenSvg;
           } else {
             const pwd = await _ensurePwd(row);
+            if (pwd === null) return;
             if (!pwd) {
               input.type = 'text';
               input.value = `(unable to decrypt: ${row.dataset.pwdError || 'no key'})`;
@@ -515,7 +522,7 @@ class SettingsManagerClass {
 
         copy.addEventListener('click', async () => {
           const pwd = await _ensurePwd(row);
-          if (!pwd) return;
+          if (pwd === null || !pwd) return;
           try {
             await navigator.clipboard.writeText(pwd);
             const orig = copy.title;

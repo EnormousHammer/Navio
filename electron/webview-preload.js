@@ -201,37 +201,71 @@ try {
     return el && el.type !== 'password' && !el.disabled;
   }
 
-  /** First password field inside `container` or any descendant open shadow root. */
-  function queryPasswordInTree(container) {
-    if (!container) return null;
+  /** All password inputs under `container` (document order, open shadow roots). */
+  function queryPasswordFieldsInTree(container) {
+    const out = [];
+    if (!container) return out;
     const walk = (root) => {
-      if (!root || !root.querySelector) return null;
+      if (!root || !root.querySelectorAll) return;
       try {
-        const pwd = root.querySelector('input[type="password"]');
-        if (pwd && !pwd.disabled) return pwd;
+        root.querySelectorAll('input[type="password"]').forEach((pwd) => {
+          if (pwd && !pwd.disabled && !out.includes(pwd)) out.push(pwd);
+        });
       } catch {
-        return null;
+        return;
       }
       let els;
       try {
         els = root.querySelectorAll('*');
       } catch {
-        return null;
+        return;
       }
       for (let i = 0; i < els.length; i++) {
         const el = els[i];
-        if (el && el.shadowRoot) {
-          const inner = walk(el.shadowRoot);
-          if (inner) return inner;
-        }
+        if (el && el.shadowRoot) walk(el.shadowRoot);
       }
-      return null;
     };
     try {
-      return walk(container);
+      walk(container);
     } catch {
-      return null;
+      /* ignore */
     }
+    return out;
+  }
+
+  /** First password field inside `container` or any descendant open shadow root. */
+  function queryPasswordInTree(container) {
+    const all = queryPasswordFieldsInTree(container);
+    return all[0] || null;
+  }
+
+  function _pwdAutocomplete(el) {
+    return String((el && el.getAttribute && el.getAttribute('autocomplete')) || '').toLowerCase().trim();
+  }
+
+  /** For autofill: prefer login field (`current-password`), not "new password" / confirm on account forms. */
+  function pickPasswordFieldForAutofill(container) {
+    const usable = queryPasswordFieldsInTree(container || document).filter((el) => !el.disabled);
+    if (!usable.length) return null;
+    const empty = usable.filter((el) => !el.value);
+    const pool = empty.length ? empty : usable;
+    const cur = pool.find((el) => _pwdAutocomplete(el) === 'current-password');
+    if (cur) return cur;
+    const notNew = pool.find((el) => {
+      const ac = _pwdAutocomplete(el);
+      return ac !== 'new-password';
+    });
+    if (notNew) return notNew;
+    return pool[0] || usable[0];
+  }
+
+  /** For save-on-submit: prefer the filled field that looks like the actual login password. */
+  function pickPasswordFieldForSnapshot(container) {
+    const usable = queryPasswordFieldsInTree(container || document).filter((el) => !el.disabled && el.value);
+    if (!usable.length) return null;
+    const cur = usable.find((el) => _pwdAutocomplete(el) === 'current-password');
+    if (cur) return cur;
+    return usable[0];
   }
 
   /**
@@ -279,7 +313,7 @@ try {
    * For autofill: match empty visible fields (SPA / fresh form).
    */
   function findUsernameFieldForAutofill(root) {
-    const pwdField = queryPasswordInTree(root || document);
+    const pwdField = pickPasswordFieldForAutofill(root || document);
     if (!pwdField) {
       const scope = root || document;
       for (const sel of USERNAME_SELECTORS) {
@@ -341,7 +375,7 @@ try {
   function snapshotLoginFromRoot(root) {
     try {
       const container = root || document;
-      const pwdField = queryPasswordInTree(container);
+      const pwdField = pickPasswordFieldForSnapshot(container);
       if (!pwdField || !pwdField.value) return null;
       const scope =
         pwdField.getRootNode && pwdField.getRootNode() instanceof ShadowRoot
@@ -383,6 +417,7 @@ try {
   let _lastCredSent = '';
   function sendCredentialsOnce(payload) {
     if (!payload) return;
+    if (!String(payload.password || '').trim()) return;
     const key = `${payload.url}\t${payload.username}\t${payload.password}`;
     if (key === _lastCredSent) return;
     _lastCredSent = key;
@@ -396,12 +431,21 @@ try {
   function fillField(el, value) {
     if (!el) return;
     try {
+      try {
+        el.focus({ preventScroll: true });
+      } catch {
+        try {
+          el.focus();
+        } catch {
+          /* ignore */
+        }
+      }
       const proto = el.tagName === 'TEXTAREA'
         ? HTMLTextAreaElement.prototype
         : HTMLInputElement.prototype;
       const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
       if (setter) setter.call(el, value); else el.value = value;
-      el.dispatchEvent(new InputEvent('input', { bubbles: true, data: value }));
+      el.dispatchEvent(new InputEvent('input', { bubbles: true, data: value, inputType: 'insertFromPaste' }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
     } catch {}
   }
@@ -431,7 +475,7 @@ try {
       if (!isSubmit) return;
 
       let root = btn.form || btn.closest('form');
-      if (root && !queryPasswordInTree(root)) root = null;
+      if (root && !queryPasswordFieldsInTree(root).length) root = null;
       if (!root) {
         const pwd = queryPasswordInTree(document);
         if (!pwd) return;
@@ -475,7 +519,7 @@ try {
 
   function checkForLoginForm() {
     try {
-      if (!queryPasswordInTree(document)) return false;
+      if (!queryPasswordFieldsInTree(document).length) return false;
       const u = window.location.href;
       const now = Date.now();
       if (_lastLoginPing.u === u && now - _lastLoginPing.t < 1500) return true;
@@ -761,7 +805,7 @@ try {
   // ── Handle autofill command sent from the renderer ─────────────────────────
   ipcRenderer.on('navio-autofill', (_, { username, password, autoSubmit }) => {
     try {
-      const pwdField = queryPasswordInTree(document);
+      const pwdField = pickPasswordFieldForAutofill(document);
       if (!pwdField) return;
       const root = loginRootForPassword(pwdField);
       const usernameEl = findUsernameFieldForAutofill(root);

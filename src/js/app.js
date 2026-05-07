@@ -1992,6 +1992,8 @@ const PasswordManager = (() => {
   let _pendingSave = null;  // { username, password, url }
   let _autofillWv  = null;  // active webview for autofill
   let _autofillPwd = null;  // { username, password }
+  /** When multiple vault rows match this origin, user picks in `#pwd-autofill-account`. */
+  let _autofillEntries = null;
   /** Stremio: fill + submit in the guest without showing the autofill bar (password never surfaced in chrome UI). */
   const _STREMIO_SILENT_ORIGINS = new Set([
     'https://web.stremio.com',
@@ -2004,6 +2006,7 @@ const PasswordManager = (() => {
   const autofillBar   = document.getElementById('pwd-autofill-bar');
   const saveUser      = document.getElementById('pwd-save-user');
   const autofillUser  = document.getElementById('pwd-autofill-user');
+  const autofillAcct  = document.getElementById('pwd-autofill-account');
 
   function _urlOriginStr(url) {
     try {
@@ -2056,12 +2059,19 @@ const PasswordManager = (() => {
     if (autofillBar) autofillBar.hidden = true;
     _autofillWv = null;
     _autofillPwd = null;
+    _autofillEntries = null;
+    if (autofillAcct) {
+      autofillAcct.hidden = true;
+      autofillAcct.replaceChildren();
+    }
+    if (autofillUser) autofillUser.hidden = false;
   }
 
   // ── Show "Save password?" / "Replace password?" after submit ─────────────
   async function showSavePrompt({ username, password, url }, wv) {
     _hideAutofill();
     if (!saveBar) return;
+    if (!String(password || '').trim()) return;
     if (_isStremioSilentAutofillUrl(url)) {
       try {
         const r = await window.navio.passwordsGet(url);
@@ -2119,15 +2129,38 @@ const PasswordManager = (() => {
     try {
       const r = await window.navio.passwordsGet(url);
       if (!r.ok || !r.entries.length) return;
-      const entry = r.entries[0];
+      const entries = r.entries;
+      const entry = entries[0];
       if (_isStremioSilentAutofillUrl(url)) {
         _silentStremioAutofill(wv, entry);
         return;
       }
       if (!autofillBar) return;
       _autofillWv  = wv;
+      _autofillEntries = entries;
       _autofillPwd = entry;
-      if (autofillUser) autofillUser.textContent = entry.username;
+      if (entries.length > 1 && autofillAcct) {
+        autofillAcct.replaceChildren();
+        for (let i = 0; i < entries.length; i++) {
+          const e = entries[i];
+          const opt = document.createElement('option');
+          opt.value = String(i);
+          opt.textContent = (e.username && String(e.username).trim()) ? e.username : `Account ${i + 1}`;
+          autofillAcct.appendChild(opt);
+        }
+        autofillAcct.selectedIndex = 0;
+        autofillAcct.hidden = false;
+        if (autofillUser) autofillUser.hidden = true;
+      } else {
+        if (autofillAcct) {
+          autofillAcct.hidden = true;
+          autofillAcct.replaceChildren();
+        }
+        if (autofillUser) {
+          autofillUser.hidden = false;
+          autofillUser.textContent = entry.username;
+        }
+      }
       autofillBar.hidden = false;
       clearTimeout(autofillBar._timer);
       autofillBar._timer = setTimeout(_hideAutofill, 20000);
@@ -2172,6 +2205,13 @@ const PasswordManager = (() => {
   });
 
   document.getElementById('pwd-autofill-dismiss')?.addEventListener('click', _hideAutofill);
+
+  autofillAcct?.addEventListener('change', () => {
+    if (!autofillAcct || _autofillEntries == null) return;
+    const idx = parseInt(autofillAcct.value, 10);
+    if (!Number.isFinite(idx) || idx < 0 || idx >= _autofillEntries.length) return;
+    _autofillPwd = _autofillEntries[idx];
+  });
 
   return { showSavePrompt, checkAutofill };
 })();
