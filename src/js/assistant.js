@@ -5194,24 +5194,62 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   async _guestDeliver(guestWv, msg) {
-    if (!guestWv || typeof guestWv.executeJavaScript !== 'function') return;
+    if (!guestWv) return;
     const encoded = JSON.stringify(JSON.stringify(msg));
     const js = `void (function(){try{var m=${encoded};if(window.__navioGuestHost&&window.__navioGuestHost.deliver)window.__navioGuestHost.deliver(JSON.parse(m));}catch(e){console.error(e);}})()`;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      try {
-        await guestWv.executeJavaScript(js);
-        return;
-      } catch (e) {
-        if (attempt === 3) {
-          const detail = e && e.message ? e.message : e;
-          console.warn('[navio-assistant] guest deliver failed after retries', detail);
-          try {
-            window.navio?.shellLog?.(`[Navio AI page] guestDeliver failed: ${detail}`);
-          } catch {
-            /* ignore */
+
+    const tryWebviewElement = async () => {
+      if (typeof guestWv.executeJavaScript !== 'function') return false;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          await guestWv.executeJavaScript(js);
+          return true;
+        } catch (e) {
+          if (attempt === 3) {
+            const detail = e && e.message ? e.message : e;
+            console.warn('[navio-assistant] guest deliver (webview element) failed after retries', detail);
+            try {
+              window.navio?.shellLog?.(`[Navio AI page] guestDeliver webview failed: ${detail}`);
+            } catch {
+              /* ignore */
+            }
           }
+          await new Promise((r) => setTimeout(r, 50 + attempt * 45));
         }
-        await new Promise((r) => setTimeout(r, 50 + attempt * 45));
+      }
+      return false;
+    };
+
+    if (await tryWebviewElement()) return;
+
+    let wid = null;
+    try {
+      wid = typeof guestWv.getWebContentsId === 'function' ? guestWv.getWebContentsId() : null;
+    } catch {
+      wid = null;
+    }
+    if (wid != null && window.navio && typeof window.navio.guestExecuteJavaScript === 'function') {
+      try {
+        const r = await window.navio.guestExecuteJavaScript(wid, js);
+        if (r && r.ok) return;
+        const err = r && r.error != null ? String(r.error) : 'unknown';
+        console.warn('[navio-assistant] guest deliver IPC fallback failed:', err);
+        try {
+          window.navio?.shellLog?.(`[Navio AI page] guestDeliver IPC failed: ${err}`);
+        } catch {
+          /* ignore */
+        }
+      } catch (e) {
+        const detail = e && e.message ? e.message : e;
+        console.warn('[navio-assistant] guest deliver IPC invoke error', detail);
+      }
+    } else {
+      try {
+        window.navio?.shellLog?.(
+          `[Navio AI page] guestDeliver: no fallback (getWebContentsId=${wid == null ? 'missing' : wid})`
+        );
+      } catch {
+        /* ignore */
       }
     }
   }
@@ -11457,6 +11495,7 @@ ${pageInfo}${snapText}`;
 }
 
 const AssistantManager = new AssistantManagerClass();
+if (typeof window !== 'undefined') window.AssistantManager = AssistantManager;
 
 // Flush chat history to disk immediately before the window/app closes.
 // The normal 400 ms debounce in _schedulePersistAssistantHistory can miss

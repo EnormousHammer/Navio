@@ -414,6 +414,8 @@ contextBridge.exposeInMainWorld('navio', {
     ipcRenderer.invoke('webview-get-nav-history', { webContentsId, direction, max }),
   webviewGotoNavIndex: (webContentsId, index) =>
     ipcRenderer.invoke('webview-goto-nav-index', { webContentsId, index }),
+  guestExecuteJavaScript: (webContentsId, code) =>
+    ipcRenderer.invoke('navio-guest-execute-javascript', { webContentsId, code }),
   captureScreen: (opts) => ipcRenderer.invoke('capture-screen', opts || {}),
   captureScreenSources: (opts) => ipcRenderer.invoke('capture-screen-sources', opts || {}),
   onFoundInPageResult: (cb) => {

@@ -3409,6 +3409,11 @@
     const hasAtt = attachmentsReady();
     if (!t && !hasAtt) return;
     if (attachmentsLoading()) { toast('Wait until attachments finish loading.'); return; }
+    var _bridgeSend = navioChatTabApi();
+    if (!_bridgeSend || !_bridgeSend.postToHost) {
+      toast('Chat bridge unavailable. Open **Chat with AI** from inside Navio (do not open this file in an external browser).');
+      return;
+    }
     setBusy(true);
     ensureActive();
     const filesDisplay = hasAtt ? attachmentsForDisplay() : null;
@@ -3424,6 +3429,11 @@
     if (!topic) return;
     if (attachmentsReady() || attachmentsLoading()) {
       toast('Remove attachments before using >> research.');
+      return;
+    }
+    var _bridgeRs = navioChatTabApi();
+    if (!_bridgeRs || !_bridgeRs.postToHost) {
+      toast('Chat bridge unavailable. Open **Chat with AI** from inside Navio (do not open this file in an external browser).');
       return;
     }
     setBusy(true);

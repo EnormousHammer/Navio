@@ -1115,8 +1115,11 @@ class TabManagerClass {
         } else if (e.channel === 'navio-chat-host') {
           const payload = data;
           const deliverGuest = () => {
-            if (payload && typeof AssistantManager !== 'undefined' && AssistantManager.handleGuestChatHostMessage) {
-              AssistantManager.handleGuestChatHostMessage(tab, wv, payload);
+            const AM =
+              (typeof window !== 'undefined' && window.AssistantManager) ||
+              (typeof AssistantManager !== 'undefined' ? AssistantManager : null);
+            if (payload && AM && typeof AM.handleGuestChatHostMessage === 'function') {
+              AM.handleGuestChatHostMessage(tab, wv, payload);
               return true;
             }
             return false;
@@ -1127,7 +1130,18 @@ class TabManagerClass {
             }, 80);
           }
         }
-      } catch {}
+      } catch (err) {
+        if (e && e.channel === 'navio-chat-host') {
+          try {
+            console.warn('[navio] navio-chat-host handler error', err);
+            window.navio?.shellLog?.(
+              `[navio] navio-chat-host: ${err && err.message != null ? err.message : String(err)}`
+            );
+          } catch {
+            /* ignore */
+          }
+        }
+      }
     });
   }
 

@@ -140,6 +140,23 @@ function registerWebviewActionsIpc(ipcMain, { getMainWindow } = {}) {
   });
 
   /**
+   * Run JS in a guest `<webview>` page from the main process.
+   * Fallback when the shell renderer's `guestWebview.executeJavaScript` fails (some builds / timing).
+   */
+  ipcMain.handle('navio-guest-execute-javascript', async (_event, { webContentsId, code }) => {
+    try {
+      const id = Number(webContentsId);
+      if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'bad webContentsId' };
+      const wc = electronWebContents.fromId(id);
+      if (!wc || wc.isDestroyed()) return { ok: false, error: 'WebContents not found' };
+      const result = await wc.executeJavaScript(String(code || ''), true);
+      return { ok: true, result };
+    } catch (e) {
+      return { ok: false, error: e && e.message ? e.message : String(e) };
+    }
+  });
+
+  /**
    * Capture a full desktop screen (or specific source) via desktopCapturer.
    * Returns a data URL PNG and also writes to clipboard + optionally file.
    */
