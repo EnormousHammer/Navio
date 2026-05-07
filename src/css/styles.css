@@ -25,7 +25,7 @@
   /* Title bar merged into #top-chrome with tab strip (single top band). */
   --titlebar-height: 0px;
   --tabstrip-height: 40px;
-  --navbar-height: 52px;
+  --navbar-height: 48px;
   --assistant-width: 420px;
   --font-sans: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;
@@ -731,7 +731,7 @@ body.navio-assistant-open #app {
   overflow-y: hidden;
   scrollbar-width: none;
   /* Tabs sit on the bottom edge of the strip (Chrome-style) */
-  padding: 2px 4px 0;
+  padding: 3px 8px 0 6px;
 }
 
 .tab-strip-list::-webkit-scrollbar { display: none; }
@@ -811,16 +811,15 @@ body.navio-assistant-open #app {
   -webkit-app-region: no-drag;
 }
 
-/* Horizontal strip: Chrome-like overlapping tabs with rounded top corners only */
+/* Horizontal strip: overlapping tabs with softer Comet-like top corners */
 body:not(.navio-vertical-tabs) .tab-item {
-  border-radius: 8px 8px 0 0;
+  border-radius: 11px 11px 0 0;
   min-height: 34px;
   height: 34px;
 }
 /* Adjacent tabs only — avoids overlapping tab-group headers */
 body:not(.navio-vertical-tabs) .tab-strip-list .tab-item + .tab-item {
-  /* Slightly stronger overlap — reads closer to Chrome/Edge than “floating pills”. */
-  margin-left: -10px;
+  margin-left: -5px;
 }
 body:not(.navio-vertical-tabs) .tab-item:hover {
   z-index: 1;
@@ -1480,8 +1479,8 @@ body.navio-vertical-tabs .tab-group-header:hover {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 12px;
+  gap: 8px;
+  padding: 0 10px;
   background: var(--bg-deep);
   border-bottom: 1px solid var(--border);
   /* Stay above the webview compositor and any in-page overlays that leak hit-testing */
@@ -1574,6 +1573,72 @@ body.navio-vertical-tabs .tab-group-header:hover {
   min-width: 0;
 }
 
+/* Comet-style: one fused capsule — URL field + Assistant (quiet divider, no double pill) */
+.url-omnibox-comet {
+  display: flex;
+  flex: 1 1 0%;
+  min-width: 0;
+  align-items: stretch;
+  gap: 0;
+  min-height: 38px;
+  height: 38px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 1px 2px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  transition: border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease),
+    background var(--duration) var(--ease);
+}
+
+.url-omnibox-comet:focus-within {
+  border-color: var(--border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 1px 2px rgba(0, 0, 0, 0.12);
+  background: var(--bg-elevated);
+}
+
+.url-omnibox-comet .url-bar {
+  flex: 1 1 0%;
+  min-width: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  min-height: 0;
+  height: auto;
+  align-self: stretch;
+  padding: 0 12px 0 14px;
+}
+
+.url-omnibox-comet .url-bar:focus-within {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+.url-omnibox-comet .url-chat-ai-btn {
+  height: auto;
+  align-self: stretch;
+  min-height: 0;
+  border-radius: 0;
+  border: none;
+  border-left: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  box-shadow: none;
+  margin: 0;
+  padding: 0 13px 0 12px;
+  background: color-mix(in srgb, var(--bg-elevated) 35%, transparent);
+  font-weight: 600;
+}
+
+.url-omnibox-comet .url-chat-ai-btn:hover {
+  background: color-mix(in srgb, var(--bg-hover) 55%, transparent);
+  border-left-color: color-mix(in srgb, var(--border-accent) 40%, var(--border));
+}
+
 .url-chat-ai-btn-label {
   white-space: nowrap;
 }
@@ -1582,7 +1647,7 @@ body.navio-vertical-tabs .tab-group-header:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 6px;
   flex-shrink: 0;
   height: 38px;
   padding: 0 14px 0 12px;
@@ -1605,6 +1670,7 @@ body.navio-vertical-tabs .tab-group-header:hover {
     transform 0.15s var(--ease);
 }
 
+/* Standalone pill (e.g. if markup changes); default shell uses .url-omnibox-comet fusion */
 .url-chat-ai-btn:hover {
   background: var(--bg-elevated);
   border-color: var(--border-accent);
@@ -1801,6 +1867,18 @@ body.navio-vertical-tabs .tab-group-header:hover {
 }
 .nav-actions .nav-btn {
   border-radius: 9px;
+}
+
+/* Comet-style: secondary chrome reads as one quiet slab (not a picket fence of circles) */
+.nav-actions.nav-actions-comet {
+  gap: 1px;
+  margin-left: 4px;
+  padding: 3px 5px;
+  border-left: none;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 /* Split-screen / narrow window: cap toolbar width so the omnibox keeps space; scroll extras horizontally. */
@@ -14484,12 +14562,42 @@ button:focus-visible,
     inset 0 1px 0 rgba(255, 255, 255, 0.07),
     0 2px 10px rgba(0, 0, 0, 0.38);
 }
+[data-theme="dark"] .url-omnibox-comet {
+  background: rgba(255, 255, 255, 0.055);
+  border-color: rgba(255, 255, 255, 0.09);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 2px 10px rgba(0, 0, 0, 0.38);
+}
 [data-theme="dark"] .url-bar:focus-within {
   border-color: rgba(255, 255, 255, 0.12);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.07),
     0 2px 10px rgba(0, 0, 0, 0.38);
   background: rgba(255, 255, 255, 0.065);
+}
+[data-theme="dark"] .url-omnibox-comet:focus-within {
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 2px 10px rgba(0, 0, 0, 0.38);
+  background: rgba(255, 255, 255, 0.065);
+}
+[data-theme="dark"] .url-omnibox-comet .url-bar:focus-within {
+  background: transparent;
+  box-shadow: none;
+}
+[data-theme="dark"] .url-omnibox-comet .url-chat-ai-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border-left-color: rgba(255, 255, 255, 0.1);
+}
+[data-theme="dark"] .url-omnibox-comet .url-chat-ai-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+[data-theme="dark"] .nav-actions.nav-actions-comet {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 [data-theme="dark"] .nav-controls {
   background: rgba(255, 255, 255, 0.045);
@@ -14524,12 +14632,42 @@ button:focus-visible,
     0 1px 2px rgba(15, 23, 42, 0.05),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
+[data-theme="light"] .url-omnibox-comet {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.11);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
 [data-theme="light"] .url-bar:focus-within {
   border-color: rgba(15, 23, 42, 0.14);
   box-shadow:
     0 1px 2px rgba(15, 23, 42, 0.05),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
   background: #ffffff;
+}
+[data-theme="light"] .url-omnibox-comet:focus-within {
+  border-color: rgba(15, 23, 42, 0.14);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  background: #ffffff;
+}
+[data-theme="light"] .url-omnibox-comet .url-bar:focus-within {
+  background: transparent;
+  box-shadow: none;
+}
+[data-theme="light"] .url-omnibox-comet .url-chat-ai-btn {
+  background: rgba(248, 250, 252, 0.95);
+  border-left-color: rgba(15, 23, 42, 0.1);
+}
+[data-theme="light"] .url-omnibox-comet .url-chat-ai-btn:hover {
+  background: #f1f5f9;
+}
+[data-theme="light"] .nav-actions.nav-actions-comet {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(15, 23, 42, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 [data-theme="light"] .nav-controls {
   background: rgba(255, 255, 255, 0.72);
@@ -14550,10 +14688,10 @@ button:focus-visible,
 /* Horizontal: dense strip like Chrome — overlap instead of large floating gaps */
 [data-theme="light"] body:not(.navio-vertical-tabs) .tab-strip-list {
   gap: 0;
-  padding: 2px 6px 0 4px;
+  padding: 3px 8px 0 6px;
 }
 [data-theme="light"] body:not(.navio-vertical-tabs) .tab-strip-list .tab-item + .tab-item {
-  margin-left: -10px;
+  margin-left: -5px;
 }
 [data-theme="light"] body:not(.navio-vertical-tabs) .tab-item:not(.tab-pinned) {
   min-width: 56px;

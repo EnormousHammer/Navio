@@ -64,6 +64,7 @@
         <div id="extension-toolbar" class="extension-toolbar" aria-label="Extension shortcuts"></div>
         <div class="url-bar-container" style="position:relative">
           <div class="url-bar-row">
+            <div class="url-omnibox-comet" id="url-omnibox-comet">
             <div class="url-bar">
               <svg class="url-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <button type="button" id="url-popup-blocked" class="url-popup-blocked" hidden title="A pop-up was blocked — click to allow pop-ups for this site and reload the tab that tried to open it">Pop-up blocked</button>
@@ -86,8 +87,9 @@
             </div>
             <button type="button" id="btn-chat-with-ai" class="url-chat-ai-btn" title="Open full-page AI chat (uses what you typed, or a blank chat)">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>
-              <span class="url-chat-ai-btn-label">Chat with AI</span>
+              <span class="url-chat-ai-btn-label">Assistant</span>
             </button>
+            </div>
             <button type="button" id="btn-toolbar-workflows" class="url-workflows-btn" title="Saved workflows — pick one to run (opens list; Ctrl+K for full palette)" aria-label="Saved workflows">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
             </button>
@@ -95,7 +97,7 @@
           <div id="omnibox-ai-preview" class="omnibox-ai-preview" style="display:none"></div>
           <div id="url-suggestions" class="url-suggestions" hidden role="listbox" aria-label="History and bookmarks"></div>
         </div>
-        <div class="nav-actions">
+        <div class="nav-actions nav-actions-comet">
           <button type="button" class="nav-btn" id="btn-zoom-menu" title="Zoom — Ctrl+Plus / Ctrl+Minus / Ctrl+0 to reset" aria-haspopup="true" aria-expanded="false" aria-label="Zoom">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
           </button>

@@ -723,6 +723,9 @@
 .url-bar:focus-within {
   border-color: var(--p-border-strong);
 }
+.url-omnibox-comet:focus-within {
+  border-color: var(--p-border-strong);
+}
 
 /* Softer AI hint pill */
 .url-ai-hint {
@@ -753,6 +756,13 @@
 [data-theme="light"] .url-chat-ai-btn:hover {
   background: #fff;
   border-color: var(--p-border-strong);
+}
+
+.url-omnibox-comet .url-chat-ai-btn {
+  box-shadow: none;
+}
+.url-omnibox-comet .url-chat-ai-btn:hover {
+  box-shadow: none;
 }
 
 /* Nav-buttons: slightly smaller default, lighter hover */

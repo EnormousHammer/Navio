@@ -2931,7 +2931,7 @@
         toast('Could not reach Navio: ' + (err && err.message ? err.message : String(err)));
       }
     } else {
-      toast('Chat bridge unavailable. Open **Chat with AI** from inside Navio (do not open this file in an external browser).');
+      toast('Chat bridge unavailable. Open **Assistant** from inside Navio (do not open this file in an external browser).');
     }
   }
   function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -3411,7 +3411,7 @@
     if (attachmentsLoading()) { toast('Wait until attachments finish loading.'); return; }
     var _bridgeSend = navioChatTabApi();
     if (!_bridgeSend || !_bridgeSend.postToHost) {
-      toast('Chat bridge unavailable. Open **Chat with AI** from inside Navio (do not open this file in an external browser).');
+      toast('Chat bridge unavailable. Open **Assistant** from inside Navio (do not open this file in an external browser).');
       return;
     }
     setBusy(true);
@@ -3433,7 +3433,7 @@
     }
     var _bridgeRs = navioChatTabApi();
     if (!_bridgeRs || !_bridgeRs.postToHost) {
-      toast('Chat bridge unavailable. Open **Chat with AI** from inside Navio (do not open this file in an external browser).');
+      toast('Chat bridge unavailable. Open **Assistant** from inside Navio (do not open this file in an external browser).');
       return;
     }
     setBusy(true);
@@ -4213,7 +4213,7 @@
     }
 
     if (!hasGuestBridge()) {
-      messagesEl.innerHTML = '<div class="msg assistant"><div class="role">Navio</div><div class="body">Connecting to Navio… If this stays stuck, use <strong>Reload</strong> on the tab or open <strong>Chat with AI</strong> again from the toolbar.</div></div>';
+      messagesEl.innerHTML = '<div class="msg assistant"><div class="role">Navio</div><div class="body">Connecting to Navio… If this stays stuck, use <strong>Reload</strong> on the tab or open <strong>Assistant</strong> again from the toolbar.</div></div>';
       updateLayoutMode();
       scrollToLatestForced();
       // Preload can attach after DOMContentLoaded (slow disk / first paint). A short fixed
@@ -4229,7 +4229,7 @@
           if (Date.now() - _bridgeWaitStart > _bridgeWaitMaxMs) {
             clearInterval(_bridgeTimer);
             messagesEl.innerHTML =
-              '<div class="msg assistant"><div class="role">Navio</div><div class="body">The in-tab bridge did not load. Reload this tab, or open <strong>Chat with AI</strong> from Navio’s toolbar (do not open this file in an external browser).</div></div>';
+              '<div class="msg assistant"><div class="role">Navio</div><div class="body">The in-tab bridge did not load. Reload this tab, or open <strong>Assistant</strong> from Navio’s toolbar (do not open this file in an external browser).</div></div>';
             updateLayoutMode();
           }
           return;
