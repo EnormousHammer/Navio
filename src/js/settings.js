@@ -435,23 +435,102 @@ class SettingsManagerClass {
         container.innerHTML = '<p class="pwd-list-empty">No saved passwords yet.</p>';
         return;
       }
-      container.innerHTML = r.entries.map((e) => {
+      // Group rows by origin, ordered: visible entries first, then any hidden/managed ones.
+      const entries = r.entries.slice().sort((a, b) => {
+        const ho = Number(!!a.hidden) - Number(!!b.hidden);
+        if (ho !== 0) return ho;
+        return String(a.origin).localeCompare(String(b.origin));
+      });
+      const eyeOpenSvg  = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+      const eyeOffSvg   = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a19.5 19.5 0 0 1 5.06-5.94"/><path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a19.5 19.5 0 0 1-3.17 4.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+      const copySvg     = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+      const trashSvg    = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>';
+
+      container.innerHTML = entries.map((e) => {
         const site = e.origin.replace(/^https?:\/\//, '');
         const date = e.created ? new Date(e.created).toLocaleDateString() : '';
+        const hiddenBadge = e.hidden
+          ? '<span class="pwd-entry-badge" title="Managed by Navio (auto-fill only)">Managed</span>'
+          : '';
         return `<div class="pwd-entry" data-origin="${_escAttr(e.origin)}" data-user="${_escAttr(e.username)}">
-          <div class="pwd-entry-info">
-            <span class="pwd-entry-site">${_esc(site)}</span>
-            <span class="pwd-entry-user">${_esc(e.username)}</span>
-            ${date ? `<span class="pwd-entry-date">${_esc(date)}</span>` : ''}
+          <div class="pwd-entry-row">
+            <div class="pwd-entry-info">
+              <span class="pwd-entry-site">${_esc(site)}</span>
+              <span class="pwd-entry-user">${_esc(e.username)}</span>
+              ${hiddenBadge}
+              ${date ? `<span class="pwd-entry-date">${_esc(date)}</span>` : ''}
+            </div>
+            <div class="pwd-entry-actions">
+              <input class="pwd-entry-pwd" type="password" value="••••••••••" readonly tabindex="-1" aria-label="Password">
+              <button class="pwd-entry-btn pwd-entry-toggle" title="Show password" aria-label="Show password" data-shown="0">${eyeOpenSvg}</button>
+              <button class="pwd-entry-btn pwd-entry-copy"   title="Copy password" aria-label="Copy password">${copySvg}</button>
+              <button class="pwd-entry-btn pwd-entry-delete" title="Remove" aria-label="Remove">${trashSvg}</button>
+            </div>
           </div>
-          <button class="pwd-entry-delete" title="Remove" data-origin="${_escAttr(e.origin)}" data-user="${_escAttr(e.username)}">×</button>
         </div>`;
       }).join('');
-      container.querySelectorAll('.pwd-entry-delete').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          const origin = btn.dataset.origin;
-          const username = btn.dataset.user;
-          await window.navio.passwordsDelete(origin, username);
+
+      const _ensurePwd = async (row) => {
+        if (row.dataset.pwdLoaded === '1') return row.dataset.pwd || '';
+        const r2 = await window.navio.passwordsReveal(row.dataset.origin, row.dataset.user);
+        if (!r2 || !r2.ok) {
+          row.dataset.pwdError = r2 && r2.error ? r2.error : 'unknown error';
+          return '';
+        }
+        row.dataset.pwd = r2.password || '';
+        row.dataset.pwdLoaded = '1';
+        return row.dataset.pwd;
+      };
+
+      container.querySelectorAll('.pwd-entry').forEach((row) => {
+        const input  = row.querySelector('.pwd-entry-pwd');
+        const toggle = row.querySelector('.pwd-entry-toggle');
+        const copy   = row.querySelector('.pwd-entry-copy');
+        const del    = row.querySelector('.pwd-entry-delete');
+
+        toggle.addEventListener('click', async () => {
+          const shown = toggle.dataset.shown === '1';
+          if (shown) {
+            input.type = 'password';
+            input.value = '••••••••••';
+            toggle.dataset.shown = '0';
+            toggle.title = 'Show password';
+            toggle.setAttribute('aria-label', 'Show password');
+            toggle.innerHTML = eyeOpenSvg;
+          } else {
+            const pwd = await _ensurePwd(row);
+            if (!pwd) {
+              input.type = 'text';
+              input.value = `(unable to decrypt: ${row.dataset.pwdError || 'no key'})`;
+            } else {
+              input.type = 'text';
+              input.value = pwd;
+            }
+            toggle.dataset.shown = '1';
+            toggle.title = 'Hide password';
+            toggle.setAttribute('aria-label', 'Hide password');
+            toggle.innerHTML = eyeOffSvg;
+          }
+        });
+
+        copy.addEventListener('click', async () => {
+          const pwd = await _ensurePwd(row);
+          if (!pwd) return;
+          try {
+            await navigator.clipboard.writeText(pwd);
+            const orig = copy.title;
+            copy.title = 'Copied!';
+            copy.classList.add('pwd-entry-btn-ok');
+            setTimeout(() => {
+              copy.title = orig;
+              copy.classList.remove('pwd-entry-btn-ok');
+            }, 1100);
+          } catch { /* clipboard blocked */ }
+        });
+
+        del.addEventListener('click', async () => {
+          if (!confirm(`Remove saved password for ${row.dataset.user} on ${row.dataset.origin}?`)) return;
+          await window.navio.passwordsDelete(row.dataset.origin, row.dataset.user);
           this._renderPasswordList();
         });
       });

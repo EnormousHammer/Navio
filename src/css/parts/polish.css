@@ -719,12 +719,9 @@
 /* ---------------------------------------------
    5) Quiet accent adjustments — URL bar, buttons
    --------------------------------------------- */
-/* Thinner, less neon border on URL bar focus (comet-style) */
+/* Omnibox: no accent ring on focus-within (styles.css owns neutral focus). */
 .url-bar:focus-within {
   border-color: var(--p-border-strong);
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 /* Softer AI hint pill */
@@ -3883,14 +3880,12 @@ html[data-theme="light"] #assistant-panel.assistant-panel {
 
 /* ── 4. Address Bar & Toolbar ────────────────────────────────────────────── */
 
-/* More dramatic focus ring in dark mode */
 [data-theme="dark"] .url-bar:focus-within {
-  border-color: rgba(126, 184, 255, 0.60) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
   box-shadow:
-    0 0 0 3px rgba(126, 184, 255, 0.14),
-    0 0 0 1px rgba(126, 184, 255, 0.30),
-    inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
-  background: rgba(14, 18, 30, 0.98) !important;
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 2px 10px rgba(0, 0, 0, 0.38) !important;
+  background: rgba(255, 255, 255, 0.065) !important;
 }
 
 /* Nav buttons: subtle accent on hover */

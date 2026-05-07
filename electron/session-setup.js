@@ -175,6 +175,14 @@ function navioPreserveResponseHeadersForBotChecks(url) {
     if (h === 'challenges.cloudflare.com' || h.endsWith('.challenges.cloudflare.com')) {
       return true;
     }
+    // Carrier / enterprise identity hosts often sit behind Akamai (or similar) bot
+    // middleware. Stripping COOP/CORP/CSP here can break session establishment and
+    // surface as 403 "Access Denied" in Electron <webview> — same class of issue as
+    // Cloudflare challenges (see onHeadersReceived below).
+    const preserveOrigins = ['ups.com', 'fedex.com', 'usps.com', 'dhl.com'];
+    for (const root of preserveOrigins) {
+      if (h === root || h.endsWith('.' + root)) return true;
+    }
     return (
       p.includes('/cdn-cgi/challenge-platform') ||
       p.includes('/cdn-cgi/challenge/') ||

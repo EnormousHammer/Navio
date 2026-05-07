@@ -142,11 +142,41 @@ function registerPasswordsIpc(ipcMain) {
       const entries = [];
       for (const [origin, list] of Object.entries(vault)) {
         for (const e of list) {
-          if (e.hidden) continue;
-          entries.push({ origin, username: e.username, created: e.created });
+          // Include hidden entries too so the user can manage them from settings.
+          // The `hidden` flag is forwarded so the UI can label / treat them differently.
+          entries.push({
+            origin,
+            username: e.username,
+            created: e.created,
+            hidden: !!e.hidden,
+          });
         }
       }
       return { ok: true, entries };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
+  // Reveal a single password on demand from the settings UI.
+  // Returns the plaintext password for the (origin, username) pair, or an error.
+  // No additional auth gate is added here because the on-disk vault is already
+  // protected by Electron safeStorage (Windows DPAPI / macOS Keychain) and the
+  // renderer can only invoke this via the preload-bridged IPC channel.
+  ipcMain.handle('passwords-reveal', (_, { origin, username }) => {
+    try {
+      if (!origin || !username) return { ok: false, error: 'origin and username required' };
+      const vault = _pwdLoad();
+      const keys = _pwdOriginSiblings(origin);
+      for (const o of keys) {
+        const list = vault[o] || [];
+        const hit = list.find((e) => e.username === username);
+        if (hit) {
+          const pwd = _pwdDecrypt(hit.password);
+          return { ok: true, password: pwd };
+        }
+      }
+      return { ok: false, error: 'entry not found' };
     } catch (e) {
       return { ok: false, error: e.message };
     }

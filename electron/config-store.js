@@ -77,8 +77,8 @@ const DEFAULT_CONFIG = {
   ttsEnabled: false,
   /** OpenAI speech voice id (see `navio-tts-voice-catalog.js`). */
   ttsVoice: 'nova',
-  /** When true, each download opens a system Save dialog (pick folder and name). When false, saves to Downloads automatically (Chrome default). */
-  downloadAskWhere: false,
+  /** When true, each download opens a system Save dialog (pick folder and name). When false, saves to Downloads automatically (Chrome-style). */
+  downloadAskWhere: true,
   /** When true, open File Explorer to the file after a successful download. Off by default to avoid interrupting browsing. */
   downloadRevealInFolder: false,
   /** 0 = off. After N minutes inactive, background http(s) tabs unload to about:blank to free memory (Chrome-style discard).

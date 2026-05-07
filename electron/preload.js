@@ -359,6 +359,7 @@ contextBridge.exposeInMainWorld('navio', {
     ipcRenderer.invoke('passwords-save', { url, username, password, hidden }),
   passwordsList:      ()                        => ipcRenderer.invoke('passwords-list'),
   passwordsGet:       (url)                     => ipcRenderer.invoke('passwords-get', { url }),
+  passwordsReveal:    (origin, username)        => ipcRenderer.invoke('passwords-reveal', { origin, username }),
   passwordsDelete:    (origin, username)        => ipcRenderer.invoke('passwords-delete', { origin, username }),
   passwordsExportCsv: ()                        => ipcRenderer.invoke('passwords-export-csv'),
   passwordsImportCsv: (csv)                     => ipcRenderer.invoke('passwords-import-csv', { csv }),
