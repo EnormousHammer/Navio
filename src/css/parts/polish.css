@@ -35,14 +35,14 @@
 }
 
 [data-theme="dark"] {
-  --p-surface-1: rgba(22, 27, 40, 0.92);
-  --p-surface-2: rgba(28, 33, 48, 0.94);
-  --p-surface-3: rgba(36, 42, 58, 0.92);
-  --p-border: rgba(255, 255, 255, 0.065);
-  --p-border-strong: rgba(255, 255, 255, 0.12);
-  --p-hover: rgba(255, 255, 255, 0.045);
-  --p-press: rgba(255, 255, 255, 0.075);
-  --p-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.28);
+  --p-surface-1: rgba(20, 20, 24, 0.94);
+  --p-surface-2: rgba(26, 26, 30, 0.96);
+  --p-surface-3: rgba(32, 32, 36, 0.94);
+  --p-border: rgba(255, 255, 255, 0.055);
+  --p-border-strong: rgba(255, 255, 255, 0.11);
+  --p-hover: rgba(255, 255, 255, 0.04);
+  --p-press: rgba(255, 255, 255, 0.07);
+  --p-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.32);
 }
 [data-theme="light"] {
   --p-surface-1: rgba(255, 255, 255, 0.96);
@@ -1790,10 +1790,10 @@ html[data-theme="light"] .assistant-panel .ai-powered-badge {
 }
 
 html[data-theme="dark"] .assistant-panel {
-  background: rgba(10, 12, 18, 0.92);
-  border-left-color: rgba(255, 255, 255, 0.08);
-  border-right: 1px solid rgba(0, 0, 0, 0.42);
-  box-shadow: 8px 0 40px rgba(0, 0, 0, 0.48), inset 1px 0 0 rgba(255, 255, 255, 0.06);
+  background: rgba(12, 12, 14, 0.96);
+  border-left-color: rgba(255, 255, 255, 0.07);
+  border-right: 1px solid rgba(0, 0, 0, 0.5);
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.055);
 }
 
 /* Agent “Working” card + tools — readable glass (fixes light-theme #f5f6fa slab) */
@@ -3916,16 +3916,16 @@ html[data-theme="light"] #assistant-panel.assistant-panel {
 
 /* ── 5. Tab Strip ────────────────────────────────────────────────────────── */
 
-/* Active tab: accent background tint */
+/* Active tab: neutral lift on premium black chrome */
 [data-theme="dark"] .tab-item.active {
-  background: rgba(126, 184, 255, 0.075) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
 }
 
-/* Active tab indicator: glow on the gradient line */
+/* Accent line: keep brand gradient, softer glow so the strip stays “black first” */
 [data-theme="dark"] .tab-item.active::after {
   height: 2px !important;
   background: linear-gradient(90deg, #00d8ff 0%, #5468ff 55%, #9f6fff 100%) !important;
-  box-shadow: 0 0 8px rgba(0, 216, 255, 0.40) !important;
+  box-shadow: 0 0 5px rgba(0, 216, 255, 0.22) !important;
   border-radius: 1px !important;
 }
 

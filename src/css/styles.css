@@ -86,46 +86,47 @@
 
 /* ── DARK THEME (default) — editorial navy: neutral surfaces, accent used sparingly ── */
 [data-theme="dark"], :root {
-  --bg-void: #090b12;
-  --bg-deep: #0c0f18;
-  --bg-primary: #121620;
-  --bg-surface: #161b28;
-  --bg-elevated: #1a2130;
-  --bg-hover: #222a3a;
-  --bg-active: #2a3348;
+  /* Neutral “premium black” — OLED-friendly, minimal blue shift (was #090b12 / #121620) */
+  --bg-void: #050506;
+  --bg-deep: #0a0a0c;
+  --bg-primary: #0f0f12;
+  --bg-surface: #141418;
+  --bg-elevated: #18181c;
+  --bg-hover: #202024;
+  --bg-active: #2a2a30;
 
   /* Opaque “glass” tokens — no backdrop-filter (browser-like, cheaper on GPU) */
-  --glass-bg: #1a1f2e;
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-hover: rgba(255, 255, 255, 0.05);
+  --glass-bg: #16161a;
+  --glass-border: rgba(255, 255, 255, 0.065);
+  --glass-hover: rgba(255, 255, 255, 0.045);
 
-  --accent-glow: rgba(0, 216, 255, 0.12);
-  --accent-glow-strong: rgba(0, 216, 255, 0.22);
-  --gradient-subtle: linear-gradient(135deg, rgba(0,216,255,0.08) 0%, rgba(84,104,255,0.05) 100%);
-  --gradient-surface: linear-gradient(180deg, rgba(18,22,32,0.98) 0%, rgba(9,11,18,1) 100%);
+  --accent-glow: rgba(0, 216, 255, 0.11);
+  --accent-glow-strong: rgba(0, 216, 255, 0.2);
+  --gradient-subtle: linear-gradient(135deg, rgba(0, 216, 255, 0.06) 0%, rgba(84, 104, 255, 0.04) 100%);
+  --gradient-surface: linear-gradient(180deg, rgba(24, 24, 28, 0.98) 0%, rgba(6, 6, 8, 1) 100%);
 
-  --text-primary: #e8ecf4;
-  --text-secondary: #8b95ab;
+  --text-primary: #eceef4;
+  --text-secondary: #9499a8;
   /* Was too close to charcoal on dark panels; keep assistant + chips readable */
-  --text-tertiary: #7a869f;
-  --text-muted: #6b7a90;
+  --text-tertiary: #7e8494;
+  --text-muted: #6a707e;
   --text-accent: #7dd3fc;
   --text-bright: #ffffff;
 
-  --border: rgba(255, 255, 255, 0.075);
-  --border-hover: rgba(255, 255, 255, 0.14);
-  --border-accent: rgba(125, 211, 252, 0.38);
+  --border: rgba(255, 255, 255, 0.06);
+  --border-hover: rgba(255, 255, 255, 0.12);
+  --border-accent: rgba(125, 211, 252, 0.36);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.35);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.28);
-  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.3);
-  --shadow-glow: 0 0 20px rgba(0, 216, 255, 0.1);
-  --shadow-glow-strong: 0 0 36px rgba(0, 216, 255, 0.18);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.32);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(0, 0, 0, 0.34);
+  --shadow-glow: 0 0 20px rgba(0, 216, 255, 0.09);
+  --shadow-glow-strong: 0 0 36px rgba(0, 216, 255, 0.15);
 
-  --scrollbar-thumb: rgba(255, 255, 255, 0.12);
-  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.22);
-  --overlay-bg: rgba(4, 6, 12, 0.88);
-  --ntp-radial: radial-gradient(ellipse at center, rgba(0,216,255,0.06) 0%, rgba(84,104,255,0.04) 45%, transparent 72%);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.11);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.2);
+  --overlay-bg: rgba(3, 3, 5, 0.9);
+  --ntp-radial: radial-gradient(ellipse at center, rgba(0, 216, 255, 0.05) 0%, rgba(84, 104, 255, 0.035) 45%, transparent 72%);
   --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238090b8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
 }
 
@@ -1965,11 +1966,11 @@ body.navio-wcv-tabs-below #browser-container .split-divider {
   bottom: var(--ntp-ticker-reserve, 0px);
   display: none;
   flex-direction: column;
-  background: #0a0c12;
+  background: #050506;
   overflow-y: auto;
   overflow-x: hidden;
   z-index: 2;
-  color: #e8ecf4;
+  color: #eceef4;
   /* Bottom inset matches fixed ticker via :root --ntp-ticker-reserve (ntp.js). */
   scroll-padding-bottom: 12px;
   /* Inbox / news list: ~3–4 rows visible, rest scrolls inside the tile */
@@ -2000,7 +2001,7 @@ body.navio-wcv-tabs-below #browser-container .split-divider {
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
-  background-color: #0a0c12;
+  background-color: #050506;
   background-image: url("../../public/navio_background.jpg");
   background-size: cover;
   background-position: center center;
@@ -14391,18 +14392,18 @@ button:focus-visible,
    NTP — dark mode lock (keeps deep-space aesthetic in dark theme)
    ───────────────────────────────────────────────────────────────────────── */
 [data-theme="dark"] .new-tab-page {
-  --text-primary: #e8ecf4;
-  --text-secondary: rgba(226,232,248,0.68);
-  --text-tertiary: rgba(226,232,248,0.38);
+  --text-primary: #eceef4;
+  --text-secondary: rgba(226, 232, 248, 0.7);
+  --text-tertiary: rgba(226, 232, 248, 0.38);
   --text-accent: #7dd3fc;
-  --bg-surface: rgba(255,255,255,0.05);
-  --bg-elevated: rgba(255,255,255,0.08);
-  --bg-hover: rgba(255,255,255,0.06);
-  --border: rgba(255,255,255,0.09);
-  --border-hover: rgba(255,255,255,0.15);
-  --glass-border: rgba(255,255,255,0.08);
-  background: #0a0c12;
-  color: #e8ecf4;
+  --bg-surface: rgba(255, 255, 255, 0.045);
+  --bg-elevated: rgba(255, 255, 255, 0.075);
+  --bg-hover: rgba(255, 255, 255, 0.055);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.14);
+  --glass-border: rgba(255, 255, 255, 0.075);
+  background: var(--bg-void);
+  color: var(--text-primary);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -14410,55 +14411,55 @@ button:focus-visible,
    Dark + Light mode polished component overrides
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Dark Chrome: unified matte strip (Comet/Arc-style — one plane, quiet omnibox) ── */
+/* ── Dark Chrome: one neutral-black band (tabs + toolbar share --bg-deep) ── */
 [data-theme="dark"] #top-chrome,
 [data-theme="dark"] .tab-strip,
 [data-theme="dark"] #navbar {
-  background: #101014;
+  background: var(--bg-deep);
   border-bottom: none;
   box-shadow: none;
 }
 [data-theme="dark"] #top-chrome .tab-strip {
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.055);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.045);
 }
 [data-theme="dark"] #navbar {
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.055);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.045);
 }
 [data-theme="dark"] .titlebar-controls {
-  border-left-color: rgba(255, 255, 255, 0.06);
+  border-left-color: rgba(255, 255, 255, 0.055);
 }
 [data-theme="dark"] .tab-item {
   color: var(--text-secondary);
 }
 [data-theme="dark"] .tab-item.active {
-  background: rgba(255, 255, 255, 0.09);
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.085);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.035);
 }
 [data-theme="dark"] .tab-item.active::after {
-  background: rgba(255, 255, 255, 0.38);
+  background: rgba(255, 255, 255, 0.42);
   box-shadow: none;
   height: 2px;
   left: 0;
   right: 0;
 }
 [data-theme="dark"] .url-bar {
-  background: rgba(255, 255, 255, 0.055);
-  border-color: rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.085);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.07),
-    0 2px 10px rgba(0, 0, 0, 0.38);
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 1px 6px rgba(0, 0, 0, 0.35);
 }
 [data-theme="dark"] .url-bar:focus-within {
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.11);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.07),
-    0 2px 10px rgba(0, 0, 0, 0.38);
-  background: rgba(255, 255, 255, 0.065);
+    0 1px 8px rgba(0, 0, 0, 0.4);
+  background: rgba(255, 255, 255, 0.058);
 }
 [data-theme="dark"] .nav-controls {
-  background: rgba(255, 255, 255, 0.045);
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.075);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
 }
 
 /* ── Light Chrome: one soft toolbar band + clean pill omnibox ───────────── */
@@ -14502,8 +14503,8 @@ button:focus-visible,
 }
 
 [data-theme="dark"] .bookmark-bar {
-  background: #101014;
-  border-bottom-color: rgba(255, 255, 255, 0.055);
+  background: var(--bg-deep);
+  border-bottom-color: rgba(255, 255, 255, 0.045);
 }
 [data-theme="light"] .bookmark-bar {
   background: #eceff5;
