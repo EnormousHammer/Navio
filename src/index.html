@@ -1657,21 +1657,19 @@
           </div>
         </div>
 
-        <div class="assistant-meta-bar" aria-label="Tab context and AI scope">
+      <div class="assistant-meta-bar" aria-label="Tab context and AI scope">
         <div class="assistant-context" id="assistant-context" title="Default: one thread per tab. Use New chat / History for saved threads you can return to (like Comet).">
           <div class="context-dot"></div>
           <span id="context-page-title">No page loaded</span>
         </div>
-        <div class="assistant-controls-strip assistant-controls-strip--compact" aria-label="This tab">
-          <div class="assistant-toolbar assistant-toolbar--compact">
-            <button type="button" class="assistant-pin-btn" id="btn-pin-tab" title="Pin this tab so AI always uses it as context">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            </button>
-            <span class="assistant-context-receipt" id="assistant-context-receipt" hidden></span>
-            <button type="button" class="assistant-ai-settings-link" id="btn-assistant-open-ai-settings" title="Context scope, live web, mail, tab digest, step mode — same as Settings → AI">
-              Settings → AI
-            </button>
-          </div>
+        <div class="assistant-meta-actions" aria-label="This tab">
+          <button type="button" class="assistant-pin-btn" id="btn-pin-tab" title="Pin this tab so AI always uses it as context">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          </button>
+          <span class="assistant-context-receipt" id="assistant-context-receipt" hidden></span>
+          <button type="button" class="assistant-ai-settings-link" id="btn-assistant-open-ai-settings" title="Context scope, live web, mail, tab digest, step mode — same as Settings → AI" aria-label="Settings, AI tab — context scope, live web, mail, tab digest">
+            Settings
+          </button>
         </div>
       </div>
 

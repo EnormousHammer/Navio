@@ -2004,8 +2004,8 @@ html[data-theme="light"] .assistant-panel .send-btn:hover {
 }
 
 .assistant-panel .assistant-meta-bar {
-  padding-top: 5px;
-  padding-bottom: 6px;
+  padding-top: 3px;
+  padding-bottom: 4px;
   background: rgba(255, 255, 255, 0.012);
 }
 
@@ -3390,8 +3390,8 @@ body.navio-vertical-tabs .tab-item.in-group.group-last {
   border-radius: 16px !important;
 }
 #assistant-panel .assistant-input-container:focus-within {
-  border-color: rgba(0, 216, 255, 0.32) !important;
-  box-shadow: 0 0 0 2px rgba(0, 216, 255, 0.1), 0 2px 14px rgba(0, 0, 0, 0.22) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.22) !important;
 }
 #assistant-panel #assistant-input {
   color: rgba(238, 242, 252, 0.96);
@@ -3414,42 +3414,39 @@ body.navio-vertical-tabs .tab-item.in-group.group-last {
   --ai-bg-0: #070910;
   --ai-bg-1: #0b1020;
   --ai-bg-2: #111a2f;
-  /* Dock edge: readable against page content without competing with the input focus ring */
-  --ai-line: rgba(160, 210, 255, 0.34);
-  --ai-line-strong: rgba(182, 223, 255, 0.48);
+  /* Soft dock edge — no “neon rail”; separation comes from shadow + background */
+  --ai-line: rgba(255, 255, 255, 0.07);
+  --ai-line-strong: rgba(182, 213, 255, 0.22);
   --ai-accent: #57ddff;
   --ai-accent-2: #8f9fff;
   border-left: 1px solid var(--ai-line);
   border-top-left-radius: 18px;
   overflow: hidden;
   background:
-    radial-gradient(110% 72% at 4% -10%, rgba(87, 221, 255, 0.2), transparent 56%),
-    radial-gradient(110% 72% at 102% -20%, rgba(143, 159, 255, 0.2), transparent 58%),
+    radial-gradient(110% 72% at 4% -10%, rgba(87, 221, 255, 0.14), transparent 56%),
+    radial-gradient(110% 72% at 102% -20%, rgba(143, 159, 255, 0.14), transparent 58%),
     linear-gradient(180deg, var(--ai-bg-2) 0%, var(--ai-bg-1) 52%, var(--ai-bg-0) 100%);
   box-shadow:
-    -22px 0 64px rgba(0, 0, 0, 0.58),
-    -10px 0 40px rgba(87, 221, 255, 0.07),
-    -3px 0 14px rgba(87, 221, 255, 0.05),
-    inset 1px 0 0 rgba(255, 255, 255, 0.08),
-    inset 2px 0 0 rgba(87, 221, 255, 0.06);
+    -16px 0 48px rgba(0, 0, 0, 0.5),
+    inset 1px 0 0 rgba(255, 255, 255, 0.035);
 }
 
 #assistant-panel.assistant-panel::before {
   height: 150px;
   background:
-    linear-gradient(180deg, rgba(87, 221, 255, 0.12) 0%, rgba(87, 221, 255, 0.02) 50%, transparent 100%);
+    linear-gradient(180deg, rgba(87, 221, 255, 0.08) 0%, rgba(87, 221, 255, 0.02) 50%, transparent 100%);
 }
 
-/* Brighter accent rail on the page-facing edge (overrides generic .assistant-panel::after) */
+/* Hairline only — overrides generic .assistant-panel::after (no glow, no second bright stroke) */
 #assistant-panel.assistant-panel::after {
-  width: 2px;
+  width: 1px;
   background: linear-gradient(
     180deg,
-    rgba(87, 221, 255, 0.42) 0%,
-    rgba(143, 159, 255, 0.28) 45%,
-    rgba(87, 221, 255, 0.12) 100%
+    rgba(120, 170, 220, 0.1) 0%,
+    rgba(100, 140, 190, 0.06) 50%,
+    rgba(120, 170, 220, 0.05) 100%
   );
-  box-shadow: 2px 0 18px rgba(87, 221, 255, 0.18);
+  box-shadow: none;
 }
 
 #assistant-panel .assistant-header {
@@ -3499,7 +3496,7 @@ body.navio-vertical-tabs .tab-item.in-group.group-last {
 }
 
 #assistant-panel .assistant-meta-bar {
-  padding: 5px 12px 6px;
+  padding: 3px 12px 4px;
   background: rgba(255, 255, 255, 0.01);
 }
 
@@ -3562,21 +3559,21 @@ body.navio-vertical-tabs .tab-item.in-group.group-last {
 
 #assistant-panel .assistant-input-area {
   padding: 10px 12px 12px !important;
-  border-top: 1px solid rgba(182, 213, 255, 0.1) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
   background: linear-gradient(180deg, rgba(7, 10, 18, 0) 0%, rgba(7, 10, 18, 0.74) 54%, rgba(7, 10, 18, 0.95) 100%) !important;
 }
 
 #assistant-panel .assistant-input-container,
 #assistant-panel .assistant-input-container:focus-within {
   border-radius: 16px !important;
-  border: 1px solid rgba(182, 213, 255, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.09) !important;
   background: linear-gradient(180deg, rgba(18, 28, 49, 0.84), rgba(12, 18, 33, 0.92)) !important;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.045) !important;
 }
 
 #assistant-panel .assistant-input-container:focus-within {
-  border-color: rgba(87, 221, 255, 0.52) !important;
-  box-shadow: 0 0 0 2px rgba(87, 221, 255, 0.15), 0 10px 28px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(140, 200, 230, 0.22) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
 }
 
 #assistant-panel #assistant-input {

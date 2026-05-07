@@ -5461,12 +5461,13 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   min-height: 2.25rem;
 }
 
-/* One row: tab title + pin / settings (saves a full strip vs stacked context + controls) */
+/* One row: tab title + pin + receipt + Settings (no nested column strip — saves vertical space) */
 .assistant-meta-bar {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
-  padding: 3px var(--ap-pad-x) 4px;
+  padding: 2px var(--ap-pad-x) 3px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
   background: rgba(255, 255, 255, 0.018);
@@ -5476,7 +5477,7 @@ body.navio-vertical-tabs.navio-assistant-open::after {
 .assistant-meta-bar .assistant-context {
   flex: 1;
   min-width: 0;
-  padding: 2px 0;
+  padding: 1px 0;
   margin: 0;
   border-bottom: none;
   min-height: 0;
@@ -5486,26 +5487,43 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   gap: 5px;
 }
 
-.assistant-meta-bar .assistant-controls-strip {
-  flex: 0 0 auto;
+/* Pin + optional receipt + Settings — single horizontal row (replaces controls-strip + toolbar stack) */
+.assistant-meta-bar .assistant-meta-actions {
+  display: flex;
   flex-direction: row;
+  flex-wrap: nowrap;
   align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex: 0 0 auto;
+  min-width: 0;
   padding: 0;
   margin: 0;
-  border-bottom: none;
+  border: none;
   background: transparent;
 }
 
-.assistant-meta-bar .assistant-toolbar--compact {
-  padding: 0;
-  justify-content: flex-end;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px 6px;
-  /* Avoid a 48% cap on narrow sidecars — it forced pin + Settings onto two rows and ate ~25% of panel height. */
-  max-width: none;
+.assistant-meta-bar .assistant-meta-actions .assistant-pin-btn {
+  flex-shrink: 0;
+  order: 0;
+  width: 26px;
+  height: 26px;
+}
+
+.assistant-meta-bar .assistant-context-receipt:not([hidden]) {
+  order: 0;
   flex: 0 1 auto;
   min-width: 0;
+  max-width: min(104px, 30vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-meta-bar .assistant-ai-settings-link {
+  margin-left: 0;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 #context-page-title {
@@ -14725,6 +14743,9 @@ button:focus-visible,
 }
 [data-theme="light"] .assistant-controls-strip {
   background: var(--bg-primary);
+}
+[data-theme="light"] .assistant-meta-actions {
+  background: transparent;
 }
 [data-theme="light"] .assistant-connector-row {
   background: rgba(50, 70, 160, 0.03);
