@@ -13,6 +13,20 @@ const NAVIO_ASSISTANT_API_HISTORY_MAX = 120;
 const NAVIO_ASSISTANT_LOCAL_HISTORY_TRIM_THRESHOLD = 260;
 const NAVIO_ASSISTANT_LOCAL_HISTORY_KEEP = 220;
 
+/**
+ * Injected on every tool / legacy / guest assistant request (after navio-system-prompt).
+ * Must stay aligned with **ONE THREAD** and STEP 0 exceptions in navio-system-prompt.txt.
+ */
+const NAVIO_THREAD_DISCIPLINE_SYSTEM =
+  '[Thread discipline]\nThe **latest user message** (see **What to do now** on it) is the only target. ' +
+  'Do not do work they did not ask for. Do not switch to a new goal mid-turn. ' +
+  'Earlier messages are **full working context**, not a fresh chat: short replies mean \u201ccontinue the same task,\u201d not \u201cstart something new.\u201d ' +
+  'Before any question, scan prior user + assistant turns for file names, pasted content, steps, and conclusions already given. ' +
+  'Resolve **this/that/the quote/the shipment/the email** from prior turns when the thread already named one subject \u2014 do not ask for identifiers again unless two unrelated subjects are both live. ' +
+  'Attachment markers without fresh bytes still bind you to what you already said about those files in this thread; do not demand re-upload unless new visual detail is strictly required. ' +
+  'If intent is unclear: prefer one-line assumption + proceed, or **one** blocking question if you truly cannot act. ' +
+  'Do not re-ask tone, length, format, or style choices already fixed in this thread; do not permission-theater (\u201ccontinue?\u201d, \u201cshort or detailed?\u201d, \u201cshould I start?\u201d).';
+
 /** Natural-language mailbox ask — shared by Gmail + Outlook connector prefetch. */
 function navioDetectMailboxIntent(text) {
   const s = (text || '').trim();
@@ -2149,7 +2163,7 @@ class AssistantManagerClass {
     messages.push({
       role: 'system',
       content:
-        '[User attachments]\nThe user included file attachments in this message. Their contents appear in the next user message (text, images, PDFs, or other parts). Read and use them as the primary source when answering. Use browser tools only when the task requires live web interaction.'
+        '[User attachments]\nThe user included file attachments in this message. Their contents appear in the next user message (text, images, PDFs, or other parts). Read and use them as the primary source when answering. On later turns, attachment bytes may not repeat — use earlier turns in this thread where you already interpreted them unless a new read is strictly required. Use browser tools only when the task requires live web interaction.'
     });
   }
 
@@ -2276,7 +2290,8 @@ class AssistantManagerClass {
       'Address **this** user message. Do not start a different goal, topic, or side task. ' +
       'Do not use tools for things they did not ask for in this turn. ' +
       'If they only say something short because the thread is continuing, keep the **same** task as before — do not invent a new one. ' +
-      'Infer missing detail from **earlier turns in this thread** when possible (tone, length, format, audience, deadlines). ' +
+      'Infer missing detail from **earlier turns in this thread** when possible (tone, length, format, audience, deadlines, order refs, shipment, quote, email thread). ' +
+      'Phrases like **this quote**, **that shipment**, **the email above**, **email Laura** refer to what the thread already established — do not ask them to re-paste IDs unless two unrelated deals are genuinely mixed. ' +
       'Ask **one** question only when a fact is missing that makes **any** correct action impossible — not for style preferences already stated, not for permission between steps, not to re-choose options they already picked.\n\n'
     );
   }
@@ -2355,15 +2370,15 @@ class AssistantManagerClass {
         blocks.push(`\n\n--- Attached file: ${a.name} ---\n${body}`);
       } else if (a.kind === 'image') {
         blocks.push(
-          `\n[Image attached: **${a.name}** — pixels were sent with this message; ask the user to **re-attach** the image if you need to inspect it again in a later turn.]`
+          `\n[Image attached: **${a.name}** — full pixels were sent to the model on this turn only. Later turns may show this line without pixels: use your prior analysis in this thread for follow-ups; ask to **re-attach** only if the user needs new visual detail you never described.]`
         );
       } else if (a.kind === 'pdf') {
         blocks.push(
-          `\n[PDF attached: **${a.name}** — document bytes were sent with this message; ask the user to **re-attach** the PDF if you need exact page quotes in a later turn.]`
+          `\n[PDF attached: **${a.name}** — document bytes were sent to the model on this turn only. Later turns: use prior extracted text/quotes from this thread; ask to **re-attach** only for new page-level detail you never read out.]`
         );
       } else {
         blocks.push(
-          `\n[File attached: **${a.name}** (${a.kind || 'file'}) — binary was sent with this message; re-attach if you need the raw file again.]`
+          `\n[File attached: **${a.name}** (${a.kind || 'file'}) — binary was sent on this turn only; for follow-ups rely on what you already extracted unless new raw bytes are required.]`
         );
       }
     }
@@ -5079,15 +5094,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (snapText) messages.push({ role: 'system', content: snapText });
     }
 
-    messages.push({
-      role: 'system',
-      content:
-        '[Thread discipline]\nThe **latest user message** (see **What to do now** on it) is the only target. ' +
-        'Do not do work they did not ask for. Do not switch to a new goal mid-turn. ' +
-        'Earlier messages are context only; short replies mean “continue the same task,” not “start something new.” ' +
-        'If intent is unclear: prefer one-line assumption + proceed, or **one** blocking question if you truly cannot act. ' +
-        'Do not re-ask tone, length, format, or style choices already fixed in this thread; do not permission-theater (“continue?”, “short or detailed?”).'
-    });
+    messages.push({ role: 'system', content: NAVIO_THREAD_DISCIPLINE_SYSTEM });
     // Pre-work acknowledgment: for multi-step tool tasks, output one brief natural sentence before
     // the first tool call so the user knows you heard them. Text surfaces as a chat bubble.
     if (!isQuickAction) {
@@ -5551,15 +5558,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       const connectorCtx = await this._buildConnectorContext(text, this._connectorOptsFromConfig(config));
       if (connectorCtx) messages.push({ role: 'system', content: connectorCtx });
     }
-    messages.push({
-      role: 'system',
-      content:
-        '[Thread discipline]\nThe **latest user message** (see **What to do now** on it) is the only target. ' +
-        'Do not do work they did not ask for. Do not switch to a new goal mid-turn. ' +
-        'Earlier messages are context only; short replies mean “continue the same task,” not “start something new.” ' +
-        'If intent is unclear: prefer one-line assumption + proceed, or **one** blocking question if you truly cannot act. ' +
-        'Do not re-ask tone, length, format, or style choices already fixed in this thread; do not permission-theater (“continue?”, “short or detailed?”).'
-    });
+    messages.push({ role: 'system', content: NAVIO_THREAD_DISCIPLINE_SYSTEM });
     const recentHistory = this._currentHistory().slice(-NAVIO_ASSISTANT_API_HISTORY_MAX);
     messages.push(...recentHistory);
     messages.push({ role: 'user', content: this._taskAnchorPrefix() + (text || '') });
@@ -5783,15 +5782,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       }
     }
 
-    messages.push({
-      role: 'system',
-      content:
-        '[Thread discipline]\nThe **latest user message** (see **What to do now** on it) is the only target. ' +
-        'Do not do work they did not ask for. Do not switch to a new goal mid-turn. ' +
-        'Earlier messages are context only; short replies mean “continue the same task,” not “start something new.” ' +
-        'If intent is unclear: prefer one-line assumption + proceed, or **one** blocking question if you truly cannot act. ' +
-        'Do not re-ask tone, length, format, or style choices already fixed in this thread; do not permission-theater (“continue?”, “short or detailed?”).'
-    });
+    messages.push({ role: 'system', content: NAVIO_THREAD_DISCIPLINE_SYSTEM });
     // Pre-work acknowledgment: output one brief sentence before first tool call so the user isn't silent.
     // This text is sent via tr() as bubble:true and surfaced as a chat message above the Working card.
     if (!isQuickAction) {
@@ -6920,7 +6911,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         if (!f || typeof f !== 'object') continue;
         const n = typeof f.name === 'string' && f.name.trim() ? f.name.trim() : 'file';
         const k = typeof f.kind === 'string' && f.kind ? f.kind : 'file';
-        parts.push(`[Attached: **${n}** (${k}) — re-attach if the model must read the file again.]`);
+        parts.push(
+          `[Attached: **${n}** (${k}) — bytes were on that turn; use prior thread analysis for follow-ups; re-attach only for new raw detail.]`
+        );
       }
       if (parts.length) return parts.join('\n\n');
     }
