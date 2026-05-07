@@ -5241,6 +5241,45 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const encoded = JSON.stringify(JSON.stringify(msg));
     const js = `void (function(){try{var m=${encoded};if(window.__navioGuestHost&&window.__navioGuestHost.deliver)window.__navioGuestHost.deliver(JSON.parse(m));}catch(e){console.error(e);}})()`;
 
+    const guestWcId = () => {
+      let wid = null;
+      try {
+        if (typeof guestWv.getWebContentsId === 'function') wid = guestWv.getWebContentsId();
+      } catch {
+        wid = null;
+      }
+      if (wid != null && Number.isFinite(Number(wid)) && Number(wid) > 0) return Number(wid);
+      try {
+        const wc = typeof guestWv.getWebContents === 'function' ? guestWv.getWebContents() : null;
+        const id = wc && typeof wc.id === 'number' ? wc.id : null;
+        if (id != null && id > 0) return id;
+      } catch {
+        /* ignore */
+      }
+      return null;
+    };
+
+    /** Main-process path uses `executeJavaScript(..., true)` — more reliable than embedder `<webview>.executeJavaScript` on recent Electron + file:// guests. */
+    const tryMainGuestExecute = async () => {
+      const wid = guestWcId();
+      if (wid == null || !window.navio || typeof window.navio.guestExecuteJavaScript !== 'function') return false;
+      try {
+        const r = await window.navio.guestExecuteJavaScript(wid, js);
+        if (r && r.ok) return true;
+        const err = r && r.error != null ? String(r.error) : 'unknown';
+        console.warn('[navio-assistant] guest deliver (main IPC) failed:', err);
+        try {
+          window.navio?.shellLog?.(`[Navio AI page] guestDeliver main IPC: ${err}`);
+        } catch {
+          /* ignore */
+        }
+      } catch (e) {
+        const detail = e && e.message ? e.message : e;
+        console.warn('[navio-assistant] guest deliver main IPC invoke error', detail);
+      }
+      return false;
+    };
+
     const tryWebviewElement = async () => {
       if (typeof guestWv.executeJavaScript !== 'function') return false;
       for (let attempt = 0; attempt < 4; attempt++) {
@@ -5263,37 +5302,16 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       return false;
     };
 
+    if (await tryMainGuestExecute()) return;
     if (await tryWebviewElement()) return;
 
-    let wid = null;
     try {
-      wid = typeof guestWv.getWebContentsId === 'function' ? guestWv.getWebContentsId() : null;
+      const wid = guestWcId();
+      window.navio?.shellLog?.(
+        `[Navio AI page] guestDeliver: all paths failed (wcId=${wid == null ? 'missing' : String(wid)})`
+      );
     } catch {
-      wid = null;
-    }
-    if (wid != null && window.navio && typeof window.navio.guestExecuteJavaScript === 'function') {
-      try {
-        const r = await window.navio.guestExecuteJavaScript(wid, js);
-        if (r && r.ok) return;
-        const err = r && r.error != null ? String(r.error) : 'unknown';
-        console.warn('[navio-assistant] guest deliver IPC fallback failed:', err);
-        try {
-          window.navio?.shellLog?.(`[Navio AI page] guestDeliver IPC failed: ${err}`);
-        } catch {
-          /* ignore */
-        }
-      } catch (e) {
-        const detail = e && e.message ? e.message : e;
-        console.warn('[navio-assistant] guest deliver IPC invoke error', detail);
-      }
-    } else {
-      try {
-        window.navio?.shellLog?.(
-          `[Navio AI page] guestDeliver: no fallback (getWebContentsId=${wid == null ? 'missing' : wid})`
-        );
-      } catch {
-        /* ignore */
-      }
+      /* ignore */
     }
   }
 
