@@ -1592,8 +1592,7 @@ class AssistantManagerClass {
           const messages = [];
           for (const m of raw) {
             if (!m || (m.role !== 'user' && m.role !== 'assistant')) continue;
-            if (typeof m.content !== 'string') continue;
-            messages.push({ role: m.role, content: m.content });
+            messages.push({ role: m.role, content: this._stringifyHistoryMessageContent(m) });
           }
           if (messages.length) {
             // Only restore persisted history if the key has no live in-memory turns.
@@ -1651,8 +1650,8 @@ class AssistantManagerClass {
         if (!k || k === NAVIO_PROFILE_CHAT_KEY || k.startsWith('__')) continue;
         if (!h || !h.length) continue;
         const messages = (h || [])
-          .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
-          .map((m) => ({ role: m.role, content: m.content }));
+          .filter((m) => m && (m.role === 'user' || m.role === 'assistant'))
+          .map((m) => ({ role: m.role, content: this._stringifyHistoryMessageContent(m) }));
         // Do not persist composer drafts or empty "New chat" shells — only real turns.
         if (messages.length) byKey[k] = messages;
       }
@@ -1714,8 +1713,8 @@ class AssistantManagerClass {
     const copy = [];
     for (const m of messages) {
       if (!m || (m.role !== 'user' && m.role !== 'assistant')) continue;
-      if (typeof m.content !== 'string') continue;
-      copy.push({ role: m.role, content: m.content });
+      const content = this._stringifyHistoryMessageContent(m);
+      copy.push({ role: m.role, content });
     }
     if (!copy.length) return;
     let id;
@@ -5271,7 +5270,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           .filter(m => m.role === 'user' || m.role === 'assistant')
           .map(m => ({
             role: m.role,
-            content: typeof m.content === 'string' ? m.content : ''
+            content: this._stringifyHistoryMessageContent(m)
           }));
         this._guestDeliver(guestWv, { type: 'historyLoad', messages: msgs });
       });
@@ -6392,59 +6391,67 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       activityEl.appendChild(saveBtn);
     }
 
-    // Display final response
+    // Display final response — always append this user turn to transcript so follow-ups
+    // (and re-tries after errors) still see file names / pasted text from _historyLabelForAttachments.
+    const userHistory = historyUserLabel || this._historyLabelForAttachments(text);
+
     if (response.error) {
-      if (guestWv) await this._guestDeliver(guestWv, { type: 'assistant', error: true, content: response.error });
-      else this.addMessage('assistant', response.error, 'error', toolTurnMs != null ? { durationMs: toolTurnMs } : null);
-    } else if (response.content) {
-      if (guestWv) await this._guestDeliver(guestWv, { type: 'assistant', content: response.content });
-      else {
-        // Collect citations from web_search tool calls in this run
-        const toolSearchCitations = (response.toolLog || [])
-          .filter((t) => t.tool === 'web_search' && Array.isArray(t.result?.citations) && t.result.citations.length)
-          .flatMap((t) => t.result.citations)
-          .filter((u) => typeof u === 'string' && u.startsWith('http'))
-          .slice(0, 12);
-        const connectorCites = (this._pendingConnectorCitations || []).filter((u) => typeof u === 'string');
-        const allCitations = [...new Set([...toolSearchCitations, ...connectorCites])];
-        const meta = {};
-        if (allCitations.length) meta.citations = allCitations;
-        if (toolTurnMs != null) meta.durationMs = toolTurnMs;
-        this.addMessage('assistant', response.content, '', meta);
-        this._pendingConnectorCitations = null;
-      }
-      const userHistory = historyUserLabel || this._historyLabelForAttachments(text);
-      this._currentHistory().push(
-        { role: 'user', content: userHistory },
-        { role: 'assistant', content: response.content }
-      );
+      const errText = String(response.error || 'Unknown error');
+      if (guestWv) await this._guestDeliver(guestWv, { type: 'assistant', error: true, content: errText });
+      else this.addMessage('assistant', errText, 'error', toolTurnMs != null ? { durationMs: toolTurnMs } : null);
+      this._currentHistory().push({ role: 'user', content: userHistory }, { role: 'assistant', content: errText });
       this._trimHistory();
-      // If the AI emitted a <navio-memory>save:...</navio-memory> block,
-      // main.js#extractAndSaveMemory has already persisted it. Refresh the
-      // header badge so the user sees the count tick up live.
-      if (typeof response.content === 'string' && /<navio-memory>/i.test(response.content)) {
-        void this._refreshMemoryCountBadge();
-      }
-      const graphTab = this._tabForTurnContext();
-      await window.navio.contextGraph({
-        op: 'addTurn',
-        role: 'assistant',
-        summary: response.content.slice(0, 200),
-        tabId: graphTab?.id,
-        url: graphTab?.url || ''
-      });
     } else {
-      const emptyMsg =
-        'No reply from the model. Open another tab with a page, or try again.';
-      if (guestWv) {
-        await this._guestDeliver(guestWv, { type: 'assistant', error: true, content: emptyMsg });
+      const outText = response.content != null ? String(response.content) : '';
+      const hasOut = outText.trim().length > 0;
+      if (hasOut) {
+        if (guestWv) await this._guestDeliver(guestWv, { type: 'assistant', content: outText });
+        else {
+          // Collect citations from web_search tool calls in this run
+          const toolSearchCitations = (response.toolLog || [])
+            .filter((t) => t.tool === 'web_search' && Array.isArray(t.result?.citations) && t.result.citations.length)
+            .flatMap((t) => t.result.citations)
+            .filter((u) => typeof u === 'string' && u.startsWith('http'))
+            .slice(0, 12);
+          const connectorCites = (this._pendingConnectorCitations || []).filter((u) => typeof u === 'string');
+          const allCitations = [...new Set([...toolSearchCitations, ...connectorCites])];
+          const meta = {};
+          if (allCitations.length) meta.citations = allCitations;
+          if (toolTurnMs != null) meta.durationMs = toolTurnMs;
+          this.addMessage('assistant', outText, '', meta);
+          this._pendingConnectorCitations = null;
+        }
+        this._currentHistory().push({ role: 'user', content: userHistory }, { role: 'assistant', content: outText });
+        this._trimHistory();
+        // If the AI emitted a <navio-memory>save:...</navio-memory> block,
+        // main.js#extractAndSaveMemory has already persisted it. Refresh the
+        // header badge so the user sees the count tick up live.
+        if (/<navio-memory>/i.test(outText)) {
+          void this._refreshMemoryCountBadge();
+        }
+        const graphTab = this._tabForTurnContext();
+        await window.navio.contextGraph({
+          op: 'addTurn',
+          role: 'assistant',
+          summary: outText.slice(0, 200),
+          tabId: graphTab?.id,
+          url: graphTab?.url || ''
+        });
       } else {
-        this.addMessage(
-          'assistant',
-          emptyMsg,
-          'error',
-          toolTurnMs != null ? { durationMs: toolTurnMs } : null
-        );
+        const emptyMsg =
+          'No reply from the model. Open another tab with a page, or try again.';
+        if (guestWv) {
+          await this._guestDeliver(guestWv, { type: 'assistant', error: true, content: emptyMsg });
+        } else {
+          this.addMessage(
+            'assistant',
+            emptyMsg,
+            'error',
+            toolTurnMs != null ? { durationMs: toolTurnMs } : null
+          );
+        }
+        this._currentHistory().push({ role: 'user', content: userHistory }, { role: 'assistant', content: emptyMsg });
+        this._trimHistory();
       }
     }
     } finally {
@@ -6898,6 +6905,30 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   /**
+   * Turn stored transcript rows into plain strings for the model, export, and guest sync.
+   * Older or edge paths may store `{ text, files }` on user rows — those were dropped from API
+   * history entirely (`typeof content === 'string'`), which made follow-ups feel context-free.
+   */
+  _stringifyHistoryMessageContent(m) {
+    const c = m && m.content;
+    if (typeof c === 'string') return c;
+    if (c && typeof c === 'object' && !Array.isArray(c)) {
+      const parts = [];
+      if (typeof c.text === 'string' && c.text.trim()) parts.push(c.text.trim());
+      const files = Array.isArray(c.files) ? c.files : [];
+      for (const f of files) {
+        if (!f || typeof f !== 'object') continue;
+        const n = typeof f.name === 'string' && f.name.trim() ? f.name.trim() : 'file';
+        const k = typeof f.kind === 'string' && f.kind ? f.kind : 'file';
+        parts.push(`[Attached: **${n}** (${k}) — re-attach if the model must read the file again.]`);
+      }
+      if (parts.length) return parts.join('\n\n');
+    }
+    if (c != null && typeof c !== 'object') return String(c);
+    return '';
+  }
+
+  /**
    * Build conversation history for the model from *this* chat thread.
    *
    * Older Navio builds used keyword “relevance” over messages before the last window; that dropped
@@ -6911,8 +6942,13 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
    * @returns {Array<{role:string,content:string}>}
    */
   _buildRelevantHistory(_queryText, historyKey, msgFilter) {
-    const all = (this._conversationsByTab.get(historyKey) || [])
-      .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string');
+    const raw = (this._conversationsByTab.get(historyKey) || []).filter(
+      (m) => m && (m.role === 'user' || m.role === 'assistant')
+    );
+    const all = raw.map((m) => ({
+      role: m.role,
+      content: this._stringifyHistoryMessageContent(m)
+    }));
     const filtered = msgFilter ? all.filter(msgFilter) : all;
     if (filtered.length <= NAVIO_ASSISTANT_API_HISTORY_MAX) return filtered.slice();
     return filtered.slice(-NAVIO_ASSISTANT_API_HISTORY_MAX);
