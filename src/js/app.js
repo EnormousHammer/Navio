@@ -310,8 +310,8 @@ class NavioApp {
   /** When true, show history/bookmark rows; when false (long AI-style question), skip to avoid noise. */
   _shouldOfferUrlSuggestions(raw) {
     const t = (raw || '').trim();
-    // Empty omnibox → still offer frequent/recent/bookmarks so focus alone can pick a destination.
-    if (!t) return true;
+    // No query yet — skip until the user types (avoid dropdown on new tab / home / focus-only).
+    if (!t) return false;
     if (/^https?:\/\//i.test(t)) return true;
     if (/^ai:/i.test(t) || t.startsWith('>>')) return false;
     if (t.includes('.') && t.split(/\s+/).length <= 4) return true;
@@ -324,10 +324,9 @@ class NavioApp {
     const slot = document.querySelector('.url-bar-container');
     if (!list || !slot) return;
     const r = slot.getBoundingClientRect();
-    const pad = 6;
     list.style.position = 'fixed';
     list.style.left = `${Math.max(4, r.left)}px`;
-    list.style.top = `${r.bottom + pad}px`;
+    list.style.top = `${r.bottom}px`;
     list.style.width = `${r.width}px`;
     list.style.right = 'auto';
     list.style.zIndex = '2147483646';
@@ -1037,9 +1036,7 @@ ${badgeHtml(it.badge)}
         if (showHint) this._hideUrlSuggestions();
       }
       clearTimeout(this._urlSuggest.debounce);
-      this._urlSuggest.debounce = setTimeout(() => {
-        void this._refreshUrlSuggestions(urlInput, aiHint);
-      }, 100);
+      this._hideUrlSuggestions();
     });
 
     urlInput.addEventListener('blur', () => {
