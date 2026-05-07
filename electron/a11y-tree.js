@@ -11,6 +11,7 @@
 'use strict';
 
 const { ensureGuestWebviewKeyboardFocus } = require('./agent-input-focus');
+const { checkOcclusion } = require('./navio-agent-verify');
 
 // ── Module-level ref maps ────────────────────────────────────────────────────
 // Key: webContentsId, Value: Map<string, { backendDOMNodeId, role, name, fingerprint }>
@@ -362,7 +363,7 @@ function truncName(name) {
  * Strategy:
  *  1. ScrollIntoViewIfNeeded via CDP (avoids JS-triggered scroll interception)
  *  2. getBoxModel → compute viewport center (cx, cy)
- *  3. elementFromPoint occlusion check — bail with occluded_by if covered
+ *  3. checkOcclusion (navio-agent-verify) — bail with occluded_by before mouse events if an overlay tops the hit point
  *  4. dispatchMouseEvent mouseMoved → mousePressed → mouseReleased
  *     (Chromium rejects legacy type "mouseOver" — it is not a valid CDP value.)
  *
@@ -375,7 +376,8 @@ async function clickByRef(wc, refId) {
     return { error: `Unknown ref "${refId}". Call read_page to refresh the element list.` };
   }
   await ensureGuestWebviewKeyboardFocus(wc);
-  const { backendDOMNodeId } = refMap.get(refId);
+  const refEntry = refMap.get(refId);
+  const { backendDOMNodeId, role: refRole } = refEntry;
   let attachedHere = false;
   try {
     if (!wc.debugger.isAttached()) {
@@ -401,21 +403,19 @@ async function clickByRef(wc, refId) {
     } catch { /* box unavailable, fall through */ }
 
     if (cx != null && cy != null && cx > 0 && cy > 0) {
-      // Step 3: occlusion check — is something else on top?
+      // Step 3: occlusion — bail before click if a banner/modal sits on the hit point
       try {
-        const occRes = await wc.debugger.sendCommand('Runtime.evaluate', {
-          expression: `(function(){
-            var el = document.elementFromPoint(${cx}, ${cy});
-            if (!el) return null;
-            return { tag: el.tagName, role: el.getAttribute('role'), text: (el.textContent||'').trim().slice(0,40) };
-          })()`,
-          returnByValue: true
-        });
-        const top = occRes.result?.value;
-        // If top element has no content overlap at all with our target,
-        // still proceed — aria tree ref may be parent; just warn.
-        void top; // occlusion signal reserved for Phase B verify loop
-      } catch { /* ignore occlusion check failures */ }
+        const occ = await checkOcclusion(wc, cx, cy, refRole || '');
+        if (occ && occ.occluded && occ.occluded_by) {
+          return {
+            success: false,
+            error:
+              'Click target is covered by an overlay (cookie consent, modal, or banner). Dismiss it or read_page to find Accept/Close, then retry.',
+            occluded_by: occ.occluded_by,
+            occlusion_type: occ.type || 'overlay'
+          };
+        }
+      } catch { /* proceed if occlusion probe fails */ }
 
       // Step 4: trusted mouse events (CDP allows mouseMoved / mousePressed / mouseReleased / mouseWheel only)
       const mouseParams = { x: cx, y: cy, button: 'left', clickCount: 1, buttons: 1 };
@@ -597,6 +597,50 @@ async function typeByRef(wc, refId, value) {
 }
 
 /**
+ * Read current text/value from the element for ref_id (input, textarea, or contenteditable).
+ * Used by main.js to verify type_text actually applied.
+ */
+async function readValueAtRef(wc, refId) {
+  const refMap = refMaps.get(wc.id);
+  if (!refMap || !refMap.has(refId)) {
+    return { error: `Unknown ref "${refId}".` };
+  }
+  const { backendDOMNodeId } = refMap.get(refId);
+  let attachedHere = false;
+  try {
+    if (!wc.debugger.isAttached()) {
+      wc.debugger.attach('1.3');
+      attachedHere = true;
+    }
+    const { object } = await wc.debugger.sendCommand('DOM.resolveNode', { backendNodeId: backendDOMNodeId });
+    const r = await wc.debugger.sendCommand('Runtime.callFunctionOn', {
+      objectId: object.objectId,
+      functionDeclaration: `function() {
+        try {
+          if (this.isContentEditable) return { kind: 'ce', value: (this.innerText || '').slice(0, 50000) };
+          if ('value' in this) return { kind: 'input', value: String(this.value || '').slice(0, 50000) };
+          return { kind: 'other', value: '' };
+        } catch (e) {
+          return { kind: 'err', value: '' };
+        }
+      }`,
+      returnByValue: true
+    });
+    try {
+      await wc.debugger.sendCommand('Runtime.releaseObject', { objectId: object.objectId });
+    } catch { /* ignore */ }
+    const v = r.result?.value;
+    return { success: true, value: v && v.value != null ? v.value : '', kind: v && v.kind };
+  } catch (err) {
+    return { error: `readValueAtRef failed: ${err.message}` };
+  } finally {
+    if (attachedHere && !persistentSessions.get(wc.id)) {
+      try { wc.debugger.detach(); } catch { /* ignore */ }
+    }
+  }
+}
+
+/**
  * Select an option in a <select> element identified by ref_id.
  */
 async function selectByRef(wc, refId, optionValue) {
@@ -678,6 +722,7 @@ module.exports = {
   getAccessibilityTree,
   clickByRef,
   typeByRef,
+  readValueAtRef,
   selectByRef,
   getRefMap,
   clearRefMap,

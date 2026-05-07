@@ -68,9 +68,10 @@ async function snapshotPage(wc) {
  *
  * @param {PageSnapshot} before
  * @param {PageSnapshot} after
+ * @param {{ typingMode?: boolean }} [opts]
  * @returns {ChangeSignal}
  */
-function diffSnapshots(before, after) {
+function diffSnapshots(before, after, opts = {}) {
   if (!before || !after) return { changed: false, reason: 'no_snapshot' };
 
   const urlChanged = before.url !== after.url;
@@ -82,14 +83,17 @@ function diffSnapshots(before, after) {
   const dialogDismissed = before.dialogOpen && !after.dialogOpen;
   const overlayAppeared = !before.overlayVisible && after.overlayVisible;
 
+  const typingMode = !!(opts && opts.typingMode);
+  const bodyThreshold = typingMode ? 2 : 50;
+
   // Consider "changed" if any meaningful DOM mutation occurred
-  const changed = urlChanged || titleChanged || bodyDelta > 50 || interactiveDelta !== 0 ||
+  const changed = urlChanged || titleChanged || bodyDelta > bodyThreshold || interactiveDelta !== 0 ||
                   dialogAppeared || dialogDismissed || scrolled;
 
   const reasons = [];
   if (urlChanged) reasons.push(`url_changed: ${after.url.slice(0, 80)}`);
   if (titleChanged) reasons.push(`title_changed: "${after.title?.slice(0, 40)}"`);
-  if (bodyDelta > 500) reasons.push(`dom_mutation: ${bodyDelta} chars`);
+  if (bodyDelta > (typingMode ? 2 : 500)) reasons.push(`dom_mutation: ${bodyDelta} chars`);
   if (interactiveDelta > 0) reasons.push(`new_interactive: +${interactiveDelta}`);
   if (interactiveDelta < 0) reasons.push(`removed_interactive: ${interactiveDelta}`);
   if (dialogAppeared) reasons.push('dialog_appeared');
@@ -329,9 +333,11 @@ async function waitForIdle(wc, opts = {}) {
  * @param {PageSnapshot} before - snapshot taken before the action
  * @param {object} [opts]
  * @param {boolean} [opts.waitForNetworkIdle] - wait for network idle (default true)
+ * @param {boolean} [opts.typingMode] - use smaller body-length threshold (type_text)
  */
 async function verifyAction(wc, before, opts = {}) {
   const waitNet = opts.waitForNetworkIdle !== false;
+  const diffOpts = { typingMode: !!opts.typingMode };
 
   // Give DOM 100ms to react
   await new Promise((r) => setTimeout(r, 100));
@@ -343,7 +349,7 @@ async function verifyAction(wc, before, opts = {}) {
     return { success: true, changed: false, summary: 'verify_error' };
   }
 
-  const diff = diffSnapshots(before, after);
+  const diff = diffSnapshots(before, after, diffOpts);
 
   if (diff.changed) {
     // Page reacted — optionally wait for idle
@@ -365,7 +371,7 @@ async function verifyAction(wc, before, opts = {}) {
   } catch {
     return { success: true, changed: false, summary: 'no_change' };
   }
-  const diffRetry = diffSnapshots(before, afterRetry);
+  const diffRetry = diffSnapshots(before, afterRetry, diffOpts);
 
   return {
     success: true,

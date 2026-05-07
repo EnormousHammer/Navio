@@ -88,6 +88,9 @@
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>
               <span class="url-chat-ai-btn-label">Chat with AI</span>
             </button>
+            <button type="button" id="btn-toolbar-workflows" class="url-workflows-btn" title="Saved workflows — pick one to run (opens list; Ctrl+K for full palette)" aria-label="Saved workflows">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+            </button>
           </div>
           <div id="omnibox-ai-preview" class="omnibox-ai-preview" style="display:none"></div>
           <div id="url-suggestions" class="url-suggestions" hidden role="listbox" aria-label="History and bookmarks"></div>
@@ -1630,6 +1633,9 @@
           <!-- Macro record button — records agent steps as a replayable workflow -->
           <button class="icon-btn" id="btn-record-macro" title="Record: capture your next agent task as a replayable workflow" aria-pressed="false">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>
+          </button>
+          <button class="icon-btn" id="btn-assistant-workflows" title="Saved workflows — pick one to run" aria-label="Saved workflows">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
           </button>
           <button class="icon-btn" id="btn-export-chat" title="Export chat as Markdown">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>

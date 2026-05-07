@@ -1,6 +1,6 @@
 # Navio agent core — smarter than Comet / Atlas, reliably clicks
 
-**Status:** Plan (not yet implemented). Drafted for execution in a dedicated agent chat.
+**Status:** **Partially implemented** (trusted CDP click/type, verify-after-click/type, overlay dismiss, pre-click occlusion gate, per-frame AX tree, persistent debugger when monitoring). Remaining: vision fallback, highlight overlay, full skills replay in main, benchmark suite.
 **Related:** [TRUE_BROWSER_IMPLEMENTATION_PLAN.md](./TRUE_BROWSER_IMPLEMENTATION_PLAN.md), [COMPETITIVE_GAPS_AND_PLAN.md](./COMPETITIVE_GAPS_AND_PLAN.md).
 
 ## TL;DR
@@ -11,11 +11,11 @@ Net result: the agent clicks the right thing on sites Comet and Atlas flake on, 
 
 ## To-do checklist
 
-- [ ] **Phase A** — Trusted CDP input (`Input.dispatchMouseEvent`, `Input.dispatchKeyEvent`, shadow-DOM pierce, persistent debugger attach).
-- [ ] **Phase B** — Verify-after-action diff loop + occlusion check + overlay-dismiss retry ladder + `wait_for_idle` primitive.
-- [ ] **Phase C** — Stable element fingerprints + `navio-skills.js` cache + replay path in the main tool loop.
+- [x] **Phase A** — Trusted CDP input (`Input.dispatchMouseEvent`, `Input.dispatchKeyEvent` in `typeByRef`), multi-frame `Accessibility.getFullAXTree`, persistent debugger when `getAccessibilityTreeOnce` / inspector attaches ([electron/a11y-tree.js](../electron/a11y-tree.js)). Shadow pierce / deeper AX options still incremental.
+- [x] **Phase B** — Verify-after-action via [electron/navio-agent-verify.js](../electron/navio-agent-verify.js) + [electron/main.js](../electron/main.js) `click` / `type_text` (ref paths); overlay dismiss on no-op click; `wait_for_idle`; **pre-click occlusion** via shared `checkOcclusion` before trusted click.
+- [ ] **Phase C** — Stable element fingerprints in ref map; **`navio-skills.js` not wired into main** — use **saved workflows** ([electron/navio-workflows.js](../electron/navio-workflows.js)) for explicit replay instead (see [COMPETITIVE_GAPS_AND_PLAN.md](./COMPETITIVE_GAPS_AND_PLAN.md)).
 - [ ] **Phase D** — Vision fallback tool (numbered-box screenshot overlay, wired into the retry ladder as last resort).
-- [ ] **Phase E** — Intent classifier module (replaces regex `_buildConnectorContext`, cached per-turn).
+- [x] **Phase E** — Intent signals: [src/js/navio-intent-router.js](../src/js/navio-intent-router.js) used from assistant (regex classifier); full replacement of `_buildConnectorContext` heuristics not required for parity.
 - [ ] **Phase F** — Live highlight overlay in the guest page + user-correction store for fingerprint overrides.
 - [ ] **Phase G** — "Agent is driving" status bar + tier-2 action cards with element thumbnail + optional PiP viewport.
 - [ ] **Benchmark** — Agent benchmark suite (Stripe checkout, Cloudflare, cookie-banner sites, shadow-DOM SPAs, React Select, Expedia multi-step, Gmail) run before/after every phase.
@@ -31,19 +31,19 @@ Navio is **the Chromium host**. We can dispatch real `Input.dispatchMouseEvent` 
 
 That is the differentiator. Everything below is how we spend it.
 
-## Current state (verified in code on 2026-04-20)
+## Current state (verified in code on 2026-05)
 
-| Area            | Today                                                                                                | Gap                                                           |
-| --------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| Click primitive | `element.click()` via `Runtime.callFunctionOn` ([a11y-tree.js:277-285](../electron/a11y-tree.js))    | Synthetic — blocked by many sites                             |
-| Typing          | `Input.insertText` ([a11y-tree.js:330](../electron/a11y-tree.js))                                    | Good, but no keydown/keyup events for React-controlled fields |
-| Targeting       | `ref_N` into a11y tree, text/aria/xy fallbacks ([navio-tools.js:59-83](../electron/navio-tools.js))  | Refs go stale on SPA re-render; no stable fingerprint         |
-| Verification    | None — tool returns `{success: true}` regardless of outcome                                          | Agent is blind after clicking                                 |
-| Shadow DOM      | `Accessibility.getFullAXTree` default depth, no pierce flag                                          | YouTube/Reddit/modern sites under-targeted                    |
-| Occlusion       | None                                                                                                 | Cookie banners silently eat clicks                            |
-| Intent routing  | Regex pile in `_buildConnectorContext` ([src/js/assistant.js](../src/js/assistant.js))               | Misses "email Sarah" -> Gmail                                 |
-| Skill memory    | None; every run starts fresh                                                                         | Every Expedia booking is a new exploration                    |
-| UX              | No "what is the agent about to click" affordance                                                     | User can't preempt mistakes                                   |
+| Area            | Today                                                                                                                                                       | Gap                                                                 |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Click primitive | Trusted `Input.dispatchMouseEvent` from box center; fallback `element.click()` when no box ([electron/a11y-tree.js](../electron/a11y-tree.js) `clickByRef`) | Rare off-tree targets; some canvas-only UIs still need xy         |
+| Typing          | Focus via trusted click + `Input.dispatchKeyEvent` / `insertText` + React value setter ([electron/a11y-tree.js](../electron/a11y-tree.js) `typeByRef`)       | Some custom editors still awkward                                   |
+| Targeting       | `ref_N` from multi-frame AX tree; text/aria/xy fallbacks in tools                                                                                          | Refs go stale on SPA re-render; fingerprint replay not productized |
+| Verification    | `snapshotPage` + `verifyAction` after ref **click** and **type_text**; `no_change_warning` / `page_change` ([electron/main.js](../electron/main.js))         | Non-ref click/type paths use older executor without same diff       |
+| Shadow DOM      | Per-frame AX trees aggregated in `getAccessibilityTreeOnce`                                                                                                 | Pierce depth / shadow quirks on some apps                           |
+| Occlusion       | `checkOcclusion` before trusted click returns `occluded_by` for overlay-like top hitters                                                                     | Heuristic may miss novel overlay patterns                           |
+| Intent routing  | `NavioIntentRouter` + assistant toggles / `_buildConnectorContext`                                                                                            | Regex misses edge phrasing until expanded                           |
+| Skill memory    | **Workflows** (named tool-step lists) + UI in palette / toolbar / assistant; `navio-skills.js` exists but **not** imported in main                        | Auto-learned skill replay not integrated                            |
+| UX              | Tiered confirmations, ledger; no live “about to click” highlight yet                                                                                       | Phase F/G                                                           |
 
 ## Architecture
 

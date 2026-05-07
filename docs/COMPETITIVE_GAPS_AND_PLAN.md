@@ -15,6 +15,9 @@
 - **Live integrations:** `live-connectors.js` and OAuth/key flows; Gmail API tools in `navio-tools.js` for agent paths.
 - **MCP:** **Real** `@modelcontextprotocol/sdk` wiring in `electron/navio-mcp.js` (stdio + SSE), tool discovery, proxy into the agent loop — not merely conceptual (note: ROADMAP Phase 4 wording and some UI copy lag this).
 - **UX:** Command palette, omnibox `?` intent, workspace/projects/tasks/notes, reading mode, screenshot tooling, NTP with AI + widgets, inline AI toolbar, voice **input** (Web Speech API).
+- **Agent loop (browse tools):** Trusted CDP `click` / `type` by ref ([electron/a11y-tree.js](../electron/a11y-tree.js)), **pre-click occlusion** via `checkOcclusion`, verify-after **click** and **type_text** (ref) with `no_change_warning` / `page_change` / field readback ([electron/main.js](../electron/main.js), [electron/navio-agent-verify.js](../electron/navio-agent-verify.js)); system prompt instructs the model to react to those signals ([electron/navio-system-prompt.txt](../electron/navio-system-prompt.txt)).
+- **Intent routing:** [src/js/navio-intent-router.js](../src/js/navio-intent-router.js) (assistant + connector prefetch hints).
+- **Saved workflows:** Merged `workflow-list` / `workflow-load` ([electron/main.js](../electron/main.js)); run from command palette, **URL bar workflows button**, **assistant header**, and Settings → Browser.
 - **Passwords:** Local password manager + autofill affordances in shell (`src/js/app.js`).
 - **Sync:** **Manual** encrypted profile export/import (`syncExportProfile` / `syncImportProfile` from settings) — not cloud continuous sync.
 - **Extensions:** Unpacked MV3 + Chrome Web Store ID install; documented Electron limitations ([EXTENSIONS.md](./EXTENSIONS.md)); “extensions use AI” is **future-facing** / default off.
@@ -31,14 +34,14 @@
 | Extension compatibility | Electron + `loadExtension` — many Web Store extensions fail; no Chrome-scale compatibility story. |
 | Safety net | Chrome’s Safe Browsing / update cadence / enterprise policy depth; Navio inherits Electron release and your own feature surface. |
 | Platform integrations | Casting, payments breadth, deep OS hooks, Android companion — generally out of scope for current Navio. |
-| Resource management | [PERFORMANCE.md](./PERFORMANCE.md) notes **tab discarding** as a future improvement; many-tab workloads favor Chrome-class discard. |
+| Resource management | **Tab discarding is shipped** (`tabDiscardIdleMinutes` in [electron/config-store.js](../electron/config-store.js), logic in [src/js/tabs.js](../src/js/tabs.js)); Chrome may still edge ahead on extreme tab counts and process model. |
 
 ### 2.2 Versus Perplexity Comet
 
 | Theme | Gap |
 |--------|-----|
 | Bundled “answer web” | **Closed (Apr 2026):** `web_search` now falls back to the **active LLM provider’s own web search** (OpenAI Responses `web_search`, Anthropic `web_search_20250305`, Gemini `google_search`) when no Perplexity key is present — users never need a second paid key. Perplexity is still preferred when connected (best citations). See `queryProviderWebSearch` in `electron/main.js`. |
-| Productized agents | Comet markets long-running task chains, shopping, heavy delegation; Navio has tools + connectors but not the same packaged “operator” UX and onboarding. |
+| Productized agents | Comet markets long-running task chains, shopping, heavy delegation; Navio has **saved workflows** (palette + URL bar + assistant) and tools + connectors, but not the same vendor-packaged “operator” onboarding and marketing. |
 | Mobile | Comet on Android/iOS; Navio is desktop Electron today. |
 | Voice | Navio: speech-to-text input; Comet emphasizes voice as a full modality (including multi-tab voice on mobile) — **TTS / voice replies** not first-class here. |
 | Citations UX | Backend can return citations (Perplexity API); UI could still be strengthened (clickable source chips, persistence in thread, citation preview). |
@@ -69,6 +72,13 @@ These are **epistemic** limits (not just missing buttons):
 - **ROADMAP Phase 4** — reconciled with real MCP SDK wiring (see `docs/ROADMAP.md`).
 - **Settings MCP hint** — uses `list-tools` + `get`; shows tool count when MCP is enabled.
 - **`src/index.html`** MCP copy — updated to describe SDK-based integration (not a stub).
+
+### 2.6 Automation: workflows vs `navio-skills.js`
+
+| Theme | Status |
+|--------|--------|
+| **Saved workflows** | **Primary replay path:** named sequences (legacy JSON + per-file tool steps), `workflow-list` / `workflow-load`, run from command palette, URL bar control, assistant header, Settings → Browser. |
+| **`electron/navio-skills.js`** | **Deferred:** module is not `require()`’d from `electron/main.js`; no parallel “auto-skills” layer until design merges with workflows to avoid two sources of truth. |
 
 ---
 
@@ -125,7 +135,7 @@ Principles: **minimal invasive changes**, preserve ADR-002 email MVP (no silent 
 
 | Task | Exit criterion |
 |------|----------------|
-| **Task chains / saved workflows:** surface `navio-workflows.js` in UI with clear confirmations for tier-2 steps. | User can replay multi-step flows with ledger entries. |
+| **Task chains / saved workflows:** surface `navio-workflows.js` in UI with clear confirmations for tier-2 steps. | **Done (surface):** palette entry “Saved workflows — run one”, dedicated workflow picker, URL bar + assistant header buttons; Settings → Browser unchanged. Ledger behavior unchanged. |
 | **Voice output:** TTS for last assistant message (opt-in, provider or OS). | Accessibility + parity with “voice assistant” browsers. |
 | **Second search backend** (e.g. Brave Search API or user key) as alternative to Perplexity-only — still citations-first. | Reduces vendor lock-in for live web. |
 | **Mobile:** only if scope expands — likely **separate project** (Capacitor/WebView or native); call out as long-term. | Roadmap explicitly states platform boundary. |
@@ -163,4 +173,4 @@ Phase D: workflows, voice out, second search backend, mobile (long-term)
 
 ---
 
-*Last updated: aligned with repository scan (Electron main, assistant, connectors, MCP, settings, performance notes).*
+*Last updated: 2026-05 — agent verify/occlusion/type verify, workflow discoverability, docs aligned with `main.js` / `a11y-tree.js` / `navio-agent-verify.js`.*

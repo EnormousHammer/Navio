@@ -1213,6 +1213,9 @@ class AssistantManagerClass {
 
     // ── Macro record button ────────────────────────────────────────────────
     document.getElementById('btn-record-macro')?.addEventListener('click', () => this._toggleRecording());
+    document.getElementById('btn-assistant-workflows')?.addEventListener('click', () => {
+      if (typeof CommandPalette !== 'undefined') CommandPalette.openWorkflowPicker();
+    });
     this._workflowRecording = false;
     this._recordedSteps = [];
 

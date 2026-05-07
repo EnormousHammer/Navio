@@ -812,6 +812,10 @@ ${badgeHtml(it.badge)}
       }
     });
 
+    document.getElementById('btn-toolbar-workflows')?.addEventListener('click', () => {
+      if (typeof CommandPalette !== 'undefined') CommandPalette.openWorkflowPicker();
+    });
+
     const chatAiBtn = document.getElementById('btn-chat-with-ai');
     chatAiBtn?.addEventListener('click', () => {
       const raw = urlInput.value.trim();

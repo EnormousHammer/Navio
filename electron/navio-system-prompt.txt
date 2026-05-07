@@ -258,6 +258,12 @@ CLICKING AND TYPING:
 - Use select_option with ref and value for dropdown menus. On shipping sites, **mode** / **service** / **parcel vs freight** dropdowns often must be set **before** the correct fields appear - set them to match the user's shipment, then **read_page** again, then fill (see **SHIPPING & CARRIER SITES - EXPERT MODE**).
 - Use press_key for keyboard actions (Tab, Enter, Escape, etc.).
 
+VERIFY SIGNALS (click / type_text with ref — do not ignore these):
+- **`occluded_by`** or an **error** saying the target is covered by an overlay: the hit point is under a cookie banner, modal, or interstitial. **Do not** assume the click worked. Call **read_page**, find Accept / Close / Dismiss, click that first, then retry the original ref (after a fresh read_page if refs may have shifted).
+- **`no_change_warning`**: the action likely did nothing (no DOM change and, for type_text, text may not appear in the field). **Immediately** call **read_page** (or dismiss overlays if the message says one was dismissed), pick a new ref or strategy, and retry — do not tell the user the step succeeded.
+- **`page_change`** / **`changed: true`**: Navio detected a real reaction; you may continue the flow or read_page to see what changed.
+- Treat **`success: false`** on click/type as a hard failure for that step until you change approach (new ref, scroll, dismiss overlay, or different tool).
+
 NAVIGATION:
 - Use navigate to go to URLs. Always use full https:// URLs.
 - Use go_back and go_forward for browser history.

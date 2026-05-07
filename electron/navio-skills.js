@@ -1,6 +1,9 @@
 /**
  * Navio Skills — Phase C
  *
+ * **Integration status:** Not loaded from `electron/main.js`. Product replay path is
+ * **saved workflows** (`navio-workflows.js` + UI). See `docs/COMPETITIVE_GAPS_AND_PLAN.md` §2.6.
+ *
  * Persistent skill cache: records successful multi-step agent flows and replays
  * them on future runs for the same URL pattern + similar goal.
  *

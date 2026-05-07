@@ -10,6 +10,8 @@ class CommandPaletteClass {
     this.activeIndex = 0;
     this.items = [];
     this.visible = false;
+    /** When true, list only saved workflows (+ back row). */
+    this._showWorkflowsOnly = false;
 
     if (!this.overlay || !this.input || !this.list) return;
 
@@ -59,6 +61,24 @@ class CommandPaletteClass {
 
   open() {
     if (!this.overlay) return;
+    this._showWorkflowsOnly = false;
+    this.visible = true;
+    this.overlay.classList.add('visible');
+    this.overlay.setAttribute('aria-hidden', 'false');
+    try {
+      window.navioEnsureShellOnTopIfWcv?.();
+    } catch {
+      /* ignore */
+    }
+    this.input.value = '';
+    void this.refresh();
+    setTimeout(() => this.input.focus(), 50);
+  }
+
+  /** Open palette filtered to saved workflows (run, or jump to Settings if none). */
+  openWorkflowPicker() {
+    if (!this.overlay) return;
+    this._showWorkflowsOnly = true;
     this.visible = true;
     this.overlay.classList.add('visible');
     this.overlay.setAttribute('aria-hidden', 'false');
@@ -75,6 +95,7 @@ class CommandPaletteClass {
   close() {
     if (!this.overlay) return;
     this.visible = false;
+    this._showWorkflowsOnly = false;
     this.overlay.classList.remove('visible');
     this.overlay.setAttribute('aria-hidden', 'true');
   }
@@ -156,12 +177,75 @@ class CommandPaletteClass {
             inp.focus();
           }
         }
+      },
+      {
+        id: 'saved-workflows',
+        label: 'Saved workflows — run one',
+        run: () => {
+          if (typeof CommandPalette !== 'undefined') CommandPalette.openWorkflowPicker();
+        }
       }
     ];
   }
 
   async refresh() {
     const rawTrim = (this.input.value || '').trim();
+
+    if (this._showWorkflowsOnly) {
+      const fq = rawTrim.toLowerCase();
+      this.items = [];
+      try {
+        const wl = await window.navio.workflowList();
+        const workflows = wl.workflows || [];
+        if (!workflows.length) {
+          this.items.push({
+            id: 'wf-open-settings',
+            label: 'No saved workflows — open Settings → Browser',
+            meta: 'hint',
+            run: () => {
+              if (typeof SettingsManager !== 'undefined') SettingsManager.open('browser');
+            }
+          });
+        } else {
+          workflows.forEach((wf) => {
+            const name = (wf.name || 'Workflow').toLowerCase();
+            if (!fq || name.includes(fq)) {
+              const nSteps = Array.isArray(wf.steps) ? wf.steps.length : Number(wf.steps) || 0;
+              this.items.push({
+                id: `wf-${wf.id || wf.name}`,
+                label: `Run workflow: ${wf.name || 'Untitled'}`,
+                meta: `${nSteps} step(s)`,
+                run: () => {
+                  if (typeof AssistantManager !== 'undefined') {
+                    AssistantManager.runWorkflowFromCommandPalette(wf);
+                  }
+                }
+              });
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('[CommandPalette] workflow list:', e);
+        this.items.push({
+          id: 'wf-load-err',
+          label: 'Could not load workflows — open Settings → Browser',
+          meta: 'error',
+          run: () => {
+            if (typeof SettingsManager !== 'undefined') SettingsManager.open('browser');
+          }
+        });
+      }
+      this.items.push({
+        id: 'wf-back-all',
+        label: '← Back to all commands & tabs',
+        meta: 'palette',
+        run: () => {}
+      });
+      this.activeIndex = 0;
+      this.render();
+      return;
+    }
+
     const askM = rawTrim.match(/^ai:\s*(.*)$/i);
     const isAsk = !!askM;
     const raw = rawTrim.toLowerCase();
@@ -259,6 +343,13 @@ class CommandPaletteClass {
   runActive() {
     const item = this.items[this.activeIndex];
     if (!item || !item.run) return;
+    if (item.id === 'wf-back-all') {
+      this._showWorkflowsOnly = false;
+      this.input.value = '';
+      void this.refresh();
+      setTimeout(() => this.input.focus(), 30);
+      return;
+    }
     this.close();
     try {
       item.run();
