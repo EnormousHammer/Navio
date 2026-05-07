@@ -5141,8 +5141,8 @@ button.ntp-ticker-sport--stream:focus-visible {
   border-left: 1px solid rgba(255, 255, 255, 0.08);
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   border-right: 1px solid rgba(0, 0, 0, 0.28);
-  /* Shadow inset to the panel only — negative X used to bleed a dark halo onto the page / vertical tab strip. */
-  box-shadow: -8px 0 28px rgba(0, 0, 0, 0.34), inset 1px 0 0 rgba(255, 255, 255, 0.04);
+  /* Inset only — negative-X shadows spill onto the page and read as a dirty edge band. */
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.04);
   display: flex;
   flex-direction: column;
   transition: width 350ms cubic-bezier(0.32, 0.72, 0, 1);
@@ -14668,7 +14668,7 @@ button:focus-visible,
   border-left-color: rgba(50, 70, 160, 0.12);
   border-top-color: rgba(50, 70, 160, 0.08);
   border-right-color: rgba(0, 0, 0, 0.22);
-  box-shadow: -8px 0 22px rgba(20, 30, 80, 0.1), inset 1px 0 0 rgba(255, 255, 255, 0.62);
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.62);
 }
 [data-theme="light"] .assistant-panel::before {
   background: linear-gradient(180deg, rgba(50, 70, 160, 0.03) 0%, transparent 100%);
