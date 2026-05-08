@@ -47,6 +47,37 @@ try {
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
+   * Cloudflare Turnstile and similar widgets nest `about:srcdoc` / cross-origin iframes
+   * with strict CSP + Trusted Types. The rest of this preload (MutationObservers, DOM
+   * tweaks, cosmetic filters) must NOT run there — it trips TrustedScript / inline CSP
+   * errors, yields 403 follow-ups, and surfaces as "Cannot find widget" / verify loops.
+   * Same-origin subframes still get hooks (embedded login boxes on the site origin).
+   */
+  function _navioGuestShouldSkipRestOfPreload() {
+    try {
+      const href = String((typeof location !== 'undefined' && location.href) || '').toLowerCase();
+      const proto = String((typeof location !== 'undefined' && location.protocol) || '').toLowerCase();
+      if (href === 'about:srcdoc') return true;
+      if (proto === 'data:' || proto === 'blob:') return true;
+      if (typeof window !== 'undefined' && window !== window.top) {
+        try {
+          if (location.origin === window.top.location.origin) return false;
+        } catch {
+          /* cross-origin iframe */
+        }
+        return true;
+      }
+    } catch {
+      return true;
+    }
+    return false;
+  }
+
+  if (_navioGuestShouldSkipRestOfPreload()) {
+    throw new Error('navio_site_compat_skip_preload');
+  }
+
+  /**
    * In classic <webview> mode, process.guestInstanceId is set to a non-zero integer.
    * In WebContentsView (WCV) mode, there is no embedding webview, so it is falsy.
    * sendToHost() delivers directly in webview mode but silently drops messages in WCV mode.
