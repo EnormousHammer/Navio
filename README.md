@@ -41,8 +41,8 @@ Artifacts (64-bit Windows):
 
 | Output | Path | Use |
 |--------|------|-----|
-| **Installer** | `out/make/squirrel.windows/x64/Navio-1.0.0 Setup.exe` | Run on each PC to install (Start menu, auto-updater friendly). |
-| **Portable ZIP** | `out/make/zip/win32/x64/Navio-win32-x64-1.0.0.zip` | Unzip anywhere and run `navio-browser.exe` — good for USB or “no installer” machines. |
+| **Installer** | `out/make/squirrel.windows/x64/Navio-1.0.1 Setup.exe` | Run on each PC to install (Start menu, auto-updater friendly). |
+| **Portable ZIP** | `out/make/zip/win32/x64/Navio-win32-x64-1.0.1.zip` | Unzip anywhere and run `navio-browser.exe` — good for USB or “no installer” machines. |
 | **Unpacked folder** | `out/Navio-win32-x64/` | Copy the whole folder to another PC (same as ZIP, but not compressed). |
 
 Copy the **Setup.exe** or **ZIP** to a USB drive or cloud share; each target PC must match **Windows x64**. Building for macOS or Linux requires running `npm run build` on those platforms (Forge makers are configured per OS).

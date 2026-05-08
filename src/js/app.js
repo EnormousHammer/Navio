@@ -1119,6 +1119,23 @@ ${badgeHtml(it.badge)}
 
   _openNavHistoryMenu(anchor, webContentsId, entries) {
     this._closeNavHistoryMenu();
+    // Full-window hit target: mousedown inside <webview> never reaches this document,
+    // so a transparent backdrop (host DOM) is required to dismiss when clicking the page.
+    const backdrop = document.createElement('div');
+    backdrop.className = 'nav-history-menu-backdrop';
+    backdrop.setAttribute('aria-hidden', 'true');
+    const closeMenu = () => this._closeNavHistoryMenu();
+    backdrop.addEventListener(
+      'pointerdown',
+      (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        closeMenu();
+      },
+      true
+    );
+    document.body.appendChild(backdrop);
+
     const menu = document.createElement('div');
     menu.className = 'nav-history-menu';
     menu.setAttribute('role', 'menu');
@@ -1170,23 +1187,19 @@ ${badgeHtml(it.badge)}
     menu.style.left = `${Math.max(8, left)}px`;
     menu.style.top = `${rect.bottom + 4}px`;
 
-    const offClick = (ev) => {
-      if (!menu.contains(ev.target)) this._closeNavHistoryMenu();
+    const offKey = (ev) => {
+      if (ev.key === 'Escape') this._closeNavHistoryMenu();
     };
-    const offKey = (ev) => { if (ev.key === 'Escape') this._closeNavHistoryMenu(); };
-    setTimeout(() => {
-      document.addEventListener('mousedown', offClick, { once: true, capture: true });
-      document.addEventListener('keydown', offKey, { once: true });
-    }, 0);
-    this._navHistoryMenu = { el: menu, offClick, offKey };
+    window.addEventListener('keydown', offKey, true);
+    this._navHistoryMenu = { el: menu, backdrop, offKey };
   }
 
   _closeNavHistoryMenu() {
     const m = this._navHistoryMenu;
     if (!m) return;
+    try { m.backdrop?.remove(); } catch (_) { /* ignore */ }
     try { m.el.remove(); } catch (_) { /* ignore */ }
-    if (m.offClick) document.removeEventListener('mousedown', m.offClick, true);
-    if (m.offKey) document.removeEventListener('keydown', m.offKey);
+    if (m.offKey) window.removeEventListener('keydown', m.offKey, true);
     this._navHistoryMenu = null;
   }
 

@@ -411,6 +411,13 @@
 /* ---------------------------------------------
    3) NAV ARROW HISTORY DROPDOWN
    --------------------------------------------- */
+.nav-history-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50000;
+  background: rgba(0, 0, 0, 0.04);
+  cursor: default;
+}
 .nav-history-menu {
   position: fixed;
   z-index: 99999;
