@@ -1444,8 +1444,17 @@
               </div>
             </div>
             <div class="settings-section">
+              <h3>Documentation</h3>
+              <p class="settings-inline-hint">Open the policy and notice documents in your default browser.</p>
+              <div class="setting-row setting-row-actions" style="flex-wrap:wrap;gap:8px">
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-about-doc-privacy">Privacy</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-about-doc-security">Security</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-about-doc-third-party">Third-party notices</button>
+              </div>
+            </div>
+            <div class="settings-section">
               <h3>Updates</h3>
-              <p class="settings-inline-hint">Installed builds (Setup or portable from a release) can check for newer versions when a publisher configures an update feed. Development runs from <code>npm start</code> do not receive auto-updates.</p>
+              <p class="settings-inline-hint">Installed builds from a <strong>GitHub Release</strong> check for updates on this app’s public repository. Development runs from <code>npm start</code> do not receive auto-updates.</p>
               <div class="setting-row setting-row-actions" style="flex-wrap:wrap;gap:8px;align-items:center">
                 <button type="button" class="btn btn-secondary" id="btn-check-updates">Check for updates</button>
                 <button type="button" class="btn btn-primary" id="btn-install-update" style="display:none">Restart &amp; install update</button>

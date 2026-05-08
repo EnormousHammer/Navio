@@ -47,6 +47,8 @@ Artifacts (64-bit Windows):
 
 Copy the **Setup.exe** or **ZIP** to a USB drive or cloud share; each target PC must match **Windows x64**. Building for macOS or Linux requires running `npm run build` on those platforms (Forge makers are configured per OS).
 
+**GitHub Releases (CI):** Pushing a version tag matching `v*` (for example `v1.0.0` after updating `package.json` `version`) runs the **Release** workflow (`.github/workflows/release.yml`): it tests, builds Windows and macOS artifacts (optionally signed when repository secrets are set), uploads them to a **GitHub Release**, and enables **in-app updates** for installed builds via `electron-updater`. Optional signing secrets are documented in [docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md).
+
 ## AI Setup
 
 1. Launch Navio

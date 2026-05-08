@@ -1863,6 +1863,26 @@ ipcMain.handle('navio-report-diagnostics', (_event, payload) => {
   return navioCrashReporter.captureRendererDiagnostics(payload);
 });
 
+/** Parse owner/repo from package.json repository for electron-updater GitHub provider. */
+function navioParseGitHubRepoFromPackage() {
+  try {
+    const pkgPath = path.join(__dirname, '..', 'package.json');
+    const raw = fs.readFileSync(pkgPath, 'utf8');
+    const pkg = JSON.parse(raw);
+    const repoField = pkg && pkg.repository;
+    const url = typeof repoField === 'string' ? repoField : (repoField && repoField.url);
+    if (!url || typeof url !== 'string') return null;
+    const m = url.match(/github\.com[/:]([^/]+)\/([^/#?]+)/i);
+    if (!m) return null;
+    const owner = m[1];
+    const repo = m[2].replace(/\.git$/i, '');
+    return owner && repo ? { owner, repo } : null;
+  } catch (e) {
+    console.warn('[navio] Could not read package.json for update feed:', e.message);
+    return null;
+  }
+}
+
 // Wires electron-updater listeners exactly once per session. Safe to call
 // multiple times — we mark the module object so we don't stack duplicate
 // handlers (which would fire renderer IPC events N times each).
@@ -1875,6 +1895,20 @@ function navioEnsureAutoUpdaterWired() {
     return null;
   }
   if (autoUpdater.__navioWired) return autoUpdater;
+
+  try {
+    const gh = navioParseGitHubRepoFromPackage();
+    if (gh) {
+      autoUpdater.setFeedURL({
+        provider: 'github',
+        owner: gh.owner,
+        repo: gh.repo
+      });
+    }
+  } catch (e) {
+    console.warn('[navio] electron-updater setFeedURL failed:', e.message);
+  }
+
   autoUpdater.__navioWired = true;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;

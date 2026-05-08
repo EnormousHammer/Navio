@@ -3,6 +3,14 @@
   "version": "1.0.0",
   "description": "Navio - Futuristic AI-powered browser with built-in intelligence",
   "main": "electron/main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EnormousHammer/Navio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/EnormousHammer/Navio/issues"
+  },
+  "homepage": "https://github.com/EnormousHammer/Navio#readme",
   "scripts": {
     "test": "node --test ./test/*.test.js",
     "test:e2e": "node --test ./e2e/*.test.js",

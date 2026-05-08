@@ -1,10 +1,16 @@
-name: Build
+# Tag-driven release: build signed (optional) artifacts on Windows + macOS, then
+# publish to GitHub Releases in two steps so the second job attaches assets to the
+# same release the first job created (avoids races on empty merged trees).
+
+name: Release
 
 on:
   push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master]
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
   test:
@@ -34,7 +40,10 @@ jobs:
           PFX_B64: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
           PFX_PASS: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:PFX_B64)) { exit 0 }
+          if ([string]::IsNullOrWhiteSpace($env:PFX_B64)) {
+            Write-Host "WINDOWS_CERTIFICATE_PFX_BASE64 not set — building unsigned Windows artifacts."
+            exit 0
+          }
           $out = Join-Path $env:RUNNER_TEMP "navio-sign.pfx"
           [IO.File]::WriteAllBytes($out, [Convert]::FromBase64String($env:PFX_B64))
           Add-Content -Path $env:GITHUB_ENV -Value "WINDOWS_CERTIFICATE_FILE=$out"
@@ -66,3 +75,39 @@ jobs:
         with:
           name: navio-mac-make
           path: out/make
+
+  publish-windows:
+    needs: [build-windows]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: navio-windows-make
+          path: out/make
+      - run: npx electron-forge publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-mac:
+    needs: [build-mac, publish-windows]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: navio-mac-make
+          path: out/make
+      - run: npx electron-forge publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

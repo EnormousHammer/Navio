@@ -66,5 +66,17 @@ module.exports = {
     },
   ],
 
+  publishers: [
+    {
+      name: '@electron-forge/publisher-github',
+      config: {
+        repository: { owner: 'EnormousHammer', name: 'Navio' },
+        draft: false,
+        prerelease: false,
+        generateReleaseNotes: true
+      }
+    }
+  ],
+
   plugins: [],
 };

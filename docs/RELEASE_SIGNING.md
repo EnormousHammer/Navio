@@ -11,7 +11,22 @@ Signing and notarization are **optional in local dev** but expected for **public
    - `WINDOWS_CERTIFICATE_FILE` — absolute path to the `.pfx` file  
    - `WINDOWS_CERTIFICATE_PASSWORD` — password string  
 
-4. **Electron Forge** passes these through `packagerConfig` as `certificateFile` / `certificatePassword` when the file exists (see `forge.config.js` in the repo once Phase B code is applied).
+4. **Electron Forge** passes these through `packagerConfig` as `certificateFile` / `certificatePassword` when the file exists (see `forge.config.js`).
+
+### GitHub Actions (`.github/workflows/build.yml` and `release.yml`)
+
+Store the following as **repository secrets** (Settings → Secrets and variables → Actions). Omit any you do not use; builds then ship unsigned for that platform.
+
+| Secret | Used for |
+|--------|----------|
+| `WINDOWS_CERTIFICATE_PFX_BASE64` | Base64 of the `.pfx` file (Windows Authenticode). |
+| `WINDOWS_CERTIFICATE_PASSWORD` | Password for that PFX. |
+| `APPLE_SIGNING_IDENTITY` | Exact name of the “Developer ID Application: …” identity on the macOS runner. |
+| `APPLE_ID` | Apple ID email for notarytool. |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for notarization. |
+| `APPLE_TEAM_ID` | 10-character Apple Developer Team ID. |
+
+On Windows runners, the workflow decodes `WINDOWS_CERTIFICATE_PFX_BASE64` into a temp `.pfx` and sets `WINDOWS_CERTIFICATE_FILE` and `WINDOWS_CERTIFICATE_PASSWORD` for Forge. macOS jobs pass the `APPLE_*` variables into `npm run make` so `osxSign` / `osxNotarize` in `forge.config.js` activate when all required values are present.
 
 ## macOS (Developer ID + notarytool)
 

@@ -27,8 +27,14 @@ const SETTINGS_PANEL_RAIL = {
   privacy: 'Ad blocking, pop-ups, trackers, cookies, saved AI memory, and clearing site data.',
   integrations: 'OAuth, Gmail sync, Perplexity, Brave Search, MCP servers, and connected services.',
   passwords: 'Saved logins for this profile: review, copy, or remove entries Navio can autofill.',
-  about: 'Version, update checks, and a compact list of keyboard shortcuts for the shell.'
+  about: 'Version, documentation links, update checks, and a compact list of keyboard shortcuts for the shell.'
 };
+
+const ABOUT_DOC_LINKS = [
+  ['btn-about-doc-privacy', 'https://github.com/EnormousHammer/Navio/blob/main/docs/PRIVACY.md'],
+  ['btn-about-doc-security', 'https://github.com/EnormousHammer/Navio/blob/main/docs/SECURITY_THREAT_MODEL.md'],
+  ['btn-about-doc-third-party', 'https://github.com/EnormousHammer/Navio/blob/main/docs/THIRD_PARTY_NOTICES.md']
+];
 
 class SettingsManagerClass {
   constructor() {
@@ -361,6 +367,16 @@ class SettingsManagerClass {
         this.close(true);
       }
     });
+
+    for (const [btnId, href] of ABOUT_DOC_LINKS) {
+      const docBtn = document.getElementById(btnId);
+      if (docBtn && !docBtn._navioBound) {
+        docBtn._navioBound = true;
+        docBtn.addEventListener('click', () => {
+          window.navio.openExternal(href).catch(() => {});
+        });
+      }
+    }
 
     if (this.elements.btnCheckUpdates && !this.elements.btnCheckUpdates._navioBound) {
       this.elements.btnCheckUpdates._navioBound = true;
