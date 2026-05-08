@@ -178,11 +178,10 @@ function navioPreserveResponseHeadersForBotChecks(url) {
     if (h === 'cloudflare.com' || h.endsWith('.cloudflare.com')) {
       return true;
     }
-    // Carrier / enterprise identity hosts often sit behind Akamai (or similar) bot
-    // middleware. Stripping COOP/CORP/CSP here can break session establishment and
-    // surface as 403 "Access Denied" in Electron <webview> — same class of issue as
-    // Cloudflare challenges (see onHeadersReceived below).
-    const preserveOrigins = ['ups.com', 'fedex.com', 'usps.com', 'dhl.com'];
+    // Carrier / logistics zones: Akamai-style identity walls or Cloudflare Turnstile +
+    // Trusted Types on interstitials. Stripping COOP/CORP/CSP breaks session establishment
+    // (403 / "Refused to execute inline script") — same class of issue as CF challenges.
+    const preserveOrigins = ['ups.com', 'fedex.com', 'usps.com', 'dhl.com', 'purolator.com'];
     for (const root of preserveOrigins) {
       if (h === root || h.endsWith('.' + root)) return true;
     }
@@ -300,7 +299,10 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
       const drop = softCrossOrigin ? dropSoft : dropHard;
       for (const key of Object.keys(headers)) {
         if (drop.includes(key.toLowerCase())) delete headers[key];
-        if (key.toLowerCase() === 'content-security-policy') {
+        // Never rewrite CSP when using the soft embed policy. Cloudflare interstitials
+        // bind nonces + Trusted Types to the exact CSP header; trimming frame-ancestors
+        // breaks script-src and surfaces as "Refused to execute inline script" / 403 loops.
+        if (!softCrossOrigin && key.toLowerCase() === 'content-security-policy') {
           headers[key] = headers[key].map((v) => v.replace(/frame-ancestors[^;]*(;|$)/gi, '').trim());
         }
       }
