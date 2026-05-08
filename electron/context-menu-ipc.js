@@ -84,6 +84,16 @@ function registerContextMenuIpc(ipcMain, { getMainWindow, loadConfig, app }) {
             '&u=' +
             encodeURIComponent(pageUrl);
           menu.append(new MenuItem({ label: 'Translate page', click: () => openInNewTab(trUrl) }));
+          menu.append(new MenuItem({
+            label: 'Open page in default browser',
+            click: () => {
+              try {
+                shell.openExternal(pageUrl);
+              } catch {
+                /* ignore */
+              }
+            }
+          }));
           menu.append(new MenuItem({ type: 'separator' }));
         }
       } catch { /* ignore */ }
