@@ -3925,8 +3925,8 @@ ipcMain.handle('navio-tts', async (event, { text, voice, model, speed }) => {
     const apiKey = secureConfig.getApiKey(app.getPath('userData'));
     if (!apiKey) return { ok: false, error: 'No API key configured. Add your OpenAI key in Settings.' };
 
-    // tts-1 is much lower-latency than tts-1-hd; quality is still strong for assistant read-aloud.
-    const ttsModel = model || 'tts-1';
+    // tts-1-hd: smoother prosody (fewer choppy syllables) than tts-1; latency is acceptable with chunking.
+    const ttsModel = model || 'tts-1-hd';
     let ttsVoice = String(voice || cfg.ttsVoice || 'nova')
       .trim()
       .toLowerCase();
@@ -3936,7 +3936,7 @@ ipcMain.handle('navio-tts', async (event, { text, voice, model, speed }) => {
 
     const fromCfg = typeof cfg.ttsSpeed === 'number' && Number.isFinite(cfg.ttsSpeed) ? cfg.ttsSpeed : NaN;
     const fromArg = speed != null ? Number(speed) : NaN;
-    const rawSpeed = Number.isFinite(fromArg) ? fromArg : Number.isFinite(fromCfg) ? fromCfg : 0.94;
+    const rawSpeed = Number.isFinite(fromArg) ? fromArg : Number.isFinite(fromCfg) ? fromCfg : 1.0;
     const ttsSpeed = Math.min(4, Math.max(0.25, rawSpeed));
 
     const endpoint = (cfg.customEndpoint || 'https://api.openai.com').replace(/\/v1.*$/, '') + '/v1/audio/speech';

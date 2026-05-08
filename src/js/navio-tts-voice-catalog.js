@@ -71,4 +71,27 @@
     }
     selectEl.value = norm;
   };
+
+  /**
+   * Normalize text for English read-aloud: smart punctuation → ASCII, strip
+   * combining marks (accents → base letters), drop non-Latin scripts / emoji so
+   * OpenAI TTS and Web Speech stay in English.
+   */
+  global.navioTtsEnglishLatinOnly = function (s) {
+    let t = String(s || '');
+    if (!t) return '';
+    t = t
+      .replace(/[\u2018\u2019\u201a\u201b]/g, "'")
+      .replace(/[\u201c\u201d\u201e\u201f]/g, '"')
+      .replace(/[\u2013\u2014\u2212]/g, '-')
+      .replace(/\u2026/g, '...')
+      .replace(/[\u00a0\u2000-\u200a\u202f\u205f\u3000]/g, ' ');
+    try {
+      t = t.normalize('NFKD').replace(/\p{M}+/gu, '');
+    } catch {
+      /* ignore — engines without Unicode property escapes */
+    }
+    t = t.replace(/[^\t\n\r\x20-\x7e]/g, ' ');
+    return t.replace(/\s+/g, ' ').trim();
+  };
 })(typeof window !== 'undefined' ? window : globalThis);

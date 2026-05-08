@@ -239,10 +239,10 @@ const NAVIO_VOICE_CONV_VAD_EMA_ALPHA = 0.38;
 const NAVIO_VOICE_CONV_AFTER_TTS_MS = 200;
 /** Pause before auto TTS (voice conversation + Settings → read aloud) so the first syllable is not immediate. */
 const NAVIO_ASSISTANT_AUTO_TTS_START_DELAY_MS = 2500;
-/** Voice-conversation TTS: first chunk target size (chars) — smaller first request = faster time-to-first-audio. */
-const NAVIO_VOICE_TTS_FIRST_CHUNK = 320;
-/** Voice-conversation TTS: max chars per subsequent chunk (pipelined while previous plays). */
-const NAVIO_VOICE_TTS_CHUNK_MAX = 520;
+/** Voice-conversation TTS: first chunk target size — balance time-to-first-audio vs fewer seams. */
+const NAVIO_VOICE_TTS_FIRST_CHUNK = 560;
+/** Voice-conversation TTS: max chars per chunk (fewer, longer clips = steadier pacing than 320/520). */
+const NAVIO_VOICE_TTS_CHUNK_MAX = 2000;
 /** Brief delay after the user stops speaking before the first “thinking” line (avoids clipping the tail of their audio). */
 const NAVIO_VOICE_CONV_THINKING_NUDGE_DELAY_MS = 420;
 /** Minimum gap between spoken tool-progress / reasoning nudges in voice conversation (ms). */
@@ -407,7 +407,8 @@ function navioSplitTtsChunks(text, maxChunk) {
     tryDelim('. ');
     tryDelim('? ');
     tryDelim('! ');
-    if (breakEnd < maxChunk * 0.22) tryDelim('; ');
+    if (breakEnd < maxChunk * 0.32) tryDelim('; ');
+    if (breakEnd < maxChunk * 0.28) tryDelim(', ');
     if (breakEnd < maxChunk * 0.18) {
       const nl = slice.lastIndexOf('\n');
       if (nl >= maxChunk * 0.2) breakEnd = nl + 1;
@@ -444,11 +445,11 @@ function navioVoiceConvTtsChunkPlan(text) {
   return sub.length ? [...sub, ...rough.slice(1)] : rough;
 }
 
-/** Ellipses after ? / ! so TTS takes a short breath before the next clause (voice mode). */
+/** Light comma pause after ? / ! so the next clause flows (avoids “dot dot dot” TTS glitches). */
 function navioAddSpokenBreathingPauses(s) {
   const t = String(s || '').trim();
   if (!t) return t;
-  return t.replace(/([!?])\s+(?=[A-Z0-9"'(\[])/g, '$1 … ');
+  return t.replace(/([!?])\s+(?=[A-Z0-9"'(\[])/g, '$1, ');
 }
 /** Non-text files: send as base64 for models that accept inline bytes (Gemini, etc.). */
 const NAVIO_ASSISTANT_INLINE_MAX_BYTES = 4 * 1024 * 1024;
@@ -3647,7 +3648,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       }
       await this._playOpenAITtsClip(result, mySession, btn, isLast);
       if (this._voiceConvActive && !isLast) {
-        await new Promise((r) => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, 28));
       }
     }
     return true;
@@ -3669,7 +3670,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     }
     window.speechSynthesis.cancel();
     const utt = new SpeechSynthesisUtterance(plain);
-    const voices = window.speechSynthesis.getVoices();
+    utt.lang = 'en-US';
+    const voices = window.speechSynthesis.getVoices().filter((v) => /^en/i.test(v.lang || ''));
     const isFemalePref =
       typeof window.navioTtsVoiceFemalePreferred === 'function'
         ? window.navioTtsVoiceFemalePreferred(voicePref)
@@ -3686,12 +3688,13 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (!isFemalePref && isMale) score += 6;
       return score;
     };
-    if (voices.length > 0) {
-      const sorted = voices.slice().sort((a, b) => scoreVoice(b) - scoreVoice(a));
+    const voicePool = voices.length ? voices : window.speechSynthesis.getVoices();
+    if (voicePool.length > 0) {
+      const sorted = voicePool.slice().sort((a, b) => scoreVoice(b) - scoreVoice(a));
       const best = sorted[0];
       if (best) utt.voice = best;
     }
-    const baseRate = this._voiceConvActive ? 1.0 : 0.97;
+    const baseRate = 1.0;
     utt.rate =
       typeof speechOpts.webSpeechRate === 'number' && Number.isFinite(speechOpts.webSpeechRate)
         ? speechOpts.webSpeechRate
@@ -3738,6 +3741,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   async _speakText(text, btn = null, opts = {}) {
     if (!text) return;
     let plain = this._prepareSpeechText(this._stripMarkdown(text));
+    if (typeof window.navioTtsEnglishLatinOnly === 'function') {
+      plain = window.navioTtsEnglishLatinOnly(plain);
+    }
     if (!plain) return;
     if (this._voiceConvActive && opts.humanPace !== false) {
       plain = navioAddSpokenBreathingPauses(plain);
@@ -3757,22 +3763,21 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       opts.speed != null && Number.isFinite(Number(opts.speed))
         ? Number(opts.speed)
         : this._voiceConvActive
-          ? opts.workNudge
-            ? 1.0
-            : 1.03
+          ? 1.0
           : undefined;
     const speechOpts = {};
     if (opts.webSpeechRate != null && Number.isFinite(Number(opts.webSpeechRate))) {
       speechOpts.webSpeechRate = Number(opts.webSpeechRate);
-    } else if (this._voiceConvActive) {
-      speechOpts.webSpeechRate = opts.workNudge ? 0.95 : 1.0;
+    } else {
+      speechOpts.webSpeechRate = 1.0;
     }
 
     const chunkPlan = navioVoiceConvTtsChunkPlan(plain.slice(0, 4000));
+    const chunkMinChars = this._voiceConvActive ? 640 : 2200;
     const useChunkedOpenAi =
       window.navio?.navioTTS &&
       !opts.workNudge &&
-      plain.length > NAVIO_VOICE_TTS_FIRST_CHUNK &&
+      plain.length > chunkMinChars &&
       chunkPlan.length > 1;
 
     if (useChunkedOpenAi) {

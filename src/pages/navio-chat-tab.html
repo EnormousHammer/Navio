@@ -2794,14 +2794,17 @@
 
   async function speakText(text, onDone) {
     stopTTS();
-    const plain = stripMarkdownForTTS(text).slice(0, 4000);
+    let plain = stripMarkdownForTTS(text).slice(0, 4000);
+    if (typeof window.navioTtsEnglishLatinOnly === 'function') {
+      plain = window.navioTtsEnglishLatinOnly(plain);
+    }
     if (!plain) { if (onDone) onDone(); return; }
 
     // Try OpenAI TTS (human-quality voices)
     var _ttsApi = navioChatTabApi();
     if (_ttsApi && _ttsApi.navioTTS) {
       try {
-        const result = await _ttsApi.navioTTS({ text: plain, voice: _ttsVoicePref, speed: 0.92 });
+        const result = await _ttsApi.navioTTS({ text: plain, voice: _ttsVoicePref });
         if (result && result.ok && result.audio) {
           const dataUrl = 'data:' + (result.mimeType || 'audio/mpeg') + ';base64,' + result.audio;
           const audio = new Audio(dataUrl);
@@ -2818,11 +2821,13 @@
     // Fallback: Web Speech API
     if (!window.speechSynthesis) { if (onDone) onDone(); return; }
     const utt = new SpeechSynthesisUtterance(plain);
+    utt.lang = 'en-US';
     const isFemalePref =
       typeof window.navioTtsVoiceFemalePreferred === 'function'
         ? window.navioTtsVoiceFemalePreferred(_ttsVoicePref)
         : _ttsVoicePref === 'nova' || _ttsVoicePref === 'shimmer' || _ttsVoicePref === 'alloy';
-    const voices = window.speechSynthesis.getVoices();
+    var voices = window.speechSynthesis.getVoices().filter(function (v) { return /^en/i.test(v.lang || ''); });
+    if (!voices.length) voices = window.speechSynthesis.getVoices();
     if (voices.length > 0) {
       const score = function(v) {
         let s = 0;
@@ -2838,7 +2843,7 @@
       const best = voices.slice().sort(function(a,b){ return score(b)-score(a); })[0];
       if (best) utt.voice = best;
     }
-    utt.rate = 0.86;
+    utt.rate = 1.0;
     utt.pitch = isFemalePref ? 1.05 : 0.90;
     utt.volume = 1.0;
     utt.addEventListener('end', function() { if (onDone) onDone(); });

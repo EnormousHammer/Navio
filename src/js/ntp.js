@@ -3452,10 +3452,16 @@ const NTP = (() => {
 
   function _ntpSpeak(text) {
     if (!window.speechSynthesis) return;
-    const plain = text.replace(/<[^>]+>/g, '').replace(/[#*`_~]/g, '').trim();
+    let plain = text.replace(/<[^>]+>/g, '').replace(/[#*`_~]/g, '').trim();
+    if (typeof window.navioTtsEnglishLatinOnly === 'function') {
+      plain = window.navioTtsEnglishLatinOnly(plain);
+    }
     if (!plain) return;
     window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(new SpeechSynthesisUtterance(plain));
+    const utt = new SpeechSynthesisUtterance(plain);
+    utt.lang = 'en-US';
+    utt.rate = 1.0;
+    window.speechSynthesis.speak(utt);
   }
 
   // ── Background dim slider ─────────────────────────────────────────────────
