@@ -1,6 +1,6 @@
-# Tag-driven builds only: CI does not create GitHub Releases or upload release assets.
-# Download workflow artifacts from the run, then attach them to a release manually (or
-# run `npm run publish` locally with a PAT if you use Forge’s GitHub publisher).
+# Tag v* → test, build Windows + macOS, publish to GitHub Releases via Electron Forge.
+# Requires repo setting: Settings → Actions → General → Workflow permissions →
+# "Read and write permissions" (so GITHUB_TOKEN can upload release assets).
 
 name: Release
 
@@ -8,6 +8,9 @@ on:
   push:
     tags:
       - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
   test:
@@ -72,3 +75,41 @@ jobs:
         with:
           name: navio-mac-make
           path: out/make
+
+  # Windows publish first (creates the GitHub Release for this tag).
+  publish-windows:
+    needs: [build-windows]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: navio-windows-make
+          path: out/make
+      - run: npx electron-forge publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # macOS publish second (adds assets to the same release).
+  publish-mac:
+    needs: [build-mac, publish-windows]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: navio-mac-make
+          path: out/make
+      - run: npx electron-forge publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

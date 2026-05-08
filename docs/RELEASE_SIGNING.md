@@ -28,6 +28,16 @@ Store the following as **repository secrets** (Settings → Secrets and variable
 
 On Windows runners, the workflow decodes `WINDOWS_CERTIFICATE_PFX_BASE64` into a temp `.pfx` and sets `WINDOWS_CERTIFICATE_FILE` and `WINDOWS_CERTIFICATE_PASSWORD` for Forge. macOS jobs pass the `APPLE_*` variables into `npm run make` so `osxSign` / `osxNotarize` in `forge.config.js` activate when all required values are present.
 
+### Enable CI to publish GitHub Releases (one-time)
+
+The **Release** workflow (`.github/workflows/release.yml`) uses `GITHUB_TOKEN` with `permissions: contents: write` to run **`electron-forge publish`**. Your repository must allow that token to write contents:
+
+1. GitHub → **Settings** → **Actions** → **General**.
+2. Under **Workflow permissions**, choose **Read and write permissions**.
+3. Save.
+
+If this stays on **Read repository contents and packages permissions** only, publish steps will fail when creating or updating the release. Organization owners can enforce a default; this repo may need an exception.
+
 ## macOS (Developer ID + notarytool)
 
 1. Enroll in the **Apple Developer Program**.
@@ -42,10 +52,10 @@ On Windows runners, the workflow decodes `WINDOWS_CERTIFICATE_PFX_BASE64` into a
 
 5. Forge `packagerConfig` should set `osxSign.identity` when `APPLE_SIGNING_IDENTITY` is set, and `osxNotarize` with `tool: 'notarytool'` when Apple ID env vars are set.
 
-## Publishing release assets (not done in CI)
+## Publishing release assets
 
-- **CI** (`.github/workflows/release.yml` on tag `v*`) only produces **workflow artifacts**. Create the GitHub Release yourself and upload the built `Setup.exe`, ZIPs, Squirrel `RELEASES` / `.nupkg` if you use them, and macOS ZIPs from those artifacts.
-- **Optional — local Forge publish:** On a machine with network access and a token that has **`contents: write`** on the repo, run `npm run publish` (or `npx electron-forge publish`) so **`@electron-forge/publisher-github`** uploads to a release. That uses your environment (for example `GH_TOKEN` / `GITHUB_TOKEN`), not the tag workflow.
+- **CI** (`.github/workflows/release.yml` on tag `v*`) runs **`npx electron-forge publish`** twice (Windows job, then macOS job) so all built assets attach to the same **GitHub Release**. Requires workflow **read/write** permission (see above).
+- **Fallback — local publish:** With `GH_TOKEN` or `GITHUB_TOKEN` exported and **`contents: write`**, run `npm run publish` from a machine that has the `out/make` outputs you want to ship.
 
 ## Operational notes
 
