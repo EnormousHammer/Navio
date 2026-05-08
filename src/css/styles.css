@@ -7384,6 +7384,12 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   border-radius: 12px;
 }
 
+/* Browser takeover: keep keystrokes off the sidebar composer (controlled tab owns input). */
+.assistant-input-area--agent-locked #assistant-input {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .assistant-attachment-row {
   display: flex;
   flex-wrap: wrap;

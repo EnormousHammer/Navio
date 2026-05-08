@@ -777,6 +777,10 @@ class AssistantManagerClass {
     this._takeoverPausedResolve = null;
     /** @type {(() => void) | null} */
     this._takeoverAuthResume = null;
+    /** While true, sidebar composer is read-only (browser takeover — keystrokes must not land here). */
+    this._composerTakeoverLocked = false;
+    /** Original `#assistant-input` placeholder; restored when takeover ends. */
+    this._composerPlaceholderBackup = null;
     this._agentLogEntries = [];
     this._lastProactiveUrlKey = '';
     /** When set, agent activity + final reply render in the full-page chat webview. */
@@ -912,7 +916,7 @@ class AssistantManagerClass {
    * The user can then edit the text and re-send via the normal send path.
    */
   _editUserMessage(msgEl, originalText) {
-    if (this._busy) return;
+    if (this._busy || this._takeoverMode) return;
     try {
       const key = this._turnConversationKey ?? this._conversationKey?.();
       const hist = key ? this._conversationsByTab.get(String(key)) : null;
@@ -1225,6 +1229,7 @@ class AssistantManagerClass {
     this._bindMemoryPopover();
 
     this.inputEl?.addEventListener('keydown', (e) => {
+      if (this._takeoverMode) return;
       // Skip IME composition (Enter confirms Japanese/Chinese input — do not submit early).
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
         e.preventDefault();
@@ -1246,6 +1251,7 @@ class AssistantManagerClass {
 
     document.querySelectorAll('.assistant-smart-chip').forEach((chip) => {
       chip.addEventListener('click', () => {
+        if (this._takeoverMode) return;
         if (chip.dataset.smart === 'deep-research') {
           void this.handleQuickAction('deep-research');
           return;
@@ -1362,7 +1368,10 @@ class AssistantManagerClass {
     const attachBtn = document.getElementById('btn-assistant-attach');
     const fileInput = document.getElementById('assistant-file-input');
     if (attachBtn && fileInput) {
-      attachBtn.addEventListener('click', () => fileInput.click());
+      attachBtn.addEventListener('click', () => {
+        if (this._takeoverMode) return;
+        fileInput.click();
+      });
       fileInput.addEventListener('change', () => {
         if (fileInput.files?.length) {
           void this._addFilesFromList(fileInput.files);
@@ -1372,6 +1381,10 @@ class AssistantManagerClass {
     }
     if (this.inputEl) {
       this.inputEl.addEventListener('paste', (e) => {
+        if (this._takeoverMode) {
+          e.preventDefault();
+          return;
+        }
         const items = e.clipboardData?.items;
         if (!items) return;
         const files = [];
@@ -1403,6 +1416,7 @@ class AssistantManagerClass {
         e.preventDefault();
         e.stopPropagation();
         area.classList.remove('assistant-input-area--drop');
+        if (this._takeoverMode) return;
         const dt = e.dataTransfer?.files;
         if (dt?.length) void this._addFilesFromList(dt);
       });
@@ -2429,6 +2443,7 @@ class AssistantManagerClass {
    * @param {{ replace?: boolean }} opts - `replace: true` for barge-in (new command replaces all).
    */
   _applyVoiceTranscriptToInput(transcript, opts = {}) {
+    if (this._takeoverMode) return;
     const replace = !!opts.replace;
     const t = String(transcript || '').trim();
     if (!this.inputEl || !t) return;
@@ -4389,6 +4404,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     await this._ensureAssistantHistoryLoadedBounded();
     this.inputEl = document.getElementById('assistant-input') || this.inputEl;
     if (!this.inputEl) return;
+    if (this._takeoverMode) return;
     // `addMessage` is gated by `_panelShowsTurnDom()` vs `_panelDisplayTabId`. That id can go stale
     // (e.g. tab switch edge cases, "This tab" vs saved thread) so the composer clears but bubbles never render.
     if (!this._sidebarThreadKey) {
@@ -4475,6 +4491,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   async handleQuickAction(action) {
+    if (this._takeoverMode) return;
     const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
     if (this._threadBusyForSend() || (aid && this._tabIsBusy(aid))) return;
     if (!this.isOpen) this.open();
@@ -8569,6 +8586,56 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   // ── Takeover mode ────────────────────────────────────────────────────────
+  /**
+   * While Navio controls the browser, the sidebar composer must not accept typing
+   * (Comet-style — focus stays meaningful for the page under automation).
+   * @param {boolean} locked
+   */
+  _setAssistantComposerTakeoverLocked(locked) {
+    const inp = this.inputEl || document.getElementById('assistant-input');
+    const area = this.panel?.querySelector('.assistant-input-area');
+    const lockBtnIds = ['btn-send-message', 'btn-assistant-attach', 'btn-at-mention', 'btn-voice-conv', 'btn-voice-mode'];
+    if (locked) {
+      if (this._composerTakeoverLocked) return;
+      this._composerTakeoverLocked = true;
+      if (inp) {
+        if (this._composerPlaceholderBackup == null) this._composerPlaceholderBackup = inp.placeholder;
+        inp.readOnly = true;
+        inp.placeholder = 'Navio is controlling the browser…';
+        try {
+          inp.blur();
+        } catch {
+          /* ignore */
+        }
+      }
+      area?.classList.add('assistant-input-area--agent-locked');
+      lockBtnIds.forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el || el.disabled) return;
+        el.dataset.navioTakeoverLock = '1';
+        el.disabled = true;
+      });
+      return;
+    }
+    if (!this._composerTakeoverLocked) return;
+    this._composerTakeoverLocked = false;
+    if (inp) {
+      inp.readOnly = false;
+      if (this._composerPlaceholderBackup != null) {
+        inp.placeholder = this._composerPlaceholderBackup;
+        this._composerPlaceholderBackup = null;
+      }
+    }
+    area?.classList.remove('assistant-input-area--agent-locked');
+    lockBtnIds.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el && el.dataset.navioTakeoverLock === '1') {
+        delete el.dataset.navioTakeoverLock;
+        el.disabled = false;
+      }
+    });
+  }
+
   /** Tab strip + banner: show which tab is receiving takeover actions. */
   _syncTakeoverTabHighlight() {
     if (typeof TabManager === 'undefined') return;
@@ -8645,6 +8712,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (this._guestChatWebview) {
       void this._guestDeliver(this._guestChatWebview, { type: 'takeoverStart' });
     }
+    this._setAssistantComposerTakeoverLocked(true);
   }
 
   disableTakeover() {
@@ -8687,6 +8755,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (this._guestChatWebview) {
       void this._guestDeliver(this._guestChatWebview, { type: 'takeoverStop' });
     }
+    this._setAssistantComposerTakeoverLocked(false);
     this._addContinuePill('Navio stopped. You\'re back in control.');
   }
 
@@ -8764,6 +8833,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   async runDeepResearch(query) {
+    if (this._takeoverMode) return;
     const q = (query || '').trim();
     if (!q) return;
     const tk =
@@ -8800,6 +8870,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   async handleQuickActionAllTabs() {
+    if (this._takeoverMode) return;
     if (typeof TabManager === 'undefined' || !TabManager.tabs) {
       this.addMessage('assistant', 'No tabs available.');
       return;

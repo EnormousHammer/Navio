@@ -1109,6 +1109,11 @@
     .composer.is-drag-over .composer-drop { display: flex; }
     .composer-drop svg { width: 18px; height: 18px; margin-right: 8px; }
 
+    .composer.guest-composer-takeover-locked #input {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
     /* ── Attachment chips row (above the textarea while composing) ── */
     .att-row {
       display: flex;
@@ -2257,6 +2262,54 @@
   let streamRow = null;
   let streamBuffer = '';
   let agentStepIndex = 0;
+  /** Full-page chat: lock composer while host reports browser takeover (matches sidebar behavior). */
+  let guestTakeoverComposerLocked = false;
+  let guestComposerPlaceholderBackup = null;
+
+  function setGuestTakeoverComposerLocked(locked) {
+    if (!inputEl || !sendBtn) return;
+    if (locked) {
+      if (guestTakeoverComposerLocked) return;
+      guestTakeoverComposerLocked = true;
+      if (guestComposerPlaceholderBackup == null) guestComposerPlaceholderBackup = inputEl.placeholder;
+      inputEl.readOnly = true;
+      inputEl.placeholder = 'Navio is controlling the browser…';
+      try {
+        inputEl.blur();
+      } catch (_) { /* ignore */ }
+      composerBox && composerBox.classList.add('guest-composer-takeover-locked');
+      if (!sendBtn.disabled) {
+        sendBtn.dataset.navioTakeoverLock = '1';
+        sendBtn.disabled = true;
+      }
+      if (btnAttach && !btnAttach.disabled) {
+        btnAttach.dataset.navioTakeoverLock = '1';
+        btnAttach.disabled = true;
+      }
+      return;
+    }
+    if (!guestTakeoverComposerLocked) return;
+    guestTakeoverComposerLocked = false;
+    inputEl.readOnly = false;
+    if (guestComposerPlaceholderBackup != null) {
+      inputEl.placeholder = guestComposerPlaceholderBackup;
+      guestComposerPlaceholderBackup = null;
+    }
+    composerBox && composerBox.classList.remove('guest-composer-takeover-locked');
+    if (sendBtn.dataset.navioTakeoverLock === '1') {
+      delete sendBtn.dataset.navioTakeoverLock;
+    }
+    if (btnAttach && btnAttach.dataset.navioTakeoverLock === '1') {
+      delete btnAttach.dataset.navioTakeoverLock;
+      btnAttach.disabled = false;
+    }
+    syncGuestSendDisabled();
+  }
+
+  function syncGuestSendDisabled() {
+    if (!sendBtn) return;
+    sendBtn.disabled = guestTakeoverComposerLocked || (!inputEl.value.trim() && !attachmentsReady());
+  }
 
   // ── Markdown renderer (self-contained, safe HTML) ──────────────────
   // Supports: fenced code with language + copy, headings, bold/italic,
@@ -3360,11 +3413,13 @@
       banner.querySelector('.gtb-label').textContent = 'Navio is in control';
       banner.querySelector('.gtb-pause').textContent = 'Pause';
     }
+    setGuestTakeoverComposerLocked(true);
   }
 
   function hideTakeoverBanner() {
     const banner = document.getElementById('guest-takeover-banner');
     if (banner) banner.hidden = true;
+    setGuestTakeoverComposerLocked(false);
   }
 
   async function loadModelHint() {
@@ -3383,13 +3438,15 @@
   // ── Busy: keep composer writable; Stop is its own control so Send can queue a steering message. ──
   function setBusy(b) {
     busy = !!b;
-    inputEl.disabled = false;
+    if (!guestTakeoverComposerLocked) {
+      inputEl.disabled = false;
+    }
     composerBox.classList.toggle('is-agent-busy', busy);
     if (stopAiBtn) stopAiBtn.hidden = !busy;
     sendBtn.dataset.mode = 'send';
     sendBtn.title = 'Send';
     sendBtn.setAttribute('aria-label', 'Send');
-    sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
+    syncGuestSendDisabled();
   }
   function stopGeneration() {
     // Tell the host we want to stop (ignored by hosts that don't support it)
@@ -3405,6 +3462,7 @@
 
   // ── Send ────────────────────────────────────────────────────────
   function send(text) {
+    if (guestTakeoverComposerLocked) return;
     const t = (text || '').trim();
     const hasAtt = attachmentsReady();
     if (!t && !hasAtt) return;
@@ -3425,6 +3483,7 @@
     if (hasAtt) clearAttachmentQueue();
   }
   function sendResearch(q) {
+    if (guestTakeoverComposerLocked) return;
     const topic = (q || '').trim();
     if (!topic) return;
     if (attachmentsReady() || attachmentsLoading()) {
@@ -3443,6 +3502,7 @@
     post({ action: 'deepResearch', topic: topic });
   }
   function submitFromInput() {
+    if (guestTakeoverComposerLocked) return;
     const raw = inputEl.value;
     if (!raw.trim() && !attachmentsReady()) return;
     if (raw.trim().indexOf('>>') === 0) {
@@ -3455,6 +3515,7 @@
     updateCharCount();
   }
   function fillInput(text, autoSend) {
+    if (guestTakeoverComposerLocked) return;
     inputEl.value = text || '';
     inputEl.focus();
     inputEl.dispatchEvent(new Event('input', { bubbles: true }));
@@ -3470,7 +3531,7 @@
     charCountEl.textContent = n + ' / ' + max;
     charCountEl.classList.toggle('warn', n >= max * 0.85 && n < max);
     charCountEl.classList.toggle('max',  n >= max);
-    sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
+    syncGuestSendDisabled();
   }
 
   // ── File attachments ────────────────────────────────────────────
@@ -3610,7 +3671,7 @@
       renderAttachmentChips();
       processAttachment(toProcess, entry);
     }
-    sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
+    syncGuestSendDisabled();
   }
 
   async function processAttachment(file, entry) {
@@ -3681,7 +3742,7 @@
       entry.error = (e && e.message) || String(e);
     }
     renderAttachmentChips();
-    sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
+    syncGuestSendDisabled();
   }
 
   async function encodeInlineOrBinary(file, entry) {
@@ -3827,7 +3888,7 @@
         const id = btn.getAttribute('data-id');
         attachmentQueue = attachmentQueue.filter(function (x) { return x.id !== id; });
         renderAttachmentChips();
-        sendBtn.disabled = !inputEl.value.trim() && !attachmentsReady();
+        syncGuestSendDisabled();
       });
     });
   }
@@ -3905,6 +3966,7 @@
 
   function wire() {
     inputEl.addEventListener('keydown', function (e) {
+      if (guestTakeoverComposerLocked) return;
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitFromInput(); }
     });
     inputEl.addEventListener('input', function () {
@@ -3949,6 +4011,7 @@
     // Welcome cards
     document.querySelectorAll('.welcome-card').forEach(function (card) {
       card.addEventListener('click', function () {
+        if (guestTakeoverComposerLocked) return;
         const action = card.getAttribute('data-action');
         if (action === 'deep-research') {
           fillInput('>> ', false);
@@ -3960,6 +4023,7 @@
 
     // Attach — open the native file picker.
     btnAttach.addEventListener('click', function () {
+      if (guestTakeoverComposerLocked) return;
       if (busy) { toast('Finish or stop the current response first.'); return; }
       fileInput.click();
     });
@@ -3991,6 +4055,7 @@
       e.stopPropagation();
       dragDepth = 0;
       composerBox.classList.remove('is-drag-over');
+      if (guestTakeoverComposerLocked) return;
       if (busy) { toast('Finish or stop the current response first.'); return; }
       const files = e.dataTransfer && e.dataTransfer.files;
       if (files && files.length) addFilesFromList(files);
@@ -4005,6 +4070,7 @@
       if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
       if (composerBox.contains(e.target)) return; // already handled above
       e.preventDefault();
+      if (guestTakeoverComposerLocked) return;
       if (busy) { toast('Finish or stop the current response first.'); return; }
       addFilesFromList(e.dataTransfer.files);
     });
@@ -4022,6 +4088,10 @@
         }
       }
       if (files.length) {
+        if (guestTakeoverComposerLocked) {
+          e.preventDefault();
+          return;
+        }
         if (busy) { toast('Finish or stop the current response first.'); return; }
         e.preventDefault();
         addFilesFromList(files);
