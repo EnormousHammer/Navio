@@ -348,6 +348,17 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
    * Align low- and full-version hints with the embedded Chromium version from process.versions.
    */
   function attachChromeAlignedClientHints(ses) {
+    /** Let Chromium send native client hints to Cloudflare — forged hints can mismatch TLS / internal state and yield 403 + broken Turnstile. */
+    function navioUseNativeClientHintsForUrl(url) {
+      if (!url || typeof url !== 'string') return false;
+      try {
+        const h = new URL(url).hostname.toLowerCase();
+        return h === 'cloudflare.com' || h.endsWith('.cloudflare.com');
+      } catch {
+        return false;
+      }
+    }
+
     const chromeFull = String(process.versions.chrome || '').trim();
     const major = (() => {
       const m = chromeFull.match(/^(\d+)/);
@@ -369,6 +380,10 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
 
     ses.webRequest.onBeforeSendHeaders({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) => {
       try {
+        if (navioUseNativeClientHintsForUrl(details.url)) {
+          callback({ requestHeaders: details.requestHeaders || {} });
+          return;
+        }
         const requestHeaders = { ...(details.requestHeaders || {}) };
         requestHeaders['Sec-CH-UA'] = secChUa;
         requestHeaders['Sec-CH-UA-Mobile'] = '?0';

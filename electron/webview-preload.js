@@ -16,34 +16,57 @@
 try {
   const { ipcRenderer, contextBridge } = require('electron');
 
-  // ── Anti-bot-detection hardening ─────────────────────────────────────────
-  // These run for EVERY page (including compat-mode sites) because Cloudflare
-  // Turnstile checks them before any challenge script runs. Placing them here
-  // (before the compat-mode bail-out) ensures they are always active.
-  //
-  // 1. navigator.webdriver — Chromium sets this to true when AutomationControlled
-  //    is active. The commandLine switch (--disable-blink-features=AutomationControlled)
-  //    is the primary fix; this JS override is a belt-and-suspenders second layer.
+  // Opaque shells used inside Turnstile / bot UI: run **no** preload code at all here
+  // (including navigator/chrome patches). Even defineProperty in these documents can
+  // perturb Trusted Types + nonce CSP and reproduces about:srcdoc inline-script blocks.
   try {
-    // Real Chrome reports `false`, not missing/undefined — some bot scripts treat the
-    // distinction as automation (Turnstile / managed-challenge infinite reload loops).
-    Object.defineProperty(navigator, 'webdriver', { get: () => false, configurable: true });
-  } catch { /* ignore if already non-configurable */ }
-  //
-  // 2. window.chrome — Real Chrome exposes window.chrome.runtime. Cloudflare's
-  //    challenge script checks its presence; Electron may not populate it fully.
-  try {
-    if (typeof window.chrome === 'undefined' || !window.chrome) {
-      Object.defineProperty(window, 'chrome', {
-        value: { runtime: {}, loadTimes: function () {}, csi: function () {}, app: {} },
-        configurable: true,
-        writable: true,
-        enumerable: true
-      });
-    } else if (!window.chrome.runtime) {
-      window.chrome.runtime = {};
+    const _h0 = String((typeof location !== 'undefined' && location.href) || '').toLowerCase();
+    const _p0 = String((typeof location !== 'undefined' && location.protocol) || '').toLowerCase();
+    if (_h0 === 'about:srcdoc' || _p0 === 'data:' || _p0 === 'blob:') {
+      throw new Error('navio_site_compat_skip_preload');
     }
-  } catch { /* ignore */ }
+  } catch (e) {
+    if (e && e.message === 'navio_site_compat_skip_preload') throw e;
+  }
+
+  // challenges.cloudflare.com: do not patch navigator / window in JS — Cloudflare
+  // probes for instrumentation; main.js already disables AutomationControlled globally.
+  let _navioSkipFingerprintJs = false;
+  try {
+    const ch = String((typeof location !== 'undefined' && location.hostname) || '').toLowerCase();
+    _navioSkipFingerprintJs =
+      ch === 'challenges.cloudflare.com' || ch.endsWith('.challenges.cloudflare.com');
+  } catch {
+    _navioSkipFingerprintJs = false;
+  }
+
+  if (!_navioSkipFingerprintJs) {
+    // ── Anti-bot-detection hardening ───────────────────────────────────────
+    // Skipped on challenges.cloudflare.com (see above). Opaque shells bail out earlier.
+    //
+    // 1. navigator.webdriver — belt-and-suspenders; primary fix is main-process switch.
+    try {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false, configurable: true });
+    } catch {
+      /* ignore if already non-configurable */
+    }
+    //
+    // 2. window.chrome — Electron may not populate; most third-party sites only.
+    try {
+      if (typeof window.chrome === 'undefined' || !window.chrome) {
+        Object.defineProperty(window, 'chrome', {
+          value: { runtime: {}, loadTimes: function () {}, csi: function () {}, app: {} },
+          configurable: true,
+          writable: true,
+          enumerable: true
+        });
+      } else if (!window.chrome.runtime) {
+        window.chrome.runtime = {};
+      }
+    } catch {
+      /* ignore */
+    }
+  }
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
@@ -57,6 +80,7 @@ try {
     try {
       const href = String((typeof location !== 'undefined' && location.href) || '').toLowerCase();
       const proto = String((typeof location !== 'undefined' && location.protocol) || '').toLowerCase();
+      if (_navioSkipFingerprintJs) return true;
       if (href === 'about:srcdoc') return true;
       if (proto === 'data:' || proto === 'blob:') return true;
       if (typeof window !== 'undefined' && window !== window.top) {
