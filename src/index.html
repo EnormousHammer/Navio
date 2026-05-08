@@ -1266,6 +1266,12 @@
               <p class="settings-inline-hint" style="margin-top:6px">When enabled, also blocks small or empty script-driven windows (more ad-like noise blocked, more risk a legitimate window is stopped). Leave off unless you want that extra layer.</p>
             </div>
             <div class="settings-section">
+              <h3>Open in default browser</h3>
+              <p class="settings-inline-hint" style="margin-top:0;margin-bottom:8px">Some sites (heavy Cloudflare, strict banking) work reliably only in <strong>Chrome or Edge</strong>, not inside Navio’s embedded Chromium. Add one <strong>hostname per line</strong>; Navio will <strong>not</strong> load matching <code>http(s)</code> URLs in a tab — it hands them to your OS default browser instead. Example: <code>purolator.com</code> (covers <code>www.purolator.com</code>). Remove a line and save to load that site in Navio again.</p>
+              <label for="setting-default-browser-hosts" class="settings-field-label" style="display:block;margin-bottom:4px;font-size:12px;opacity:0.9">Hostnames</label>
+              <textarea id="setting-default-browser-hosts" class="settings-textarea-mono" rows="5" style="width:100%;max-width:520px;resize:vertical;font-family:ui-monospace,monospace;font-size:12px" spellcheck="false" placeholder="purolator.com&#10;example-bank.com"></textarea>
+            </div>
+            <div class="settings-section">
               <h3>Your data</h3>
               <div class="settings-info-box">
                 <p><strong>API key.</strong> Stored on this device using OS-level encryption when available (Electron safeStorage), or a separate local file otherwise. It is not sent to Navio’s servers.</p>
@@ -1952,6 +1958,7 @@
   <script src="js/email-assistant.js"></script>
   <script src="js/navio-tts-voice-catalog.js"></script>
   <script src="js/wcv-webview-shim.js"></script>
+  <script src="js/navio-external-browser-hosts.js"></script>
   <script src="js/tabs.js"></script>
   <script src="js/ntp.js"></script>
   <script src="js/ui-shell-extras.js"></script>

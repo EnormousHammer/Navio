@@ -107,6 +107,7 @@ class SettingsManagerClass {
       popupBlocker: document.getElementById('setting-popup-blocker'),
       adBlock: document.getElementById('setting-ad-block'),
       adStrictPopup: document.getElementById('setting-ad-strict-popup'),
+      defaultBrowserHosts: document.getElementById('setting-default-browser-hosts'),
       adBlockStats: document.getElementById('ad-block-stats-hint'),
       memoryList: document.getElementById('memory-list'),
       memoryAddInput: document.getElementById('memory-add-input'),
@@ -711,6 +712,10 @@ class SettingsManagerClass {
     if (this.elements.adStrictPopup) {
       this.elements.adStrictPopup.checked = this.config.adStrictPopupBlock !== false;
       this.elements.adStrictPopup.disabled = !!(this.elements.popupBlocker && !this.elements.popupBlocker.checked);
+    }
+    if (this.elements.defaultBrowserHosts) {
+      const lines = Array.isArray(this.config.defaultBrowserHostLines) ? this.config.defaultBrowserHostLines : [];
+      this.elements.defaultBrowserHosts.value = lines.join('\n');
     }
 
     if (this.elements.crashReporting) {
@@ -1729,6 +1734,21 @@ class SettingsManagerClass {
       popupBlockerEnabled: !!(this.elements.popupBlocker && this.elements.popupBlocker.checked),
       adBlockEnabled: !!(this.elements.adBlock && this.elements.adBlock.checked),
       adStrictPopupBlock: !!(this.elements.adStrictPopup && this.elements.adStrictPopup.checked),
+      defaultBrowserHostLines: (() => {
+        if (!this.elements.defaultBrowserHosts) return this.config.defaultBrowserHostLines || [];
+        const raw = String(this.elements.defaultBrowserHosts.value || '');
+        const lines = raw
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean);
+        if (
+          window.navioExternalBrowserHosts &&
+          typeof window.navioExternalBrowserHosts.parseDefaultBrowserHostLines === 'function'
+        ) {
+          return window.navioExternalBrowserHosts.parseDefaultBrowserHostLines(lines);
+        }
+        return lines;
+      })(),
       aiProvider: this.elements.provider.value,
       apiKey: this.elements.apiKey.value.trim(),
       aiModel: this.elements.model.value === '__custom__'

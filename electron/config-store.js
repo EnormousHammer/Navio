@@ -115,7 +115,14 @@ const DEFAULT_CONFIG = {
    * Predicta sports hub URL. Navio's AI appendix uses this for deep links (?view=betting&sport=nba&board=live).
    * Default: hosted app. Override in navio-config.json for local dev (e.g. http://localhost:5173).
    */
-  predictaBaseUrl: 'https://predicta-bet.vercel.app'
+  predictaBaseUrl: 'https://predicta-bet.vercel.app',
+  /**
+   * Hostnames (one string per entry, suffix match) for which Navio does not load the
+   * page in the guest webview — it opens the URL in the OS default browser instead.
+   * Example: `purolator.com` matches `www.purolator.com`. Use when Cloudflare / strict
+   * portals fail inside embedded Chromium; configure under Privacy in Settings.
+   */
+  defaultBrowserHostLines: []
 };
 
 function readConfigFile() {
@@ -148,6 +155,18 @@ function loadConfig() {
   }
 
   const merged = { ...DEFAULT_CONFIG, ...file };
+
+  if (merged.defaultBrowserHostLines != null && !Array.isArray(merged.defaultBrowserHostLines)) {
+    if (typeof merged.defaultBrowserHostLines === 'string') {
+      merged.defaultBrowserHostLines = merged.defaultBrowserHostLines
+        .split(/\r?\n/)
+        .map((s) => String(s || '').trim())
+        .filter(Boolean);
+    } else {
+      merged.defaultBrowserHostLines = [];
+    }
+  }
+  if (!Array.isArray(merged.defaultBrowserHostLines)) merged.defaultBrowserHostLines = [];
 
   function coerceBool(v, fallback) {
     if (v === true || v === 'true' || v === 1) return true;

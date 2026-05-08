@@ -758,6 +758,18 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
     }
   });
 
+  /** http(s) — used when Settings lists a hostname to open in the OS default browser (Cloudflare / strict portals). */
+  ipcMain.handle('navio-open-url-in-system-browser', async (_, url) => {
+    const u = typeof url === 'string' ? url.trim() : '';
+    if (!/^https?:\/\//i.test(u)) return { ok: false, error: 'Only http(s) URLs are supported.' };
+    try {
+      await shell.openExternal(u);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
    const incognitoPermMemory = new Map();
 
   /** Until app quit: remembers "Allow once" / "Deny" so the same site does not re-prompt every action. */

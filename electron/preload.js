@@ -351,6 +351,8 @@ contextBridge.exposeInMainWorld('navio', {
 
   // External protocol handler — opens mailto:, tel:, sms: in the OS default app
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  /** Open an https URL in the OS default browser (Settings → Privacy host list). */
+  openUrlInSystemBrowser: (url) => ipcRenderer.invoke('navio-open-url-in-system-browser', url),
 
   /** Cancel an in-progress download (matches save path from download-started). */
   cancelDownload: (savePath) => ipcRenderer.invoke('cancel-download', savePath),

@@ -694,6 +694,101 @@ class TabManagerClass {
     this.createTab('about:blank', { switchTo: false });
   }
 
+  /**
+   * Settings → Privacy: hostnames that must open in the OS default browser (not guest webview).
+   * Reliable when Cloudflare / strict portals reject embedded Chromium.
+   */
+  async _maybeHandoffUrlToDefaultBrowser(tab, wv, resolvedUrl) {
+    const u = typeof resolvedUrl === 'string' ? resolvedUrl.trim() : '';
+    if (!tab || !wv || !/^https?:\/\//i.test(u)) return false;
+    let roots = [];
+    try {
+      const cfg =
+        typeof App !== 'undefined' && App.config ? App.config : await window.navio.getConfig();
+      const lines = Array.isArray(cfg.defaultBrowserHostLines) ? cfg.defaultBrowserHostLines : [];
+      if (
+        window.navioExternalBrowserHosts &&
+        typeof window.navioExternalBrowserHosts.parseDefaultBrowserHostLines === 'function'
+      ) {
+        roots = window.navioExternalBrowserHosts.parseDefaultBrowserHostLines(lines);
+      }
+    } catch {
+      return false;
+    }
+    if (!roots.length) return false;
+    let host = '';
+    try {
+      host = new URL(u).hostname;
+    } catch {
+      return false;
+    }
+    const hit =
+      window.navioExternalBrowserHosts &&
+      window.navioExternalBrowserHosts.hostnameMatchesDefaultBrowserHosts(host, roots);
+    if (!hit) return false;
+
+    let opened = false;
+    try {
+      if (typeof window.navio.openUrlInSystemBrowser === 'function') {
+        const r = await window.navio.openUrlInSystemBrowser(u);
+        opened = !!(r && r.ok);
+      }
+    } catch {
+      opened = false;
+    }
+    if (!opened) {
+      if (typeof _showAppToast === 'function') {
+        _showAppToast('Could not open the system browser. Set a default browser in Windows settings.', 'error');
+      }
+      return false;
+    }
+
+    tab.url = '';
+    tab.title = 'Default browser';
+    tab.favicon = null;
+    tab.loading = false;
+    try {
+      await wv.loadURL('about:blank');
+    } catch {
+      /* ignore */
+    }
+    this.updateTabUI(tab);
+    if (tab.id === this.activeTabId && typeof App !== 'undefined') {
+      App.updateUrlBar('');
+      App.showLoading(false);
+      App.updateNavigationButtons(wv);
+    }
+    if (typeof _showAppToast === 'function') {
+      _showAppToast(
+        'Opened in your default browser. Remove the hostname under Settings → Privacy to load this site in Navio.',
+        'success'
+      );
+    }
+    try {
+      window.dispatchEvent(new CustomEvent('navio-page-navigated', { detail: { url: '', tabId: tab.id } }));
+    } catch {
+      /* ignore */
+    }
+    return true;
+  }
+
+  _loadGuestUrlOrHandoff(tab, wv, url) {
+    void this._loadGuestUrlOrHandoffAsync(tab, wv, url);
+  }
+
+  async _loadGuestUrlOrHandoffAsync(tab, wv, url) {
+    const u = typeof url === 'string' ? url.trim() : '';
+    if (!u || !tab || !wv) return;
+    const handed = await this._maybeHandoffUrlToDefaultBrowser(tab, wv, u);
+    if (!handed) {
+      try {
+        await wv.loadURL(u);
+      } catch (err) {
+        console.warn('loadURL failed:', err);
+      }
+    }
+  }
+
   /** Navigate a specific tab (used when the focused tab is the chat surface). */
   navigateTab(tab, resolvedUrl) {
     if (!tab || !tab.webview) return false;
@@ -710,9 +805,7 @@ class TabManagerClass {
     }
     const wv = tab.webview;
     if (wv._domReady) {
-      const run = () => wv.loadURL(resolvedUrl).catch((err) => console.warn('navigateTab loadURL failed:', err));
-      if (typeof queueMicrotask === 'function') queueMicrotask(run);
-      else setTimeout(run, 0);
+      this._loadGuestUrlOrHandoff(tab, wv, resolvedUrl);
     } else {
       wv._pendingUrl = resolvedUrl;
     }
@@ -845,9 +938,7 @@ class TabManagerClass {
       if (wv._pendingUrl) {
         const url = wv._pendingUrl;
         wv._pendingUrl = null;
-        const run = () => wv.loadURL(url).catch(err => console.warn('Pending loadURL failed:', err));
-        if (typeof queueMicrotask === 'function') queueMicrotask(run);
-        else setTimeout(run, 0);
+        this._loadGuestUrlOrHandoff(tab, wv, url);
       }
     });
 
@@ -1472,9 +1563,7 @@ class TabManagerClass {
     this.hideNewTabPage();
     const wv = tab.webview;
     if (wv._domReady) {
-      const run = () => wv.loadURL(resolvedUrl).catch(err => console.warn('navigateActive loadURL failed:', err));
-      if (typeof queueMicrotask === 'function') queueMicrotask(run);
-      else setTimeout(run, 0);
+      this._loadGuestUrlOrHandoff(tab, wv, resolvedUrl);
     } else {
       // dom-ready hasn't fired yet (very fast user action); queue it
       wv._pendingUrl = resolvedUrl;
@@ -1655,7 +1744,7 @@ class TabManagerClass {
     tab.loading = true;
     this.updateTabUI(tab);
     try {
-      tab.webview.loadURL(url);
+      this._loadGuestUrlOrHandoff(tab, tab.webview, url);
     } catch (e) {
       console.warn('[Navio] restore discarded tab', e);
     }
