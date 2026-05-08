@@ -10322,6 +10322,448 @@ body.onboarding-active #app {
   display: none;
 }
 
+/* ── First-run split (steps 1–3): left = guidance + tiles, right = appearance ── */
+.ob-split-shell {
+  display: none;
+  position: absolute;
+  inset: 0;
+  flex-direction: row;
+  align-items: stretch;
+  min-height: 0;
+  z-index: 1;
+}
+
+#onboarding.ob-split-active .ob-split-shell {
+  display: flex;
+}
+
+.ob-split-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 16px 24px 28px;
+  gap: 16px;
+  overflow: hidden;
+  background: linear-gradient(165deg, rgba(14, 20, 36, 0.98) 0%, rgba(8, 11, 22, 0.99) 100%);
+}
+
+.ob-split-left-inner {
+  flex-shrink: 0;
+  max-width: 520px;
+}
+
+.ob-split-kicker {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(0, 216, 255, 0.75);
+}
+
+.ob-split-headline {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 800;
+  color: #f1f5ff;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.ob-split-lead {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.48);
+  max-width: 48em;
+}
+
+.ob-step-tiles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ob-step-tile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 400px;
+  padding: 12px 14px;
+  text-align: left;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: inherit;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+
+.ob-step-tile:disabled {
+  opacity: 0.38;
+  cursor: default;
+  pointer-events: none;
+}
+
+.ob-step-tile:not(:disabled):hover {
+  border-color: rgba(0, 216, 255, 0.22);
+  background: rgba(0, 216, 255, 0.06);
+}
+
+.ob-step-tile.ob-step-tile--active {
+  border-color: rgba(0, 216, 255, 0.45);
+  background: rgba(0, 216, 255, 0.1);
+  box-shadow: 0 0 0 1px rgba(0, 216, 255, 0.12);
+}
+
+.ob-step-tile.ob-step-tile--done:not(.ob-step-tile--active) {
+  border-color: rgba(34, 197, 94, 0.25);
+}
+
+.ob-step-tile-num {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.ob-step-tile--active .ob-step-tile-num {
+  background: rgba(0, 216, 255, 0.25);
+  color: #e0fbff;
+}
+
+.ob-step-tile--done:not(.ob-step-tile--active) .ob-step-tile-num {
+  background: rgba(34, 197, 94, 0.2);
+  color: #bbf7d0;
+}
+
+.ob-step-tile-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ob-step-tile-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #eef2ff;
+}
+
+.ob-step-tile-desc {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.ob-split-left-main {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ob-split-right {
+  width: min(340px, 38vw);
+  flex-shrink: 0;
+  padding: 28px 24px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(6, 9, 18, 0.65);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+}
+
+.ob-split-right-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  color: #f8fafc;
+  letter-spacing: -0.02em;
+}
+
+.ob-split-right-sub {
+  margin: -8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.ob-appearance-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ob-appearance-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.ob-appearance-row {
+  display: flex;
+  gap: 10px;
+}
+
+.ob-appearance-choice {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: #e2e8f0;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+
+.ob-appearance-choice:hover {
+  border-color: rgba(0, 216, 255, 0.3);
+  background: rgba(0, 216, 255, 0.08);
+}
+
+.ob-appearance-choice[aria-pressed="true"] {
+  border-color: rgba(0, 216, 255, 0.55);
+  background: rgba(0, 216, 255, 0.12);
+  box-shadow: 0 0 20px rgba(0, 216, 255, 0.12);
+}
+
+.ob-appearance-choice-text {
+  display: block;
+}
+
+.ob-appearance-swatch {
+  width: 100%;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.ob-appearance-swatch--dark {
+  background: linear-gradient(135deg, #0f172a 40%, #1e293b 100%);
+}
+
+.ob-appearance-swatch--light {
+  background: linear-gradient(135deg, #f8fafc 40%, #e2e8f0 100%);
+}
+
+.ob-appearance-tabico {
+  width: 100%;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+  position: relative;
+}
+
+.ob-appearance-tabico--top::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 6px;
+  height: 8px;
+  border-radius: 3px;
+  background: rgba(0, 216, 255, 0.35);
+}
+
+.ob-appearance-tabico--top::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 18px;
+  bottom: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ob-appearance-tabico--side::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  bottom: 6px;
+  width: 10px;
+  border-radius: 3px;
+  background: rgba(0, 216, 255, 0.35);
+}
+
+.ob-appearance-tabico--side::after {
+  content: '';
+  position: absolute;
+  left: 18px;
+  right: 5px;
+  top: 6px;
+  bottom: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ob-appearance-hint {
+  margin-top: auto;
+  padding-top: 12px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.32);
+}
+
+@media (max-width: 780px) {
+  #onboarding.ob-split-active .ob-split-shell {
+    flex-direction: column;
+  }
+
+  .ob-split-right {
+    width: 100%;
+    max-height: 42vh;
+    border-left: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .ob-split-left {
+    padding: 16px;
+  }
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-split-left {
+  background: linear-gradient(165deg, #f8fafc 0%, #e2e8f0 100%);
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-split-headline {
+  color: #0f172a;
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-split-lead {
+  color: rgba(15, 23, 42, 0.58);
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-split-kicker {
+  color: #0284c7;
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-step-tile {
+  border-color: rgba(15, 23, 42, 0.1);
+  background: rgba(255, 255, 255, 0.75);
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-step-tile:not(:disabled):hover {
+  border-color: rgba(2, 132, 199, 0.35);
+  background: rgba(255, 255, 255, 0.95);
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-step-tile.ob-step-tile--active {
+  border-color: rgba(2, 132, 199, 0.45);
+  background: rgba(224, 242, 254, 0.95);
+  box-shadow: 0 0 0 1px rgba(2, 132, 199, 0.12);
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-step-tile-title {
+  color: #0f172a;
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-step-tile-desc {
+  color: rgba(15, 23, 42, 0.45);
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-step-tile-num {
+  background: rgba(15, 23, 42, 0.08);
+  color: #334155;
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-split-right {
+  background: rgba(255, 255, 255, 0.92);
+  border-left-color: rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-split-right-title {
+  color: #0f172a;
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-split-right-sub,
+[data-theme="light"] #onboarding.ob-split-active .ob-appearance-hint {
+  color: rgba(15, 23, 42, 0.5);
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-appearance-label {
+  color: rgba(15, 23, 42, 0.45);
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-appearance-choice {
+  border-color: rgba(15, 23, 42, 0.1);
+  background: rgba(248, 250, 252, 0.9);
+  color: #1e293b;
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-appearance-choice[aria-pressed="true"] {
+  border-color: rgba(2, 132, 199, 0.45);
+  background: rgba(224, 242, 254, 0.95);
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-card {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(15, 23, 42, 0.1);
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-card-title {
+  color: #0f172a;
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-card-desc {
+  color: rgba(15, 23, 42, 0.5);
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-input {
+  background: rgba(15, 23, 42, 0.04);
+  border-color: rgba(15, 23, 42, 0.12);
+  color: #0f172a;
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-input::placeholder {
+  color: rgba(15, 23, 42, 0.35);
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-key-note,
+[data-theme="light"] #onboarding.ob-split-active .ob-key-header span {
+  color: rgba(15, 23, 42, 0.55);
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-browsers-empty,
+[data-theme="light"] #onboarding.ob-split-active .ob-browsers-loading {
+  color: rgba(15, 23, 42, 0.5);
+}
+
+#onboarding.ob-split-active .ob-split-left-main .ob-card {
+  max-width: 100%;
+  width: min(440px, 100%);
+}
+
+#onboarding.ob-split-active .ob-split-left-main .ob-card-wide {
+  width: min(520px, 100%);
+}
+
 /* ── Step container ── */
 .ob-step {
   position: absolute;

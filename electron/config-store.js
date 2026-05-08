@@ -16,6 +16,8 @@ const DEFAULT_CONFIG = {
   aiPlannerModel: 'gpt-5.4-mini',
   customEndpoint: '',
   theme: 'dark',
+  /** Accent palette: aurora | ocean | ember | forest | magenta | slate — see css/parts/colorways.css */
+  accentColorway: 'aurora',
   searchEngine: 'https://www.google.com/search?q=',
   homepage: 'https://www.google.com',
   sidebarWidth: 240,

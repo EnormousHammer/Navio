@@ -22,7 +22,7 @@ const SETTINGS_PANEL_RAIL = {
   general: 'Startup, new tab, Home dashboard corners, display zoom, downloads, tab snooze, and translate defaults.',
   profiles: 'Create and switch profiles so work, personal, and test browsing stay in separate data folders.',
   ai: 'Provider, model, keys, streaming, safety, MCP tools, and how Navio pulls live web or mail context.',
-  appearance: 'Theme, tab strip layout, bookmark bar, and how wide the AI assistant dock opens.',
+  appearance: 'Theme, accent colorway, tab strip layout, bookmark bar, and how wide the AI assistant dock opens.',
   browser: 'Search engine, homepage, extensions, import, workflows, and troubleshooting helpers.',
   privacy: 'Ad blocking, pop-ups, trackers, cookies, saved AI memory, and clearing site data.',
   integrations: 'OAuth, Gmail sync, Perplexity, Brave Search, MCP servers, and connected services.',
@@ -35,6 +35,7 @@ class SettingsManagerClass {
     this.modal = document.getElementById('settings-modal');
     this.config = {};
     this._openedConfig = null;
+    this.selectedColorway = 'aurora';
 
     this.elements = {
       startupMode: document.getElementById('setting-startup-mode'),
@@ -76,6 +77,7 @@ class SettingsManagerClass {
       syncPassphrase: document.getElementById('sync-passphrase'),
       toggleKey: document.getElementById('btn-toggle-key'),
       themeOptions: document.getElementById('theme-options'),
+      accentColorwayOptions: document.getElementById('accent-colorway-options'),
       nav: document.getElementById('settings-nav'),
       clearApiKey: document.getElementById('btn-clear-api-key'),
       clearSiteData: document.getElementById('btn-clear-site-data'),
@@ -224,6 +226,20 @@ class SettingsManagerClass {
         }
       });
     });
+
+    if (this.elements.accentColorwayOptions) {
+      const allowedCw = new Set(['aurora', 'ocean', 'ember', 'forest', 'magenta', 'slate']);
+      this.elements.accentColorwayOptions.querySelectorAll('.colorway-option').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const raw = (btn.dataset.colorway || 'aurora').trim().toLowerCase();
+          const id = allowedCw.has(raw) ? raw : 'aurora';
+          this.elements.accentColorwayOptions.querySelectorAll('.colorway-option').forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+          this.selectedColorway = id;
+          if (typeof App !== 'undefined' && App.applyColorway) App.applyColorway(id);
+        });
+      });
+    }
 
     this.elements.assistantWidth.addEventListener('input', () => {
       this.syncAssistantWidthLabel();
@@ -795,6 +811,15 @@ class SettingsManagerClass {
     this.elements.themeOptions.querySelectorAll('.theme-option').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.theme === this.selectedTheme);
     });
+
+    const allowedCw = new Set(['aurora', 'ocean', 'ember', 'forest', 'magenta', 'slate']);
+    const cwRaw = String(this.config.accentColorway || 'aurora').trim().toLowerCase();
+    this.selectedColorway = allowedCw.has(cwRaw) ? cwRaw : 'aurora';
+    if (this.elements.accentColorwayOptions) {
+      this.elements.accentColorwayOptions.querySelectorAll('.colorway-option').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.colorway === this.selectedColorway);
+      });
+    }
 
     this.updateModelOptions();
     this.updateProviderHint();
@@ -1615,6 +1640,7 @@ class SettingsManagerClass {
       this.populateFields();
       if (typeof App !== 'undefined') {
         App.applyTheme(this.config.theme || 'dark');
+        if (App.applyColorway) App.applyColorway(this.config.accentColorway || 'aurora');
         App.applyLayoutFromConfig(this.config);
       }
       if (typeof TabManager !== 'undefined') {
@@ -1761,6 +1787,7 @@ class SettingsManagerClass {
       searchEngine: this.elements.searchEngine.value,
       homepage: this.elements.homepage.value.trim() || 'https://www.google.com',
       theme: this.selectedTheme || 'dark',
+      accentColorway: this.selectedColorway || 'aurora',
       assistantWidth,
       tabLayout: this.elements.tabLayout ? this.elements.tabLayout.value : 'horizontal',
       showBookmarkBar: !!(this.elements.bookmarkBar && this.elements.bookmarkBar.checked),
@@ -1799,6 +1826,7 @@ class SettingsManagerClass {
     if (typeof App !== 'undefined') {
       App.config = this.config;
       App.applyTheme(newConfig.theme);
+      if (App.applyColorway) App.applyColorway(newConfig.accentColorway || 'aurora');
       App.applyLayoutFromConfig(newConfig);
     }
 

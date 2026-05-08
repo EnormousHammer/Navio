@@ -9,6 +9,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; media-src 'self' file: blob: data:; connect-src *; frame-src 'self' blob: https://www.tradingview-widget.com https://*.tradingview.com https://www.tradingview.com https://s3.tradingview.com;">
   <title>Navio</title>
   <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/parts/colorways.css">
   <link rel="stylesheet" href="css/parts/polish.css">
 </head>
 <body data-theme="dark">
@@ -1159,6 +1160,36 @@
                 </div>
               </div>
               <p class="settings-inline-hint">Dark applies to the UI and to websites (automatic dark rendering for readability). Changing theme updates open tabs.</p>
+              <div class="setting-row" style="margin-top:14px">
+                <label>Accent colorway</label>
+                <div class="colorway-option-group" id="accent-colorway-options" role="group" aria-label="Accent colorway">
+                  <button type="button" class="colorway-option" data-colorway="aurora" title="Aurora — cyan and violet (default)">
+                    <span class="colorway-swatch colorway-swatch--aurora" aria-hidden="true"></span>
+                    <span>Aurora</span>
+                  </button>
+                  <button type="button" class="colorway-option" data-colorway="ocean" title="Ocean — teal and blue">
+                    <span class="colorway-swatch colorway-swatch--ocean" aria-hidden="true"></span>
+                    <span>Ocean</span>
+                  </button>
+                  <button type="button" class="colorway-option" data-colorway="ember" title="Ember — warm orange and rose">
+                    <span class="colorway-swatch colorway-swatch--ember" aria-hidden="true"></span>
+                    <span>Ember</span>
+                  </button>
+                  <button type="button" class="colorway-option" data-colorway="forest" title="Forest — green tones">
+                    <span class="colorway-swatch colorway-swatch--forest" aria-hidden="true"></span>
+                    <span>Forest</span>
+                  </button>
+                  <button type="button" class="colorway-option" data-colorway="magenta" title="Magenta — purple and fuchsia">
+                    <span class="colorway-swatch colorway-swatch--magenta" aria-hidden="true"></span>
+                    <span>Magenta</span>
+                  </button>
+                  <button type="button" class="colorway-option" data-colorway="slate" title="Slate — cool gray with blue highlight">
+                    <span class="colorway-swatch colorway-swatch--slate" aria-hidden="true"></span>
+                    <span>Slate</span>
+                  </button>
+                </div>
+              </div>
+              <p class="settings-inline-hint">Buttons, focus rings, gradients, and highlights follow the colorway. Save settings to persist.</p>
             </div>
             <div class="settings-section">
               <h3>Layout</h3>
@@ -1483,116 +1514,211 @@
       </div>
     </div>
 
-    <!-- Step 1: Name -->
-    <div class="ob-step ob-name" data-step="1">
-      <div class="ob-card">
-        <div class="ob-step-indicator">
-          <div class="ob-dot active"></div><div class="ob-dot"></div><div class="ob-dot"></div>
+    <!-- Steps 1–3: split view (left: steps + form, right: style & appearance — similar to Edge first-run) -->
+    <div class="ob-split-shell">
+      <div class="ob-split-left">
+        <div class="ob-split-left-inner">
+          <p class="ob-split-kicker">Set up Navio</p>
+          <h2 class="ob-split-headline" id="ob-split-headline">A few quick choices</h2>
+          <p class="ob-split-lead" id="ob-split-lead">Use the step tiles, then pick theme and tab strip on the right. You can change these anytime in Settings.</p>
+          <nav class="ob-step-tiles" id="ob-step-tiles" aria-label="Setup steps">
+            <button type="button" class="ob-step-tile" data-ob-step-tile="1">
+              <span class="ob-step-tile-num">1</span>
+              <span class="ob-step-tile-body">
+                <span class="ob-step-tile-title">Profile</span>
+                <span class="ob-step-tile-desc">Your name</span>
+              </span>
+            </button>
+            <button type="button" class="ob-step-tile" data-ob-step-tile="2" disabled>
+              <span class="ob-step-tile-num">2</span>
+              <span class="ob-step-tile-body">
+                <span class="ob-step-tile-title">Import</span>
+                <span class="ob-step-tile-desc">Bookmarks</span>
+              </span>
+            </button>
+            <button type="button" class="ob-step-tile" data-ob-step-tile="3" disabled>
+              <span class="ob-step-tile-num">3</span>
+              <span class="ob-step-tile-body">
+                <span class="ob-step-tile-title">AI</span>
+                <span class="ob-step-tile-desc">Optional key</span>
+              </span>
+            </button>
+          </nav>
         </div>
-        <div class="ob-card-icon">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        </div>
-        <h2 class="ob-card-title">What should we call you?</h2>
-        <p class="ob-card-desc">Personalize your browsing experience</p>
-        <div class="ob-input-wrap">
-          <input type="text" id="ob-name-input" class="ob-input" placeholder="Enter your name..." spellcheck="false" autocomplete="off" maxlength="30">
-          <div class="ob-input-glow"></div>
-        </div>
-        <div class="ob-card-actions">
-          <button class="ob-btn ob-btn-next" id="ob-name-next" disabled>
-            <span>Continue</span>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
-        </div>
-      </div>
-    </div>
+        <div class="ob-split-left-main">
+          <!-- Step 1: Name -->
+          <div class="ob-step ob-name" data-step="1">
+            <div class="ob-card">
+              <div class="ob-step-indicator">
+                <div class="ob-dot active"></div><div class="ob-dot"></div><div class="ob-dot"></div>
+              </div>
+              <div class="ob-card-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </div>
+              <h2 class="ob-card-title">What should we call you?</h2>
+              <p class="ob-card-desc">Personalize your browsing experience</p>
+              <div class="ob-input-wrap">
+                <input type="text" id="ob-name-input" class="ob-input" placeholder="Enter your name..." spellcheck="false" autocomplete="off" maxlength="30">
+                <div class="ob-input-glow"></div>
+              </div>
+              <div class="ob-card-actions">
+                <button class="ob-btn ob-btn-next" id="ob-name-next" disabled>
+                  <span>Continue</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
 
-    <!-- Step 2: Import -->
-    <div class="ob-step ob-import" data-step="2">
-      <div class="ob-card">
-        <div class="ob-step-indicator">
-          <div class="ob-dot done"></div><div class="ob-dot active"></div><div class="ob-dot"></div>
-        </div>
-        <div class="ob-card-icon">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        </div>
-        <h2 class="ob-card-title">Import your world</h2>
-        <p class="ob-card-desc">Bring bookmarks from your current browser</p>
-        <div class="ob-browsers" id="ob-browsers">
-          <div class="ob-browsers-loading">
-            <div class="ob-spin"></div>
-            <span>Detecting browsers...</span>
+          <!-- Step 2: Import -->
+          <div class="ob-step ob-import" data-step="2">
+            <div class="ob-card">
+              <div class="ob-step-indicator">
+                <div class="ob-dot done"></div><div class="ob-dot active"></div><div class="ob-dot"></div>
+              </div>
+              <div class="ob-card-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              </div>
+              <h2 class="ob-card-title">Import your world</h2>
+              <p class="ob-card-desc">Bring bookmarks from your current browser</p>
+              <div class="ob-browsers" id="ob-browsers">
+                <div class="ob-browsers-loading">
+                  <div class="ob-spin"></div>
+                  <span>Detecting browsers...</span>
+                </div>
+              </div>
+              <div class="ob-card-actions">
+                <button class="ob-btn ob-btn-skip" id="ob-import-skip">Skip</button>
+                <button class="ob-btn ob-btn-next" id="ob-import-next">
+                  <span>Import &amp; Continue</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-        <div class="ob-card-actions">
-          <button class="ob-btn ob-btn-skip" id="ob-import-skip">Skip</button>
-          <button class="ob-btn ob-btn-next" id="ob-import-next">
-            <span>Import &amp; Continue</span>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
-        </div>
-      </div>
-    </div>
 
-    <!-- Step 3: AI Setup -->
-    <div class="ob-step ob-ai" data-step="3">
-      <div class="ob-card ob-card-wide">
-        <div class="ob-step-indicator">
-          <div class="ob-dot done"></div><div class="ob-dot done"></div><div class="ob-dot active"></div>
-        </div>
-        <div class="ob-card-icon">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 1 7 7v1a7 7 0 0 1-14 0V9a7 7 0 0 1 7-7z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><circle cx="9" cy="9" r="1" fill="currentColor"/><circle cx="15" cy="9" r="1" fill="currentColor"/></svg>
-        </div>
-        <h2 class="ob-card-title">Power up with AI</h2>
-        <p class="ob-card-desc">Connect your AI provider for intelligent browsing</p>
-        <div class="ob-providers" id="ob-providers">
-          <button class="ob-provider" data-provider="openai">
-            <div class="ob-provider-icon" style="background: linear-gradient(135deg, #10a37f, #1a7f64)">
-              <span>GP</span>
+          <!-- Step 3: AI Setup -->
+          <div class="ob-step ob-ai" data-step="3">
+            <div class="ob-card ob-card-wide">
+              <div class="ob-step-indicator">
+                <div class="ob-dot done"></div><div class="ob-dot done"></div><div class="ob-dot active"></div>
+              </div>
+              <div class="ob-card-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 1 7 7v1a7 7 0 0 1-14 0V9a7 7 0 0 1 7-7z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><circle cx="9" cy="9" r="1" fill="currentColor"/><circle cx="15" cy="9" r="1" fill="currentColor"/></svg>
+              </div>
+              <h2 class="ob-card-title">Power up with AI</h2>
+              <p class="ob-card-desc">Connect your AI provider for intelligent browsing</p>
+              <div class="ob-providers" id="ob-providers">
+                <button class="ob-provider" data-provider="openai">
+                  <div class="ob-provider-icon" style="background: linear-gradient(135deg, #10a37f, #1a7f64)">
+                    <span>GP</span>
+                  </div>
+                  <div class="ob-provider-info">
+                    <strong>OpenAI</strong>
+                    <span>ChatGPT / GPT API</span>
+                  </div>
+                </button>
+                <button class="ob-provider" data-provider="anthropic">
+                  <div class="ob-provider-icon" style="background: linear-gradient(135deg, #d4a574, #c4956a)">
+                    <span>CL</span>
+                  </div>
+                  <div class="ob-provider-info">
+                    <strong>Anthropic</strong>
+                    <span>Claude API</span>
+                  </div>
+                </button>
+                <button class="ob-provider" data-provider="google">
+                  <div class="ob-provider-icon" style="background: linear-gradient(135deg, #4285f4, #34a853)">
+                    <span>GE</span>
+                  </div>
+                  <div class="ob-provider-info">
+                    <strong>Google</strong>
+                    <span>Gemini API</span>
+                  </div>
+                </button>
+              </div>
+              <div class="ob-key-section" id="ob-key-section" style="display:none">
+                <div class="ob-key-header">
+                  <span id="ob-key-label">OpenAI API Key</span>
+                  <a class="ob-key-link" id="ob-key-link" href="#" title="Get your API key">How to get a key</a>
+                </div>
+                <div class="ob-input-wrap">
+                  <input type="password" id="ob-api-key" class="ob-input" placeholder="sk-..." spellcheck="false" autocomplete="off">
+                  <div class="ob-input-glow"></div>
+                </div>
+                <p class="ob-key-note">Your key stays local on your device. Never sent anywhere except the provider's API.</p>
+              </div>
+              <div class="ob-card-actions">
+                <button class="ob-btn ob-btn-skip" id="ob-ai-skip">Skip for now</button>
+                <button class="ob-btn ob-btn-next" id="ob-ai-next" disabled>
+                  <span>Finish Setup</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+              </div>
             </div>
-            <div class="ob-provider-info">
-              <strong>OpenAI</strong>
-              <span>ChatGPT / GPT API</span>
-            </div>
-          </button>
-          <button class="ob-provider" data-provider="anthropic">
-            <div class="ob-provider-icon" style="background: linear-gradient(135deg, #d4a574, #c4956a)">
-              <span>CL</span>
-            </div>
-            <div class="ob-provider-info">
-              <strong>Anthropic</strong>
-              <span>Claude API</span>
-            </div>
-          </button>
-          <button class="ob-provider" data-provider="google">
-            <div class="ob-provider-icon" style="background: linear-gradient(135deg, #4285f4, #34a853)">
-              <span>GE</span>
-            </div>
-            <div class="ob-provider-info">
-              <strong>Google</strong>
-              <span>Gemini API</span>
-            </div>
-          </button>
-        </div>
-        <div class="ob-key-section" id="ob-key-section" style="display:none">
-          <div class="ob-key-header">
-            <span id="ob-key-label">OpenAI API Key</span>
-            <a class="ob-key-link" id="ob-key-link" href="#" title="Get your API key">How to get a key</a>
           </div>
-          <div class="ob-input-wrap">
-            <input type="password" id="ob-api-key" class="ob-input" placeholder="sk-..." spellcheck="false" autocomplete="off">
-            <div class="ob-input-glow"></div>
-          </div>
-          <p class="ob-key-note">Your key stays local on your device. Never sent anywhere except the provider's API.</p>
-        </div>
-        <div class="ob-card-actions">
-          <button class="ob-btn ob-btn-skip" id="ob-ai-skip">Skip for now</button>
-          <button class="ob-btn ob-btn-next" id="ob-ai-next" disabled>
-            <span>Finish Setup</span>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
         </div>
       </div>
+      <aside class="ob-split-right" aria-labelledby="ob-appearance-heading">
+        <h3 class="ob-split-right-title" id="ob-appearance-heading">Style &amp; appearance</h3>
+        <p class="ob-split-right-sub">Preview updates live. These apply as soon as you finish setup.</p>
+        <div class="ob-appearance-block">
+          <span class="ob-appearance-label">Theme</span>
+          <div class="ob-appearance-row" role="group" aria-label="Theme">
+            <button type="button" class="ob-appearance-choice" data-ob-theme="dark" aria-pressed="true">
+              <span class="ob-appearance-swatch ob-appearance-swatch--dark"></span>
+              <span class="ob-appearance-choice-text">Dark</span>
+            </button>
+            <button type="button" class="ob-appearance-choice" data-ob-theme="light" aria-pressed="false">
+              <span class="ob-appearance-swatch ob-appearance-swatch--light"></span>
+              <span class="ob-appearance-choice-text">Light</span>
+            </button>
+          </div>
+        </div>
+        <div class="ob-appearance-block">
+          <span class="ob-appearance-label">Accent</span>
+          <div class="colorway-option-group ob-onboarding-colorways" id="ob-accent-colorway-options" role="group" aria-label="Accent colorway">
+            <button type="button" class="colorway-option active" data-ob-colorway="aurora" title="Aurora">
+              <span class="colorway-swatch colorway-swatch--aurora" aria-hidden="true"></span>
+              <span>Aurora</span>
+            </button>
+            <button type="button" class="colorway-option" data-ob-colorway="ocean" title="Ocean">
+              <span class="colorway-swatch colorway-swatch--ocean" aria-hidden="true"></span>
+              <span>Ocean</span>
+            </button>
+            <button type="button" class="colorway-option" data-ob-colorway="ember" title="Ember">
+              <span class="colorway-swatch colorway-swatch--ember" aria-hidden="true"></span>
+              <span>Ember</span>
+            </button>
+            <button type="button" class="colorway-option" data-ob-colorway="forest" title="Forest">
+              <span class="colorway-swatch colorway-swatch--forest" aria-hidden="true"></span>
+              <span>Forest</span>
+            </button>
+            <button type="button" class="colorway-option" data-ob-colorway="magenta" title="Magenta">
+              <span class="colorway-swatch colorway-swatch--magenta" aria-hidden="true"></span>
+              <span>Magenta</span>
+            </button>
+            <button type="button" class="colorway-option" data-ob-colorway="slate" title="Slate">
+              <span class="colorway-swatch colorway-swatch--slate" aria-hidden="true"></span>
+              <span>Slate</span>
+            </button>
+          </div>
+        </div>
+        <div class="ob-appearance-block">
+          <span class="ob-appearance-label">Tab strip</span>
+          <div class="ob-appearance-row" role="group" aria-label="Tab strip position">
+            <button type="button" class="ob-appearance-choice" data-ob-tab-layout="horizontal" aria-pressed="true">
+              <span class="ob-appearance-tabico ob-appearance-tabico--top" aria-hidden="true"></span>
+              <span class="ob-appearance-choice-text">Top</span>
+            </button>
+            <button type="button" class="ob-appearance-choice" data-ob-tab-layout="vertical" aria-pressed="false">
+              <span class="ob-appearance-tabico ob-appearance-tabico--side" aria-hidden="true"></span>
+              <span class="ob-appearance-choice-text">Side</span>
+            </button>
+          </div>
+        </div>
+        <div class="ob-appearance-hint">Bookmark bar and more live under Settings after launch.</div>
+      </aside>
     </div>
 
     <!-- Step 4: Launch -->

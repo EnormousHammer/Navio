@@ -1,0 +1,273 @@
+/**
+ * Navio accent colorways — override core accent tokens on <html>.
+ * Default “aurora” is the built-in palette; other values use data-accent on html
+ * (set by App.applyColorway via config accentColorway).
+ */
+
+html[data-theme="dark"][data-accent="ocean"] {
+  --accent: #2dd4bf;
+  --accent-mid: #06b6d4;
+  --accent-end: #3b82f6;
+  --accent-pink: #67e8f9;
+  --accent-hover: #5eead4;
+  --gradient-primary: linear-gradient(135deg, #2dd4bf 0%, #06b6d4 45%, #3b82f6 100%);
+  --gradient-subtle: linear-gradient(135deg, rgba(45, 212, 191, 0.09) 0%, rgba(59, 130, 246, 0.06) 100%);
+  --accent-glow: rgba(45, 212, 191, 0.12);
+  --accent-glow-strong: rgba(45, 212, 191, 0.22);
+  --text-accent: #5eead4;
+  --border-accent: rgba(45, 212, 191, 0.38);
+  --shadow-glow: 0 0 20px rgba(45, 212, 191, 0.1);
+  --shadow-glow-strong: 0 0 36px rgba(59, 130, 246, 0.14);
+  --ntp-radial: radial-gradient(ellipse at center, rgba(45, 212, 191, 0.06) 0%, rgba(59, 130, 246, 0.04) 50%, transparent 72%);
+}
+
+html[data-theme="light"][data-accent="ocean"] {
+  --accent: #0d9488;
+  --accent-mid: #0891b2;
+  --accent-end: #1d4ed8;
+  --accent-pink: #06b6d4;
+  --accent-hover: #0f766e;
+  --gradient-primary: linear-gradient(135deg, #0d9488 0%, #0891b2 45%, #2563eb 100%);
+  --gradient-subtle: linear-gradient(135deg, rgba(13, 148, 136, 0.1) 0%, rgba(37, 99, 235, 0.07) 100%);
+  --accent-glow: rgba(13, 148, 136, 0.12);
+  --accent-glow-strong: rgba(37, 99, 235, 0.2);
+  --text-accent: #0f766e;
+  --border-accent: rgba(13, 148, 136, 0.35);
+  --shadow-glow: 0 0 18px rgba(13, 148, 136, 0.1);
+  --shadow-glow-strong: 0 0 32px rgba(37, 99, 235, 0.12);
+  --ntp-radial: radial-gradient(circle, rgba(13, 148, 136, 0.07) 0%, rgba(37, 99, 235, 0.04) 45%, transparent 72%);
+}
+
+html[data-theme="dark"][data-accent="ember"] {
+  --accent: #fb923c;
+  --accent-mid: #f43f5e;
+  --accent-end: #fbbf24;
+  --accent-pink: #fda4af;
+  --accent-hover: #fdba74;
+  --gradient-primary: linear-gradient(135deg, #fb923c 0%, #f43f5e 50%, #fbbf24 100%);
+  --gradient-subtle: linear-gradient(135deg, rgba(251, 146, 60, 0.1) 0%, rgba(244, 63, 94, 0.07) 100%);
+  --accent-glow: rgba(251, 146, 60, 0.14);
+  --accent-glow-strong: rgba(244, 63, 94, 0.22);
+  --text-accent: #fdba74;
+  --border-accent: rgba(251, 146, 60, 0.4);
+  --shadow-glow: 0 0 22px rgba(251, 146, 60, 0.12);
+  --shadow-glow-strong: 0 0 38px rgba(244, 63, 94, 0.16);
+  --ntp-radial: radial-gradient(ellipse at center, rgba(251, 146, 60, 0.07) 0%, rgba(244, 63, 94, 0.05) 50%, transparent 72%);
+}
+
+html[data-theme="light"][data-accent="ember"] {
+  --accent: #c2410c;
+  --accent-mid: #be123c;
+  --accent-end: #b45309;
+  --accent-pink: #e11d48;
+  --accent-hover: #9a3412;
+  --gradient-primary: linear-gradient(135deg, #c2410c 0%, #be123c 50%, #b45309 100%);
+  --gradient-subtle: linear-gradient(135deg, rgba(194, 65, 12, 0.1) 0%, rgba(190, 18, 60, 0.08) 100%);
+  --accent-glow: rgba(194, 65, 12, 0.12);
+  --accent-glow-strong: rgba(190, 18, 60, 0.2);
+  --text-accent: #b45309;
+  --border-accent: rgba(194, 65, 12, 0.38);
+  --shadow-glow: 0 0 18px rgba(194, 65, 12, 0.1);
+  --shadow-glow-strong: 0 0 32px rgba(190, 18, 60, 0.12);
+  --ntp-radial: radial-gradient(circle, rgba(194, 65, 12, 0.06) 0%, rgba(190, 18, 60, 0.04) 45%, transparent 72%);
+}
+
+html[data-theme="dark"][data-accent="forest"] {
+  --accent: #4ade80;
+  --accent-mid: #22c55e;
+  --accent-end: #84cc16;
+  --accent-pink: #86efac;
+  --accent-hover: #86efac;
+  --gradient-primary: linear-gradient(135deg, #4ade80 0%, #22c55e 50%, #84cc16 100%);
+  --gradient-subtle: linear-gradient(135deg, rgba(74, 222, 128, 0.1) 0%, rgba(132, 204, 22, 0.07) 100%);
+  --accent-glow: rgba(74, 222, 128, 0.13);
+  --accent-glow-strong: rgba(34, 197, 94, 0.22);
+  --text-accent: #86efac;
+  --border-accent: rgba(74, 222, 128, 0.38);
+  --shadow-glow: 0 0 20px rgba(74, 222, 128, 0.11);
+  --shadow-glow-strong: 0 0 36px rgba(34, 197, 94, 0.15);
+  --ntp-radial: radial-gradient(ellipse at center, rgba(74, 222, 128, 0.07) 0%, rgba(132, 204, 22, 0.04) 50%, transparent 72%);
+}
+
+html[data-theme="light"][data-accent="forest"] {
+  --accent: #15803d;
+  --accent-mid: #16a34a;
+  --accent-end: #4d7c0f;
+  --accent-pink: #22c55e;
+  --accent-hover: #166534;
+  --gradient-primary: linear-gradient(135deg, #15803d 0%, #16a34a 50%, #4d7c0f 100%);
+  --gradient-subtle: linear-gradient(135deg, rgba(21, 128, 61, 0.1) 0%, rgba(77, 124, 15, 0.07) 100%);
+  --accent-glow: rgba(21, 128, 61, 0.12);
+  --accent-glow-strong: rgba(22, 163, 74, 0.2);
+  --text-accent: #166534;
+  --border-accent: rgba(21, 128, 61, 0.36);
+  --shadow-glow: 0 0 18px rgba(22, 163, 74, 0.1);
+  --shadow-glow-strong: 0 0 32px rgba(21, 128, 61, 0.12);
+  --ntp-radial: radial-gradient(circle, rgba(22, 163, 74, 0.06) 0%, rgba(77, 124, 15, 0.04) 45%, transparent 72%);
+}
+
+html[data-theme="dark"][data-accent="magenta"] {
+  --accent: #e879f9;
+  --accent-mid: #a855f7;
+  --accent-end: #6366f1;
+  --accent-pink: #f0abfc;
+  --accent-hover: #f5a3ff;
+  --gradient-primary: linear-gradient(135deg, #e879f9 0%, #a855f7 50%, #6366f1 100%);
+  --gradient-subtle: linear-gradient(135deg, rgba(232, 121, 249, 0.1) 0%, rgba(99, 102, 241, 0.07) 100%);
+  --accent-glow: rgba(168, 85, 247, 0.14);
+  --accent-glow-strong: rgba(232, 121, 249, 0.22);
+  --text-accent: #e9d5ff;
+  --border-accent: rgba(232, 121, 249, 0.42);
+  --shadow-glow: 0 0 22px rgba(168, 85, 247, 0.12);
+  --shadow-glow-strong: 0 0 38px rgba(99, 102, 241, 0.16);
+  --ntp-radial: radial-gradient(ellipse at center, rgba(232, 121, 249, 0.07) 0%, rgba(99, 102, 241, 0.05) 50%, transparent 72%);
+}
+
+html[data-theme="light"][data-accent="magenta"] {
+  --accent: #a21caf;
+  --accent-mid: #7e22ce;
+  --accent-end: #4f46e5;
+  --accent-pink: #c026d3;
+  --accent-hover: #86198f;
+  --gradient-primary: linear-gradient(135deg, #a21caf 0%, #7e22ce 50%, #4f46e5 100%);
+  --gradient-subtle: linear-gradient(135deg, rgba(162, 28, 175, 0.1) 0%, rgba(79, 70, 229, 0.07) 100%);
+  --accent-glow: rgba(126, 34, 206, 0.12);
+  --accent-glow-strong: rgba(162, 28, 175, 0.2);
+  --text-accent: #7e22ce;
+  --border-accent: rgba(126, 34, 206, 0.35);
+  --shadow-glow: 0 0 18px rgba(126, 34, 206, 0.1);
+  --shadow-glow-strong: 0 0 32px rgba(79, 70, 229, 0.12);
+  --ntp-radial: radial-gradient(circle, rgba(162, 28, 175, 0.06) 0%, rgba(79, 70, 229, 0.04) 45%, transparent 72%);
+}
+
+html[data-theme="dark"][data-accent="slate"] {
+  --accent: #94a3b8;
+  --accent-mid: #64748b;
+  --accent-end: #38bdf8;
+  --accent-pink: #cbd5e1;
+  --accent-hover: #cbd5e1;
+  --gradient-primary: linear-gradient(135deg, #64748b 0%, #475569 45%, #38bdf8 100%);
+  --gradient-subtle: linear-gradient(135deg, rgba(100, 116, 139, 0.12) 0%, rgba(56, 189, 248, 0.06) 100%);
+  --accent-glow: rgba(148, 163, 184, 0.14);
+  --accent-glow-strong: rgba(56, 189, 248, 0.18);
+  --text-accent: #bae6fd;
+  --border-accent: rgba(148, 163, 184, 0.35);
+  --shadow-glow: 0 0 20px rgba(100, 116, 139, 0.12);
+  --shadow-glow-strong: 0 0 34px rgba(56, 189, 248, 0.12);
+  --ntp-radial: radial-gradient(ellipse at center, rgba(100, 116, 139, 0.08) 0%, rgba(56, 189, 248, 0.04) 50%, transparent 72%);
+}
+
+html[data-theme="light"][data-accent="slate"] {
+  --accent: #475569;
+  --accent-mid: #334155;
+  --accent-end: #0284c7;
+  --accent-pink: #64748b;
+  --accent-hover: #334155;
+  --gradient-primary: linear-gradient(135deg, #475569 0%, #334155 45%, #0284c7 100%);
+  --gradient-subtle: linear-gradient(135deg, rgba(71, 85, 105, 0.1) 0%, rgba(2, 132, 199, 0.07) 100%);
+  --accent-glow: rgba(71, 85, 105, 0.1);
+  --accent-glow-strong: rgba(2, 132, 199, 0.18);
+  --text-accent: #0369a1;
+  --border-accent: rgba(2, 132, 199, 0.32);
+  --shadow-glow: 0 0 16px rgba(71, 85, 105, 0.08);
+  --shadow-glow-strong: 0 0 28px rgba(2, 132, 199, 0.1);
+  --ntp-radial: radial-gradient(circle, rgba(71, 85, 105, 0.05) 0%, rgba(2, 132, 199, 0.04) 45%, transparent 72%);
+}
+
+/* Settings + onboarding: colorway picker tiles */
+.colorway-option-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.colorway-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 72px;
+  padding: 10px 8px 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease), background 0.2s var(--ease);
+}
+
+.colorway-option:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-hover);
+}
+
+.colorway-option.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04), 0 0 16px var(--accent-glow-strong);
+  color: var(--text-primary);
+}
+
+.colorway-swatch {
+  width: 40px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+[data-theme="light"] .colorway-swatch {
+  border-color: rgba(15, 23, 42, 0.12);
+}
+
+.colorway-swatch--aurora {
+  background: linear-gradient(135deg, #00d8ff 0%, #5468ff 55%, #9f6fff 100%);
+}
+
+.colorway-swatch--ocean {
+  background: linear-gradient(135deg, #2dd4bf 0%, #06b6d4 50%, #3b82f6 100%);
+}
+
+.colorway-swatch--ember {
+  background: linear-gradient(135deg, #fb923c 0%, #f43f5e 50%, #fbbf24 100%);
+}
+
+.colorway-swatch--forest {
+  background: linear-gradient(135deg, #4ade80 0%, #22c55e 50%, #84cc16 100%);
+}
+
+.colorway-swatch--magenta {
+  background: linear-gradient(135deg, #e879f9 0%, #a855f7 50%, #6366f1 100%);
+}
+
+.colorway-swatch--slate {
+  background: linear-gradient(135deg, #64748b 0%, #475569 50%, #38bdf8 100%);
+}
+
+/* First-run split: tighter colorway grid */
+#onboarding.ob-split-active .ob-onboarding-colorways {
+  max-width: 100%;
+}
+
+#onboarding.ob-split-active .ob-onboarding-colorways .colorway-option {
+  min-width: 58px;
+  padding: 8px 4px 6px;
+  font-size: 10px;
+}
+
+#onboarding.ob-split-active .ob-onboarding-colorways .colorway-swatch {
+  width: 32px;
+  height: 20px;
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-onboarding-colorways .colorway-option {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(15, 23, 42, 0.1);
+  color: rgba(15, 23, 42, 0.75);
+}
+
+[data-theme="light"] #onboarding.ob-split-active .ob-onboarding-colorways .colorway-option.active {
+  color: #0f172a;
+}

@@ -3,6 +3,9 @@
  * Orchestrates all browser components: tabs, navigation, AI assistant, settings
  */
 
+/** Allowed `accentColorway` config values; default aurora uses built-in :root palette (no data-accent on html). */
+const NAVIO_ACCENT_COLORWAYS = ['aurora', 'ocean', 'ember', 'forest', 'magenta', 'slate'];
+
 function _navioHttpOriginFromUrl(url) {
   const s = String(url || '').trim();
   if (!/^https?:\/\//i.test(s)) return '';
@@ -54,6 +57,7 @@ class NavioApp {
     }
 
     this.applyTheme(this.config.theme || 'dark');
+    this.applyColorway(this.config.accentColorway || 'aurora');
     this.applyLayoutFromConfig(this.config);
 
     const isFirstRun = await Onboarding.checkFirstRun();
@@ -79,6 +83,7 @@ class NavioApp {
     window.navio.getConfig().then(c => {
       this.config = c;
       this.applyTheme(this.config.theme || 'dark');
+      this.applyColorway(this.config.accentColorway || 'aurora');
       this.applyLayoutFromConfig(this.config);
     });
     await this.startBrowser();
@@ -147,6 +152,17 @@ class NavioApp {
   applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     document.body.setAttribute('data-theme', theme);
+  }
+
+  /**
+   * Applies accent colorway (buttons, gradients, glows). Persists via config `accentColorway`.
+   * @param {string} id one of NAVIO_ACCENT_COLORWAYS
+   */
+  applyColorway(id) {
+    const raw = typeof id === 'string' ? id.trim().toLowerCase() : '';
+    const v = NAVIO_ACCENT_COLORWAYS.includes(raw) ? raw : 'aurora';
+    if (v === 'aurora') document.documentElement.removeAttribute('data-accent');
+    else document.documentElement.setAttribute('data-accent', v);
   }
 
   applyLayoutFromConfig(config) {

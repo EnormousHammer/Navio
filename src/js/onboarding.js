@@ -3,6 +3,8 @@
  * First-run setup: cinematic intro, name, browser import, AI config
  */
 
+const ONBOARDING_COLORWAYS = ['aurora', 'ocean', 'ember', 'forest', 'magenta', 'slate'];
+
 class OnboardingManager {
   constructor() {
     this.el = document.getElementById('onboarding');
@@ -13,6 +15,8 @@ class OnboardingManager {
     this.selectedProvider = null;
     this.apiKey = '';
     this.ready = false;
+    /** Steps 1–3 use Edge-style split view (guidance left, appearance right). */
+    this._splitSteps = [1, 2, 3];
   }
 
   async checkFirstRun() {
@@ -32,6 +36,7 @@ class OnboardingManager {
     this.initStarField('ob-stars');
     this.initStarField('ob-stars-2');
     this.bindEvents();
+    void this.initAppearancePanel();
     return true;
   }
 
@@ -86,10 +91,125 @@ class OnboardingManager {
     });
 
     document.getElementById('ob-btn-launch').addEventListener('click', () => this.launch());
+
+    document.querySelectorAll('[data-ob-step-tile]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const n = parseInt(btn.getAttribute('data-ob-step-tile'), 10);
+        if (Number.isFinite(n) && n < this.currentStep) this.goTo(n);
+      });
+    });
+
+    document.querySelectorAll('[data-ob-theme]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const t = btn.getAttribute('data-ob-theme');
+        if (t === 'dark' || t === 'light') void this.setOnboardingTheme(t);
+      });
+    });
+    document.querySelectorAll('[data-ob-tab-layout]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const layout = btn.getAttribute('data-ob-tab-layout');
+        if (layout === 'horizontal' || layout === 'vertical') void this.setOnboardingTabLayout(layout);
+      });
+    });
+
+    document.querySelectorAll('[data-ob-colorway]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-ob-colorway');
+        void this.setOnboardingColorway(id);
+      });
+    });
+  }
+
+  _normalizeColorway(id) {
+    const raw = String(id || '').trim().toLowerCase();
+    return ONBOARDING_COLORWAYS.includes(raw) ? raw : 'aurora';
+  }
+
+  _syncColorwayButtons(colorway) {
+    const wrap = document.getElementById('ob-accent-colorway-options');
+    if (!wrap) return;
+    const v = this._normalizeColorway(colorway);
+    wrap.querySelectorAll('[data-ob-colorway]').forEach((btn) => {
+      btn.classList.toggle('active', btn.getAttribute('data-ob-colorway') === v);
+    });
+  }
+
+  async initAppearancePanel() {
+    let cfg = {};
+    try {
+      cfg = await window.navio.getConfig();
+    } catch {
+      return;
+    }
+    const theme = cfg.theme === 'light' ? 'light' : 'dark';
+    const tabLayout = cfg.tabLayout === 'vertical' ? 'vertical' : 'horizontal';
+    const colorway = this._normalizeColorway(cfg.accentColorway);
+    if (typeof App !== 'undefined' && App.applyColorway) App.applyColorway(colorway);
+    this._syncAppearanceButtons(theme, tabLayout);
+    this._syncColorwayButtons(colorway);
+  }
+
+  _syncAppearanceButtons(theme, tabLayout) {
+    if (theme === 'dark' || theme === 'light') {
+      document.querySelectorAll('[data-ob-theme]').forEach((btn) => {
+        const on = btn.getAttribute('data-ob-theme') === theme;
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
+    if (tabLayout === 'horizontal' || tabLayout === 'vertical') {
+      document.querySelectorAll('[data-ob-tab-layout]').forEach((btn) => {
+        const on = btn.getAttribute('data-ob-tab-layout') === tabLayout;
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
+  }
+
+  async _persistAppearancePatch(patch) {
+    try {
+      const config = await window.navio.getConfig();
+      Object.assign(config, patch);
+      await window.navio.saveConfig(config);
+      if (typeof App !== 'undefined' && App.config) Object.assign(App.config, patch);
+    } catch { /* ignore */ }
+  }
+
+  async setOnboardingTheme(theme) {
+    if (typeof App !== 'undefined' && App.applyTheme) App.applyTheme(theme);
+    const tabBtn = document.querySelector('[data-ob-tab-layout][aria-pressed="true"]');
+    const tabLayout = tabBtn && tabBtn.getAttribute('data-ob-tab-layout') === 'vertical' ? 'vertical' : 'horizontal';
+    this._syncAppearanceButtons(theme, tabLayout);
+    await this._persistAppearancePatch({ theme });
+  }
+
+  async setOnboardingTabLayout(tabLayout) {
+    if (typeof window.applyTabLayoutFromConfig === 'function') {
+      window.applyTabLayoutFromConfig({ tabLayout });
+    }
+    const themeBtn = document.querySelector('[data-ob-theme][aria-pressed="true"]');
+    const theme = themeBtn && themeBtn.getAttribute('data-ob-theme') === 'light' ? 'light' : 'dark';
+    this._syncAppearanceButtons(theme, tabLayout);
+    await this._persistAppearancePatch({ tabLayout });
+  }
+
+  async setOnboardingColorway(id) {
+    const v = this._normalizeColorway(id);
+    if (typeof App !== 'undefined' && App.applyColorway) App.applyColorway(v);
+    this._syncColorwayButtons(v);
+    await this._persistAppearancePatch({ accentColorway: v });
   }
 
   goTo(step) {
     const current = this.el.querySelector('.ob-step.active');
+    const prevNum = current ? parseInt(current.getAttribute('data-step'), 10) : NaN;
+    const splitVisible =
+      this._splitSteps.includes(step) ||
+      (Number.isFinite(prevNum) && this._splitSteps.includes(prevNum));
+    if (this.el) this.el.classList.toggle('ob-split-active', splitVisible);
+    if (this._splitSteps.includes(step)) {
+      this._updateStepTiles(step);
+      this._updateSplitHeadline(step);
+    }
+
     if (current) {
       current.classList.add('exiting');
       current.classList.remove('active');
@@ -100,8 +220,53 @@ class OnboardingManager {
       const next = this.el.querySelector(`.ob-step[data-step="${step}"]`);
       if (next) next.classList.add('active');
       this.currentStep = step;
+      this._updateSplitShell(step);
       this.onStepEnter(step);
     }, 350);
+  }
+
+  _updateSplitShell(step) {
+    if (!this.el) return;
+    const split = this._splitSteps.includes(step);
+    this.el.classList.toggle('ob-split-active', split);
+    if (!split) return;
+    this._updateStepTiles(step);
+    this._updateSplitHeadline(step);
+  }
+
+  _updateStepTiles(step) {
+    document.querySelectorAll('[data-ob-step-tile]').forEach((btn) => {
+      const n = parseInt(btn.getAttribute('data-ob-step-tile'), 10);
+      if (!Number.isFinite(n)) return;
+      btn.classList.toggle('ob-step-tile--active', n === step);
+      btn.classList.toggle('ob-step-tile--done', n < step);
+      btn.disabled = n > step;
+      if (n === step) btn.setAttribute('aria-current', 'step');
+      else btn.removeAttribute('aria-current');
+    });
+  }
+
+  _updateSplitHeadline(step) {
+    const h = document.getElementById('ob-split-headline');
+    const lead = document.getElementById('ob-split-lead');
+    if (!h || !lead) return;
+    const copy = {
+      1: {
+        title: 'Tell us your name',
+        lead: 'We use this in greetings and across Navio. You can edit it later in Settings.'
+      },
+      2: {
+        title: 'Bring in bookmarks',
+        lead: 'Optional: import bookmarks from Chrome, Edge, Brave, or others detected on this PC. Skip if you prefer a clean start.'
+      },
+      3: {
+        title: 'Connect AI (optional)',
+        lead: 'Add an API key for your provider, or skip and configure Assistant later under Settings → AI.'
+      }
+    };
+    const c = copy[step] || copy[1];
+    h.textContent = c.title;
+    lead.textContent = c.lead;
   }
 
   onStepEnter(step) {
