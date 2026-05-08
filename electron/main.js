@@ -93,9 +93,13 @@ installNavioProductionDiagnostics();
 // services load correctly in Electron webviews. Without this, Chromium 130+
 // (Electron 33+) rejects the navigation with ERR_BLOCKED_BY_RESPONSE BEFORE
 // our onHeadersReceived handler can strip the Cross-Origin-Opener-Policy header.
+// ThirdPartyStoragePartitioning (Chrome 115+): partitions cookies/storage by top-level site.
+// Embedded <webview> + Cloudflare Turnstile (challenges.cloudflare.com iframe) can fail to
+// complete verification when challenge cookies / storage do not line up with Chrome-in-a-window.
+// Disabling restores legacy third-party behavior inside Navio's guest — privacy trade-off vs reliability.
 app.commandLine.appendSwitch(
   'disable-features',
-  'CrossOriginOpenerPolicy,CrossOriginEmbedderPolicy,CrossOriginEmbedderPolicyCredentialless'
+  'CrossOriginOpenerPolicy,CrossOriginEmbedderPolicy,CrossOriginEmbedderPolicyCredentialless,ThirdPartyStoragePartitioning'
 );
 
 // Remove the AutomationControlled blink feature that Chromium enables by default

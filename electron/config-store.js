@@ -119,12 +119,9 @@ const DEFAULT_CONFIG = {
   /**
    * Hostnames (one string per entry, suffix match) for which Navio does not load the
    * page in the guest webview — it opens the URL in the OS default browser instead.
-   * Example: `purolator.com` matches `www.purolator.com`. Use when Cloudflare / strict
-   * portals fail inside embedded Chromium; configure under Privacy in Settings.
-   * Default includes Purolator so new installs and upgrades (key absent on disk) work
-   * immediately; clear the list in Settings to load Purolator inside Navio again.
+   * Example: `purolator.com` matches `www.purolator.com`. Optional escape hatch under Privacy.
    */
-  defaultBrowserHostLines: ['purolator.com']
+  defaultBrowserHostLines: []
 };
 
 function readConfigFile() {
@@ -169,12 +166,6 @@ function loadConfig() {
     }
   }
   if (!Array.isArray(merged.defaultBrowserHostLines)) merged.defaultBrowserHostLines = [];
-
-  // Upgrades from configs saved before this field existed: Purolator → OS browser (reliable now).
-  // If the user explicitly saved an empty list, `file` contains the key and we do not override.
-  if (!Object.prototype.hasOwnProperty.call(file, 'defaultBrowserHostLines')) {
-    merged.defaultBrowserHostLines = ['purolator.com'];
-  }
 
   function coerceBool(v, fallback) {
     if (v === true || v === 'true' || v === 1) return true;
