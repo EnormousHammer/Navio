@@ -25,7 +25,9 @@ try {
   //    is active. The commandLine switch (--disable-blink-features=AutomationControlled)
   //    is the primary fix; this JS override is a belt-and-suspenders second layer.
   try {
-    Object.defineProperty(navigator, 'webdriver', { get: () => undefined, configurable: true });
+    // Real Chrome reports `false`, not missing/undefined — some bot scripts treat the
+    // distinction as automation (Turnstile / managed-challenge infinite reload loops).
+    Object.defineProperty(navigator, 'webdriver', { get: () => false, configurable: true });
   } catch { /* ignore if already non-configurable */ }
   //
   // 2. window.chrome — Real Chrome exposes window.chrome.runtime. Cloudflare's

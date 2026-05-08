@@ -172,7 +172,10 @@ function navioPreserveResponseHeadersForBotChecks(url) {
     const u = new URL(url);
     const h = u.hostname.toLowerCase();
     const p = u.pathname.toLowerCase();
-    if (h === 'challenges.cloudflare.com' || h.endsWith('.challenges.cloudflare.com')) {
+    // Entire cloudflare.com tree (challenges, static assets, telemetry, etc.). Bot
+    // checks evolve paths frequently; mutating COOP/CSP/CORP on any of these responses
+    // breaks Turnstile / managed challenge scripts and traps users in verify loops.
+    if (h === 'cloudflare.com' || h.endsWith('.cloudflare.com')) {
       return true;
     }
     // Carrier / enterprise identity hosts often sit behind Akamai (or similar) bot
@@ -183,12 +186,13 @@ function navioPreserveResponseHeadersForBotChecks(url) {
     for (const root of preserveOrigins) {
       if (h === root || h.endsWith('.' + root)) return true;
     }
-    return (
-      p.includes('/cdn-cgi/challenge-platform') ||
-      p.includes('/cdn-cgi/challenge/') ||
-      p.includes('/cdn-cgi/bm/') ||
-      p.includes('/cdn-cgi/l/chk')
-    );
+    // Customer-zone Cloudflare middleware lives under /cdn-cgi/ on the site origin
+    // (e.g. www.purolator.com/cdn-cgi/...). Preserve ALL of it — not only legacy path
+    // fragments — so new challenge-platform routes keep intact headers.
+    if (p.includes('/cdn-cgi/')) {
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }
