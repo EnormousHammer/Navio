@@ -47,7 +47,7 @@ Artifacts (64-bit Windows):
 
 Copy the **Setup.exe** or **ZIP** to a USB drive or cloud share; each target PC must match **Windows x64**. Building for macOS or Linux requires running `npm run build` on those platforms (Forge makers are configured per OS).
 
-**GitHub Releases (CI):** Pushing a version tag matching `v*` (for example `v1.0.0` after updating `package.json` `version`) runs the **Release** workflow (`.github/workflows/release.yml`): it tests, builds Windows and macOS artifacts (optionally signed when repository secrets are set), uploads them to a **GitHub Release**, and enables **in-app updates** for installed builds via `electron-updater`. Optional signing secrets are documented in [docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md).
+**Tag builds (CI):** Pushing a tag matching `v*` (for example `v1.0.0` after updating `package.json` `version`) runs **Release** (`.github/workflows/release.yml`): it tests, builds Windows and macOS installers/ZIPs (optionally signed when repository secrets are set), and stores them as **workflow artifacts** on that run. CI does **not** create or fill in a GitHub Release—you download the artifacts and attach them to a release yourself (or run `npm run publish` locally with a GitHub token if you want Forge to upload). After a public release exists with those assets, **in-app updates** use `electron-updater` against the repo in `package.json` → `repository`. Signing secrets: [docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md).
 
 ## AI Setup
 

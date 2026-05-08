@@ -6,7 +6,7 @@ The items from the former checklist are now in the tree:
 - **`forge.config.js`** — `publishers` → `@electron-forge/publisher-github` (`EnormousHammer` / `Navio`).
 - **`electron/main.js`** — `navioParseGitHubRepoFromPackage()` + `autoUpdater.setFeedURL({ provider: 'github', owner, repo })` in `navioEnsureAutoUpdaterWired()`.
 - **`build/entitlements.mac.plist`** — Hardened runtime entitlements for macOS signing.
-- **`.github/workflows/release.yml`** — Tag `v*` → test, build Windows + macOS, publish artifacts to GitHub Releases in two publish jobs (Windows first, then macOS) to avoid release races.
+- **`.github/workflows/release.yml`** — Tag `v*` → test, build Windows + macOS, upload **`out/make`** as workflow artifacts only (no automated GitHub Release upload in CI).
 - **`.github/workflows/build.yml`** — Optional Windows PFX decode + macOS `APPLE_*` env; artifacts use `out/make`; tag builds removed here (handled only by `release.yml`).
 - **`src/index.html` / `src/js/settings.js`** — About → Documentation links (Privacy, Security, Third-party notices).
 

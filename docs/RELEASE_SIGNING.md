@@ -42,10 +42,10 @@ On Windows runners, the workflow decodes `WINDOWS_CERTIFICATE_PFX_BASE64` into a
 
 5. Forge `packagerConfig` should set `osxSign.identity` when `APPLE_SIGNING_IDENTITY` is set, and `osxNotarize` with `tool: 'notarytool'` when Apple ID env vars are set.
 
-## GitHub Actions publishing
+## Publishing release assets (not done in CI)
 
-- Use `GITHUB_TOKEN` (default) or a PAT with `contents: write` for **`@electron-forge/publisher-github`**.
-- Prefer **tag-triggered** workflows (`v*`) so version, tag, and artifacts stay aligned.
+- **CI** (`.github/workflows/release.yml` on tag `v*`) only produces **workflow artifacts**. Create the GitHub Release yourself and upload the built `Setup.exe`, ZIPs, Squirrel `RELEASES` / `.nupkg` if you use them, and macOS ZIPs from those artifacts.
+- **Optional — local Forge publish:** On a machine with network access and a token that has **`contents: write`** on the repo, run `npm run publish` (or `npx electron-forge publish`) so **`@electron-forge/publisher-github`** uploads to a release. That uses your environment (for example `GH_TOKEN` / `GITHUB_TOKEN`), not the tag workflow.
 
 ## Operational notes
 
