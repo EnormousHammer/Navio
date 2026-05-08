@@ -709,7 +709,7 @@
     </div>
   </div>
 
-  <!-- Settings — Chromium-style: sidebar + page title + content (not a centered “marketing” header) -->
+  <!-- Settings — dark rail + editorial content layout -->
   <div id="settings-modal" class="modal-overlay">
     <div class="modal modal-settings">
       <button type="button" class="icon-btn settings-chrome-close" id="btn-close-settings" aria-label="Close settings">
@@ -766,29 +766,34 @@
             <h2 class="settings-page-title" id="settings-page-title">General</h2>
           </header>
           <div class="settings-panels">
+            <div class="settings-pane-scroll">
           <div class="settings-panel active" id="settings-panel-general" role="tabpanel">
             <div class="settings-section">
               <h3>Startup</h3>
-              <div class="setting-row">
-                <label for="setting-startup-mode">When the browser opens</label>
-                <select id="setting-startup-mode">
-                  <option value="new-tab">Home</option>
-                  <option value="homepage">Homepage (from Browser settings)</option>
-                </select>
-              </div>
-              <div class="setting-row" style="margin-top:12px">
-                <label for="setting-new-tab-mode">New tab shows</label>
-                <select id="setting-new-tab-mode">
-                  <option value="home">Home — dashboard (AI, shortcuts, 2×2 widget grid)</option>
-                  <option value="chat">Chat + shortcuts — Ask Navio AI, keep Live Sports / Movies tiles</option>
-                  <option value="blank">Blank — just the address bar</option>
-                </select>
+              <div class="settings-pair-grid">
+                <div class="setting-row">
+                  <label for="setting-startup-mode">When the browser opens</label>
+                  <select id="setting-startup-mode">
+                    <option value="new-tab">Home</option>
+                    <option value="homepage">Homepage (from Browser settings)</option>
+                  </select>
+                </div>
+                <div class="setting-row">
+                  <label for="setting-new-tab-mode">New tab shows</label>
+                  <select id="setting-new-tab-mode">
+                    <option value="home">Home — dashboard (AI, shortcuts, 2×2 widget grid)</option>
+                    <option value="chat">Chat + shortcuts — Ask Navio AI, keep Live Sports / Movies tiles</option>
+                    <option value="blank">Blank — just the address bar</option>
+                  </select>
+                </div>
               </div>
               <p class="settings-inline-hint">Chat mode keeps all your shortcut tiles but hides inbox and news widgets so the AI prompt is centered like Perplexity / ChatGPT.</p>
-              <div style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08)">
-                <h3 style="margin-bottom:8px">Home dashboard</h3>
-                <p class="settings-inline-hint">Home shows a 2×2 grid under shortcuts: mail top-left, news top-right, markets bottom-left, live sports bottom-right (defaults). Each corner is chosen on Home with the chip row or here. The same widget type cannot appear twice; duplicates become Off. Hidden in Chat or Blank new-tab modes.</p>
-                <div class="setting-row">
+            </div>
+            <div class="settings-section">
+              <h3>Home dashboard</h3>
+              <p class="settings-inline-hint">Home shows a 2×2 grid under shortcuts: mail top-left, news top-right, markets bottom-left, live sports bottom-right (defaults). Each corner is chosen on Home with the chip row or here. The same widget type cannot appear twice; duplicates become Off. Hidden in Chat or Blank new-tab modes.</p>
+              <div class="settings-widget-grid" aria-label="Home dashboard widget corners">
+                <div class="settings-widget-cell setting-row">
                   <label for="setting-ntp-widget-tl">Top left</label>
                   <select id="setting-ntp-widget-tl">
                     <option value="inbox">Inbox (Gmail / Outlook when connected)</option>
@@ -798,7 +803,7 @@
                     <option value="none">None (empty slot)</option>
                   </select>
                 </div>
-                <div class="setting-row" style="margin-top:10px">
+                <div class="settings-widget-cell setting-row">
                   <label for="setting-ntp-widget-tr">Top right</label>
                   <select id="setting-ntp-widget-tr">
                     <option value="inbox">Inbox (Gmail / Outlook when connected)</option>
@@ -808,7 +813,7 @@
                     <option value="none">None (empty slot)</option>
                   </select>
                 </div>
-                <div class="setting-row" style="margin-top:10px">
+                <div class="settings-widget-cell setting-row">
                   <label for="setting-ntp-widget-bl">Bottom left</label>
                   <select id="setting-ntp-widget-bl">
                     <option value="inbox">Inbox (Gmail / Outlook when connected)</option>
@@ -818,7 +823,7 @@
                     <option value="none">None (empty slot)</option>
                   </select>
                 </div>
-                <div class="setting-row" style="margin-top:10px">
+                <div class="settings-widget-cell setting-row">
                   <label for="setting-ntp-widget-br">Bottom right</label>
                   <select id="setting-ntp-widget-br">
                     <option value="inbox">Inbox (Gmail / Outlook when connected)</option>
@@ -828,19 +833,19 @@
                     <option value="none">None (empty slot)</option>
                   </select>
                 </div>
-                <div class="setting-row" style="margin-top:10px">
-                  <label for="setting-ntp-news-subreddit">News feed (when News panel is shown)</label>
-                  <select id="setting-ntp-news-subreddit">
-                    <option value="worldnews">r/worldnews</option>
-                    <option value="news">r/news</option>
-                    <option value="technology">r/technology</option>
-                    <option value="sports">r/sports</option>
-                    <option value="business">r/business</option>
-                    <option value="science">r/science</option>
-                  </select>
-                </div>
-                <p class="settings-inline-hint">Default layout is Inbox and News on top, Markets (TradingView embed) and Live sports on the bottom. The footer index line may still use background Yahoo quotes when available. Scores use public ESPN feeds. The sports &quot;Hub&quot; link uses your Predicta URL from Browser settings.</p>
               </div>
+              <div class="setting-row">
+                <label for="setting-ntp-news-subreddit">News feed (when News panel is shown)</label>
+                <select id="setting-ntp-news-subreddit">
+                  <option value="worldnews">r/worldnews</option>
+                  <option value="news">r/news</option>
+                  <option value="technology">r/technology</option>
+                  <option value="sports">r/sports</option>
+                  <option value="business">r/business</option>
+                  <option value="science">r/science</option>
+                </select>
+              </div>
+              <p class="settings-inline-hint">Default layout is Inbox and News on top, Markets (TradingView embed) and Live sports on the bottom. The footer index line may still use background Yahoo quotes when available. Scores use public ESPN feeds. The sports &quot;Hub&quot; link uses your Predicta URL from Browser settings.</p>
             </div>
             <div class="settings-section">
               <h3>Display</h3>
@@ -1429,6 +1434,14 @@
               <p class="text-muted" style="font-size:12px;margin-top:8px">On macOS, use <kbd>⌘</kbd> in place of <kbd>Ctrl</kbd> where shown.</p>
             </div>
           </div>
+            </div>
+            <aside class="settings-pane-rail" aria-label="Current section">
+              <div class="settings-pane-rail-mesh" aria-hidden="true"></div>
+              <div class="settings-pane-rail-inner">
+                <p class="settings-pane-rail-kicker" id="settings-pane-rail-kicker">General</p>
+                <p class="settings-pane-rail-body" id="settings-pane-rail-body">Startup, new tab, Home dashboard widgets, display, downloads, and tab snooze.</p>
+              </div>
+            </aside>
           </div>
         </div>
       </div>

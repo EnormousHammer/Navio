@@ -1492,12 +1492,12 @@
 }
 
 /* ---------------------------------------------
-   9) Settings — Chromium-style (polish tokens; structure matches index shell)
+   9) Settings — polish: shell only (rail + layout live in styles.css)
    --------------------------------------------- */
 .modal.modal-settings {
-  width: min(960px, calc(100vw - 40px));
-  max-height: min(820px, max(260px, calc(100vh - 52px)));
-  border-radius: 8px;
+  width: min(1040px, calc(100vw - 36px));
+  max-height: min(840px, max(260px, calc(100vh - 52px)));
+  border-radius: 20px;
   border: 1px solid var(--p-border);
   box-shadow: var(--p-shadow), 0 0 0 1px rgba(0, 0, 0, 0.1);
   background: var(--p-surface-2);
@@ -1505,16 +1505,6 @@
 
 .settings-chrome-close {
   color: var(--text-secondary);
-}
-
-.settings-nav-head {
-  padding: 16px 2px 8px 0;
-}
-
-.settings-nav-heading {
-  font-size: 22px;
-  font-weight: 500;
-  letter-spacing: -0.03em;
 }
 
 .settings-page-header {
@@ -1525,62 +1515,12 @@
   letter-spacing: -0.04em;
 }
 
-.settings-nav {
-  width: 244px;
-  padding: 6px 10px 20px 10px;
-  gap: 2px;
-  border-right: 1px solid var(--p-border);
-  background: var(--p-surface-1);
-}
-
-.settings-nav-search-wrap {
-  margin-bottom: 8px;
-  padding-bottom: 10px;
-}
-
-.settings-nav-search {
-  height: 36px;
-  border-radius: 8px;
-  border: 1px solid var(--p-border);
-  background: var(--p-surface-3);
-}
-
-.settings-nav-item {
-  padding: 8px 11px;
-  border-radius: 6px;
-  border: none;
-  border-left: 3px solid transparent;
-  font-weight: 500;
-  font-size: 13px;
-}
-
-.settings-nav-item.active {
-  background: color-mix(in srgb, var(--accent) 12%, var(--p-surface-1));
-  color: var(--text-primary);
-  border-left-color: color-mix(in srgb, var(--accent) 75%, var(--text-tertiary));
-  box-shadow: none;
-}
-
-.settings-nav-item:hover:not(.active) {
-  background: var(--p-hover);
-  color: var(--text-primary);
-}
-
-.settings-main-column {
-  background: var(--p-surface-2);
-}
-
-.settings-panels {
-  padding: 18px 26px 28px;
-  background: var(--p-surface-2);
+[data-theme="light"] .modal.modal-settings {
+  box-shadow: var(--p-shadow), 0 0 0 1px rgba(15, 23, 42, 0.06);
 }
 
 [data-theme="light"] .shell-overlay {
   background: rgba(15, 23, 42, 0.22);
-}
-
-[data-theme="light"] .modal.modal-settings {
-  box-shadow: var(--p-shadow), 0 0 0 1px rgba(15, 23, 42, 0.06);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

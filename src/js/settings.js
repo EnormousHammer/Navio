@@ -17,6 +17,19 @@ const PROVIDER_KEY_LINKS = {
   custom: null
 };
 
+/** Short overview shown in the settings content rail (right column). */
+const SETTINGS_PANEL_RAIL = {
+  general: 'Startup, new tab, Home dashboard corners, display zoom, downloads, tab snooze, and translate defaults.',
+  profiles: 'Create and switch profiles so work, personal, and test browsing stay in separate data folders.',
+  ai: 'Provider, model, keys, streaming, safety, MCP tools, and how Navio pulls live web or mail context.',
+  appearance: 'Theme, tab strip layout, bookmark bar, and how wide the AI assistant dock opens.',
+  browser: 'Search engine, homepage, extensions, import, workflows, and troubleshooting helpers.',
+  privacy: 'Ad blocking, pop-ups, trackers, cookies, saved AI memory, and clearing site data.',
+  integrations: 'OAuth, Gmail sync, Perplexity, Brave Search, MCP servers, and connected services.',
+  passwords: 'Saved logins for this profile: review, copy, or remove entries Navio can autofill.',
+  about: 'Version, update checks, and a compact list of keyboard shortcuts for the shell.'
+};
+
 class SettingsManagerClass {
   constructor() {
     this.modal = document.getElementById('settings-modal');
@@ -411,11 +424,18 @@ class SettingsManagerClass {
 
     const navBtn = this.elements.nav.querySelector(`.settings-nav-item[data-panel="${panelId}"]`);
     const pageTitle = document.getElementById('settings-page-title');
-    if (pageTitle && navBtn) {
-      const span = navBtn.querySelector('span');
-      const label = span ? String(span.textContent).trim() : '';
-      pageTitle.textContent = label || panelId;
-    }
+    const navLabel = navBtn
+      ? (() => {
+          const span = navBtn.querySelector('span');
+          return span ? String(span.textContent).trim() : '';
+        })()
+      : '';
+    if (pageTitle) pageTitle.textContent = navLabel || panelId;
+
+    const railKicker = document.getElementById('settings-pane-rail-kicker');
+    const railBody = document.getElementById('settings-pane-rail-body');
+    if (railKicker) railKicker.textContent = navLabel || panelId;
+    if (railBody) railBody.textContent = SETTINGS_PANEL_RAIL[panelId] || '';
 
     this.elements.nav.querySelectorAll('.settings-nav-item').forEach((btn) => {
       const on = btn.dataset.panel === panelId;
