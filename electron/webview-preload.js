@@ -7,11 +7,11 @@
  * <webview> mode, or via ipcRenderer.send('wcv-tab-preload-message', ...) in WCV mode.
  *
  * Per-site Compatibility Mode (kill switch): if the user marked the current
- * origin via the page context menu, we bail out at the very top and do not
- * attach ANY listener. The page then runs as plain Chromium (apart from
- * session-level UA / Sec-CH-UA alignment, which is required for many sites
- * to load at all). The Navio chat-tab bridge is exempted because that's our
- * own internal page, not third-party content.
+ * origin via the page context menu, we bail out immediately after the opaque-
+ * document check and do not run navigator/window patches or attach listeners.
+ * The page then runs as plain Chromium (apart from session-level UA / Sec-CH-UA
+ * alignment, which is required for many sites to load at all). The Navio chat-tab
+ * bridge is exempted because that's our own internal page, not third-party content.
  */
 try {
   const { ipcRenderer, contextBridge } = require('electron');
@@ -27,6 +27,46 @@ try {
     }
   } catch (e) {
     if (e && e.message === 'navio_site_compat_skip_preload') throw e;
+  }
+
+  function isNavioChatTabPage() {
+    try {
+      const pn = String((typeof location !== 'undefined' && location.pathname) || '')
+        .replace(/\\/g, '/')
+        .toLowerCase();
+      const href = String((typeof location !== 'undefined' && location.href) || '').toLowerCase();
+      return pn.endsWith('navio-chat-tab.html') || href.includes('navio-chat-tab.html');
+    } catch {
+      return false;
+    }
+  }
+
+  /** Same regex as the later comment block — carrier / CF zones that default to compat. */
+  const NAVIO_ALWAYS_COMPAT_RE =
+    /[./]purolator\.com(\/|$)|[./]eshiponline\.purolator\.com(\/|$)|[./]tql\.com(\/|$)|^https?:\/\/challenges\.cloudflare\.com\//i;
+
+  // Per-site Compatibility Mode must run **before** navigator/window patches below.
+  // Otherwise auto-compat (Purolator, etc.) still mutates the main document and Cloudflare
+  // Turnstile / Trusted Types sees inconsistent instrumentation vs "plain Chromium".
+  if (!isNavioChatTabPage()) {
+    let _navioCompatEarly = false;
+    try {
+      const here = (typeof location !== 'undefined' && location.href) ? String(location.href) : '';
+      _navioCompatEarly = !!ipcRenderer.sendSync('navio-site-compat-is-enabled-sync', { url: here });
+      if (!_navioCompatEarly && NAVIO_ALWAYS_COMPAT_RE.test(here)) {
+        _navioCompatEarly = true;
+      }
+    } catch {
+      _navioCompatEarly = false;
+    }
+    if (_navioCompatEarly) {
+      try {
+        console.info('[navio] Compatibility Mode is ON for this site — skipping page-level injections.');
+      } catch {
+        /* ignore */
+      }
+      throw new Error('navio_site_compat_skip_preload');
+    }
   }
 
   // challenges.cloudflare.com: do not patch navigator / window in JS — Cloudflare
@@ -121,18 +161,6 @@ try {
     }
   }
 
-  function isNavioChatTabPage() {
-    try {
-      const pn = String((typeof location !== 'undefined' && location.pathname) || '')
-        .replace(/\\/g, '/')
-        .toLowerCase();
-      const href = String((typeof location !== 'undefined' && location.href) || '').toLowerCase();
-      return pn.endsWith('navio-chat-tab.html') || href.includes('navio-chat-tab.html');
-    } catch {
-      return false;
-    }
-  }
-
   /** Full-page in-tab chat — host runs the full agent (tools, connectors); guest only renders + postToHost. */
   if (isNavioChatTabPage()) {
     const navioChatTabApi = {
@@ -205,44 +233,6 @@ try {
       } else {
         console.error('[navio] navioChatTab preload bridge failed:', msg);
       }
-    }
-  }
-
-  // ── Per-site Compatibility Mode kill switch ────────────────────────────────
-  // Synchronous probe at startup. If the user previously toggled
-  // "Compatibility mode" for this origin in the page context menu, we skip
-  // every page-level injection so the site behaves like plain Chromium.
-  // The Navio internal chat tab is always instrumented (it's our own page).
-  //
-  // ALWAYS-COMPAT sites: carrier portals and Cloudflare-protected logistics
-  // sites where Navio's page-level injections reliably trigger bot walls or
-  // break forms. These are auto-opted in regardless of the user preference
-  // file — the user can still manually toggle compat off if needed (their
-  // explicit choice in the JSON file overrides this default).
-  const NAVIO_ALWAYS_COMPAT_RE =
-    /[./]purolator\.com(\/|$)|[./]eshiponline\.purolator\.com(\/|$)|[./]tql\.com(\/|$)|^https?:\/\/challenges\.cloudflare\.com\//i;
-
-  if (!isNavioChatTabPage()) {
-    let _navioCompatEnabled = false;
-    try {
-      const here = (typeof location !== 'undefined' && location.href) ? String(location.href) : '';
-      _navioCompatEnabled = !!ipcRenderer.sendSync('navio-site-compat-is-enabled-sync', { url: here });
-      // Auto-compat for known carrier portals even before the user manually enables it.
-      // This prevents Navio's preload listeners (selection toolbar, login observer, etc.)
-      // from triggering Cloudflare bot walls on these specific sites.
-      if (!_navioCompatEnabled && NAVIO_ALWAYS_COMPAT_RE.test(here)) {
-        _navioCompatEnabled = true;
-      }
-    } catch {
-      _navioCompatEnabled = false;
-    }
-    if (_navioCompatEnabled) {
-      try {
-        console.info('[navio] Compatibility Mode is ON for this site — skipping page-level injections.');
-      } catch {}
-      // Bail out of the entire preload. The throw is caught by the outer
-      // try/catch (`/* require not available */`) which graceful-no-ops.
-      throw new Error('navio_site_compat_skip_preload');
     }
   }
 

@@ -1,18 +1,35 @@
 'use strict';
 
 /**
- * Move keyboard focus from the shell (e.g. assistant textarea) to the guest page
- * inside <webview>, so sendInputEvent / clipboard paste and CDP text input target the tab.
+ * Prepare the guest webContents for agent input.
+ *
+ * Default (soft): `guestWc.focus()` only — keeps host shell focus (e.g. assistant
+ * composer) so the user can keep typing in the sidebar.
+ *
+ * With `stealHostKeyboardFocus`: also blurs host INPUT/TEXTAREA and focuses the
+ * matching `<webview>` — needed for real Ctrl/Cmd+V paste and some `sendInputEvent`
+ * key paths (Google Docs canvas, etc.).
+ *
+ * @param {import('electron').WebContents} guestWc
+ * @param {{ stealHostKeyboardFocus?: boolean }} [opts]
  */
-async function ensureGuestWebviewKeyboardFocus(guestWc) {
+async function ensureGuestWebviewKeyboardFocus(guestWc, opts = {}) {
+  const stealHostKeyboardFocus = !!(opts && opts.stealHostKeyboardFocus);
   if (!guestWc || guestWc.isDestroyed()) return;
   try {
     guestWc.focus();
   } catch {
     /* ignore */
   }
+  if (!stealHostKeyboardFocus) {
+    await new Promise((r) => setTimeout(r, 45));
+    return;
+  }
   const host = guestWc.hostWebContents;
-  if (!host || host.isDestroyed()) return;
+  if (!host || host.isDestroyed()) {
+    await new Promise((r) => setTimeout(r, 45));
+    return;
+  }
   const gid = guestWc.id;
   try {
     await host.executeJavaScript(`

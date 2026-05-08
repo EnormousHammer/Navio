@@ -4166,6 +4166,7 @@ ipcMain.handle('webview-paste-clipboard', async (event, { webContentsId }) => {
   try {
     const wc = electronWebContents.fromId(webContentsId);
     if (!wc) return { ok: false };
+    await ensureGuestWebviewKeyboardFocus(wc, { stealHostKeyboardFocus: true });
     const pasteMods = process.platform === 'darwin' ? ['meta'] : ['control'];
     wc.sendInputEvent({ type: 'keyDown', keyCode: 'V', modifiers: pasteMods });
     await new Promise((r) => setTimeout(r, 40));
@@ -6401,7 +6402,11 @@ async function maybeInterceptGmailBrowseNavForAgent(url, opts = {}) {
 async function executeBrowserActionInternal(wc, action, params) {
   try {
     if (action === 'click' || action === 'type' || action === 'pressKey' || action === 'insertText') {
-      await ensureGuestWebviewKeyboardFocus(wc);
+      const stealHostKeyboardFocus = action === 'pressKey' || action === 'insertText';
+      await ensureGuestWebviewKeyboardFocus(
+        wc,
+        stealHostKeyboardFocus ? { stealHostKeyboardFocus: true } : {}
+      );
     }
     switch (action) {
       case 'click': {
@@ -6978,6 +6983,7 @@ async function navioDeepTypeBySelector(wc, selector, text, occurrence) {
     const isGoogleEditor = /docs\.google\.com|sheets\.google\.com|slides\.google\.com/.test(currentUrl);
     if (isGoogleEditor) {
       clipboard.writeText(text || '');
+      await ensureGuestWebviewKeyboardFocus(wc, { stealHostKeyboardFocus: true });
       await new Promise((r) => setTimeout(r, 200));
       const pasteMods = process.platform === 'darwin' ? ['meta'] : ['control'];
       wc.sendInputEvent({ type: 'keyDown', keyCode: 'V', modifiers: pasteMods });
@@ -7447,7 +7453,8 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
         }
         // 2. Give the page a moment to process any pending focus state
         await new Promise(r => setTimeout(r, 200));
-        // 3. Paste — use Cmd+V on macOS (matches Google Docs fallback elsewhere).
+        // 3. Paste — real OS paste needs host focus on the guest webview.
+        await ensureGuestWebviewKeyboardFocus(wc, { stealHostKeyboardFocus: true });
         const pasteMods = process.platform === 'darwin' ? ['meta'] : ['control'];
         wc.sendInputEvent({ type: 'keyDown', keyCode: 'V', modifiers: pasteMods });
         await new Promise(r => setTimeout(r, 50));
@@ -7469,6 +7476,7 @@ ipcMain.handle('browser-action', async (event, { webContentsId, action, params, 
           ArrowRight: 'Right'
         };
         if (NATIVE_KEYS.has(key)) {
+          await ensureGuestWebviewKeyboardFocus(wc, { stealHostKeyboardFocus: true });
           const kc = ELECTRON_KEYCODE[key];
           wc.sendInputEvent({ type: 'keyDown', keyCode: kc });
           await new Promise((r) => setTimeout(r, 30));

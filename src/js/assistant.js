@@ -777,7 +777,7 @@ class AssistantManagerClass {
     this._takeoverPausedResolve = null;
     /** @type {(() => void) | null} */
     this._takeoverAuthResume = null;
-    /** While true, sidebar composer is read-only (browser takeover — keystrokes must not land here). */
+    /** Legacy: takeover no longer locks the composer; kept for any future opt-in lock. */
     this._composerTakeoverLocked = false;
     /** Original `#assistant-input` placeholder; restored when takeover ends. */
     this._composerPlaceholderBackup = null;
@@ -916,7 +916,7 @@ class AssistantManagerClass {
    * The user can then edit the text and re-send via the normal send path.
    */
   _editUserMessage(msgEl, originalText) {
-    if (this._busy || this._takeoverMode) return;
+    if (this._busy) return;
     try {
       const key = this._turnConversationKey ?? this._conversationKey?.();
       const hist = key ? this._conversationsByTab.get(String(key)) : null;
@@ -1229,7 +1229,6 @@ class AssistantManagerClass {
     this._bindMemoryPopover();
 
     this.inputEl?.addEventListener('keydown', (e) => {
-      if (this._takeoverMode) return;
       // Skip IME composition (Enter confirms Japanese/Chinese input — do not submit early).
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
         e.preventDefault();
@@ -1251,7 +1250,6 @@ class AssistantManagerClass {
 
     document.querySelectorAll('.assistant-smart-chip').forEach((chip) => {
       chip.addEventListener('click', () => {
-        if (this._takeoverMode) return;
         if (chip.dataset.smart === 'deep-research') {
           void this.handleQuickAction('deep-research');
           return;
@@ -1369,7 +1367,6 @@ class AssistantManagerClass {
     const fileInput = document.getElementById('assistant-file-input');
     if (attachBtn && fileInput) {
       attachBtn.addEventListener('click', () => {
-        if (this._takeoverMode) return;
         fileInput.click();
       });
       fileInput.addEventListener('change', () => {
@@ -1381,10 +1378,6 @@ class AssistantManagerClass {
     }
     if (this.inputEl) {
       this.inputEl.addEventListener('paste', (e) => {
-        if (this._takeoverMode) {
-          e.preventDefault();
-          return;
-        }
         const items = e.clipboardData?.items;
         if (!items) return;
         const files = [];
@@ -1416,7 +1409,6 @@ class AssistantManagerClass {
         e.preventDefault();
         e.stopPropagation();
         area.classList.remove('assistant-input-area--drop');
-        if (this._takeoverMode) return;
         const dt = e.dataTransfer?.files;
         if (dt?.length) void this._addFilesFromList(dt);
       });
@@ -2443,7 +2435,6 @@ class AssistantManagerClass {
    * @param {{ replace?: boolean }} opts - `replace: true` for barge-in (new command replaces all).
    */
   _applyVoiceTranscriptToInput(transcript, opts = {}) {
-    if (this._takeoverMode) return;
     const replace = !!opts.replace;
     const t = String(transcript || '').trim();
     if (!this.inputEl || !t) return;
@@ -4404,7 +4395,6 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     await this._ensureAssistantHistoryLoadedBounded();
     this.inputEl = document.getElementById('assistant-input') || this.inputEl;
     if (!this.inputEl) return;
-    if (this._takeoverMode) return;
     // `addMessage` is gated by `_panelShowsTurnDom()` vs `_panelDisplayTabId`. That id can go stale
     // (e.g. tab switch edge cases, "This tab" vs saved thread) so the composer clears but bubbles never render.
     if (!this._sidebarThreadKey) {
@@ -4491,7 +4481,6 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   async handleQuickAction(action) {
-    if (this._takeoverMode) return;
     const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
     if (this._threadBusyForSend() || (aid && this._tabIsBusy(aid))) return;
     if (!this.isOpen) this.open();
@@ -8587,8 +8576,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
 
   // ── Takeover mode ────────────────────────────────────────────────────────
   /**
-   * While Navio controls the browser, the sidebar composer must not accept typing
-   * (Comet-style — focus stays meaningful for the page under automation).
+   * Optional hard-lock of the sidebar composer (read-only, blur, disable send/attach).
+   * Takeover no longer enables this by default so the user can keep drafting in the assistant.
    * @param {boolean} locked
    */
   _setAssistantComposerTakeoverLocked(locked) {
@@ -8676,15 +8665,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (inputArea) this.panel.insertBefore(banner, inputArea);
     }
     this._syncTakeoverTabHighlight();
-    try {
-      const tid = typeof TabManager !== 'undefined' ? TabManager.getTakeoverHighlightTabId?.() : null;
-      const aid = TabManager?.activeTabId ?? null;
-      if (tid && aid && tid !== aid && typeof TabManager.switchToTab === 'function') {
-        TabManager.switchToTab(tid);
-      }
-    } catch {
-      /* non-critical */
-    }
+    // Do not auto-switch the visible tab — the user may stay on another tab and keep using the assistant.
     // Also show the visual agent bar with the animated orb
     if (window.NavioAIBoost) {
       const bar = window.NavioAIBoost.buildAgentTakeoverBar('Agent is working...', '');
@@ -8712,7 +8693,6 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (this._guestChatWebview) {
       void this._guestDeliver(this._guestChatWebview, { type: 'takeoverStart' });
     }
-    this._setAssistantComposerTakeoverLocked(true);
   }
 
   disableTakeover() {
@@ -8833,7 +8813,6 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   async runDeepResearch(query) {
-    if (this._takeoverMode) return;
     const q = (query || '').trim();
     if (!q) return;
     const tk =
@@ -8870,7 +8849,6 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   async handleQuickActionAllTabs() {
-    if (this._takeoverMode) return;
     if (typeof TabManager === 'undefined' || !TabManager.tabs) {
       this.addMessage('assistant', 'No tabs available.');
       return;
