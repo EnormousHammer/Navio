@@ -8,7 +8,7 @@
 
 ## What you must publish on each release
 
-1. **Tag** — Create a git tag matching the app version (convention: `v` + `package.json` `version`, e.g. `v1.0.1`).
+1. **Tag** — Create a git tag matching the app version (convention: `v` + `package.json` `version`, e.g. `v1.0.2`).
 2. **GitHub Release** — On tag `v*`, CI runs **`electron-forge publish`** and uploads Forge **`make`** outputs, or you can attach artifacts manually / run **`npm run publish`** locally with a token.
 3. **Windows (Squirrel)** — Typical outputs under `out/make/squirrel.windows/` include `RELEASES`, `.nupkg`, and `Setup.exe`. The updater reads these from the release assets.
 4. **macOS** — Include the **`.dmg`** (and optional portable **ZIP**) from `out/make` on the release; `electron-updater` expects standard GitHub asset naming for the GitHub provider.

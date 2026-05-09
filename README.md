@@ -41,15 +41,15 @@ Artifacts (64-bit Windows):
 
 | Output | Path | Use |
 |--------|------|-----|
-| **Installer** | `out/make/squirrel.windows/x64/Navio-1.0.1 Setup.exe` | Run on each PC to install (Start menu, auto-updater friendly). |
-| **Portable ZIP** | `out/make/zip/win32/x64/Navio-win32-x64-1.0.1.zip` | Unzip anywhere and run `navio-browser.exe` — good for USB or “no installer” machines. |
+| **Installer** | `out/make/squirrel.windows/x64/Navio-1.0.2 Setup.exe` | Run on each PC to install (Start menu, auto-updater friendly). |
+| **Portable ZIP** | `out/make/zip/win32/x64/Navio-win32-x64-1.0.2.zip` | Unzip anywhere and run `navio-browser.exe` — good for USB or “no installer” machines. |
 | **Unpacked folder** | `out/Navio-win32-x64/` | Copy the whole folder to another PC (same as ZIP, but not compressed). |
 
 Artifacts (**macOS**, run `npm run build` on a Mac):
 
 | Output | Path | Use |
 |--------|------|-----|
-| **Disk image (.dmg)** | `out/make/dmg/**/Navio-1.0.1-*.dmg` (path varies by Intel vs Apple Silicon) | Double-click to drag Navio to Applications. |
+| **Disk image (.dmg)** | `out/make/dmg/**/Navio-1.0.2-*.dmg` (path varies by Intel vs Apple Silicon) | Double-click to drag Navio to Applications. |
 | **Portable ZIP** | `out/make/zip/darwin/**/Navio-darwin-*.zip` | Unzip and run without installing. |
 
 Copy the **Windows `Setup.exe`** or **macOS `.dmg`** to share installers. Windows builds are **x64** only; mac DMG/ZIP are built per architecture on that machine.
