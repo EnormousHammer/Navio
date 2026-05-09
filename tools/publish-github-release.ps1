@@ -58,6 +58,12 @@ if ($LASTEXITCODE -ne 0) {
 $pkg = Get-Content -Raw .\package.json | ConvertFrom-Json
 $ver = [string] $pkg.version
 if (-not $Tag) { $Tag = "v$ver" }
+if ($Tag -match '^v(.+)$') {
+  $tagVer = [string]$Matches[1]
+  if ($tagVer -ne $ver) {
+    throw "Tag $Tag implies semver $tagVer but package.json version is $ver. Update package.json or pass -Tag v$ver."
+  }
+}
 
 $repoUrl = $pkg.repository.url
 if ($repoUrl -match "github\.com[:/]([^/]+)/([^/.#]+)") {

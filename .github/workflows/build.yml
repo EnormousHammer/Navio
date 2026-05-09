@@ -43,6 +43,12 @@ jobs:
       - run: npm run make
         env:
           NODE_OPTIONS: --max-old-space-size=8192
+      - name: Verify Windows Setup .exe exists
+        shell: pwsh
+        run: |
+          $exes = @(Get-ChildItem -Path out/make -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -ieq '.exe' -and ($_.Name -match 'Setup|setup' -or $_.FullName -match 'squirrel') })
+          if ($exes.Count -lt 1) { Write-Host "::error::No Windows Setup .exe under out/make"; exit 1 }
       - uses: actions/upload-artifact@v4
         with:
           name: navio-windows-make
@@ -63,6 +69,11 @@ jobs:
       - run: npm run make
         env:
           NODE_OPTIONS: --max-old-space-size=8192
+      - name: Verify macOS .dmg exists
+        shell: bash
+        run: |
+          count=$(find out/make -type f -name '*.dmg' 2>/dev/null | wc -l)
+          if [ "$count" -lt 1 ]; then echo "::error::No .dmg under out/make"; exit 1; fi
       - uses: actions/upload-artifact@v4
         with:
           name: navio-mac-make

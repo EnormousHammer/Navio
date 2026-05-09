@@ -3892,7 +3892,9 @@ ipcMain.handle('navio-stt', async (event, { audio, mimeType, language }) => {
     // Build multipart/form-data body manually — fully reliable across Node versions
     const boundary = `----NavioSTT${Date.now()}`;
     const CRLF = '\r\n';
-    const sttModel = 'gpt-4o-mini-transcribe'; // fast, accurate, 99-language support
+    const STT_IDS = new Set(['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe']);
+    const fromCfg = String(cfg.sttModel || '').trim();
+    const sttModel = STT_IDS.has(fromCfg) ? fromCfg : 'whisper-1';
     const lang = language || 'en';
 
     const parts = [

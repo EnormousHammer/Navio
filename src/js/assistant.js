@@ -224,21 +224,29 @@ const NAVIO_VOICE_END_SILENCE_MS = 4000;
 /** Extra silence when voice-conversation reuses the persistent mic (hands-free turns). */
 const NAVIO_VOICE_CONV_EXTRA_SILENCE_MS = 700;
 /**
- * Voice conversation: sustained quiet (below continuation gate) before we consider the turn over.
- * Tuned for natural pauses, not a rigid "timer send".
+ * Voice conversation: sustained quiet before we end the take and run STT.
+ * Kept much shorter than legacy 5.2s so turns feel near–real-time; pause ~1.5s to finish a thought.
  */
-const NAVIO_VOICE_CONV_END_SILENCE_MS = 5200;
+const NAVIO_VOICE_CONV_END_SILENCE_MS = 1550;
+/**
+ * After barge-in over TTS, user expects a fast handoff — shorter end-of-utterance than normal turns.
+ */
+const NAVIO_VOICE_CONV_END_SILENCE_AFTER_INTERRUPT_MS = 680;
 /**
  * After quiet exceeds NAVIO_VOICE_CONV_END_SILENCE_MS, keep the recorder open briefly so
  * unvoiced word tails and room decay are not clipped before Whisper runs.
  */
-const NAVIO_VOICE_CONV_VAD_TRAIL_MS = 380;
+const NAVIO_VOICE_CONV_VAD_TRAIL_MS = 220;
+/** After sendMessage (or empty take), reopen mic this soon when scheduling the next listen cycle. */
+const NAVIO_VOICE_CONV_SCHEDULE_LISTEN_MS = 90;
 /** EMA blend for RMS when deciding voice-conv VAD — dampens single-frame dips between syllables. */
 const NAVIO_VOICE_CONV_VAD_EMA_ALPHA = 0.38;
 /** After OpenAI TTS (or speech) ends in voice conversation, reopen the mic after this delay. */
 const NAVIO_VOICE_CONV_AFTER_TTS_MS = 200;
-/** Pause before auto TTS (voice conversation + Settings → read aloud) so the first syllable is not immediate. */
+/** Pause before auto TTS (Settings → read aloud) so the first syllable is not immediate. */
 const NAVIO_ASSISTANT_AUTO_TTS_START_DELAY_MS = 2500;
+/** Voice conversation only: much shorter so the assistant starts talking sooner after the reply is ready. */
+const NAVIO_ASSISTANT_AUTO_TTS_VOICE_CONV_DELAY_MS = 900;
 /** Voice-conversation TTS: first chunk target size — balance time-to-first-audio vs fewer seams. */
 const NAVIO_VOICE_TTS_FIRST_CHUNK = 560;
 /** Voice-conversation TTS: max chars per chunk (fewer, longer clips = steadier pacing than 320/520). */
@@ -253,11 +261,20 @@ const NAVIO_VOICE_CONV_HOLD_SILENCE_MS = 7800;
 const NAVIO_VOICE_CONV_HOLD_POLL_MS = 3200;
 /**
  * Voice-conv barge-in while TTS plays: RMS above the gate for this long stops playback.
- * Short window so the assistant yields quickly; speaking path uses RMS-only (no HF gate on bleed).
+ * Speaking also uses spike-over-EMA; balanced vs noise (tighter than ultra-fast, looser than 2025-05 strict pass).
  */
-const NAVIO_VOICE_CONV_INTERRUPT_SPEAKING_MS = 260;
-/** Same listener during model work / wrap-up — typing can still spike RMS; slightly longer than legacy 400ms. */
-const NAVIO_VOICE_CONV_INTERRUPT_NONSPEAKING_MS = 520;
+const NAVIO_VOICE_CONV_INTERRUPT_SPEAKING_MS = 175;
+/** Same listener during model work / wrap-up — HF gate reduces false aborts from desk noise. */
+const NAVIO_VOICE_CONV_INTERRUPT_NONSPEAKING_MS = 360;
+/** Mic noise-floor sample window (ms) during model work (quiet mic). */
+const NAVIO_VC_INT_NOISE_MS_THINK = 140;
+/** During TTS: minimum sample time once bleed is visible; cap so we do not stay blind if audio is delayed. */
+const NAVIO_VC_INT_NOISE_MS_SPEAKING_MIN = 56;
+const NAVIO_VC_INT_NOISE_MS_SPEAKING_CAP = 220;
+/** During TTS: RMS must exceed a slow bleed-level EMA by this delta (sustained) to count as user speech. */
+const NAVIO_VOICE_CONV_TTS_SPIKE_DELTA = 9.5;
+const NAVIO_VOICE_CONV_TTS_SPIKE_MIN_RMS = 17;
+const NAVIO_VOICE_CONV_TTS_SPIKE_CONFIRM_MS = 72;
 
 /**
  * During TTS, ignore interrupt frames that look like keyboard/desk transients (strong HF vs speech band).
@@ -282,6 +299,7 @@ function navioVcMicFrameLooksLikeHumanVoiceForBargeIn(freqBuf, sampleRate) {
   if (total < 30) return false;
   // Clicks / keycaps skew ultrasonic vs voiced speech picked up on the laptop mic.
   if (highBand > speechBand * 0.72) return false;
+  // Stricter ratio rejects steady HVAC / pink noise that still has mid energy but not “voiced” shape.
   return speechBand / total > 0.22;
 }
 
@@ -1214,6 +1232,12 @@ class AssistantManagerClass {
     this._ttsSessionId = 0;
     /** Pending setTimeout for delayed auto read-aloud / voice reply (cleared on stop or new reply). */
     this._autoTtsStartTimer = null;
+    /** Voice conv: depth of non–work-nudge `_speakText` runs so work nudges wait instead of aborting chunked reply TTS. */
+    this._voiceConvPrimaryTtsDepth = 0;
+    /** Voice conv: serializes short work-nudge speech so they do not cancel each other mid-clip. */
+    this._voiceConvNudgeChain = null;
+    /** EMA for voice-conv HUD mic bars only (decoupled from VAD gates). */
+    this._vchMeterSmoothed = 0;
     this._bindVoiceConversation();
 
     // ── Macro record button ────────────────────────────────────────────────
@@ -2452,7 +2476,7 @@ class AssistantManagerClass {
   // ── Voice Mode (Web Speech API) ──────────────────────────────────────────
   /**
    * Record microphone audio, detect end-of-speech via silence detection,
-   * then transcribe via OpenAI gpt-4o-mini-transcribe (Whisper-class accuracy).
+   * then transcribe via OpenAI `/v1/audio/transcriptions` (default whisper-1; see Settings → Voice transcription).
    *
    * @param {function} onTranscript  - Called with final transcript string (may be '')
    * @param {function} [onUpdate]    - Called with { state: 'recording'|'processing', level: number }
@@ -2539,12 +2563,12 @@ class AssistantManagerClass {
         let vadCalibrated = false;
         let vadCalibratedAt = 0;
         const vadCalSamples = [];
-        const VAD_CALIBRATE_MS = 400;
+        const VAD_CALIBRATE_MS = voiceConvRelaxedVad ? 260 : 400;
         const SILENCE_NEEDED_MS = silenceMs != null ? silenceMs : (sharedStream
           ? NAVIO_VOICE_END_SILENCE_MS + NAVIO_VOICE_CONV_EXTRA_SILENCE_MS
           : NAVIO_VOICE_END_SILENCE_MS);
         /** If we never cross `speakGate` after calibration, stop anyway (quiet room / mic gain / hung analyser). */
-        const NO_SPEECH_GIVEUP_MS = SILENCE_NEEDED_MS + (voiceConvRelaxedVad ? 2400 : 1200);
+        const NO_SPEECH_GIVEUP_MS = SILENCE_NEEDED_MS + (voiceConvRelaxedVad ? 1800 : 1200);
         const MAX_RECORD_MS = 90_000;   // 90 s safety cap
         const recordStart = Date.now();
         let speechThresh = 14;
@@ -2553,8 +2577,8 @@ class AssistantManagerClass {
         // Sustained-speech gate: require audio above speakGateLoud for at least this long
         // before treating it as real speech. Prevents single loud pops, key clicks,
         // or steady fan hum from falsely triggering end-of-silence detection.
-        const SPEECH_CONFIRM_MS = voiceConvRelaxedVad ? 220 : 150;
-        const MIN_REC_MS_BEFORE_END = voiceConvRelaxedVad ? 720 : 0;
+        const SPEECH_CONFIRM_MS = voiceConvRelaxedVad ? 125 : 150;
+        const MIN_REC_MS_BEFORE_END = voiceConvRelaxedVad ? 340 : 0;
         let speechBurstStart = 0;
         let vadEmaRms = 0;
         let pendingTrailEnd = 0;
@@ -2879,6 +2903,8 @@ class AssistantManagerClass {
 
   _stopVoiceConversation() {
     this._voiceConvActive = false;
+    this._voiceConvPrimaryTtsDepth = 0;
+    this._voiceConvNudgeChain = Promise.resolve();
     this._voiceConvProgressTtsAt = 0;
     this._vcSid++;
     if (this._voiceConvFlashTimer) {
@@ -2916,9 +2942,8 @@ class AssistantManagerClass {
 
   /**
    * Opens a lightweight parallel analyser on the persistent mic stream that watches for sustained speech.
-   * When detected during thinking/speaking, stops TTS so the assistant does not talk over the user;
-   * during model work it also cancels the agent unless we are in read-aloud-only state (see _handleVoiceConvInterrupt).
-   * Called automatically by _voiceConvSetState when entering non-listening states.
+   * When detected during thinking/speaking, stops TTS and/or cancels generation (see _handleVoiceConvInterrupt).
+   * Keeps one AudioContext across thinking→speaking; only recalibrates the floor so barge-in is not blind.
    */
   _startVoiceConvInterruptListener() {
     if (this._vcInterruptActive || !this._voiceConvActive) return;
@@ -2928,22 +2953,18 @@ class AssistantManagerClass {
     if (!stream) return;
 
     this._vcInterruptActive = true;
+    this._vcInterruptRecalib = false;
 
     const audioCtx = new AudioContext();
     this._vcInterruptAudioCtx = audioCtx;
     void audioCtx.resume().catch(() => {});
     const analyser = audioCtx.createAnalyser();
     analyser.fftSize = 512;
-    analyser.smoothingTimeConstant = 0.25;
+    analyser.smoothingTimeConstant = 0.22;
     audioCtx.createMediaStreamSource(stream).connect(analyser);
     const buf = new Uint8Array(analyser.frequencyBinCount);
     const freqBuf = new Uint8Array(analyser.frequencyBinCount);
 
-    // Adaptive noise floor: sample ambient audio (including TTS bleed) for 350ms,
-    // then set the trigger threshold above it. This handles rooms where speaker audio
-    // leaks into the mic without causing false triggers or missing the user's voice.
-    // Shorter during TTS so we duck the assistant quickly; longer while the model runs so
-    // brief noise does not abort the whole agent turn mid-tool.
     const interruptConfirmMs = (st) =>
       st === 'speaking' ? NAVIO_VOICE_CONV_INTERRUPT_SPEAKING_MS : NAVIO_VOICE_CONV_INTERRUPT_NONSPEAKING_MS;
 
@@ -2951,8 +2972,19 @@ class AssistantManagerClass {
     let noiseSamples = [];
     let noiseFloor = 8;
     let noiseMeasured = false;
-    const noiseMeasureStart = Date.now();
-    const NOISE_MEASURE_MS = 350;
+    let noiseMeasureStart = Date.now();
+    /** Slow EMA of RMS during TTS — user talking on top creates a short spike above this curve. */
+    let speakTtsBleedEma = 0;
+    let spikeSpeechStart = null;
+
+    const resetCalibration = () => {
+      noiseMeasured = false;
+      noiseSamples = [];
+      noiseMeasureStart = Date.now();
+      speechStart = null;
+      speakTtsBleedEma = 0;
+      spikeSpeechStart = null;
+    };
 
     const loop = () => {
       if (!this._vcInterruptActive || !this._voiceConvActive) {
@@ -2962,10 +2994,16 @@ class AssistantManagerClass {
 
       // Only watch during non-listening states — Whisper's own VAD handles listening
       const vcState = document.getElementById('voice-conv-hud')?.dataset.vcState;
-      if (vcState === 'listening') {
+      if (vcState === 'listening' || vcState === 'muted') {
         speechStart = null;
+        spikeSpeechStart = null;
         this._vcInterruptRaf = requestAnimationFrame(loop);
         return;
+      }
+
+      if (this._vcInterruptRecalib) {
+        this._vcInterruptRecalib = false;
+        resetCalibration();
       }
 
       analyser.getByteTimeDomainData(buf);
@@ -2976,45 +3014,80 @@ class AssistantManagerClass {
       }
       const rms = Math.sqrt(sum / buf.length) * 100;
 
-      // Calibration phase — measure ambient noise / TTS bleed level
+      // Calibration — thinking: fixed window. Speaking: wait until TTS bleed hits the mic (or cap)
+      // so we never treat "silence before the clip starts" as the noise floor (that caused false interrupts).
       if (!noiseMeasured) {
-        if (Date.now() - noiseMeasureStart < NOISE_MEASURE_MS) {
-          noiseSamples.push(rms);
+        noiseSamples.push(rms);
+        const elapsed = Date.now() - noiseMeasureStart;
+        const vcsNow = document.getElementById('voice-conv-hud')?.dataset.vcState;
+        let calDone = false;
+        if (vcsNow === 'speaking') {
+          const sawBleed = noiseSamples.some((s) => s > 19);
+          calDone =
+            (sawBleed && elapsed >= NAVIO_VC_INT_NOISE_MS_SPEAKING_MIN) ||
+            elapsed >= NAVIO_VC_INT_NOISE_MS_SPEAKING_CAP;
         } else {
-          // 90th-percentile of samples = noise ceiling; trigger must be clearly above it
-          noiseSamples.sort((a, b) => a - b);
-          noiseFloor = noiseSamples[Math.floor(noiseSamples.length * 0.9)] || 8;
-          // While TTS plays, bleed dominates the mic — uncapped floor makes the gate unreachable.
-          const vcsCal = document.getElementById('voice-conv-hud')?.dataset.vcState;
-          if (vcsCal === 'speaking') noiseFloor = Math.min(noiseFloor, 22);
-          noiseMeasured = true;
+          calDone = elapsed >= NAVIO_VC_INT_NOISE_MS_THINK;
         }
+        if (!calDone) {
+          this._vcInterruptRaf = requestAnimationFrame(loop);
+          return;
+        }
+        noiseSamples.sort((a, b) => a - b);
+        noiseFloor = noiseSamples[Math.floor(noiseSamples.length * 0.9)] || 8;
+        if (vcsNow === 'speaking') noiseFloor = Math.min(noiseFloor, 24);
+        noiseMeasured = true;
+        speakTtsBleedEma = vcsNow === 'speaking' ? rms : 0;
         this._vcInterruptRaf = requestAnimationFrame(loop);
         return;
       }
 
-      // Dynamic threshold: stricter while thinking (fewer false aborts).
-      // During TTS, use a gentler multiplier + ceiling — bleed already raised the floor;
-      // we must still see user speech on top of playback (echoCancellation helps).
-      const mult = vcState === 'speaking' ? 1.32 : 2.08;
-      const floorPad = vcState === 'speaking' ? 4 : 7;
-      const minThresh = vcState === 'speaking' ? 11 : 14;
+      const mult = vcState === 'speaking' ? 1.34 : 2.02;
+      const floorPad = vcState === 'speaking' ? 5 : 7;
+      const minThresh = vcState === 'speaking' ? 13 : 15;
       let threshold = Math.max(noiseFloor * mult + floorPad, minThresh);
-      if (vcState === 'speaking') threshold = Math.min(threshold, 40);
+      if (vcState === 'speaking') threshold = Math.min(threshold, 46);
 
-      // During TTS, RMS-only (see above). While the model runs (no assistant audio),
-      // reject clicky transients that spike RMS but are not voiced speech.
       let loudEnough = rms > threshold;
       if (loudEnough && (vcState === 'thinking' || vcState === 'summarizing')) {
         analyser.getByteFrequencyData(freqBuf);
         loudEnough = navioVcMicFrameLooksLikeHumanVoiceForBargeIn(freqBuf, audioCtx.sampleRate);
       }
 
+      // TTS bleed often sits near a high plateau — spike path detects the user on top of playback.
+      // Require the same voiced-spectrum check as thinking so fans / keyboard / HVAC do not cut TTS.
+      let spikeEnough = false;
+      if (vcState === 'speaking') {
+        speakTtsBleedEma = speakTtsBleedEma === 0 ? rms : speakTtsBleedEma * 0.93 + rms * 0.07;
+        let spikeCandidate =
+          rms >= NAVIO_VOICE_CONV_TTS_SPIKE_MIN_RMS &&
+          rms > speakTtsBleedEma + NAVIO_VOICE_CONV_TTS_SPIKE_DELTA;
+        if (spikeCandidate) {
+          analyser.getByteFrequencyData(freqBuf);
+          spikeCandidate = navioVcMicFrameLooksLikeHumanVoiceForBargeIn(freqBuf, audioCtx.sampleRate);
+        }
+        if (spikeCandidate) {
+          if (!spikeSpeechStart) spikeSpeechStart = Date.now();
+          else if (Date.now() - spikeSpeechStart >= NAVIO_VOICE_CONV_TTS_SPIKE_CONFIRM_MS) {
+            spikeEnough = true;
+          }
+        } else {
+          spikeSpeechStart = null;
+        }
+      } else {
+        spikeSpeechStart = null;
+      }
+
+      if (spikeEnough) {
+        this._handleVoiceConvInterrupt();
+        return;
+      }
+
       if (loudEnough) {
         if (!speechStart) speechStart = Date.now();
         else if (Date.now() - speechStart >= interruptConfirmMs(vcState)) {
           this._handleVoiceConvInterrupt();
-          return; // loop stops; interrupt handler takes over
+          return;
         }
       } else {
         speechStart = null;
@@ -3026,6 +3099,7 @@ class AssistantManagerClass {
 
   _stopVoiceConvInterruptListener() {
     this._vcInterruptActive = false;
+    this._vcInterruptRecalib = false;
     if (this._vcInterruptRaf) { cancelAnimationFrame(this._vcInterruptRaf); this._vcInterruptRaf = null; }
     // Don't touch the persistent mic stream — managed by _startVoiceConversation/_stopVoiceConversation
     if (this._vcInterruptAudioCtx) {
@@ -3046,16 +3120,13 @@ class AssistantManagerClass {
   }
 
   /**
-   * Fires when the user speaks during thinking/speaking states.
-   * Stops TTS immediately so the assistant never talks over the user.
-   * While the model is still working (thinking), also cancels in-flight generation.
-   * During read-aloud only (speaking), keeps the agent run alive until we have real follow-up text.
-   * The user is still speaking when this fires, so Whisper captures their full command.
+   * Fires when the user speaks during thinking/speaking/summarizing states.
+   * Stops TTS immediately, cancels queued auto-TTS and thinking timers, and aborts in-flight
+   * generation so the model does not keep streaming after the user has taken the floor.
+   * Whisper then runs on the same persistent mic stream so the start of the utterance is not clipped.
    */
   _handleVoiceConvInterrupt() {
     if (!this._voiceConvActive) return;
-
-    const priorVcState = document.getElementById('voice-conv-hud')?.dataset.vcState || '';
 
     // Stop interrupt listener first (prevents re-triggering)
     this._stopVoiceConvInterruptListener();
@@ -3116,10 +3187,10 @@ class AssistantManagerClass {
               this._fitAssistantInputHeight?.();
             }
             if (this._voiceConvActive && document.getElementById('voice-conv-hud')?.dataset.vcState === 'thinking') {
-              this._scheduleVoiceConvListen(350);
+              this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_SCHEDULE_LISTEN_MS);
             }
           } else {
-            this._scheduleVoiceConvListen(350);
+            this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_SCHEDULE_LISTEN_MS);
           }
         },
         ({ state, level }) => {
@@ -3133,7 +3204,7 @@ class AssistantManagerClass {
           }
         },
         this._vcPersistentStream,       // ← shared stream, zero latency
-        NAVIO_VOICE_CONV_END_SILENCE_MS,
+        NAVIO_VOICE_CONV_END_SILENCE_AFTER_INTERRUPT_MS,
         true // relaxed continuation VAD — breaths / fillers do not fake "done speaking"
       );
       this._voiceConvRec = { stop: stopFn };
@@ -3159,6 +3230,11 @@ CAPABILITY PARITY:
 - You have the same tools, connectors, and browsing abilities as when the user types. Use them the same way; only how you word answers changes for speech.
 - User text may come from speech-to-text — interpret unclear phrases charitably, as you would for a sloppy typed message.
 
+SPEECH-TO-TEXT AND OUTBOUND MAIL (do not echo STT garbage):
+- Short logistics phrases ("bill of lading", "I'll send the BOL", "pickup Tuesday") are often mangled by the mic transcript into nonsense or long hyphenated letter soup (e.g. B-O-L-E-… repeating). That is almost never what the user meant.
+- In email drafts, replies, or anything they will send: use normal words or standard abbreviations — "BOL" or "bill of lading", "POD", "pickup", "dock" — not letter-by-letter spelling unless they explicitly asked you to spell something character by character.
+- If part of the transcript is clearly broken repetitive tokens compared to the conversation (logistics, scheduling, access location), infer the sensible intent from context or ask one short clarifying question. Never paste long random letter or hyphen runs into mail.
+
 RESPONSE STYLE:
 - Write as if talking, not typing. Natural spoken sentences. No markdown — no asterisks, bullets, dashes, headers, or code fences. They will be spoken literally and sound wrong.
 - Same idea when they are reading on screen in typed chat: sound human there too — just markdown is allowed in text mode.
@@ -3168,6 +3244,7 @@ RESPONSE STYLE:
 
 NARRATE YOUR WORK (this is the most important rule):
 - Your reply is read aloud in real time: always include at least one short spoken sentence in your FIRST assistant message before tool calls (no empty content round). If you would otherwise jump straight to tools, say what you are doing first so the user never sits in long silence.
+- The app finishes each main spoken reply before playing separate short status lines, so the user hears full sentences (e.g. "searching both inboxes") without being cut off mid-word by another cue.
 - **Two mailboxes on screen:** you can **open_tab** twice (real Gmail with **gmail_browser_takeover** and different accounts / mail/u/0 vs u/1 or **authuser**), then **split_tabs** so both inboxes show side-by-side; **switch_tab** picks which pane gets clicks and read_page. For a spoken summary only, **gmail_search** on primary and secondary may be enough without split view.
 - Keep the user oriented while tools run, but never sound like a broken record: invent fresh wording every time. Do not reuse the same sentence, opener, or catchphrase twice in this conversation turn — and avoid leaning on the same stock fillers you used on the last turn when you can help it.
 - Vary structure and tone across steps: mix factual pings, plain status, and brief asides — but write each line from scratch for this moment. Never start two consecutive updates with the same word or the same template (e.g. do not do "One sec…" then "One sec…" again, or two lines that both begin with "Okay").
@@ -3192,24 +3269,32 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   /**
    * Animate the VCH audio level bars based on a raw RMS level (0–100).
    * Pass level=null to switch to idle CSS animation.
+   * Uses extra display gain + smoothing so quiet speech still moves the bars reliably.
    */
   _updateVchAudioBars(level) {
     const barsEl = document.getElementById('vch-audio-bars');
     if (!barsEl) return;
     if (level == null) {
+      this._vchMeterSmoothed = 0;
       barsEl.dataset.idle = '1';
       // Reset heights so idle animation takes over cleanly
       Array.from(barsEl.children).forEach(s => { s.style.height = ''; });
       return;
     }
     barsEl.dataset.idle = '0';
-    const norm = Math.min(1, Math.max(0, (level || 0) / 38));
-    // Each bar gets a slightly different multiplier for a natural multi-band look
-    const mults = [0.72, 0.95, 1.12, 0.85, 1.20, 0.78, 1.05, 0.90];
+    // Boost quiet mics for visualization only (Whisper VAD uses its own gates in _whisperListen).
+    const boosted = Math.min(72, (level || 0) * 2.15);
+    const a = 0.38;
+    this._vchMeterSmoothed =
+      this._vchMeterSmoothed <= 0 ? boosted : (1 - a) * this._vchMeterSmoothed + a * boosted;
+    const norm = Math.min(1, Math.max(0, this._vchMeterSmoothed / 26));
+    // Each bar gets a fixed multi-band shape + tiny deterministic wobble (no per-frame random flicker).
+    const mults = [0.72, 0.95, 1.12, 0.85, 1.2, 0.78, 1.05, 0.9];
+    const t = performance.now() / 220;
     const bars = barsEl.children;
     for (let i = 0; i < bars.length; i++) {
-      const jitter = 0.6 + Math.random() * 0.8;
-      const h = Math.max(3, Math.min(20, Math.round(norm * 20 * mults[i] * jitter)));
+      const wobble = 0.88 + 0.14 * Math.sin(t + i * 0.7);
+      const h = Math.max(4, Math.min(20, Math.round(norm * 20 * mults[i] * wobble)));
       bars[i].style.height = h + 'px';
     }
   }
@@ -3220,6 +3305,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const lbl = document.getElementById('vch-state-label');
     const icon = document.getElementById('vch-state-icon');
     if (!hud) return;
+    const prevVcState = hud.dataset.vcState || '';
     hud.dataset.vcState = state;
 
     const labels = {
@@ -3242,11 +3328,16 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (icon && icons[state]) icon.innerHTML = icons[state];
 
     // Start interrupt listener when AI is busy; stop it when we're listening or muted.
-    // On 'speaking' (TTS just started) restart the listener so it re-measures the noise floor
-    // with TTS audio already in the room — prevents TTS bleed from triggering false barge-ins.
+    // Do NOT tear down the AudioContext when TTS starts — that blinded barge-in for hundreds of ms.
+    // Instead recalibrate the noise floor in-place when leaving quiet (thinking) for loud (speaking) or back.
     if (state === 'thinking' || state === 'speaking' || state === 'summarizing') {
-      if (state === 'speaking') this._stopVoiceConvInterruptListener();
-      this._startVoiceConvInterruptListener();
+      if (!this._vcInterruptActive) {
+        this._startVoiceConvInterruptListener();
+      } else if (state === 'speaking' && prevVcState !== 'speaking') {
+        this._vcInterruptRecalib = true;
+      } else if ((state === 'thinking' || state === 'summarizing') && prevVcState === 'speaking') {
+        this._vcInterruptRecalib = true;
+      }
       this._updateVchAudioBars(null); // idle bars during AI states
     } else {
       this._stopVoiceConvInterruptListener();
@@ -3296,11 +3387,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (!this._voiceConvActive) return;
     if (this._vcMicMuted) return;
     this._voiceConvSetState('listening');
+    this._vchMeterSmoothed = 0;
     const transcriptEl = document.getElementById('vch-transcript');
     if (transcriptEl) transcriptEl.textContent = '';
 
-    // Use Whisper (gpt-4o-mini-transcribe) for near-perfect accuracy.
-    // Falls back to Web Speech API if navioSTT is unavailable.
+    // OpenAI Speech-to-text (Settings → model, default whisper-1). Falls back to Web Speech if navioSTT is unavailable.
     if (window.navio?.navioSTT) {
       const stopFn = this._whisperListen(
         async (text) => {
@@ -3323,11 +3414,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
               this._fitAssistantInputHeight?.();
             }
             if (this._voiceConvActive && document.getElementById('voice-conv-hud')?.dataset.vcState === 'thinking') {
-              this._scheduleVoiceConvListen(350);
+              this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_SCHEDULE_LISTEN_MS);
             }
           } else {
             // Nothing heard — loop back to listening
-            this._scheduleVoiceConvListen(350);
+            this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_SCHEDULE_LISTEN_MS);
           }
         },
         ({ state, level }) => {
@@ -3393,7 +3484,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
             this._fitAssistantInputHeight?.();
           }
         } else {
-          this._scheduleVoiceConvListen(350);
+          this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_SCHEDULE_LISTEN_MS);
         }
       };
 
@@ -3423,7 +3514,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         clearTimeout(vcSilenceTimer);
         if (this._voiceConvActive && !this._voiceConvRec) {
           const s = document.getElementById('voice-conv-hud')?.dataset.vcState;
-          if (s === 'listening') this._scheduleVoiceConvListen(300);
+          if (s === 'listening') this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_SCHEDULE_LISTEN_MS);
         }
       };
       try { rec.start(); } catch { this._voiceConvRec = null; }
@@ -3749,78 +3840,100 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       plain = navioAddSpokenBreathingPauses(plain);
     }
 
-    // Stop any current speech and claim this session — any prior in-flight _speakText
-    // will see a mismatched session ID after its awaits and bail without playing.
-    this._stopSpeaking();
-    const mySession = ++this._ttsSessionId;
-
-    void this._refreshCachedTtsVoice();
-    const voicePref = this._cachedTtsVoice || 'nova';
-
-    if (mySession !== this._ttsSessionId) return;
-
-    const ttsSpeed =
-      opts.speed != null && Number.isFinite(Number(opts.speed))
-        ? Number(opts.speed)
-        : this._voiceConvActive
-          ? 1.0
-          : undefined;
-    const speechOpts = {};
-    if (opts.webSpeechRate != null && Number.isFinite(Number(opts.webSpeechRate))) {
-      speechOpts.webSpeechRate = Number(opts.webSpeechRate);
-    } else {
-      speechOpts.webSpeechRate = 1.0;
+    const isPrimaryVcTts = !!(this._voiceConvActive && !opts.workNudge);
+    if (isPrimaryVcTts) {
+      this._voiceConvPrimaryTtsDepth = (this._voiceConvPrimaryTtsDepth | 0) + 1;
     }
+    try {
+      // Stop any current speech and claim this session — any prior in-flight _speakText
+      // will see a mismatched session ID after its awaits and bail without playing.
+      this._stopSpeaking();
+      const mySession = ++this._ttsSessionId;
 
-    const chunkPlan = navioVoiceConvTtsChunkPlan(plain.slice(0, 4000));
-    const chunkMinChars = this._voiceConvActive ? 640 : 2200;
-    const useChunkedOpenAi =
-      window.navio?.navioTTS &&
-      !opts.workNudge &&
-      plain.length > chunkMinChars &&
-      chunkPlan.length > 1;
+      void this._refreshCachedTtsVoice();
+      const voicePref = this._cachedTtsVoice || 'nova';
 
-    if (useChunkedOpenAi) {
-      const handled = await this._speakVoiceConvChunkedPipeline(
-        plain,
-        voicePref,
-        mySession,
-        btn,
-        ttsSpeed,
-        speechOpts
-      );
-      if (handled) return;
+      const ttsSpeed =
+        opts.speed != null && Number.isFinite(Number(opts.speed))
+          ? Number(opts.speed)
+          : this._voiceConvActive
+            ? 1.0
+            : undefined;
+      const speechOpts = {};
+      if (opts.webSpeechRate != null && Number.isFinite(Number(opts.webSpeechRate))) {
+        speechOpts.webSpeechRate = Number(opts.webSpeechRate);
+      } else {
+        speechOpts.webSpeechRate = 1.0;
+      }
+
+      const chunkPlan = navioVoiceConvTtsChunkPlan(plain.slice(0, 4000));
+      const chunkMinChars = this._voiceConvActive ? 640 : 2200;
+      const useChunkedOpenAi =
+        window.navio?.navioTTS &&
+        !opts.workNudge &&
+        plain.length > chunkMinChars &&
+        chunkPlan.length > 1;
+
+      if (useChunkedOpenAi) {
+        const handled = await this._speakVoiceConvChunkedPipeline(
+          plain,
+          voicePref,
+          mySession,
+          btn,
+          ttsSpeed,
+          speechOpts
+        );
+        if (handled) return;
+      }
+
+      // Try OpenAI TTS first (much more human-sounding)
+      if (window.navio && window.navio.navioTTS) {
+        try {
+          const req = { text: plain.slice(0, 4000), voice: voicePref };
+          if (ttsSpeed != null && Number.isFinite(ttsSpeed)) req.speed = ttsSpeed;
+          const result = await window.navio.navioTTS(req);
+
+          // Bail if superseded while waiting for TTS IPC
+          if (mySession !== this._ttsSessionId) return;
+
+          if (result && result.ok && result.audio) {
+            await this._playOpenAITtsClip(result, mySession, btn, true);
+            return;
+          }
+        } catch { /* fall through to Web Speech API */ }
+      }
+
+      // Bail again if superseded before reaching Web Speech fallback
+      if (mySession !== this._ttsSessionId) return;
+
+      await this._speakWebSpeechUtterance(plain, voicePref, mySession, btn, true, speechOpts);
+    } finally {
+      if (isPrimaryVcTts) {
+        this._voiceConvPrimaryTtsDepth = Math.max(0, (this._voiceConvPrimaryTtsDepth | 0) - 1);
+      }
     }
-
-    // Try OpenAI TTS first (much more human-sounding)
-    if (window.navio && window.navio.navioTTS) {
-      try {
-        const req = { text: plain.slice(0, 4000), voice: voicePref };
-        if (ttsSpeed != null && Number.isFinite(ttsSpeed)) req.speed = ttsSpeed;
-        const result = await window.navio.navioTTS(req);
-
-        // Bail if superseded while waiting for TTS IPC
-        if (mySession !== this._ttsSessionId) return;
-
-        if (result && result.ok && result.audio) {
-          await this._playOpenAITtsClip(result, mySession, btn, true);
-          return;
-        }
-      } catch { /* fall through to Web Speech API */ }
-    }
-
-    // Bail again if superseded before reaching Web Speech fallback
-    if (mySession !== this._ttsSessionId) return;
-
-    await this._speakWebSpeechUtterance(plain, voicePref, mySession, btn, true, speechOpts);
   }
 
-  /** Short spoken status while tools run (voice conversation); avoids long silent gaps. */
+  /**
+   * Short spoken status while tools run (voice conversation).
+   * Waits until the main assistant reply TTS (chunked or single) has fully finished so
+   * work-nudge lines never abort mid-sentence; nudges are also serialized so they do not cancel each other.
+   */
   async _speakVoiceConvWorkNudge(snippet) {
     const s = String(snippet || '').trim();
     if (!this._voiceConvActive || !s) return;
     if (s.length > 900) return;
-    await this._speakText(s, null, { speed: 1.0, workNudge: true, humanPace: true });
+    const run = async () => {
+      if (!this._voiceConvActive) return;
+      const deadline = Date.now() + 120000;
+      while (this._voiceConvActive && (this._voiceConvPrimaryTtsDepth | 0) > 0) {
+        if (Date.now() > deadline) break;
+        await new Promise((r) => setTimeout(r, 40));
+      }
+      if (!this._voiceConvActive) return;
+      await this._speakText(s, null, { speed: 1.0, workNudge: true, humanPace: true });
+    };
+    this._voiceConvNudgeChain = (this._voiceConvNudgeChain || Promise.resolve()).then(run).catch(() => {});
   }
 
   _clearVoiceConvThinkingTimers() {
@@ -7391,6 +7504,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (!t) return;
     const voiceWasActive = this._voiceConvActive;
     const voiceSid = this._vcSid;
+    const delayMs = voiceWasActive
+      ? NAVIO_ASSISTANT_AUTO_TTS_VOICE_CONV_DELAY_MS
+      : NAVIO_ASSISTANT_AUTO_TTS_START_DELAY_MS;
     this._autoTtsStartTimer = setTimeout(() => {
       this._autoTtsStartTimer = null;
       if (voiceWasActive) {
@@ -7403,7 +7519,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         if (this._voiceConvActive) return;
         if (cfg && cfg.ttsEnabled) void this._speakText(t);
       }).catch(() => { /* ignore */ });
-    }, NAVIO_ASSISTANT_AUTO_TTS_START_DELAY_MS);
+    }, delayMs);
   }
 
   addMessage(role, content, type = '', meta = null) {

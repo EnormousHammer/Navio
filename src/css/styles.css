@@ -6302,10 +6302,10 @@ body.navio-vertical-tabs.navio-assistant-open::after {
   display: block;
   width: 3px;
   height: 3px;
-  min-height: 3px;
+  min-height: 4px;
   border-radius: 2px;
   background: rgba(139, 92, 246, 0.7);
-  transition: height 0.08s ease;
+  transition: height 0.055s ease-out;
   will-change: height;
 }
 .voice-conv-hud[data-vc-state="listening"] .vch-audio-bars span {

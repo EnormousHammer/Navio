@@ -54,6 +54,10 @@ module.exports = {
       name: '@electron-forge/maker-squirrel',
       config: {
         name: 'navio_browser',
+        /** Shown in Windows “Apps & features” / installer UI. */
+        title: 'Navio Browser',
+        authors: 'Navio',
+        description: 'Navio — AI-powered browser for Windows.',
         // Squirrel installer also picks up the cert when the env vars are set.
         ...(winCertFile ? {
           certificateFile: winCertFile,
@@ -68,7 +72,10 @@ module.exports = {
     {
       name: '@electron-forge/maker-dmg',
       platforms: ['darwin'],
-      config: {},
+      config: {
+        /** DMG volume / window title (MakerDMGConfig `name`). */
+        name: 'Navio Browser',
+      },
     },
   ],
 

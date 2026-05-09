@@ -3169,7 +3169,7 @@ const NTP = (() => {
   }
 
   // ── NTP Voice Mode ────────────────────────────────────────────────────────
-  // Same STT stack as the sidebar assistant: OpenAI Whisper when navioSTT exists,
+  // Same STT stack as the sidebar assistant: OpenAI transcriptions (default whisper-1) when navioSTT exists,
   // else Web Speech with silence-based auto-send (Windows/Chromium rarely marks isFinal).
 
   function _bindNtpVoiceMode() {

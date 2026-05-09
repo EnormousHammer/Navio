@@ -79,6 +79,11 @@ const DEFAULT_CONFIG = {
   ttsEnabled: false,
   /** OpenAI speech voice id (see `navio-tts-voice-catalog.js`). */
   ttsVoice: 'nova',
+  /**
+   * OpenAI `/v1/audio/transcriptions` model: whisper-1 (classic Whisper), gpt-4o-transcribe,
+   * or gpt-4o-mini-transcribe. Custom API bases may only support whisper-1.
+   */
+  sttModel: 'whisper-1',
   /** When true, each download opens a system Save dialog (pick folder and name). When false, saves to Downloads automatically (Chrome-style). */
   downloadAskWhere: true,
   /** When true, open File Explorer to the file after a successful download. Off by default to avoid interrupting browsing. */
@@ -243,6 +248,9 @@ function loadConfig() {
     .toLowerCase()
     .replace(/^r\//, '');
   merged.ntpNewsSubreddit = /^[a-z0-9_]{2,24}$/.test(sub) ? sub : 'worldnews';
+  const NAVIO_STT_MODELS = new Set(['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe']);
+  const sttM = String(merged.sttModel || '').trim();
+  merged.sttModel = NAVIO_STT_MODELS.has(sttM) ? sttM : 'whisper-1';
   // Drop retired GPT-4o defaults for direct OpenAI usage (replaced by GPT-5.4 family).
   const LEGACY_OPENAI_GPT4 = new Set(['gpt-4o', 'gpt-4o-mini']);
   if (merged.aiProvider === 'openai') {

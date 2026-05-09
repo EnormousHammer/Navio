@@ -1,6 +1,13 @@
 # Tag v* → test, build Windows + macOS, publish to GitHub Releases via Electron Forge.
 # Requires repo setting: Settings → Actions → General → Workflow permissions →
 # "Read and write permissions" (so GITHUB_TOKEN can upload release assets).
+#
+# Before pushing a release tag: set "version" in package.json to the same semver as the tag
+# (e.g. tag v1.0.4 → "version": "1.0.4"). The test job fails fast if they disagree so the
+# release assets and GitHub Release always match the app version users see in-app.
+#
+# Published assets (electron-forge publish → GitHub Release “Assets”):
+#   Windows — Squirrel Setup *.exe (installer) + zip; macOS — *.dmg + zip.
 
 name: Release
 
@@ -17,6 +24,22 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Verify package.json version matches release tag
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          if (-not $tag -or -not $tag.StartsWith('v')) {
+            Write-Host "::error::Expected GITHUB_REF_NAME like v1.2.3, got: $tag"
+            exit 1
+          }
+          $want = $tag.Substring(1)
+          $pkg = Get-Content -Raw package.json | ConvertFrom-Json
+          $got = [string]$pkg.version
+          if ($got -ne $want) {
+            Write-Host "::error::Tag is $tag (expects version $want) but package.json has version $got. Bump package.json before tagging."
+            exit 1
+          }
+          Write-Host "Release version check OK: $tag ↔ package.json $got"
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -52,6 +75,17 @@ jobs:
       - run: npm run make
         env:
           NODE_OPTIONS: --max-old-space-size=8192
+      - name: Verify Windows installer (.exe) for GitHub Releases
+        shell: pwsh
+        run: |
+          $exes = @(Get-ChildItem -Path out/make -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -ieq '.exe' -and ($_.Name -match 'Setup|setup|INSTALLER|installer' -or $_.FullName -match 'squirrel') })
+          if ($exes.Count -lt 1) {
+            Write-Host "::error::Expected a Squirrel-style Windows Setup .exe under out/make. Listing out/make:"
+            Get-ChildItem -Path out/make -Recurse -File | Select-Object -First 40 FullName
+            exit 1
+          }
+          $exes | ForEach-Object { Write-Host "Windows installer: $($_.FullName)" }
       - uses: actions/upload-artifact@v4
         with:
           name: navio-windows-make
@@ -71,6 +105,17 @@ jobs:
       - run: npm run make
         env:
           NODE_OPTIONS: --max-old-space-size=8192
+      - name: Verify macOS disk image (.dmg) for GitHub Releases
+        shell: bash
+        run: |
+          set -e
+          mapfile -t dmgs < <(find out/make -type f -name '*.dmg' 2>/dev/null || true)
+          if [ "${#dmgs[@]}" -lt 1 ]; then
+            echo "::error::Expected at least one .dmg under out/make"
+            find out/make -type f 2>/dev/null | head -40 || true
+            exit 1
+          fi
+          printf '%s\n' "${dmgs[@]}"
       - uses: actions/upload-artifact@v4
         with:
           name: navio-mac-make

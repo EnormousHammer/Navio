@@ -98,6 +98,7 @@ class SettingsManagerClass {
       aiAgentStepMode: document.getElementById('setting-ai-agent-step-mode'),
       ttsEnabled: document.getElementById('setting-tts-enabled'),
       ttsVoice: document.getElementById('setting-tts-voice'),
+      sttModel: document.getElementById('setting-stt-model'),
       assistantConnectorWeb: document.getElementById('setting-assistant-connector-web'),
       assistantConnectorMail: document.getElementById('setting-assistant-connector-mail'),
       assistantTabDigest: document.getElementById('setting-assistant-tab-digest'),
@@ -720,6 +721,11 @@ class SettingsManagerClass {
     }
     if (this.elements.ttsVoice && typeof window.navioPopulateTtsVoiceSelect === 'function') {
       window.navioPopulateTtsVoiceSelect(this.elements.ttsVoice, this.config.ttsVoice);
+    }
+    if (this.elements.sttModel) {
+      const allowed = ['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe'];
+      const v = allowed.includes(this.config.sttModel) ? this.config.sttModel : 'whisper-1';
+      this.elements.sttModel.value = v;
     }
     if (this.elements.assistantConnectorWeb) {
       const w = this.config.assistantConnectorWeb || 'auto';
@@ -1761,6 +1767,11 @@ class SettingsManagerClass {
         : typeof window.navioNormalizeTtsVoiceId === 'function'
           ? window.navioNormalizeTtsVoiceId(this.config.ttsVoice)
           : this.config.ttsVoice || 'nova',
+      sttModel: (() => {
+        const allowed = ['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe'];
+        const v = this.elements.sttModel ? String(this.elements.sttModel.value || '').trim() : '';
+        return allowed.includes(v) ? v : 'whisper-1';
+      })(),
       assistantConnectorWeb: this.elements.assistantConnectorWeb
         ? this.elements.assistantConnectorWeb.value || 'auto'
         : (this.config.assistantConnectorWeb || 'auto'),
