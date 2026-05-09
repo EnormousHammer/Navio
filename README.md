@@ -45,11 +45,18 @@ Artifacts (64-bit Windows):
 | **Portable ZIP** | `out/make/zip/win32/x64/Navio-win32-x64-1.0.1.zip` | Unzip anywhere and run `navio-browser.exe` — good for USB or “no installer” machines. |
 | **Unpacked folder** | `out/Navio-win32-x64/` | Copy the whole folder to another PC (same as ZIP, but not compressed). |
 
-Copy the **Setup.exe** or **ZIP** to a USB drive or cloud share; each target PC must match **Windows x64**. Building for macOS or Linux requires running `npm run build` on those platforms (Forge makers are configured per OS).
+Artifacts (**macOS**, run `npm run build` on a Mac):
+
+| Output | Path | Use |
+|--------|------|-----|
+| **Disk image (.dmg)** | `out/make/dmg/**/Navio-1.0.1-*.dmg` (path varies by Intel vs Apple Silicon) | Double-click to drag Navio to Applications. |
+| **Portable ZIP** | `out/make/zip/darwin/**/Navio-darwin-*.zip` | Unzip and run without installing. |
+
+Copy the **Windows `Setup.exe`** or **macOS `.dmg`** to share installers. Windows builds are **x64** only; mac DMG/ZIP are built per architecture on that machine.
 
 **Releases (CI):** Pushing a tag matching `v*` (after updating `package.json` `version`) runs **Release** (`.github/workflows/release.yml`): test, optional code signing, then **`electron-forge publish`** uploads Windows and macOS assets to a **GitHub Release** for that tag. **One-time repo setup:** GitHub → **Settings** → **Actions** → **General** → **Workflow permissions** → enable **Read and write permissions** so the default `GITHUB_TOKEN` can create releases (see [docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md)). Workflow run artifacts are still available as a backup download. **In-app updates** use `electron-updater` against `package.json` → `repository`.
 
-**Releases (GitHub CLI, from your PC):** Install [GitHub CLI](https://cli.github.com/) (`winget install GitHub.cli`), run `gh auth login`, then `npm run release:github` to run `npm run make` and upload `out/make` assets with `gh release create` (see [tools/publish-github-release.ps1](tools/publish-github-release.ps1); use `-SkipMake` / `-VerifyTag` as documented there).
+**Releases (GitHub CLI, from your PC):** Install [GitHub CLI](https://cli.github.com/) (`winget install GitHub.cli`), run `gh auth login`, then `npm run release:github` to run `npm run make` and upload `out/make` assets with `gh release create` (see [tools/publish-github-release.ps1](tools/publish-github-release.ps1); use `-SkipMake` / `-VerifyTag` as documented there). **Remove mistaken releases/tags** (e.g. `v1.0.1`, `v1.1.0`): `npm run release:cleanup` after `gh auth login` (see [tools/cleanup-github-releases.ps1](tools/cleanup-github-releases.ps1); override `-Tags` if needed).
 
 ## AI Setup
 

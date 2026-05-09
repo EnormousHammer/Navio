@@ -25,12 +25,14 @@
     "publish": "electron-forge publish",
     "icons": "node tools/generate-icon-ico.cjs",
     "dist": "electron-builder",
-    "release:github": "powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/publish-github-release.ps1"
+    "release:github": "powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/publish-github-release.ps1",
+    "release:cleanup": "powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/cleanup-github-releases.ps1"
   },
   "author": "Navio",
   "license": "MIT",
   "devDependencies": {
     "@electron-forge/cli": "^7.11.1",
+    "@electron-forge/maker-dmg": "^7.11.1",
     "@electron-forge/maker-squirrel": "^7.11.1",
     "@electron-forge/maker-zip": "^7.11.1",
     "@electron-forge/publisher-github": "^7.11.1",

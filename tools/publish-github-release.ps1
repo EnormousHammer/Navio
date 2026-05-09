@@ -79,7 +79,7 @@ if (-not (Test-Path $makeRoot)) {
 $assets = [System.Collections.Generic.List[string]]::new()
 Get-ChildItem -Path $makeRoot -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
   $n = $_.Name
-  if ($n -match '\.nupkg$' -or $n -eq 'RELEASES' -or $n -match 'Setup\.exe$' -or $n -match '^Navio.*\.zip$') {
+  if ($n -match '\.nupkg$' -or $n -eq 'RELEASES' -or $n -match 'Setup\.exe$' -or $n -match '^Navio.*\.zip$' -or $n -match '\.dmg$') {
     [void]$assets.Add($_.FullName)
   }
 }
