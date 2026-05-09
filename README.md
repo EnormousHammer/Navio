@@ -49,6 +49,8 @@ Copy the **Setup.exe** or **ZIP** to a USB drive or cloud share; each target PC 
 
 **Releases (CI):** Pushing a tag matching `v*` (after updating `package.json` `version`) runs **Release** (`.github/workflows/release.yml`): test, optional code signing, then **`electron-forge publish`** uploads Windows and macOS assets to a **GitHub Release** for that tag. **One-time repo setup:** GitHub → **Settings** → **Actions** → **General** → **Workflow permissions** → enable **Read and write permissions** so the default `GITHUB_TOKEN` can create releases (see [docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md)). Workflow run artifacts are still available as a backup download. **In-app updates** use `electron-updater` against `package.json` → `repository`.
 
+**Releases (GitHub CLI, from your PC):** Install [GitHub CLI](https://cli.github.com/) (`winget install GitHub.cli`), run `gh auth login`, then `npm run release:github` to run `npm run make` and upload `out/make` assets with `gh release create` (see [tools/publish-github-release.ps1](tools/publish-github-release.ps1); use `-SkipMake` / `-VerifyTag` as documented there).
+
 ## AI Setup
 
 1. Launch Navio

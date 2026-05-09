@@ -24,7 +24,8 @@
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "icons": "node tools/generate-icon-ico.cjs",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "release:github": "powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/publish-github-release.ps1"
   },
   "author": "Navio",
   "license": "MIT",
