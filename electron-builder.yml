@@ -2,6 +2,9 @@ appId: com.navioai.browser
 productName: Navio
 copyright: Copyright © 2026 Navio
 
+# Releases attach assets via Forge + `gh`, not electron-builder (avoids GH_TOKEN during CI `dist:*`).
+publish: null
+
 # Main entry (mirrors package.json "main")
 directories:
   output: dist-eb
