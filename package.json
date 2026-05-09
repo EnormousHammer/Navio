@@ -1,6 +1,6 @@
 {
   "name": "navio-browser",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Navio - Futuristic AI-powered browser with built-in intelligence",
   "main": "electron/main.js",
   "repository": {
@@ -12,8 +12,8 @@
   },
   "homepage": "https://github.com/EnormousHammer/Navio#readme",
   "scripts": {
-    "test": "node --test ./test/*.test.js",
-    "test:e2e": "node --test ./e2e/*.test.js",
+    "test": "node tools/run-node-tests.cjs test",
+    "test:e2e": "node tools/run-node-tests.cjs e2e",
     "test:e2e:assistant": "node --test ./e2e/assistant-toggle.test.js",
     "lint": "eslint electron/pii-redact.js electron/navio-crash-reporter.js electron/config-store.js electron/gmail-html-sanitize.js electron/migration/ test e2e",
     "ci": "npm test && npm run lint && npx electron-forge package",
