@@ -26,7 +26,9 @@
     "icons": "node tools/generate-icon-ico.cjs",
     "dist": "electron-builder --publish never",
     "dist:win": "electron-builder --win nsis --publish never",
+    "dist:win:nolock": "electron-builder --win nsis --publish never -c.directories.output=dist-eb-build",
     "dist:mac": "electron-builder --mac dmg --publish never",
+    "verify:win": "npm run ci && npm run test:e2e && npm run make && (npm run dist:win || npm run dist:win:nolock)",
     "release:github": "powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/publish-github-release.ps1",
     "release:cleanup": "powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/cleanup-github-releases.ps1"
   },
