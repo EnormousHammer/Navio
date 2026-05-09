@@ -69,14 +69,7 @@ module.exports = {
       name: '@electron-forge/maker-zip',
       platforms: ['win32', 'darwin'],
     },
-    {
-      name: '@electron-forge/maker-dmg',
-      platforms: ['darwin'],
-      config: {
-        /** DMG volume / window title (MakerDMGConfig `name`). */
-        name: 'Navio Browser',
-      },
-    },
+    // macOS .dmg installers ship via electron-builder (see electron-builder.yml + CI) for stable filenames.
   ],
 
   publishers: [

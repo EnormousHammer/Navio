@@ -20,32 +20,36 @@ extraResources:
   - from: public
     to: public
 
-# Windows installer target: NSIS classic installer
+# Windows: NSIS wizard — this is the primary “download and run Setup” experience (no Node.js on target PCs).
 win:
   target:
     - target: nsis
       arch:
         - x64
   icon: src/assets/icon.ico
+  # Avoid pulling winCodeSign (7z with symlinks) on machines without symlink privilege / unsigned CI.
+  signAndEditExecutable: false
 
 nsis:
-  # Non-silent install with a destination folder picker
+  artifactName: "Navio-Windows-Setup-${version}.${ext}"
   oneClick: false
   allowToChangeInstallationDirectory: true
-  # "Navio" shown in Add/Remove Programs
   installerIcon: src/assets/icon.ico
   uninstallerIcon: src/assets/icon.ico
   shortcutName: Navio
   deleteAppDataOnUninstall: false
-  # Run app after install
   runAfterFinish: true
 
-# macOS (optional — requires Apple developer credentials in CI)
+# macOS: separate DMGs for Apple Silicon vs Intel (standard Electron distribution pattern).
 mac:
+  identity: null
   target:
     - target: dmg
       arch:
-        - x64
         - arm64
+        - x64
   icon: src/assets/icon.png
   category: public.app-category.utilities
+
+dmg:
+  artifactName: "Navio-macOS-${version}-${arch}.${ext}"

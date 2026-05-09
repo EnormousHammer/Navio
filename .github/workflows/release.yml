@@ -6,8 +6,9 @@
 # (e.g. tag v1.0.4 → "version": "1.0.4"). The test job fails fast if they disagree so the
 # release assets and GitHub Release always match the app version users see in-app.
 #
-# Published assets (electron-forge publish → GitHub Release “Assets”):
-#   Windows — Squirrel Setup *.exe (installer) + zip; macOS — *.dmg + zip.
+# Published assets:
+#   Windows — NSIS Navio-Windows-Setup-{version}.exe (gh upload) + Squirrel + zip (Forge publish).
+#   macOS — Navio-macOS-{version}-arm64|x64.dmg (gh upload) + zip (Forge publish).
 
 name: Release
 
@@ -75,6 +76,11 @@ jobs:
       - run: npm run make
         env:
           NODE_OPTIONS: --max-old-space-size=8192
+      - name: Build NSIS installer (wizard; no Node.js on end-user PCs)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: npm run dist:win
       - name: Verify Windows installer (.exe) for GitHub Releases
         shell: pwsh
         run: |
@@ -86,10 +92,36 @@ jobs:
             exit 1
           }
           $exes | ForEach-Object { Write-Host "Windows installer: $($_.FullName)" }
+      - name: Verify NSIS installer exists
+        shell: pwsh
+        run: |
+          $nsis = @(Get-ChildItem -Path dist-eb -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'Navio-Windows-Setup-*.exe' })
+          if ($nsis.Count -lt 1) {
+            Write-Host "::error::Expected Navio-Windows-Setup-*.exe under dist-eb. Files:"
+            Get-ChildItem dist-eb -File -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }
+            exit 1
+          }
+          $nsis | ForEach-Object { Write-Host "NSIS installer: $($_.FullName)" }
+      - name: Stage NSIS files for release upload
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path nsis-out | Out-Null
+          $setup = @(Get-ChildItem -Path dist-eb -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'Navio-Windows-Setup-*.exe' })
+          if ($setup.Count -lt 1) { Write-Host "::error::No Navio-Windows-Setup-*.exe in dist-eb"; exit 1 }
+          $setup | ForEach-Object { Copy-Item $_.FullName nsis-out/ }
+          if (Test-Path "dist-eb/latest.yml") { Copy-Item "dist-eb/latest.yml" nsis-out/ }
+          Get-ChildItem dist-eb -Filter "*.blockmap" -File -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName nsis-out/ }
+          Get-ChildItem nsis-out | ForEach-Object { Write-Host "NSIS artifact: $($_.Name)" }
       - uses: actions/upload-artifact@v4
         with:
           name: navio-windows-make
           path: out/make
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: navio-windows-nsis
+          path: nsis-out
+          retention-days: 3
 
   build-mac:
     needs: test
@@ -105,21 +137,44 @@ jobs:
       - run: npm run make
         env:
           NODE_OPTIONS: --max-old-space-size=8192
-      - name: Verify macOS disk image (.dmg) for GitHub Releases
+      - name: Build macOS DMG installers (electron-builder; no Xcode project required on user Macs)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: npm run dist:mac
+      - name: Verify macOS DMG installers exist
         shell: bash
         run: |
           set -e
-          mapfile -t dmgs < <(find out/make -type f -name '*.dmg' 2>/dev/null || true)
-          if [ "${#dmgs[@]}" -lt 1 ]; then
-            echo "::error::Expected at least one .dmg under out/make"
-            find out/make -type f 2>/dev/null | head -40 || true
+          ls -la dist-eb || true
+          arm=$(find dist-eb -maxdepth 1 -type f -name 'Navio-macOS-*-arm64.dmg' 2>/dev/null | wc -l | tr -d ' ')
+          intel=$(find dist-eb -maxdepth 1 -type f -name 'Navio-macOS-*-x64.dmg' 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$arm" -lt 1 ] || [ "$intel" -lt 1 ]; then
+            echo "::error::Expected Navio-macOS-*-arm64.dmg and Navio-macOS-*-x64.dmg under dist-eb"
+            find dist-eb -maxdepth 1 -type f 2>/dev/null || true
             exit 1
           fi
-          printf '%s\n' "${dmgs[@]}"
+          find dist-eb -maxdepth 1 -type f -name 'Navio-macOS-*.dmg' -print
+      - name: Stage macOS electron-builder artifacts for release upload
+        shell: bash
+        run: |
+          set -e
+          mkdir -p mac-eb-out
+          cp dist-eb/Navio-macOS-*.dmg mac-eb-out/
+          if [ -f dist-eb/latest-mac.yml ]; then cp dist-eb/latest-mac.yml mac-eb-out/; fi
+          shopt -s nullglob
+          for f in dist-eb/*.blockmap; do cp "$f" mac-eb-out/; done
+          ls -la mac-eb-out
       - uses: actions/upload-artifact@v4
         with:
           name: navio-mac-make
           path: out/make
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: navio-mac-eb
+          path: mac-eb-out
+          retention-days: 3
 
   # Windows publish first (creates the GitHub Release for this tag).
   publish-windows:
@@ -136,9 +191,27 @@ jobs:
         with:
           name: navio-windows-make
           path: out/make
+      - uses: actions/download-artifact@v4
+        with:
+          name: navio-windows-nsis
+          path: nsis-out
       - run: npx electron-forge publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload NSIS installer to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $repo = "${{ github.repository }}"
+          $files = @(Get-ChildItem -Path nsis-out -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+          if ($files.Count -lt 1) {
+            Write-Host "::error::No files in nsis-out to upload"
+            exit 1
+          }
+          $ghArgs = @('release', 'upload', $tag) + $files + @('--clobber', '--repo', $repo)
+          & gh @ghArgs
 
   # macOS publish second (adds assets to the same release).
   publish-mac:
@@ -155,6 +228,21 @@ jobs:
         with:
           name: navio-mac-make
           path: out/make
+      - uses: actions/download-artifact@v4
+        with:
+          name: navio-mac-eb
+          path: mac-eb-out
       - run: npx electron-forge publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload macOS DMG installers to GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ github.ref_name }}"
+          repo="${{ github.repository }}"
+          mapfile -t upload < <(find mac-eb-out -type f 2>/dev/null || true)
+          if [ "${#upload[@]}" -lt 1 ]; then echo "::error::No files in mac-eb-out"; ls -la mac-eb-out || true; exit 1; fi
+          gh release upload "$tag" "${upload[@]}" --clobber --repo "$repo"

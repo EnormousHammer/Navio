@@ -38,6 +38,10 @@ The **Release** workflow (`.github/workflows/release.yml`) uses `GITHUB_TOKEN` w
 
 If this stays on **Read repository contents and packages permissions** only, publish steps will fail when creating or updating the release. Organization owners can enforce a default; this repo may need an exception.
 
+### GitHub Actions artifact storage quota
+
+If a job fails with **`Failed to CreateArtifact: Artifact storage quota has been hit`**, the build itself may have succeeded; **uploading** workflow artifacts failed because the account/org exceeded [Actions artifact storage](https://docs.github.com/en/billing/managing-billing-for-github-actions/about-billing-for-github-actions#artifact-storage). **Fix:** GitHub → **Settings** → **Actions** → **General** → **Artifacts** (or the org’s storage view) → **delete old artifacts**, or buy more storage. The **Build** workflow does not upload `out/make` (only verifies); **Release** uploads keep **`retention-days: 3`** so large blobs expire quickly after publish.
+
 ## macOS (Developer ID + notarytool)
 
 1. Enroll in the **Apple Developer Program**.

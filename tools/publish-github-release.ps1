@@ -6,7 +6,7 @@
 .DESCRIPTION
   1) Ensures GitHub CLI is installed and you are logged in (gh auth login).
   2) Optionally runs npm run make.
-  3) Uploads Windows (and macOS if present) artifacts from out/make to a new release.
+  3) Uploads Windows artifacts from out/make + dist-eb (Navio-Windows-Setup-*.exe) to a new release. macOS DMGs are built on CI or via npm run dist:mac on a Mac.
 
 .PARAMETER Tag
   Release tag, e.g. v1.0.2. Default: v + version from package.json.
@@ -75,6 +75,15 @@ if ($repoUrl -match "github\.com[:/]([^/]+)/([^/.#]+)") {
 if (-not $SkipMake) {
   Write-Host "Running npm run make ..." -ForegroundColor Cyan
   npm run make
+  Write-Host "Running npm run dist:win (NSIS installer) ..." -ForegroundColor Cyan
+  $prevCsc = $env:CSC_IDENTITY_AUTO_DISCOVERY
+  $env:CSC_IDENTITY_AUTO_DISCOVERY = 'false'
+  try {
+    npm run dist:win
+  } finally {
+    if ($null -ne $prevCsc) { $env:CSC_IDENTITY_AUTO_DISCOVERY = $prevCsc }
+    else { Remove-Item Env:CSC_IDENTITY_AUTO_DISCOVERY -ErrorAction SilentlyContinue }
+  }
 }
 
 $makeRoot = Join-Path (Get-Location) "out\make"
@@ -85,13 +94,23 @@ if (-not (Test-Path $makeRoot)) {
 $assets = [System.Collections.Generic.List[string]]::new()
 Get-ChildItem -Path $makeRoot -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
   $n = $_.Name
-  if ($n -match '\.nupkg$' -or $n -eq 'RELEASES' -or $n -match 'Setup\.exe$' -or $n -match '^Navio.*\.zip$' -or $n -match '\.dmg$') {
+  if ($n -match '\.nupkg$' -or $n -eq 'RELEASES' -or $n -match 'Setup\.exe$' -or $n -match '^Navio.*\.zip$') {
     [void]$assets.Add($_.FullName)
   }
 }
+$distEb = Join-Path (Get-Location) "dist-eb"
+if (Test-Path $distEb) {
+  Get-ChildItem -Path $distEb -File -ErrorAction SilentlyContinue | ForEach-Object {
+    $n = $_.Name
+    if ($n -like 'Navio-Windows-Setup-*.exe' -or $n -eq 'latest.yml' -or $n -match '\.blockmap$') {
+      [void]$assets.Add($_.FullName)
+    }
+  }
+}
+
 $assets = $assets | Sort-Object -Unique
 if ($assets.Count -eq 0) {
-  throw "No release files found under out/make (expected Setup.exe, .zip, RELEASES, .nupkg)."
+  throw "No release files found (expected out/make Squirrel/zip and dist-eb Navio-Windows-Setup-*.exe)."
 }
 
 Write-Host "`nUploading $($assets.Count) file(s) to $repo release $Tag`:" -ForegroundColor Cyan

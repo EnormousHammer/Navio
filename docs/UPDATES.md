@@ -9,9 +9,9 @@
 ## What you must publish on each release
 
 1. **Tag** — Create a git tag matching the app version (convention: `v` + `package.json` `version`, e.g. `v1.0.3`).
-2. **GitHub Release** — On tag `v*`, CI runs **`electron-forge publish`** and uploads Forge **`make`** outputs, or you can attach artifacts manually / run **`npm run publish`** locally with a token.
-3. **Windows (Squirrel)** — Typical outputs under `out/make/squirrel.windows/` include `RELEASES`, `.nupkg`, and `Setup.exe`. The updater reads these from the release assets.
-4. **macOS** — Include the **`.dmg`** (and optional portable **ZIP**) from `out/make` on the release; `electron-updater` expects standard GitHub asset naming for the GitHub provider.
+2. **GitHub Release** — On tag `v*`, CI runs **`electron-forge publish`** (Squirrel + zips) and **`gh release upload`** for **`Navio-Windows-Setup-*.exe`** and **`Navio-macOS-*-*.dmg`** from `electron-builder`, or attach artifacts manually / run **`npm run publish`** locally with a token.
+3. **Windows (Squirrel)** — Typical outputs under `out/make/squirrel.windows/` include `RELEASES`, `.nupkg`, and `Navio-* Setup.exe`. Squirrel-installed builds use these for delta updates.
+4. **macOS** — Release assets include **`Navio-macOS-{version}-arm64.dmg`** and **`-x64.dmg`** from `dist-eb` (plus optional Forge **darwin** `.zip` from `out/make`). NSIS-installed Windows builds use **`latest.yml`** / blockmap on the release when published from CI.
 
 **Draft releases:** Auto-update generally targets **published** (non-draft) releases. Keep releases published once you want users to receive updates.
 
