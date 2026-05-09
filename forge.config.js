@@ -2,14 +2,15 @@
 
 // Windows Authenticode signing: set WINDOWS_CERTIFICATE_FILE + WINDOWS_CERTIFICATE_PASSWORD in CI.
 // See docs/RELEASE_SIGNING.md for how to decode the PFX from a GitHub secret.
-const winCertFile = process.env.WINDOWS_CERTIFICATE_FILE;
-const winCertPass = process.env.WINDOWS_CERTIFICATE_PASSWORD;
+const winCertFile = (process.env.WINDOWS_CERTIFICATE_FILE || '').trim();
+const winCertPass = process.env.WINDOWS_CERTIFICATE_PASSWORD || '';
 
-// macOS Developer ID signing + notarization: set the four Apple env vars in CI.
-const appleId           = process.env.APPLE_ID;
-const appleAppPassword  = process.env.APPLE_APP_SPECIFIC_PASSWORD;
-const appleTeamId       = process.env.APPLE_TEAM_ID;
-const appleIdentity     = process.env.APPLE_SIGNING_IDENTITY;
+// macOS Developer ID signing + notarization (only when non-empty; GitHub-hosted
+// runners have no cert in keychain — do not set APPLE_* secrets there unless you import a .p12).
+const appleId = (process.env.APPLE_ID || '').trim();
+const appleAppPassword = (process.env.APPLE_APP_SPECIFIC_PASSWORD || '').trim();
+const appleTeamId = (process.env.APPLE_TEAM_ID || '').trim();
+const appleIdentity = (process.env.APPLE_SIGNING_IDENTITY || '').trim();
 
 module.exports = {
   packagerConfig: {

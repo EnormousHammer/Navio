@@ -26,7 +26,7 @@ Store the following as **repository secrets** (Settings → Secrets and variable
 | `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for notarization. |
 | `APPLE_TEAM_ID` | 10-character Apple Developer Team ID. |
 
-On Windows runners, the workflow decodes `WINDOWS_CERTIFICATE_PFX_BASE64` into a temp `.pfx` and sets `WINDOWS_CERTIFICATE_FILE` and `WINDOWS_CERTIFICATE_PASSWORD` for Forge. macOS jobs pass the `APPLE_*` variables into `npm run make` so `osxSign` / `osxNotarize` in `forge.config.js` activate when all required values are present.
+On Windows runners, the workflow decodes `WINDOWS_CERTIFICATE_PFX_BASE64` into a temp `.pfx` and sets `WINDOWS_CERTIFICATE_FILE` and `WINDOWS_CERTIFICATE_PASSWORD` for Forge. **GitHub-hosted macOS runners do not inject `APPLE_*` secrets** into `npm run make`: if you set `APPLE_SIGNING_IDENTITY` without importing a matching certificate into the runner keychain, **codesign fails** and the build breaks. For hosted CI, builds are **unsigned**; add a prior workflow step to import a `.p12` and then export `APPLE_*` when you are ready for signed mac artifacts in CI.
 
 ### Enable CI to publish GitHub Releases (one-time)
 

@@ -41,6 +41,8 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "WINDOWS_CERTIFICATE_PASSWORD=$env:PFX_PASS"
       - run: npm ci
       - run: npm run make
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
       - uses: actions/upload-artifact@v4
         with:
           name: navio-windows-make
@@ -56,12 +58,11 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
+      # Unsigned DMG/ZIP on GitHub-hosted macOS (no keychain cert). To sign in CI,
+      # import a certificate (e.g. p12) in a prior step, then export APPLE_* here.
       - run: npm run make
         env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          NODE_OPTIONS: --max-old-space-size=8192
       - uses: actions/upload-artifact@v4
         with:
           name: navio-mac-make
