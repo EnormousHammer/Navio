@@ -2,6 +2,15 @@
 
 Futuristic AI-powered Chromium browser. Intelligence meets the internet.
 
+## Download (install like any other app)
+
+1. Open **[latest GitHub Release](https://github.com/EnormousHammer/Navio/releases/latest)**.
+2. Under **Assets**, download:
+   - **Windows:** `Navio-* Setup.exe` — run it, same idea as any other installer.
+   - **macOS:** `Navio-*.dmg` (Intel and Apple Silicon may be separate files) — open it, drag Navio to Applications.
+
+If you see **“There aren’t any releases”**, the Release workflow has not finished or did not publish yet — check **[Actions](https://github.com/EnormousHammer/Navio/actions)**. For a **private** repo, you must be signed into GitHub with access to that page.
+
 **Native (non-Electron) follow-on — one file only:** [`NAVIO_NATIVE/README.md`](NAVIO_NATIVE/README.md) *(new chat: read that file end-to-end)*.
 
 ## Navio vs Chrome (honest comparison)
