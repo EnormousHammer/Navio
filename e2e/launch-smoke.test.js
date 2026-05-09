@@ -6,6 +6,7 @@ const { spawn, execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { resolveElectronExe } = require('./resolve-electron-exe.cjs');
 
 function waitForFile(filePath, timeoutMs) {
   const start = Date.now();
@@ -63,7 +64,7 @@ describe('e2e smoke', () => {
     };
     fs.writeFileSync(path.join(userData, 'navio-config.json'), JSON.stringify(cfg, null, 2));
 
-    const electronExe = require('electron');
+    const electronExe = resolveElectronExe(root);
     const readyPath = path.join(userData, 'navio-e2e-ready');
 
     const child = spawn(

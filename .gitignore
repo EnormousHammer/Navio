@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-eb/
+dist-eb-localtest/
 out/
 .env
 *.log
