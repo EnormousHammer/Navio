@@ -246,3 +246,57 @@ jobs:
           mapfile -t upload < <(find mac-eb-out -type f 2>/dev/null || true)
           if [ "${#upload[@]}" -lt 1 ]; then echo "::error::No files in mac-eb-out"; ls -la mac-eb-out || true; exit 1; fi
           gh release upload "$tag" "${upload[@]}" --clobber --repo "$repo"
+
+  # GitHub always attaches “Source code (zip/tar.gz)” — not the app. Make the real downloads obvious
+  # and fail the workflow if no built assets landed on the release (quota, permissions, etc.).
+  finalize-release:
+    needs: [publish-mac]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify release has built binaries (not only Source code)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ github.ref_name }}"
+          ver="${tag#v}"
+          repo="${{ github.repository }}"
+          names=$(gh release view "$tag" --repo "$repo" --json assets -q '[.assets[].name] | join("\n")')
+          echo "Release assets:"
+          echo "$names"
+          if ! echo "$names" | grep -qE 'Navio-Windows-Setup-|Navio-win32-x64-|Navio-macOS-|Setup\.exe|\.dmg'; then
+            echo "::error::This release has no built Windows/mac artifacts (only GitHub's auto-generated Source code?). Check earlier jobs: artifact quota, GITHUB_TOKEN write access, or publish failures."
+            exit 1
+          fi
+          if echo "$names" | grep -qi '^Source code'; then
+            echo "Note: \"Source code\" archives are expected from GitHub — use the Navio-*.exe / *.zip / *.dmg rows above them."
+          fi
+      - name: Prepend install instructions to release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ github.ref_name }}"
+          ver="${tag#v}"
+          repo="${{ github.repository }}"
+          prev=$(gh release view "$tag" --repo "$repo" --json body -q .body)
+          notes=$(mktemp)
+          {
+            echo "## Install Navio (built app)"
+            echo ""
+            echo "**Ignore \"Source code (zip)\" and \"Source code (tar.gz)\"** — GitHub adds those to every release. They are a **git snapshot** (\`package.json\`, \`src\`, …), **not** the runnable installer."
+            echo ""
+            echo "| Platform | Download from **Assets** (below) |"
+            echo "|------------|-------------------------------------|"
+            echo "| **Windows (installer)** | \`Navio-Windows-Setup-${ver}.exe\` |"
+            echo "| **Windows (portable)** | \`Navio-win32-x64-${ver}.zip\` → run \`navio-browser.exe\` next to \`ffmpeg.dll\` |"
+            echo "| **macOS (Apple Silicon)** | \`Navio-macOS-${ver}-arm64.dmg\` |"
+            echo "| **macOS (Intel)** | \`Navio-macOS-${ver}-x64.dmg\` |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "$prev"
+          } > "$notes"
+          gh release edit "$tag" --repo "$repo" --notes-file "$notes"
