@@ -98,25 +98,5 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           NODE_OPTIONS: --max-old-space-size=8192
         run: npm run dist:mac
-      - name: Verify macOS DMG installers exist
-        shell: bash
-        run: |
-          set -e
-          arm=$(find dist-eb -maxdepth 1 -type f -name 'Navio-macOS-*-arm64.dmg' 2>/dev/null | wc -l | tr -d ' ')
-          intel=$(find dist-eb -maxdepth 1 -type f -name 'Navio-macOS-*-x64.dmg' 2>/dev/null | wc -l | tr -d ' ')
-          if [ "$arm" -lt 1 ] || [ "$intel" -lt 1 ]; then
-            echo "::error::Expected Navio-macOS-*-arm64.dmg and Navio-macOS-*-x64.dmg under dist-eb"
-            find dist-eb -maxdepth 1 -type f 2>/dev/null || true
-            exit 1
-          fi
-      - name: Verify macOS portable ZIPs exist
-        shell: bash
-        run: |
-          set -e
-          n=$(find dist-eb -maxdepth 1 -type f -name '*.zip' 2>/dev/null | wc -l | tr -d ' ')
-          if [ "${n:-0}" -lt 2 ]; then
-            echo "::error::Expected 2 portable .zip files in dist-eb (arm64 + x64 from electron-builder), found ${n:-0}"
-            find dist-eb -maxdepth 1 -type f 2>/dev/null || true
-            exit 1
-          fi
-          find dist-eb -maxdepth 1 -type f -name '*.zip' -print
+      - name: Verify macOS electron-builder artifacts (names from package.json + electron-builder.yml)
+        run: node tools/verify-mac-eb-artifacts.cjs

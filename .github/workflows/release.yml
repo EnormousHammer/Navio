@@ -8,7 +8,7 @@
 #
 # Published assets:
 #   Windows — NSIS Setup .exe + portable Navio-{version}-win.zip (electron-builder; gh upload) + Squirrel (Forge publish).
-#   macOS — DMGs + two portable .zip files from electron-builder (arm64 + x64; exact names vary) + Forge darwin zip (Forge publish).
+#   macOS — DMGs + Navio-macPortable-{version}-{arch}.zip (electron-builder mac.artifactName) + Forge darwin zip (Forge publish).
 
 name: Release
 
@@ -149,38 +149,18 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           NODE_OPTIONS: --max-old-space-size=8192
         run: npm run dist:mac
-      - name: Verify macOS DMG installers exist
-        shell: bash
-        run: |
-          set -e
-          ls -la dist-eb || true
-          arm=$(find dist-eb -maxdepth 1 -type f -name 'Navio-macOS-*-arm64.dmg' 2>/dev/null | wc -l | tr -d ' ')
-          intel=$(find dist-eb -maxdepth 1 -type f -name 'Navio-macOS-*-x64.dmg' 2>/dev/null | wc -l | tr -d ' ')
-          if [ "$arm" -lt 1 ] || [ "$intel" -lt 1 ]; then
-            echo "::error::Expected Navio-macOS-*-arm64.dmg and Navio-macOS-*-x64.dmg under dist-eb"
-            find dist-eb -maxdepth 1 -type f 2>/dev/null || true
-            exit 1
-          fi
-          find dist-eb -maxdepth 1 -type f -name 'Navio-macOS-*.dmg' -print
-      - name: Verify macOS portable ZIPs exist
-        shell: bash
-        run: |
-          set -e
-          n=$(find dist-eb -maxdepth 1 -type f -name '*.zip' 2>/dev/null | wc -l | tr -d ' ')
-          if [ "${n:-0}" -lt 2 ]; then
-            echo "::error::Expected 2 portable .zip files in dist-eb (arm64 + x64), found ${n:-0}"
-            find dist-eb -maxdepth 1 -type f 2>/dev/null || true
-            exit 1
-          fi
-          find dist-eb -maxdepth 1 -type f -name '*.zip' -print
+      - name: Verify macOS electron-builder artifacts (names from package.json + electron-builder.yml)
+        run: node tools/verify-mac-eb-artifacts.cjs
       - name: Stage macOS electron-builder artifacts for release upload
         shell: bash
         run: |
           set -e
           mkdir -p mac-eb-out
-          cp dist-eb/Navio-macOS-*.dmg mac-eb-out/
-          find dist-eb -maxdepth 1 -type f -name '*.zip' -exec cp {} mac-eb-out/ \;
+          ver=$(node -p "require('./package.json').version")
+          cp "dist-eb/Navio-macOS-${ver}-arm64.dmg" "dist-eb/Navio-macOS-${ver}-x64.dmg" mac-eb-out/
+          cp "dist-eb/Navio-macPortable-${ver}-arm64.zip" "dist-eb/Navio-macPortable-${ver}-x64.zip" mac-eb-out/
           if [ -f dist-eb/latest-mac.yml ]; then cp dist-eb/latest-mac.yml mac-eb-out/; fi
+          shopt -s nullglob
           for f in dist-eb/*.blockmap; do cp "$f" mac-eb-out/; done
           ls -la mac-eb-out
       - uses: actions/upload-artifact@v4
@@ -286,7 +266,7 @@ jobs:
           names=$(gh release view "$tag" --repo "$repo" --json assets -q '[.assets[].name] | join("\n")')
           echo "Release assets:"
           echo "$names"
-          if ! echo "$names" | grep -qE 'Navio-Windows-Setup-|Navio-win32-x64-|Navio-macOS-|Navio-.*-win\.zip|Navio-.*-mac\.zip|Navio-.*-(arm64|x64)\.zip|Setup\.exe|\.dmg'; then
+          if ! echo "$names" | grep -qE 'Navio-Windows-Setup-|Navio-win32-x64-|Navio-macOS-|Navio-macPortable-|Navio-.*-win\.zip|Navio-.*-mac\.zip|Navio-.*-(arm64|x64)\.zip|Setup\.exe|\.dmg'; then
             echo "::error::This release has no built Windows/mac artifacts (only GitHub's auto-generated Source code?). Check earlier jobs: artifact quota, GITHUB_TOKEN write access, or publish failures."
             exit 1
           fi
@@ -313,7 +293,8 @@ jobs:
             echo "|------------|-------------------------------------|"
             echo "| **Windows (installer)** | \`Navio-Windows-Setup-${ver}.exe\` |"
             echo "| **Windows (portable ZIP)** | \`Navio-${ver}-win.zip\` → extract, run \`navio-browser.exe\` next to \`ffmpeg.dll\` |"
-            echo "| **macOS (portable ZIPs)** | Two \`.zip\` files in Assets (Apple Silicon + Intel; exact names depend on electron-builder) |"
+            echo "| **macOS (Apple Silicon, portable ZIP)** | \`Navio-macPortable-${ver}-arm64.zip\` |"
+            echo "| **macOS (Intel, portable ZIP)** | \`Navio-macPortable-${ver}-x64.zip\` |"
             echo "| **macOS (Apple Silicon, DMG)** | \`Navio-macOS-${ver}-arm64.dmg\` |"
             echo "| **macOS (Intel, DMG)** | \`Navio-macOS-${ver}-x64.dmg\` |"
             echo ""

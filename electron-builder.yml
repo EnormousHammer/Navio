@@ -49,7 +49,12 @@ nsis:
 # macOS: separate DMGs for Apple Silicon vs Intel (standard Electron distribution pattern).
 # Ad-hoc signing (identity '-') needs no Apple Developer cert but still runs on modern macOS
 # (fully unsigned bundles are often blocked). Entitlements match Forge osxSign when you add a cert.
+#
+# Portable ZIP names: electron-builder's default mac zip pattern omits ${arch} for the host
+# default architecture, so CI cannot guess filenames. mac.artifactName forces arch in every
+# zip; DMGs keep their own template via dmg.artifactName below.
 mac:
+  artifactName: "Navio-macPortable-${version}-${arch}.${ext}"
   identity: '-'
   hardenedRuntime: true
   entitlements: build/entitlements.mac.plist

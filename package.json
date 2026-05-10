@@ -30,7 +30,7 @@
     "dist:mac": "electron-builder --mac dmg,zip --arm64 --publish never && electron-builder --mac dmg,zip --x64 --publish never",
     "dist:mac:nolock": "electron-builder --mac dmg,zip --arm64 --publish never -c.directories.output=dist-eb-mac-build && electron-builder --mac dmg,zip --x64 --publish never -c.directories.output=dist-eb-mac-build",
     "verify:win": "npm run ci && npm run test:e2e && npm run make && (npm run dist:win || npm run dist:win:nolock)",
-    "verify:mac": "npm run ci && npm run test:e2e && npm run make && (npm run dist:mac || npm run dist:mac:nolock)",
+    "verify:mac": "npm run ci && npm run test:e2e && npm run make && (npm run dist:mac || npm run dist:mac:nolock) && node tools/verify-mac-eb-artifacts.cjs",
     "release:github": "powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/publish-github-release.ps1",
     "release:cleanup": "powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/cleanup-github-releases.ps1"
   },
