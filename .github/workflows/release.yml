@@ -7,8 +7,8 @@
 # release assets and GitHub Release always match the app version users see in-app.
 #
 # Published assets:
-#   Windows — NSIS Navio-Windows-Setup-{version}.exe (gh upload) + Squirrel + zip (Forge publish).
-#   macOS — Navio-macOS-{version}-arm64|x64.dmg (gh upload) + zip (Forge publish).
+#   Windows — NSIS Setup .exe + portable Navio-Portable-win-{version}-x64.zip (gh upload) + Squirrel (Forge publish).
+#   macOS — DMGs + portable Navio-Portable-mac-{version}-(arm64|x64).zip (gh upload) + Forge darwin zip (Forge publish).
 
 name: Release
 
@@ -111,7 +111,14 @@ jobs:
           $setup | ForEach-Object { Copy-Item $_.FullName nsis-out/ }
           if (Test-Path "dist-eb/latest.yml") { Copy-Item "dist-eb/latest.yml" nsis-out/ }
           Get-ChildItem dist-eb -Filter "*.blockmap" -File -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName nsis-out/ }
-          Get-ChildItem nsis-out | ForEach-Object { Write-Host "NSIS artifact: $($_.Name)" }
+          $pz = @(Get-ChildItem -Path dist-eb -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'Navio-Portable-win-*.zip' })
+          if ($pz.Count -lt 1) {
+            Write-Host "::error::Expected Navio-Portable-win-*.zip under dist-eb (electron-builder zip target). Files:"
+            Get-ChildItem dist-eb -File -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }
+            exit 1
+          }
+          $pz | ForEach-Object { Copy-Item $_.FullName nsis-out/; Write-Host "Windows portable zip: $($_.Name)" }
+          Get-ChildItem nsis-out | ForEach-Object { Write-Host "Windows release file: $($_.Name)" }
       - uses: actions/upload-artifact@v4
         with:
           name: navio-windows-make
@@ -155,14 +162,27 @@ jobs:
             exit 1
           fi
           find dist-eb -maxdepth 1 -type f -name 'Navio-macOS-*.dmg' -print
+      - name: Verify macOS portable ZIPs exist
+        shell: bash
+        run: |
+          set -e
+          arm=$(find dist-eb -maxdepth 1 -type f -name 'Navio-Portable-mac-*-arm64.zip' 2>/dev/null | wc -l | tr -d ' ')
+          intel=$(find dist-eb -maxdepth 1 -type f -name 'Navio-Portable-mac-*-x64.zip' 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$arm" -lt 1 ] || [ "$intel" -lt 1 ]; then
+            echo "::error::Expected Navio-Portable-mac-*-arm64.zip and *-x64.zip under dist-eb"
+            find dist-eb -maxdepth 1 -type f 2>/dev/null || true
+            exit 1
+          fi
+          find dist-eb -maxdepth 1 -type f -name 'Navio-Portable-mac-*.zip' -print
       - name: Stage macOS electron-builder artifacts for release upload
         shell: bash
         run: |
           set -e
           mkdir -p mac-eb-out
           cp dist-eb/Navio-macOS-*.dmg mac-eb-out/
-          if [ -f dist-eb/latest-mac.yml ]; then cp dist-eb/latest-mac.yml mac-eb-out/; fi
           shopt -s nullglob
+          for f in dist-eb/Navio-Portable-mac-*.zip; do cp "$f" mac-eb-out/; done
+          if [ -f dist-eb/latest-mac.yml ]; then cp dist-eb/latest-mac.yml mac-eb-out/; fi
           for f in dist-eb/*.blockmap; do cp "$f" mac-eb-out/; done
           ls -la mac-eb-out
       - uses: actions/upload-artifact@v4
@@ -265,7 +285,7 @@ jobs:
           names=$(gh release view "$tag" --repo "$repo" --json assets -q '[.assets[].name] | join("\n")')
           echo "Release assets:"
           echo "$names"
-          if ! echo "$names" | grep -qE 'Navio-Windows-Setup-|Navio-win32-x64-|Navio-macOS-|Setup\.exe|\.dmg'; then
+          if ! echo "$names" | grep -qE 'Navio-Windows-Setup-|Navio-win32-x64-|Navio-macOS-|Navio-Portable-|Setup\.exe|\.dmg|\.zip'; then
             echo "::error::This release has no built Windows/mac artifacts (only GitHub's auto-generated Source code?). Check earlier jobs: artifact quota, GITHUB_TOKEN write access, or publish failures."
             exit 1
           fi
@@ -291,9 +311,11 @@ jobs:
             echo "| Platform | Download from **Assets** (below) |"
             echo "|------------|-------------------------------------|"
             echo "| **Windows (installer)** | \`Navio-Windows-Setup-${ver}.exe\` |"
-            echo "| **Windows (portable)** | \`Navio-win32-x64-${ver}.zip\` → run \`navio-browser.exe\` next to \`ffmpeg.dll\` |"
-            echo "| **macOS (Apple Silicon)** | \`Navio-macOS-${ver}-arm64.dmg\` |"
-            echo "| **macOS (Intel)** | \`Navio-macOS-${ver}-x64.dmg\` |"
+            echo "| **Windows (portable ZIP)** | \`Navio-Portable-win-${ver}-x64.zip\` → extract, run \`navio-browser.exe\` next to \`ffmpeg.dll\` |"
+            echo "| **macOS (Apple Silicon, ZIP)** | \`Navio-Portable-mac-${ver}-arm64.zip\` |"
+            echo "| **macOS (Intel, ZIP)** | \`Navio-Portable-mac-${ver}-x64.zip\` |"
+            echo "| **macOS (Apple Silicon, DMG)** | \`Navio-macOS-${ver}-arm64.dmg\` |"
+            echo "| **macOS (Intel, DMG)** | \`Navio-macOS-${ver}-x64.dmg\` |"
             echo ""
             echo "---"
             echo ""

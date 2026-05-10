@@ -65,9 +65,11 @@ module.exports = {
         } : {}),
       },
     },
+    // Portable ZIPs for Releases come from electron-builder (both Windows + macOS archs).
+    // Keep maker-zip for darwin only so `forge make` on Mac still has a maker; Windows uses EB zip only.
     {
       name: '@electron-forge/maker-zip',
-      platforms: ['win32', 'darwin'],
+      platforms: ['darwin'],
     },
     // macOS .dmg installers ship via electron-builder (see electron-builder.yml + CI) for stable filenames.
   ],

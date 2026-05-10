@@ -68,6 +68,15 @@ jobs:
             Get-ChildItem dist-eb -File -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }
             exit 1
           }
+      - name: Verify Windows portable ZIP exists
+        shell: pwsh
+        run: |
+          $z = @(Get-ChildItem -Path dist-eb -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'Navio-Portable-win-*.zip' })
+          if ($z.Count -lt 1) {
+            Write-Host "::error::No Navio-Portable-win-*.zip under dist-eb"
+            Get-ChildItem dist-eb -File -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }
+            exit 1
+          }
 
   build-mac:
     needs: test
@@ -97,6 +106,17 @@ jobs:
           intel=$(find dist-eb -maxdepth 1 -type f -name 'Navio-macOS-*-x64.dmg' 2>/dev/null | wc -l | tr -d ' ')
           if [ "$arm" -lt 1 ] || [ "$intel" -lt 1 ]; then
             echo "::error::Expected Navio-macOS-*-arm64.dmg and Navio-macOS-*-x64.dmg under dist-eb"
+            find dist-eb -maxdepth 1 -type f 2>/dev/null || true
+            exit 1
+          fi
+      - name: Verify macOS portable ZIPs exist
+        shell: bash
+        run: |
+          set -e
+          arm=$(find dist-eb -maxdepth 1 -type f -name 'Navio-Portable-mac-*-arm64.zip' 2>/dev/null | wc -l | tr -d ' ')
+          intel=$(find dist-eb -maxdepth 1 -type f -name 'Navio-Portable-mac-*-x64.zip' 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$arm" -lt 1 ] || [ "$intel" -lt 1 ]; then
+            echo "::error::Expected Navio-Portable-mac-*-arm64.zip and *-x64.zip under dist-eb"
             find dist-eb -maxdepth 1 -type f 2>/dev/null || true
             exit 1
           fi
