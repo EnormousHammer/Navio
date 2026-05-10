@@ -70,7 +70,3 @@ dmg:
   artifactName: "Navio-macOS-${version}-${arch}.${ext}"
   # DMG container signing is unnecessary and can confuse Gatekeeper on older macOS.
   sign: false
-
-# Portable ZIP names (separate from DMG / NSIS). ${os} is e.g. mac / win per electron-builder.
-zip:
-  artifactName: "Navio-Portable-${os}-${version}-${arch}.${ext}"
