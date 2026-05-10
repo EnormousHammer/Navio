@@ -6,7 +6,7 @@
 .DESCRIPTION
   1) Ensures GitHub CLI is installed and you are logged in (gh auth login).
   2) Optionally runs npm run make.
-  3) Uploads Windows artifacts from out/make + dist-eb (Navio-Windows-Setup-*.exe, Navio-Portable-win-*.zip) to a new release. macOS DMGs/ZIPs are built on CI or via npm run dist:mac on a Mac.
+  3) Uploads Windows artifacts from out/make + dist-eb (Navio-Windows-Setup-*.exe, Navio-*-win.zip) to a new release. macOS DMGs/ZIPs are built on CI or via npm run dist:mac on a Mac.
 
 .PARAMETER Tag
   Release tag, e.g. v1.0.2. Default: v + version from package.json.
@@ -102,7 +102,7 @@ $distEb = Join-Path (Get-Location) "dist-eb"
 if (Test-Path $distEb) {
   Get-ChildItem -Path $distEb -File -ErrorAction SilentlyContinue | ForEach-Object {
     $n = $_.Name
-    if ($n -like 'Navio-Windows-Setup-*.exe' -or $n -like 'Navio-Portable-win-*.zip' -or $n -eq 'latest.yml' -or $n -match '\.blockmap$') {
+    if ($n -like 'Navio-Windows-Setup-*.exe' -or $n -like 'Navio-*-win.zip' -or $n -eq 'latest.yml' -or $n -match '\.blockmap$') {
       [void]$assets.Add($_.FullName)
     }
   }
@@ -110,7 +110,7 @@ if (Test-Path $distEb) {
 
 $assets = $assets | Sort-Object -Unique
 if ($assets.Count -eq 0) {
-  throw "No release files found (expected out/make Squirrel, dist-eb Navio-Windows-Setup-*.exe, Navio-Portable-win-*.zip)."
+  throw "No release files found (expected out/make Squirrel, dist-eb Navio-Windows-Setup-*.exe, Navio-*-win.zip)."
 }
 
 Write-Host "`nUploading $($assets.Count) file(s) to $repo release $Tag`:" -ForegroundColor Cyan

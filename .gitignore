@@ -4,6 +4,8 @@ dist-eb/
 dist-eb-localtest/
 dist-eb-build/
 dist-eb-mac-build/
+dist-eb-schema-test/
+dist-eb-zipname-test/
 out/
 .env
 *.log
