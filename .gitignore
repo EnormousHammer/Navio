@@ -3,6 +3,7 @@ dist/
 dist-eb/
 dist-eb-localtest/
 dist-eb-build/
+dist-eb-mac-build/
 out/
 .env
 *.log

@@ -44,8 +44,13 @@ nsis:
   runAfterFinish: true
 
 # macOS: separate DMGs for Apple Silicon vs Intel (standard Electron distribution pattern).
+# Ad-hoc signing (identity '-') needs no Apple Developer cert but still runs on modern macOS
+# (fully unsigned bundles are often blocked). Entitlements match Forge osxSign when you add a cert.
 mac:
-  identity: null
+  identity: '-'
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
   target:
     - target: dmg
       arch:
@@ -56,3 +61,5 @@ mac:
 
 dmg:
   artifactName: "Navio-macOS-${version}-${arch}.${ext}"
+  # DMG container signing is unnecessary and can confuse Gatekeeper on older macOS.
+  sign: false
