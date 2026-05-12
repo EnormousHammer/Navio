@@ -5207,7 +5207,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (browserTab && browserTab.url && !browserTab.url.startsWith('about:')) {
         messages.push({
           role: 'system',
-          content: `[Browsing context tab]${browserTab.id === surface?.id ? ' (focused)' : ''}\nTab id: ${browserTab.id}\nTitle: ${TabManager.getTabDisplayTitle(browserTab) || '(untitled)'}${browserTab.customTitle ? ` (page: ${browserTab.title || '—'})` : ''}\nURL: ${browserTab.url}`
+          content: `[Browsing context tab — THIS is the tab the user has open. "Take over" means act on THIS tab immediately.]${browserTab.id === surface?.id ? ' (focused)' : ''}\nTab id: ${browserTab.id}\nTitle: ${TabManager.getTabDisplayTitle(browserTab) || '(untitled)'}${browserTab.customTitle ? ` (page: ${browserTab.title || '—'})` : ''}\nURL: ${browserTab.url}`
         });
       }
     }
@@ -5244,7 +5244,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         messages.push({
           role: 'system',
           content:
-            `[Open tabs (${allTabs.length}) — use tab_id with switch_tab / close_tab / split_tabs (two tab ids)]\n${tabList}`
+            `[Open tabs (${allTabs.length}) — use tab_id with switch_tab / close_tab / split_tabs (two tab ids). NEVER mention tab IDs or numbers to the user. If user says "take over" just act on the browsing context tab immediately — do not list tabs or ask which one.]\n${tabList}`
         });
       }
 
@@ -5808,7 +5808,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         if (browserTab && browserTab.url && !browserTab.url.startsWith('about:')) {
           messages.push({
             role: 'system',
-            content: `[Browsing context tab]${browserTab.id === surface?.id ? ' (focused)' : ''}\nTab id: ${browserTab.id}\nTitle: ${TabManager.getTabDisplayTitle(browserTab) || '(untitled)'}\nURL: ${browserTab.url}`
+            content: `[Browsing context tab — THIS is the user's current tab. "Take over" = act on THIS immediately.]${browserTab.id === surface?.id ? ' (focused)' : ''}\nTab id: ${browserTab.id}\nTitle: ${TabManager.getTabDisplayTitle(browserTab) || '(untitled)'}\nURL: ${browserTab.url}`
           });
         }
       }
@@ -5818,7 +5818,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         messages.push({
           role: 'system',
           content:
-            `[Open tabs (${allTabs.length}) — use tab_id with switch_tab / close_tab / split_tabs (two tab ids)]\n${tabList}`
+            `[Open tabs (${allTabs.length}) — use tab_id with switch_tab / close_tab / split_tabs (two tab ids). NEVER mention tab IDs to the user. "Take over" = act on browsing context tab, not ask which tab.]\n${tabList}`
         });
       }
     }
@@ -5973,7 +5973,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (browserTab && browserTab.url && !browserTab.url.startsWith('about:')) {
         messages.push({
           role: 'system',
-          content: `[Browsing context tab]${browserTab.id === surface?.id ? ' (focused)' : ''}\nTab id: ${browserTab.id}\nTitle: ${TabManager.getTabDisplayTitle(browserTab) || '(untitled)'}${browserTab.customTitle ? ` (page: ${browserTab.title || '—'})` : ''}\nURL: ${browserTab.url}`
+          content: `[Browsing context tab — THIS is the user's current tab. "Take over" = act on THIS immediately.]${browserTab.id === surface?.id ? ' (focused)' : ''}\nTab id: ${browserTab.id}\nTitle: ${TabManager.getTabDisplayTitle(browserTab) || '(untitled)'}${browserTab.customTitle ? ` (page: ${browserTab.title || '—'})` : ''}\nURL: ${browserTab.url}`
         });
       } else if (browserTab) {
         messages.push({
@@ -6008,7 +6008,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         messages.push({
           role: 'system',
           content:
-            `[Open tabs (${allTabs.length}) — use tab_id with switch_tab / close_tab / split_tabs (two tab ids)]\n${tabList}`
+            `[Open tabs (${allTabs.length}) — use tab_id with switch_tab / close_tab / split_tabs (two tab ids). NEVER mention tab IDs to the user. "Take over" = act on browsing context tab immediately.]\n${tabList}`
         });
       }
     }

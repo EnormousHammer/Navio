@@ -27,7 +27,8 @@ const NAVIO_TOOLS = [
   {
     name: 'navigate',
     description:
-      'Navigate the active browser tab to a URL. Always use a full https:// URL. ' +
+      'Navigate the user\'s CURRENT browser tab to a URL — this loads the page IN the tab they already have open (same tab, not a new one). Always use a full https:// URL. ' +
+      'When the user says "take over the tab" or wants you to work on their current page, start with read_page/click/screenshot (NO navigate needed if the page is already loaded). Use navigate only when you need to go to a DIFFERENT URL within that same tab. ' +
       'During agent runs, **mail.google.com** browsing is usually routed to Gmail API tools (Drafts → gmail_list_drafts; other views → gmail_search). ' +
       'Set **gmail_browser_takeover: true** when the API cannot supply what the task needs (e.g. attachment contents, previews, or data inside files) — then Navio opens the real Gmail tab instead of intercepting. ' +
       'After you create/update/delete drafts or send mail via API, Navio opens Gmail to Drafts or Sent automatically. ' +
@@ -287,9 +288,10 @@ const NAVIO_TOOLS = [
   {
     name: 'open_tab',
     description:
-      'Open a new browser tab and optionally navigate it to a URL. Returns the new tab\'s ID. ' +
+      'Open a NEW browser tab and optionally navigate it to a URL. Returns the new tab\'s ID. ' +
       'The tab opens in the background: the user\'s current visible tab does not change. ' +
-      'Use this for parallel research across multiple sites. ' +
+      '**ONLY use this for parallel research across MULTIPLE sites simultaneously.** ' +
+      '**NEVER use open_tab when the user asks you to "take over" their tab, work on their current page, or handle something on the page they have open — use navigate/read_page/click on their existing tab instead.** ' +
       'Navio automatically puts the new tab in a **named tab group** with the browsing-context tab and full-page AI tab when this is part of the same task, so the strip stays readable. ' +
       'Same Gmail behavior as **navigate**: set **gmail_browser_takeover: true** to open a real Gmail tab when the API path is insufficient.',
     parameters: {
