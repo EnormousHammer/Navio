@@ -204,7 +204,7 @@ class NavioApp {
     const next = current === 'dark' ? 'light' : 'dark';
     this.applyTheme(next);
     this.config.theme = next;
-    await window.navio.saveConfig(this.config);
+    await window.navio.saveConfig({ theme: next });
   }
 
   bindWindowControls() {
@@ -1734,6 +1734,7 @@ ${badgeHtml(it.badge)}
       urlInput.value = '';
       sslIndicator.className = 'url-ssl' + sslExtra;
       sslIndicator.title = incog ? 'Private tab' : '';
+      if (typeof PasswordManager !== 'undefined') PasswordManager.updateKeyIcon('');
       return;
     }
 
@@ -1748,6 +1749,12 @@ ${badgeHtml(it.badge)}
     } else {
       sslIndicator.className = 'url-ssl' + sslExtra;
       sslIndicator.title = incog ? 'Private tab' : '';
+    }
+
+    if (!incog && typeof PasswordManager !== 'undefined') {
+      PasswordManager.updateKeyIcon(url);
+    } else if (typeof PasswordManager !== 'undefined') {
+      PasswordManager.updateKeyIcon('');
     }
   }
 
@@ -2025,9 +2032,8 @@ const PasswordManager = (() => {
   let _pendingSave = null;  // { username, password, url }
   let _autofillWv  = null;  // active webview for autofill
   let _autofillPwd = null;  // { username, password }
-  /** When multiple vault rows match this origin, user picks in `#pwd-autofill-account`. */
   let _autofillEntries = null;
-  /** Stremio: fill + submit in the guest without showing the autofill bar (password never surfaced in chrome UI). */
+  let _lastAutofillUrl = '';
   const _STREMIO_SILENT_ORIGINS = new Set([
     'https://web.stremio.com',
     'https://www.stremio.com',
@@ -2037,16 +2043,13 @@ const PasswordManager = (() => {
 
   const saveBar       = document.getElementById('pwd-save-bar');
   const autofillBar   = document.getElementById('pwd-autofill-bar');
-  const saveUser      = document.getElementById('pwd-save-user');
+  const saveUserInput = document.getElementById('pwd-save-user');
   const autofillUser  = document.getElementById('pwd-autofill-user');
   const autofillAcct  = document.getElementById('pwd-autofill-account');
+  const urlPwdKey     = document.getElementById('url-pwd-key');
 
   function _urlOriginStr(url) {
-    try {
-      return new URL(url).origin;
-    } catch {
-      return '';
-    }
+    try { return new URL(url).origin; } catch { return ''; }
   }
 
   function _isStremioSilentAutofillUrl(url) {
@@ -2067,9 +2070,7 @@ const PasswordManager = (() => {
           password: entry.password,
           autoSubmit: true
         });
-      } catch {
-        /* guest may be gone */
-      }
+      } catch {}
     };
     fire();
     _stremioSilentTimers.push(setTimeout(fire, 450));
@@ -2086,6 +2087,7 @@ const PasswordManager = (() => {
     _pendingSave = null;
     const saveBtn = document.getElementById('pwd-save-btn');
     if (saveBtn) saveBtn.textContent = 'Save';
+    if (saveUserInput) saveUserInput.value = '';
   }
 
   function _hideAutofill() {
@@ -2100,6 +2102,43 @@ const PasswordManager = (() => {
     if (autofillUser) autofillUser.hidden = false;
   }
 
+  function _doAutofill() {
+    if (_autofillWv && _autofillPwd) {
+      try {
+        _autofillWv.send('navio-autofill', {
+          username: _autofillPwd.username,
+          password: _autofillPwd.password,
+        });
+        _showAppToast(`Credentials filled for ${_originLabel(_lastAutofillUrl)}`, 'success');
+      } catch {}
+    }
+    _hideAutofill();
+  }
+
+  // ── Update the key icon in the URL bar ──────────────────────────────────
+  async function updateKeyIcon(url) {
+    if (!urlPwdKey) return;
+    if (!url || _isStremioSilentAutofillUrl(url)) {
+      urlPwdKey.hidden = true;
+      urlPwdKey.classList.remove('has-credentials');
+      return;
+    }
+    try {
+      const r = await window.navio.passwordsGet(url);
+      if (r.ok && r.entries && r.entries.length) {
+        urlPwdKey.hidden = false;
+        urlPwdKey.classList.add('has-credentials');
+        urlPwdKey.title = `Fill saved password for ${_originLabel(url)} (Ctrl+Shift+L)`;
+      } else {
+        urlPwdKey.hidden = true;
+        urlPwdKey.classList.remove('has-credentials');
+      }
+    } catch {
+      urlPwdKey.hidden = true;
+      urlPwdKey.classList.remove('has-credentials');
+    }
+  }
+
   // ── Show "Save password?" / "Replace password?" after submit ─────────────
   async function showSavePrompt({ username, password, url }, wv) {
     _hideAutofill();
@@ -2109,10 +2148,12 @@ const PasswordManager = (() => {
       try {
         const r = await window.navio.passwordsGet(url);
         if (r.ok && r.entries && r.entries.some((e) => e.hidden)) return;
-      } catch {
-        /* fall through */
-      }
+      } catch {}
     }
+    try {
+      const nr = await window.navio.passwordsNeverCheck(url);
+      if (nr && nr.never) return;
+    } catch {}
     let mode = 'save';
     try {
       const r = await window.navio.passwordsGet(url);
@@ -2123,14 +2164,15 @@ const PasswordManager = (() => {
           mode = 'update';
         }
       }
-    } catch {
-      /* offer new save */
-    }
+    } catch {}
     _pendingSave = { username, password, url };
-    if (saveUser) {
-      saveUser.textContent = (username && String(username).trim())
-        ? username
-        : 'Username not detected — you can edit it in Settings → Passwords after saving.';
+    if (saveUserInput) {
+      saveUserInput.value = (username && String(username).trim()) ? username : '';
+      if (!username || !String(username).trim()) {
+        saveUserInput.placeholder = 'Enter username or email';
+      } else {
+        saveUserInput.placeholder = 'Username';
+      }
     }
     const msgEl = saveBar.querySelector('.pwd-save-msg');
     if (msgEl) {
@@ -2153,7 +2195,7 @@ const PasswordManager = (() => {
     if (saveBtn) saveBtn.textContent = mode === 'update' ? 'Replace' : 'Save';
     saveBar.hidden = false;
     clearTimeout(saveBar._timer);
-    saveBar._timer = setTimeout(_hideSave, 30000);
+    saveBar._timer = setTimeout(_hideSave, 45000);
   }
 
   // ── Check if we have credentials for the current URL ──────────────────────
@@ -2164,14 +2206,30 @@ const PasswordManager = (() => {
       if (!r.ok || !r.entries.length) return;
       const entries = r.entries;
       const entry = entries[0];
+      _lastAutofillUrl = url;
       if (_isStremioSilentAutofillUrl(url)) {
         _silentStremioAutofill(wv, entry);
         return;
       }
-      if (!autofillBar) return;
+
+      updateKeyIcon(url);
+
       _autofillWv  = wv;
       _autofillEntries = entries;
       _autofillPwd = entry;
+
+      if (entries.length === 1) {
+        try {
+          wv.send('navio-autofill', {
+            username: entry.username,
+            password: entry.password,
+          });
+          _showAppToast(`Credentials filled for ${_originLabel(url)}`, 'success');
+        } catch {}
+        return;
+      }
+
+      if (!autofillBar) return;
       if (entries.length > 1 && autofillAcct) {
         autofillAcct.replaceChildren();
         for (let i = 0; i < entries.length; i++) {
@@ -2196,21 +2254,66 @@ const PasswordManager = (() => {
       }
       autofillBar.hidden = false;
       clearTimeout(autofillBar._timer);
-      autofillBar._timer = setTimeout(_hideAutofill, 20000);
+      autofillBar._timer = setTimeout(_hideAutofill, 60000);
+    } catch {}
+  }
+
+  // ── Manual autofill trigger (key icon click or Ctrl+Shift+L) ─────────────
+  async function triggerAutofill() {
+    const tab = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
+    if (!tab || tab.incognito) return;
+    const wv = tab.webview;
+    const url = tab.url || (wv && typeof wv.getURL === 'function' ? wv.getURL() : '');
+    if (!url) return;
+    try {
+      const r = await window.navio.passwordsGet(url);
+      if (!r.ok || !r.entries.length) {
+        _showAppToast('No saved passwords for this site', 'info');
+        return;
+      }
+      const entries = r.entries;
+      _autofillWv = wv;
+      _autofillEntries = entries;
+      _autofillPwd = entries[0];
+      _lastAutofillUrl = url;
+
+      if (entries.length === 1) {
+        _doAutofill();
+        return;
+      }
+
+      if (!autofillBar) return;
+      autofillAcct.replaceChildren();
+      for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        const opt = document.createElement('option');
+        opt.value = String(i);
+        opt.textContent = (e.username && String(e.username).trim()) ? e.username : `Account ${i + 1}`;
+        autofillAcct.appendChild(opt);
+      }
+      autofillAcct.selectedIndex = 0;
+      autofillAcct.hidden = false;
+      if (autofillUser) autofillUser.hidden = true;
+      autofillBar.hidden = false;
+      clearTimeout(autofillBar._timer);
+      autofillBar._timer = setTimeout(_hideAutofill, 60000);
     } catch {}
   }
 
   // Wire up the bar buttons
   document.getElementById('pwd-save-btn')?.addEventListener('click', async () => {
     if (!_pendingSave) return;
+    const editedUsername = saveUserInput ? saveUserInput.value.trim() : _pendingSave.username;
+    const usernameToSave = editedUsername || _pendingSave.username;
     try {
       const r = await window.navio.passwordsSave(
         _pendingSave.url,
-        _pendingSave.username,
+        usernameToSave,
         _pendingSave.password
       );
       if (r && r.ok) {
-        _showAppToast('Password saved', 'success');
+        _showAppToast(`Password saved for ${_originLabel(_pendingSave.url)}`, 'success');
+        updateKeyIcon(_pendingSave.url);
       } else {
         _showAppToast((r && r.error) || 'Could not save password', 'error');
         return;
@@ -2222,20 +2325,19 @@ const PasswordManager = (() => {
     _hideSave();
   });
 
-  document.getElementById('pwd-never-btn')?.addEventListener('click', _hideSave);
-  document.getElementById('pwd-dismiss-btn')?.addEventListener('click', _hideSave);
-
-  document.getElementById('pwd-autofill-btn')?.addEventListener('click', () => {
-    if (_autofillWv && _autofillPwd) {
+  document.getElementById('pwd-never-btn')?.addEventListener('click', async () => {
+    if (_pendingSave && _pendingSave.url) {
       try {
-        _autofillWv.send('navio-autofill', {
-          username: _autofillPwd.username,
-          password: _autofillPwd.password,
-        });
+        await window.navio.passwordsNeverAdd(_pendingSave.url);
+        _showAppToast(`Won't ask to save passwords for ${_originLabel(_pendingSave.url)}`, 'info');
       } catch {}
     }
-    _hideAutofill();
+    _hideSave();
   });
+
+  document.getElementById('pwd-dismiss-btn')?.addEventListener('click', _hideSave);
+
+  document.getElementById('pwd-autofill-btn')?.addEventListener('click', _doAutofill);
 
   document.getElementById('pwd-autofill-dismiss')?.addEventListener('click', _hideAutofill);
 
@@ -2246,7 +2348,18 @@ const PasswordManager = (() => {
     _autofillPwd = _autofillEntries[idx];
   });
 
-  return { showSavePrompt, checkAutofill };
+  // Key icon in URL bar
+  urlPwdKey?.addEventListener('click', triggerAutofill);
+
+  // Ctrl+Shift+L keyboard shortcut
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'l') {
+      e.preventDefault();
+      triggerAutofill();
+    }
+  });
+
+  return { showSavePrompt, checkAutofill, triggerAutofill, updateKeyIcon };
 })();
 
 // ── Inline AI ─────────────────────────────────────────────────────────────

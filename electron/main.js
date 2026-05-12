@@ -1824,8 +1824,16 @@ ipcMain.on('navio-chat-host-relay-from-guest', (event, payload) => {
 });
 ipcMain.handle('save-config', (event, partial) => {
   saveConfig(partial);
+  // Defer guest CDP sync: running it inline deadlocks when the shell renderer
+  // is blocked awaiting this same invoke (debugger attach can hop through the parent).
   if (partial && Object.prototype.hasOwnProperty.call(partial, 'theme')) {
-    navioSyncAllGuestWebAutoDarkMode();
+    setImmediate(() => {
+      try {
+        navioSyncAllGuestWebAutoDarkMode();
+      } catch {
+        /* ignore */
+      }
+    });
   }
   try {
     navioCrashReporter.applyCrashReportingFromConfig(loadConfig());

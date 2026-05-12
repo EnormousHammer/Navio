@@ -389,6 +389,9 @@ contextBridge.exposeInMainWorld('navio', {
   passwordsDelete:    (origin, username)        => ipcRenderer.invoke('passwords-delete', { origin, username }),
   passwordsExportCsv: ()                        => ipcRenderer.invoke('passwords-export-csv'),
   passwordsImportCsv: (csv)                     => ipcRenderer.invoke('passwords-import-csv', { csv }),
+  passwordsNeverAdd:   (url)                    => ipcRenderer.invoke('passwords-never-add', { url }),
+  passwordsNeverCheck: (url)                    => ipcRenderer.invoke('passwords-never-check', { url }),
+  passwordsNeverRemove:(url)                    => ipcRenderer.invoke('passwords-never-remove', { url }),
 
   // Download lifecycle events pushed from the main process
   onDownloadStarted: (cb) => {

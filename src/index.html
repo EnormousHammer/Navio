@@ -83,6 +83,9 @@
               <button type="button" class="url-bookmark-star" id="btn-bookmarks-manager" title="Manage bookmarks (Ctrl+Shift+B)" aria-label="Manage bookmarks">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
               </button>
+              <button type="button" id="url-pwd-key" class="url-pwd-key" hidden title="Fill saved password (Ctrl+Shift+L)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="15.5" cy="8.5" r="5.5"/><path d="M2 21.5l7.5-7.5"/><path d="M2 16l5 5"/><path d="M6.5 12L2 16"/></svg>
+              </button>
               <div class="url-ssl" id="url-ssl" title="Connection info"></div>
             </div>
             <button type="button" id="btn-chat-with-ai" class="url-chat-ai-btn" title="Open full-page AI chat (uses what you typed, or a blank chat)">
@@ -515,9 +518,9 @@
       <div id="pwd-save-bar" class="pwd-save-bar pwd-bar-over-guest" hidden>
         <svg class="pwd-save-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
         <span class="pwd-save-msg">Save password for <strong id="pwd-save-site"></strong>?</span>
-        <span class="pwd-save-user" id="pwd-save-user"></span>
+        <input type="text" id="pwd-save-user" class="pwd-save-user-input" placeholder="Username" spellcheck="false" autocomplete="off">
         <button id="pwd-save-btn" class="pwd-save-action">Save</button>
-        <button id="pwd-never-btn" class="pwd-save-never">Never</button>
+        <button id="pwd-never-btn" class="pwd-save-never">Never for this site</button>
         <button id="pwd-dismiss-btn" class="pwd-save-dismiss" title="Dismiss">×</button>
       </div>
       <div id="pwd-autofill-bar" class="pwd-autofill-bar pwd-bar-over-guest" hidden>

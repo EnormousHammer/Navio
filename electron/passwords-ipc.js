@@ -149,7 +149,51 @@ function maybeImportOemStremioCredentials() {
   }
 }
 
+function _pwdNeverListPath() {
+  return path.join(app.getPath('userData'), 'navio-passwords-never.json');
+}
+
+function _pwdNeverListLoad() {
+  try { return JSON.parse(fs.readFileSync(_pwdNeverListPath(), 'utf8')); } catch { return []; }
+}
+
+function _pwdNeverListSave(list) {
+  fs.writeFileSync(_pwdNeverListPath(), JSON.stringify(list), 'utf8');
+}
+
 function registerPasswordsIpc(ipcMain) {
+  ipcMain.handle('passwords-never-add', (_, { url }) => {
+    try {
+      const origin = _pwdAllowedVaultOrigin(url);
+      if (!origin) return { ok: false, error: 'invalid origin' };
+      const list = _pwdNeverListLoad();
+      if (!list.includes(origin)) { list.push(origin); _pwdNeverListSave(list); }
+      return { ok: true };
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
+
+  ipcMain.handle('passwords-never-check', (_, { url }) => {
+    try {
+      const origin = _pwdAllowedVaultOrigin(url);
+      if (!origin) return { ok: true, never: false };
+      const list = _pwdNeverListLoad();
+      const origins = _pwdOriginSiblings(origin);
+      const never = origins.some((o) => list.includes(o));
+      return { ok: true, never };
+    } catch { return { ok: true, never: false }; }
+  });
+
+  ipcMain.handle('passwords-never-remove', (_, { url }) => {
+    try {
+      const origin = _pwdAllowedVaultOrigin(url);
+      if (!origin) return { ok: false, error: 'invalid origin' };
+      const origins = new Set(_pwdOriginSiblings(origin));
+      const list = _pwdNeverListLoad().filter((o) => !origins.has(o));
+      _pwdNeverListSave(list);
+      return { ok: true };
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
+
   ipcMain.handle('passwords-save', (_, { url, username, password, hidden }) => {
     try {
       const origin = _pwdAllowedVaultOrigin(url);

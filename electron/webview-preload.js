@@ -859,7 +859,22 @@ try {
     }
   }
 
-  // ── Handle autofill command sent from the renderer ─────────────────────────
+  function _flashFilledField(el) {
+    if (!el || !el.style) return;
+    const prev = el.style.boxShadow;
+    const prevBg = el.style.backgroundColor;
+    el.style.boxShadow = '0 0 0 2px rgba(0, 216, 255, 0.55), 0 0 12px rgba(0, 216, 255, 0.25)';
+    el.style.backgroundColor = 'rgba(0, 216, 255, 0.06)';
+    setTimeout(() => {
+      try {
+        el.style.transition = 'box-shadow 0.5s, background-color 0.5s';
+        el.style.boxShadow = prev || '';
+        el.style.backgroundColor = prevBg || '';
+        setTimeout(() => { try { el.style.transition = ''; } catch {} }, 600);
+      } catch {}
+    }, 800);
+  }
+
   ipcRenderer.on('navio-autofill', (_, { username, password, autoSubmit }) => {
     try {
       const pwdField = pickPasswordFieldForAutofill(document);
@@ -869,15 +884,15 @@ try {
       if (usernameEl) {
         usernameEl.focus();
         fillField(usernameEl, username);
+        _flashFilledField(usernameEl);
       }
       pwdField.focus();
       fillField(pwdField, password);
+      _flashFilledField(pwdField);
       if (autoSubmit) {
         setTimeout(() => trySubmitLoginAfterAutofill(root), 140);
       }
-    } catch {
-      /* ignore */
-    }
+    } catch {}
   });
 
   // ── Cosmetic ad blocking (streaming / embed-player overlay removal) ──────────
