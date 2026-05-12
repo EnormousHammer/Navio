@@ -728,9 +728,7 @@ body.navio-assistant-open #app {
   gap: 0;
   flex: 1;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
+  overflow: hidden;
   /* Tabs sit on the bottom edge of the strip (Chrome-style) */
   padding: 2px 4px 0;
 }
@@ -739,12 +737,11 @@ body.navio-assistant-open #app {
 
 /* Grows after the last tab so a second “+” sits in the strip’s free space (horizontal). */
 .tab-list-trail {
-  flex: 1;
-  min-width: 20px;
+  flex: 0 1 20px;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  flex-shrink: 0;
   align-self: stretch;
   padding-left: 2px;
 }
@@ -800,15 +797,13 @@ body.navio-assistant-open #app {
     opacity 0.15s ease;
   position: relative;
   max-width: 220px;
-  min-width: 40px;
+  min-width: 28px;
   min-height: 32px;
   height: 32px;
-  /* Tabs shrink proportionally as more are opened, like Chrome/Comet. */
-  flex-shrink: 1;
+  flex: 0 1 220px;
   overflow: hidden;
   animation: tab-appear 0.18s ease-out;
   z-index: 0;
-  /* Ensure right-click / context menu works under a frameless drag region (parent .tab-strip). */
   -webkit-app-region: no-drag;
 }
 
@@ -15263,7 +15258,7 @@ button:focus-visible,
   margin-left: -10px;
 }
 [data-theme="light"] body:not(.navio-vertical-tabs) .tab-item:not(.tab-pinned) {
-  min-width: 56px;
+  min-width: 28px;
 }
 [data-theme="light"] body:not(.navio-vertical-tabs) .tab-item {
   background: rgba(255, 255, 255, 0.88);
