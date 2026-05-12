@@ -2007,15 +2007,13 @@ body.navio-wcv-tabs-below .ai-control-overlay:not([hidden]) {
   to   { opacity: 1; }
 }
 
-/* Animated border that traces around the viewport */
+/* Animated border that traces around the viewport — fully see-through interior */
 .ai-control-overlay-border {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  border: 2.5px solid transparent;
-  border-radius: 0;
+  padding: 2.5px;
   background:
-    linear-gradient(var(--bg-void, #0f1117), var(--bg-void, #0f1117)) padding-box,
     conic-gradient(
       from var(--ai-border-angle, 0deg),
       rgba(56, 189, 248, 0.0) 0%,
@@ -2023,7 +2021,15 @@ body.navio-wcv-tabs-below .ai-control-overlay:not([hidden]) {
       rgba(139, 92, 246, 0.7) 25%,
       rgba(56, 189, 248, 0.0) 40%,
       rgba(56, 189, 248, 0.0) 100%
-    ) border-box;
+    );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
   animation: aiConicSweep 2.6s linear infinite;
 }
 
@@ -2037,17 +2043,21 @@ body.navio-wcv-tabs-below .ai-control-overlay:not([hidden]) {
   to { --ai-border-angle: 360deg; }
 }
 
-/* Fallback for browsers that don't support @property: pulsing glow */
+/* Fallback for browsers that don't support @property: pulsing glow border */
 @supports not (background: conic-gradient(from 0deg, red, blue)) {
   .ai-control-overlay-border {
-    border-color: rgba(56, 189, 248, 0.5);
+    background: none;
+    -webkit-mask: none;
+    mask: none;
+    padding: 0;
+    border: 2.5px solid rgba(56, 189, 248, 0.5);
     animation: aiBorderPulse 1.6s ease-in-out infinite alternate;
   }
 }
 
 @keyframes aiBorderPulse {
-  from { border-color: rgba(56, 189, 248, 0.3); box-shadow: inset 0 0 20px rgba(56, 189, 248, 0.05); }
-  to   { border-color: rgba(56, 189, 248, 0.7); box-shadow: inset 0 0 40px rgba(56, 189, 248, 0.1); }
+  from { border-color: rgba(56, 189, 248, 0.3); }
+  to   { border-color: rgba(56, 189, 248, 0.7); }
 }
 
 /* Top banner pill */
