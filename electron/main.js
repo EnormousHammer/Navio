@@ -6463,7 +6463,7 @@ async function maybeInterceptGmailBrowseNavForAgent(url, opts = {}) {
 async function executeBrowserActionInternal(wc, action, params) {
   try {
     if (action === 'click' || action === 'type' || action === 'pressKey' || action === 'insertText') {
-      const stealHostKeyboardFocus = action === 'pressKey' || action === 'insertText';
+      const stealHostKeyboardFocus = action === 'type' || action === 'pressKey' || action === 'insertText';
       await ensureGuestWebviewKeyboardFocus(
         wc,
         stealHostKeyboardFocus ? { stealHostKeyboardFocus: true } : {}

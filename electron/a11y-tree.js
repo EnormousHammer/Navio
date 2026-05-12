@@ -465,7 +465,7 @@ async function typeByRef(wc, refId, value) {
   if (!refMap || !refMap.has(refId)) {
     return { error: `Unknown ref "${refId}". Call read_page to refresh the element list.` };
   }
-  await ensureGuestWebviewKeyboardFocus(wc);
+  await ensureGuestWebviewKeyboardFocus(wc, { stealHostKeyboardFocus: true });
   const { backendDOMNodeId } = refMap.get(refId);
   let attachedHere = false;
   try {
