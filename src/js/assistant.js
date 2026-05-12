@@ -4948,6 +4948,86 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       send.hidden = false;
       send.disabled = false;
     }
+    this._syncAiControlOverlay(busy);
+  }
+
+  /**
+   * Show or hide the AI control overlay that blocks user interaction with the
+   * page while the agent is automating it.  The overlay sits inside #browser-area
+   * above the guest WCV, so pointer-events: auto on it catches all user clicks/keys.
+   */
+  _syncAiControlOverlay(busy) {
+    const overlay = document.getElementById('ai-control-overlay');
+    if (!overlay) return;
+    if (busy) {
+      overlay.hidden = false;
+      if (!this._aiControlStopWired) {
+        this._aiControlStopWired = true;
+        const stopBtn = document.getElementById('ai-control-stop-btn');
+        if (stopBtn) {
+          stopBtn.addEventListener('click', () => this.stopGeneration());
+        }
+        // Clicking anywhere on the overlay redirects focus to the assistant input
+        overlay.addEventListener('click', (e) => {
+          if (e.target.closest('.ai-control-stop-btn')) return;
+          const inp = document.getElementById('assistant-input');
+          if (inp) {
+            inp.focus();
+            if (typeof AssistantManager !== 'undefined' && !AssistantManager.isOpen) {
+              AssistantManager.open();
+            }
+          }
+        });
+        // Suppress keyboard events on the overlay so they don't leak to the webview
+        overlay.addEventListener('keydown', (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          const inp = document.getElementById('assistant-input');
+          if (inp) inp.focus();
+        });
+      }
+      // Elevate shell above WCV so the overlay is interactive
+      try { window.navioEnsureShellOnTopIfWcv?.(); } catch { /* ignore */ }
+      // Open the assistant panel so the user can see what's happening
+      try {
+        if (typeof AssistantManager !== 'undefined' && !AssistantManager.isOpen) {
+          AssistantManager.open();
+        }
+      } catch { /* ignore */ }
+    } else {
+      overlay.hidden = true;
+      const statusEl = document.getElementById('ai-control-status');
+      if (statusEl) statusEl.textContent = 'Reading the page\u2026';
+    }
+  }
+
+  /** Mirror the typing-indicator label onto the overlay status line. */
+  _updateAiControlOverlayStatus(tool) {
+    const statusEl = document.getElementById('ai-control-status');
+    if (!statusEl) return;
+    const labels = {
+      navigate: 'Opening the page\u2026',
+      read_page: 'Looking at the page\u2026',
+      get_page_text: 'Pulling text\u2026',
+      click: 'Clicking something\u2026',
+      type_text: 'Filling something in\u2026',
+      scroll: 'Scrolling\u2026',
+      screenshot: 'Taking a screenshot\u2026',
+      open_tab: 'Opening a tab\u2026',
+      close_tab: 'Closing a tab\u2026',
+      wait: 'Waiting\u2026',
+      pressKey: 'Pressing a key\u2026',
+      insertText: 'Typing text\u2026',
+      select_option: 'Selecting an option\u2026',
+      go_forward: 'Going forward\u2026',
+      go_back: 'Going back\u2026',
+      gmail_search: 'Searching email\u2026',
+      gmail_read: 'Reading email\u2026',
+      gmail_send: 'Preparing email\u2026',
+      run_workflow: 'Running a workflow\u2026',
+      list_workflows: 'Checking workflows\u2026'
+    };
+    statusEl.textContent = labels[tool] || 'Working\u2026';
   }
 
   /**
@@ -6365,6 +6445,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       }
       // Update the typing indicator label in real-time (Comet-style)
       this._updateTypingLabel(tool);
+      this._updateAiControlOverlayStatus(tool);
       const label = this._toolProgressLabel(tool, result);
       this._appendActivityStep(tool, label);
       if (

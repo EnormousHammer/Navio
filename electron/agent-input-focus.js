@@ -32,11 +32,16 @@ async function ensureGuestWebviewKeyboardFocus(guestWc, opts = {}) {
   }
   const gid = guestWc.id;
   try {
+    // Focus the webview for sendInputEvent delivery but do NOT blur the
+    // assistant textarea — the overlay blocks user keystrokes on the page
+    // side, and keeping the assistant input focused lets the user keep
+    // composing advice / corrections while the agent works.
     await host.executeJavaScript(`
       (function () {
         var id = ${gid};
         var ae = document.activeElement;
-        if (ae && (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT')) {
+        var isAssistantInput = ae && (ae.id === 'assistant-input');
+        if (!isAssistantInput && ae && (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT')) {
           try { ae.blur(); } catch (e) {}
         }
         var wvs = document.querySelectorAll('webview');

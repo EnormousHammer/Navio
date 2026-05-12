@@ -1933,6 +1933,10 @@ body.navio-wcv-tabs-below #browser-container .split-divider {
   pointer-events: auto;
 }
 
+body.navio-wcv-tabs-below .ai-control-overlay:not([hidden]) {
+  pointer-events: auto;
+}
+
 #browser-container webview {
   position: absolute;
   top: 0;
@@ -1974,6 +1978,226 @@ body.navio-wcv-tabs-below #browser-container .split-divider {
 
 #browser-container webview.navio-agent-controlled-webview.active {
   box-shadow: inset 0 0 0 3px rgba(56, 189, 248, 0.65);
+}
+
+/* ============================================
+   AI Agent Control Overlay
+   Blocks user interaction while Navio AI is
+   automating the page. Sits above the guest WCV.
+   ============================================ */
+
+.ai-control-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 800;
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  cursor: not-allowed;
+  animation: aiOverlayIn 0.28s ease-out both;
+}
+
+.ai-control-overlay[hidden] {
+  display: none !important;
+}
+
+@keyframes aiOverlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Animated border that traces around the viewport */
+.ai-control-overlay-border {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 2.5px solid transparent;
+  border-radius: 0;
+  background:
+    linear-gradient(var(--bg-void, #0f1117), var(--bg-void, #0f1117)) padding-box,
+    conic-gradient(
+      from var(--ai-border-angle, 0deg),
+      rgba(56, 189, 248, 0.0) 0%,
+      rgba(56, 189, 248, 0.85) 12%,
+      rgba(139, 92, 246, 0.7) 25%,
+      rgba(56, 189, 248, 0.0) 40%,
+      rgba(56, 189, 248, 0.0) 100%
+    ) border-box;
+  animation: aiConicSweep 2.6s linear infinite;
+}
+
+@property --ai-border-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes aiConicSweep {
+  to { --ai-border-angle: 360deg; }
+}
+
+/* Fallback for browsers that don't support @property: pulsing glow */
+@supports not (background: conic-gradient(from 0deg, red, blue)) {
+  .ai-control-overlay-border {
+    border-color: rgba(56, 189, 248, 0.5);
+    animation: aiBorderPulse 1.6s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes aiBorderPulse {
+  from { border-color: rgba(56, 189, 248, 0.3); box-shadow: inset 0 0 20px rgba(56, 189, 248, 0.05); }
+  to   { border-color: rgba(56, 189, 248, 0.7); box-shadow: inset 0 0 40px rgba(56, 189, 248, 0.1); }
+}
+
+/* Top banner pill */
+.ai-control-overlay-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 8px 14px 8px 10px;
+  background: rgba(15, 17, 23, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 10px;
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(56, 189, 248, 0.12),
+    0 0 30px rgba(56, 189, 248, 0.08);
+  cursor: default;
+  pointer-events: auto;
+  z-index: 2;
+  animation: aiBannerSlide 0.32s ease-out both;
+  user-select: none;
+}
+
+[data-theme="light"] .ai-control-overlay-banner {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.12),
+    0 0 0 1px rgba(56, 189, 248, 0.15),
+    0 0 30px rgba(56, 189, 248, 0.06);
+}
+
+@keyframes aiBannerSlide {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Orb — miniature version of the Navio orb */
+.ai-control-orb {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.ai-control-orb-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(56, 189, 248, 0.5);
+  animation: aiOrbSpin 2s linear infinite;
+  border-top-color: transparent;
+  border-right-color: rgba(139, 92, 246, 0.6);
+}
+
+@keyframes aiOrbSpin {
+  to { transform: rotate(360deg); }
+}
+
+.ai-control-orb-core {
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(139, 92, 246, 0.2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ai-control-orb-core svg {
+  width: 12px;
+  height: 12px;
+  color: rgba(56, 189, 248, 0.9);
+  animation: aiStarPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes aiStarPulse {
+  0%, 100% { opacity: 0.7; transform: scale(0.9); }
+  50%      { opacity: 1;   transform: scale(1.1); }
+}
+
+/* Text */
+.ai-control-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ai-control-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary, #e2e8f0);
+  letter-spacing: 0.01em;
+  line-height: 1.3;
+}
+
+.ai-control-status {
+  font-size: 11px;
+  color: rgba(56, 189, 248, 0.85);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+/* Stop button */
+.ai-control-stop-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+}
+
+.ai-control-stop-btn:hover {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #fca5a5;
+}
+
+.ai-control-stop-btn:active {
+  transform: scale(0.96);
+}
+
+[data-theme="light"] .ai-control-title {
+  color: var(--text-primary, #1e293b);
+}
+
+[data-theme="light"] .ai-control-stop-btn {
+  background: rgba(239, 68, 68, 0.08);
+  color: #dc2626;
+}
+
+[data-theme="light"] .ai-control-stop-btn:hover {
+  background: rgba(239, 68, 68, 0.16);
+  color: #b91c1c;
 }
 
 /* ============================================

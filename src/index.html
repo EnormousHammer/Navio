@@ -531,6 +531,26 @@
         <button id="pwd-autofill-btn" class="pwd-save-action">Autofill</button>
         <button id="pwd-autofill-dismiss" class="pwd-save-dismiss" title="Dismiss">×</button>
       </div>
+      <!-- AI Agent Control Overlay — blocks user interaction while AI is automating the page -->
+      <div id="ai-control-overlay" class="ai-control-overlay" hidden>
+        <div class="ai-control-overlay-border"></div>
+        <div class="ai-control-overlay-banner">
+          <div class="ai-control-orb">
+            <div class="ai-control-orb-ring"></div>
+            <div class="ai-control-orb-core">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            </div>
+          </div>
+          <div class="ai-control-text">
+            <span class="ai-control-title">Navio is working</span>
+            <span class="ai-control-status" id="ai-control-status">Reading the page…</span>
+          </div>
+          <button type="button" class="ai-control-stop-btn" id="ai-control-stop-btn" title="Stop AI">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+            Stop
+          </button>
+        </div>
+      </div>
       </div><!-- #browser-area -->
     </main>
 
