@@ -43,6 +43,7 @@ const navioCrashReporter = require('./navio-crash-reporter');
 const navioLogger = require('./navio-logger');
 const { wcCanGoBack, wcCanGoForward } = require('./wc-nav-history');
 const { ensureGuestWebviewKeyboardFocus } = require('./agent-input-focus');
+const { injectAgentOverlay, updateAgentOverlayStatus, removeAgentOverlay } = require('./agent-page-overlay');
 const { BINARY_MAX_BYTES, shouldDownloadAndExtract, extractDriveFileText } = require('./drive-file-text');
 const { tabManager } = require('./tab-manager');
 const { exportMigrationToFolder, createTimestampedMigrationDir } = require('./migration');
@@ -2880,7 +2881,12 @@ async function performAiFetchResilient(cfg, apiKey, messages, fetchOpts, attempt
 async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts = {}) {
   const signal = opts && opts.signal;
   const tabId = opts.tabId != null ? String(opts.tabId) : '__default__';
-  const tp = (p) => sender.send('tool-progress', { ...p, tabId });
+  const tp = (p) => {
+    sender.send('tool-progress', { ...p, tabId });
+    if (p && p.tool) {
+      try { updateAgentOverlayStatus(activeWc, p.tool); } catch { /* ignore */ }
+    }
+  };
   const tr = (p) => sender.send('tool-reasoning', { ...p, tabId });
   const configured = Number(cfg.aiAgentMaxToolSteps);
   maxSteps = Math.min(500, Math.max(50, Number.isFinite(configured) && configured > 0 ? Math.round(configured) : 300));
@@ -2895,6 +2901,8 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
   let gmailDeferredView = null; // 'sent' | 'drafts'
 
   const finishAgentRun = (payload) => {
+    // Remove the page-level overlay from the guest WebContents on every exit path
+    try { removeAgentOverlay(activeWc); } catch { /* ignore */ }
     if (gmailDeferredView) {
       payload.gmailOpenWhenDone = {
         url:
@@ -2929,6 +2937,9 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
   } catch {
     /* non-fatal */
   }
+
+  // Inject visual "Navio is working" overlay into the guest page (WCV mode — shell overlays are hidden behind the tab surface).
+  try { await injectAgentOverlay(activeWc); } catch { /* non-fatal */ }
 
   const TAB_TOOLS = new Set(['open_tab', 'close_tab', 'switch_tab', 'list_tabs', 'split_tabs']);
 
@@ -3158,6 +3169,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
 
         if (!navResult.error && activeWc) {
           await waitForWebContentsSettled(activeWc);
+          try { await injectAgentOverlay(activeWc); } catch { /* non-fatal */ }
         }
 
         // Auto-screenshot after navigation for visual context
@@ -3218,6 +3230,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
         }
         const tabResult = await executeTabTool(tc, sender, tabId);
         // switch_tab returns a new webContentsId — update activeWc
+        const prevWcForOverlay = activeWc;
         if (tc.name === 'switch_tab' && tabResult.webContentsId) {
           const newWc = electronWebContents.fromId(tabResult.webContentsId);
           if (newWc) activeWc = newWc;
@@ -3231,7 +3244,11 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
           if (splitWc) activeWc = splitWc;
         }
         if (!tabResult.error && (tc.name === 'open_tab' || tc.name === 'switch_tab' || tc.name === 'split_tabs') && activeWc) {
+          if (prevWcForOverlay && prevWcForOverlay !== activeWc) {
+            try { removeAgentOverlay(prevWcForOverlay); } catch { /* ignore */ }
+          }
           await waitForWebContentsSettled(activeWc);
+          try { await injectAgentOverlay(activeWc); } catch { /* non-fatal */ }
         }
         currentMessages = appendToolResult(currentMessages, tc, tabResult, provider);
         toolLog.push({ tool: tc.name, args: tc.arguments, result: sanitizeToolResultForLog(tc.name, tabResult) });

@@ -4952,57 +4952,67 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   /**
-   * Show or hide the AI control overlay that blocks user interaction with the
-   * page while the agent is automating it.  The overlay sits inside #browser-area
-   * above the guest WCV, so pointer-events: auto on it catches all user clicks/keys.
+   * Show or hide the AI control overlay.  In WCV mode (tabs render as native
+   * Electron views above the shell) the visual indicator is injected directly
+   * into the guest page by the main process — the shell overlay is invisible
+   * there, so we only use it in classic <webview> mode as a fallback.
+   * Regardless of mode, we always open the assistant panel and keep the stop
+   * button wired so the user can intervene.
    */
   _syncAiControlOverlay(busy) {
+    const isWcv = document.body.classList.contains('navio-wcv-tabs-below');
     const overlay = document.getElementById('ai-control-overlay');
-    if (!overlay) return;
-    if (busy) {
-      overlay.hidden = false;
-      if (!this._aiControlStopWired) {
-        this._aiControlStopWired = true;
-        const stopBtn = document.getElementById('ai-control-stop-btn');
-        if (stopBtn) {
-          stopBtn.addEventListener('click', () => this.stopGeneration());
-        }
-        // Clicking anywhere on the overlay redirects focus to the assistant input
-        overlay.addEventListener('click', (e) => {
-          if (e.target.closest('.ai-control-stop-btn')) return;
-          const inp = document.getElementById('assistant-input');
-          if (inp) {
-            inp.focus();
-            if (typeof AssistantManager !== 'undefined' && !AssistantManager.isOpen) {
-              AssistantManager.open();
-            }
+
+    // Classic webview mode: use the shell-side overlay (it sits above the <webview> tag)
+    if (overlay && !isWcv) {
+      if (busy) {
+        overlay.hidden = false;
+        if (!this._aiControlStopWired) {
+          this._aiControlStopWired = true;
+          const stopBtn = document.getElementById('ai-control-stop-btn');
+          if (stopBtn) {
+            stopBtn.addEventListener('click', () => this.stopGeneration());
           }
-        });
-        // Suppress keyboard events on the overlay so they don't leak to the webview
-        overlay.addEventListener('keydown', (e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          const inp = document.getElementById('assistant-input');
-          if (inp) inp.focus();
-        });
+          overlay.addEventListener('click', (e) => {
+            if (e.target.closest('.ai-control-stop-btn')) return;
+            const inp = document.getElementById('assistant-input');
+            if (inp) {
+              inp.focus();
+              if (typeof AssistantManager !== 'undefined' && !AssistantManager.isOpen) {
+                AssistantManager.open();
+              }
+            }
+          });
+          overlay.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            const inp = document.getElementById('assistant-input');
+            if (inp) inp.focus();
+          });
+        }
+      } else {
+        overlay.hidden = true;
+        const statusEl = document.getElementById('ai-control-status');
+        if (statusEl) statusEl.textContent = 'Reading the page\u2026';
       }
-      // Elevate shell above WCV so the overlay is interactive
-      try { window.navioEnsureShellOnTopIfWcv?.(); } catch { /* ignore */ }
-      // Open the assistant panel so the user can see what's happening
+    } else if (overlay) {
+      // WCV mode: keep the shell overlay hidden — main process handles the page injection
+      overlay.hidden = true;
+    }
+
+    // Both modes: open the assistant panel so the user can see what's happening
+    if (busy) {
       try {
         if (typeof AssistantManager !== 'undefined' && !AssistantManager.isOpen) {
           AssistantManager.open();
         }
       } catch { /* ignore */ }
-    } else {
-      overlay.hidden = true;
-      const statusEl = document.getElementById('ai-control-status');
-      if (statusEl) statusEl.textContent = 'Reading the page\u2026';
     }
   }
 
-  /** Mirror the typing-indicator label onto the overlay status line. */
+  /** Mirror the typing-indicator label onto the shell overlay status line (classic webview mode only). */
   _updateAiControlOverlayStatus(tool) {
+    if (document.body.classList.contains('navio-wcv-tabs-below')) return;
     const statusEl = document.getElementById('ai-control-status');
     if (!statusEl) return;
     const labels = {
