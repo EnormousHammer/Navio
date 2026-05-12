@@ -3087,6 +3087,15 @@ class AssistantManagerClass {
         return;
       }
 
+      // During assistant TTS, sustained loud RMS is almost always speaker bleed into the mic,
+      // not the user talking. Rely on spike-over-EMA (above) for barge-in; the plain sustained
+      // path caused false interrupts → Whisper hallucinations → fake "user" lines and self-replies.
+      if (vcState === 'speaking') {
+        speechStart = null;
+        this._vcInterruptRaf = requestAnimationFrame(loop);
+        return;
+      }
+
       if (loudEnough) {
         if (!speechStart) speechStart = Date.now();
         else if (Date.now() - speechStart >= interruptConfirmMs(vcState)) {
@@ -7653,11 +7662,23 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     }
   }
 
+  /** Skip read-aloud for cancellation stubs — avoids repeating "Stopped" through speakers. */
+  _shouldSkipAutoSpeakStopMeta(plain) {
+    const raw = String(plain || '').trim();
+    if (!raw) return true;
+    const deMd = raw.replace(/\*+/g, '').replace(/\s+/g, ' ').trim();
+    if (/^(stopped|cancelled)[.!…\s]*$/i.test(deMd)) return true;
+    if (/^\(stopped\)$/i.test(deMd)) return true;
+    if (/^\(?stopped\)?$/i.test(deMd)) return true;
+    return false;
+  }
+
   /** Auto-play TTS when Settings → read aloud is on, or during voice conversation. */
   _maybeAutoSpeakAssistantReply(plainText) {
     this._clearPendingAutoTts();
     const t = String(plainText || '').trim().slice(0, 4000);
     if (!t) return;
+    if (this._shouldSkipAutoSpeakStopMeta(t)) return;
     const voiceWasActive = this._voiceConvActive;
     const voiceSid = this._vcSid;
     const delayMs = voiceWasActive
