@@ -25,7 +25,8 @@ const NAVIO_THREAD_DISCIPLINE_SYSTEM =
   'Resolve **this/that/the quote/the shipment/the email** from prior turns when the thread already named one subject \u2014 do not ask for identifiers again unless two unrelated subjects are both live. ' +
   'Attachment markers without fresh bytes still bind you to what you already said about those files in this thread; do not demand re-upload unless new visual detail is strictly required. ' +
   'If intent is unclear: prefer one-line assumption + proceed, or **one** blocking question if you truly cannot act. ' +
-  'Do not re-ask tone, length, format, or style choices already fixed in this thread; do not permission-theater (\u201ccontinue?\u201d, \u201cshort or detailed?\u201d, \u201cshould I start?\u201d).';
+  'Do not re-ask tone, length, format, or style choices already fixed in this thread; do not permission-theater (\u201ccontinue?\u201d, \u201cshort or detailed?\u201d, \u201cshould I start?\u201d). ' +
+  'NEVER respond to an action request with only text and zero tool calls. If they said investigate/search/find/draft/check, your response MUST include tool calls.';
 
 /** Natural-language mailbox ask — shared by Gmail + Outlook connector prefetch. */
 function navioDetectMailboxIntent(text) {
@@ -2355,7 +2356,10 @@ class AssistantManagerClass {
       'If they only say something short because the thread is continuing, keep the **same** task as before — do not invent a new one. ' +
       'Infer missing detail from **earlier turns in this thread** when possible (tone, length, format, audience, deadlines, order refs, shipment, quote, email thread). ' +
       'Phrases like **this quote**, **that shipment**, **the email above**, **email Laura** refer to what the thread already established — do not ask them to re-paste IDs unless two unrelated deals are genuinely mixed. ' +
-      'Ask **one** question only when a fact is missing that makes **any** correct action impossible — not for style preferences already stated, not for permission between steps, not to re-choose options they already picked.\n\n'
+      'Ask **one** question only when a fact is missing that makes **any** correct action impossible — not for style preferences already stated, not for permission between steps, not to re-choose options they already picked.\n' +
+      '**ACTION MANDATE:** If the user asked you to DO something (search, investigate, find, look up, draft, check, read emails, compare), your response MUST include tool calls. ' +
+      'A text-only response to an action request is WRONG. Do not give instructions, checklists, or explanations instead of calling tools. ' +
+      'When investigating emails: call gmail_search immediately with relevant keywords — do not ask which account (search both), do not list steps, do not explain what you would need. Just search and report findings.\n\n'
     );
   }
 
@@ -6067,7 +6071,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           '"On it - opening that now." or "Let me look that up." or "Got it, searching for that." ' +
           'This sentence appears as a chat bubble immediately so the user sees you are working. ' +
           'Do NOT use filler openers: no "Sure!", "Certainly!", "Of course!", "Absolutely!". ' +
-          'Skip for: instant single-tool answers, pure question responses, clarifying questions.'
+          'Skip for: instant single-tool answers, pure question responses, clarifying questions.\n\n' +
+          '[CRITICAL REMINDER] If the user asked you to DO something (investigate, search, find, draft, look up, check, handle), ' +
+          'you MUST follow this acknowledgment with TOOL CALLS. A text-only response with instructions or checklists is NEVER acceptable ' +
+          'when the user asked for action. Call gmail_search, drive_search, read_page, navigate, or whatever tool gets the job done. ' +
+          'Do NOT explain how to do it — DO it.'
       });
     }
 
