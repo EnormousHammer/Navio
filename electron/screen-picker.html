@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Choose what to share</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    background: #1e1e2e;
+    color: #e0e0e0;
+    overflow: hidden;
+    user-select: none;
+    -webkit-app-region: drag;
+  }
+
+  .picker-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    padding: 0;
+  }
+
+  .picker-header {
+    padding: 20px 24px 0;
+    flex-shrink: 0;
+  }
+
+  .picker-header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #f0f0f0;
+    margin-bottom: 4px;
+  }
+
+  .picker-header p {
+    font-size: 13px;
+    color: #8888a0;
+    margin-bottom: 16px;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid #333355;
+    -webkit-app-region: no-drag;
+  }
+
+  .tab {
+    padding: 10px 20px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #8888a0;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+    outline: none;
+  }
+
+  .tab:hover { color: #b0b0d0; }
+
+  .tab.active {
+    color: #7c8aff;
+    border-bottom-color: #7c8aff;
+  }
+
+  .sources-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 24px;
+    -webkit-app-region: no-drag;
+  }
+
+  .sources-container::-webkit-scrollbar { width: 6px; }
+  .sources-container::-webkit-scrollbar-track { background: transparent; }
+  .sources-container::-webkit-scrollbar-thumb {
+    background: #444466;
+    border-radius: 3px;
+  }
+
+  .sources-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+
+  .source-card {
+    background: #282840;
+    border: 2px solid transparent;
+    border-radius: 10px;
+    padding: 10px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, transform 0.1s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .source-card:hover {
+    background: #303055;
+    border-color: #5060aa;
+    transform: translateY(-1px);
+  }
+
+  .source-card.selected {
+    border-color: #7c8aff;
+    background: #2d2d55;
+    box-shadow: 0 0 0 1px rgba(124,138,255,0.3);
+  }
+
+  .source-thumbnail {
+    width: 100%;
+    aspect-ratio: 16/10;
+    border-radius: 6px;
+    background: #1a1a30;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+  }
+
+  .source-thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  .source-thumbnail .placeholder-icon {
+    width: 48px;
+    height: 48px;
+    opacity: 0.3;
+  }
+
+  .source-name {
+    font-size: 12px;
+    color: #c0c0d0;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
+    line-height: 1.4;
+  }
+
+  .picker-footer {
+    padding: 12px 24px 16px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    border-top: 1px solid #333355;
+    flex-shrink: 0;
+    -webkit-app-region: no-drag;
+  }
+
+  .btn {
+    padding: 8px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+    outline: none;
+  }
+
+  .btn-cancel {
+    background: #333355;
+    color: #c0c0d0;
+  }
+  .btn-cancel:hover { background: #444466; }
+
+  .btn-share {
+    background: #5c6bc0;
+    color: #fff;
+  }
+  .btn-share:hover { background: #6d7cd4; }
+  .btn-share:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: #666688;
+    font-size: 14px;
+    gap: 8px;
+  }
+
+  .empty-state svg { opacity: 0.3; }
+
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    color: #666688;
+    font-size: 14px;
+  }
+
+  .loading .spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid #333355;
+    border-top-color: #7c8aff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 10px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="picker-container">
+  <div class="picker-header">
+    <h1>Choose what to share</h1>
+    <p id="subtitle">Select a screen or window to share</p>
+    <div class="tabs">
+      <button class="tab active" data-tab="screens">Entire Screen</button>
+      <button class="tab" data-tab="windows">Application Window</button>
+    </div>
+  </div>
+
+  <div class="sources-container" id="sourcesContainer">
+    <div class="loading"><div class="spinner"></div>Loading sources…</div>
+  </div>
+
+  <div class="picker-footer">
+    <button class="btn btn-cancel" id="btnCancel">Cancel</button>
+    <button class="btn btn-share" id="btnShare" disabled>Share</button>
+  </div>
+</div>
+
+<script>
+  const { ipcRenderer } = require('electron');
+
+  let allSources = [];
+  let selectedId = null;
+  let currentTab = 'screens';
+
+  const container = document.getElementById('sourcesContainer');
+  const btnShare = document.getElementById('btnShare');
+  const btnCancel = document.getElementById('btnCancel');
+  const tabs = document.querySelectorAll('.tab');
+
+  tabs.forEach(t => {
+    t.addEventListener('click', () => {
+      tabs.forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      currentTab = t.dataset.tab;
+      selectedId = null;
+      btnShare.disabled = true;
+      renderSources();
+    });
+  });
+
+  btnCancel.addEventListener('click', () => {
+    ipcRenderer.send('screen-picker-result', null);
+  });
+
+  btnShare.addEventListener('click', () => {
+    if (selectedId) ipcRenderer.send('screen-picker-result', selectedId);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      ipcRenderer.send('screen-picker-result', null);
+    } else if (e.key === 'Enter' && selectedId) {
+      ipcRenderer.send('screen-picker-result', selectedId);
+    }
+  });
+
+  function renderSources() {
+    const filtered = currentTab === 'screens'
+      ? allSources.filter(s => s.id.startsWith('screen:'))
+      : allSources.filter(s => s.id.startsWith('window:'));
+
+    if (filtered.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+          </svg>
+          <span>No ${currentTab === 'screens' ? 'screens' : 'windows'} available</span>
+        </div>`;
+      return;
+    }
+
+    const grid = document.createElement('div');
+    grid.className = 'sources-grid';
+
+    filtered.forEach((source, i) => {
+      const card = document.createElement('div');
+      card.className = 'source-card';
+      if (source.id === selectedId) card.classList.add('selected');
+
+      const thumbDiv = document.createElement('div');
+      thumbDiv.className = 'source-thumbnail';
+
+      if (source.thumbnail) {
+        const img = document.createElement('img');
+        img.src = source.thumbnail;
+        img.alt = source.name;
+        thumbDiv.appendChild(img);
+      } else {
+        thumbDiv.innerHTML = `<svg class="placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+        </svg>`;
+      }
+
+      const nameDiv = document.createElement('div');
+      nameDiv.className = 'source-name';
+      let label = source.name;
+      if (source.id.startsWith('screen:')) {
+        const screenSources = allSources.filter(s => s.id.startsWith('screen:'));
+        label = screenSources.length === 1 ? 'Entire Screen' : `Screen ${i + 1}`;
+      }
+      nameDiv.textContent = label;
+      nameDiv.title = source.name;
+
+      card.appendChild(thumbDiv);
+      card.appendChild(nameDiv);
+
+      card.addEventListener('click', () => {
+        selectedId = source.id;
+        btnShare.disabled = false;
+        document.querySelectorAll('.source-card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+      });
+
+      card.addEventListener('dblclick', () => {
+        selectedId = source.id;
+        ipcRenderer.send('screen-picker-result', selectedId);
+      });
+
+      grid.appendChild(card);
+    });
+
+    container.innerHTML = '';
+    container.appendChild(grid);
+  }
+
+  ipcRenderer.on('screen-picker-sources', (_event, sources) => {
+    allSources = sources || [];
+    renderSources();
+  });
+
+  ipcRenderer.send('screen-picker-ready');
+</script>
+</body>
+</html>

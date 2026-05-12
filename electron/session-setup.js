@@ -1,6 +1,6 @@
 'use strict';
 
-const { ipcMain, session, shell, globalShortcut, dialog, desktopCapturer } = require('electron');
+const { ipcMain, session, shell, globalShortcut, dialog, desktopCapturer, BrowserWindow: ScreenPickerBrowserWindow } = require('electron');
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
@@ -106,16 +106,17 @@ function recordNavioPopupBlocked() {
 }
 
 /**
- * Shows a native dialog listing available screens and windows so the user can
- * choose what to share via getDisplayMedia(). Returns the chosen DesktopCapturerSource
- * or null if cancelled.
+ * Shows a Chrome-style screen/window picker popup with live thumbnails so the
+ * user can visually pick what to share via getDisplayMedia().  Returns the
+ * chosen DesktopCapturerSource or null if cancelled / closed.
  */
-async function showScreenSourcePickerDialog(win) {
+async function showScreenSourcePickerDialog(parentWin) {
   let sources = [];
   try {
     sources = await desktopCapturer.getSources({
       types: ['screen', 'window'],
-      thumbnailSize: { width: 0, height: 0 }
+      thumbnailSize: { width: 320, height: 200 },
+      fetchWindowIcons: false
     });
   } catch (e) {
     console.error('[navio] desktopCapturer.getSources error:', e.message);
@@ -127,37 +128,77 @@ async function showScreenSourcePickerDialog(win) {
   const screenSources = sources.filter((s) => s.id.startsWith('screen:'));
   const windowSources = sources
     .filter((s) => s.id.startsWith('window:') && s.name && s.name.trim())
-    .slice(0, 12);
-
+    .slice(0, 20);
   const allSources = [...screenSources, ...windowSources];
-  const screenLabels = screenSources.map((_, i) =>
-    screenSources.length === 1 ? 'Entire Screen' : `Entire Screen ${i + 1}`
-  );
-  const windowLabels = windowSources.map((s) =>
-    s.name.length > 55 ? s.name.slice(0, 55) + '\u2026' : s.name
-  );
-  const buttons = [...screenLabels, ...windowLabels, 'Cancel'];
 
-  try {
-    const { response } = await dialog.showMessageBox(
-      win && !win.isDestroyed() ? win : undefined,
-      {
-        type: 'question',
-        title: 'Share Screen',
-        message: 'Choose what to share',
-        detail: 'Select a screen or window to share with this site.',
-        buttons,
-        defaultId: 0,
-        cancelId: buttons.length - 1,
-        noLink: true
+  const serialised = allSources.map((s) => ({
+    id: s.id,
+    name: s.name || '',
+    thumbnail: s.thumbnail && !s.thumbnail.isEmpty() ? s.thumbnail.toDataURL() : ''
+  }));
+
+  return new Promise((resolve) => {
+    let resolved = false;
+    const finish = (val) => {
+      if (resolved) return;
+      resolved = true;
+      ipcMain.removeAllListeners('screen-picker-result');
+      ipcMain.removeAllListeners('screen-picker-ready');
+      if (pickerWin && !pickerWin.isDestroyed()) pickerWin.close();
+      resolve(val);
+    };
+
+    const parentBounds =
+      parentWin && !parentWin.isDestroyed() ? parentWin.getBounds() : { x: 100, y: 100, width: 1200, height: 800 };
+    const pw = 720;
+    const ph = 520;
+    const px = Math.round(parentBounds.x + (parentBounds.width - pw) / 2);
+    const py = Math.round(parentBounds.y + (parentBounds.height - ph) / 2);
+
+    const pickerWin = new ScreenPickerBrowserWindow({
+      width: pw,
+      height: ph,
+      x: px,
+      y: py,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      frame: false,
+      modal: true,
+      parent: parentWin && !parentWin.isDestroyed() ? parentWin : undefined,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      backgroundColor: '#1e1e2e',
+      show: false,
+      webPreferences: {
+        contextIsolation: false,
+        nodeIntegration: true,
+        sandbox: false
       }
-    );
-    if (response === buttons.length - 1) return null;
-    return allSources[response] || null;
-  } catch (e) {
-    console.error('[navio] showScreenSourcePickerDialog error:', e.message);
-    return null;
-  }
+    });
+
+    pickerWin.loadFile(path.join(__dirname, 'screen-picker.html'));
+
+    pickerWin.once('ready-to-show', () => {
+      pickerWin.show();
+      pickerWin.focus();
+    });
+
+    pickerWin.once('closed', () => finish(null));
+
+    ipcMain.once('screen-picker-ready', () => {
+      if (pickerWin && !pickerWin.isDestroyed()) {
+        pickerWin.webContents.send('screen-picker-sources', serialised);
+      }
+    });
+
+    ipcMain.once('screen-picker-result', (_event, chosenId) => {
+      if (!chosenId) { finish(null); return; }
+      const chosen = allSources.find((s) => s.id === chosenId) || null;
+      finish(chosen);
+    });
+  });
 }
 
 /**
@@ -925,8 +966,8 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
   /**
    * Required in Electron 17+: without setDisplayMediaRequestHandler the browser
    * rejects all getDisplayMedia() calls (screen/window/tab sharing), which breaks
-   * Google Meet, Zoom web, Teams web, etc. We show a native source-picker dialog
-   * and pass the chosen DesktopCapturerSource to the callback.
+   * Google Meet, Zoom web, Teams web, etc. We show a visual thumbnail picker and
+   * pass the chosen DesktopCapturerSource to the callback.
    * Audio loopback captures system audio on Windows so remote participants hear
    * shared-window sound without extra steps.
    */
@@ -937,13 +978,13 @@ function setupSessionInfrastructure({ app, getMainWindow, loadConfig, saveConfig
         const win = getMainWindow();
         const chosen = await showScreenSourcePickerDialog(win);
         if (!chosen) {
-          callback({});
+          try { callback({}); } catch { /* Electron may throw internally on denial */ }
           return;
         }
         callback({ video: chosen, audio: 'loopback' });
       } catch (e) {
         console.error('[navio] displayMedia handler error:', e.message);
-        callback({});
+        try { callback({}); } catch { /* swallow */ }
       }
     });
   }
