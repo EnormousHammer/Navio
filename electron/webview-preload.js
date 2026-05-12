@@ -41,9 +41,9 @@ try {
     }
   }
 
-  /** Same regex as the later comment block — carrier / CF zones that default to compat. */
+  /** Carrier / CF zones that default to compat — Akamai bot walls, Turnstile, etc. */
   const NAVIO_ALWAYS_COMPAT_RE =
-    /[./]purolator\.com(\/|$)|[./]eshiponline\.purolator\.com(\/|$)|[./]tql\.com(\/|$)|^https?:\/\/challenges\.cloudflare\.com\//i;
+    /[./]purolator\.com(\/|$)|[./]eshiponline\.purolator\.com(\/|$)|[./]fedex\.com(\/|$)|[./]tql\.com(\/|$)|^https?:\/\/challenges\.cloudflare\.com\//i;
 
   // Per-site Compatibility Mode must run **before** navigator/window patches below.
   // Otherwise auto-compat (Purolator, etc.) still mutates the main document and Cloudflare
