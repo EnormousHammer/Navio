@@ -672,7 +672,8 @@ const NAVIO_TOOLS = [
       'Saved to Drafts, not sent. Use for pickup requests, first-contact emails, or any message that is **not** a reply to an existing thread. ' +
       'For replies to mail already in Gmail, use **gmail_create_reply_draft** with message_id instead. ' +
       'Navio appends the user’s Gmail **Send mail as** signature after the body (plain + HTML multipart when available). ' +
-      'For **tables or formatted data**, pass **body_html** (HTML fragment with inline styles on cells) plus **body** as a plain-text version for accessibility and plain clients. Requires Google OAuth with gmail.compose.',
+      'For **tables or formatted data**, pass **body_html** (HTML fragment with inline styles on cells) plus **body** as a plain-text version for accessibility and plain clients. ' +
+      'Plain **body** alone is still sent as multipart HTML in Gmail: lines starting with **Shipper:**, **Consignee:**, or **Shipment details:** are shown bold in compose. Use ASCII `-` or real Unicode dashes in subjects (avoid mojibake). Requires Google OAuth with gmail.compose.',
     parameters: {
       type: 'object',
       properties: {

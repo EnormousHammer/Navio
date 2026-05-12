@@ -5313,7 +5313,8 @@ const toolExecutors = {
       const toAddr = parseEmailAddressFromHeader(replyTo || from);
       if (!toAddr) return { error: 'Could not determine reply recipient from message headers.' };
 
-      let subjOut = subject || '(no subject)';
+      let subjOut = subject ? navioRepairUtf8Mojibake(subject.trim()) : '';
+      if (!subjOut) subjOut = '(no subject)';
       if (!/^re:\s/i.test(subjOut)) subjOut = 'Re: ' + subjOut;
 
       const refs = [prevRefs, msgIdHdr].filter(Boolean).join(' ').trim();
@@ -5366,7 +5367,8 @@ const toolExecutors = {
       const toAddr = (args.to || '').trim();
       if (!toAddr) return { error: 'to is required.' };
 
-      const subjOut = (args.subject || '').trim() || '(no subject)';
+      const subjRaw = (args.subject || '').trim();
+      const subjOut = subjRaw ? navioRepairUtf8Mojibake(subjRaw) : '(no subject)';
       const norm = navioNormalizeGmailToolBodies(args);
       if (norm.error) return { error: norm.error };
       const { bodyText, bodyHtmlSan } = norm;
@@ -9909,6 +9911,7 @@ function navioRepairUtf8Mojibake(s) {
     .replace(/\u00E2\u0080\u009C/g, '\u201C')
     .replace(/\u00E2\u0080\u009D/g, '\u201D')
     .replace(/\u00E2\u0080\u0094/g, '\u2014')
+    .replace(/\u00E2\u0080\u0093/g, '\u2013')
     .replace(/\u00E2\u0080\u00A6/g, '\u2026')
     .replace(/\u2019\u2019/g, '\u2019')
     .replace(/\u2018\u2018/g, '\u2018')
@@ -9916,6 +9919,7 @@ function navioRepairUtf8Mojibake(s) {
     .replace(/â€œ/g, '\u201C')
     .replace(/â€/g, '\u201D')
     .replace(/â€"/g, '\u2014')
+    .replace(/â€“/g, '\u2013')
     .replace(/â€¦/g, '\u2026');
   return t;
 }
@@ -9928,9 +9932,15 @@ function gmailBase64UrlEncode(str) {
     .replace(/=+$/, '');
 }
 
+/** Subject line for MIME: repair common UTF-8 mojibake (e.g. â€" for —). */
+function gmailMimeRepairSubject(subject) {
+  const s = navioRepairUtf8Mojibake(String(subject ?? '').trim());
+  return s || '(no subject)';
+}
+
 /** RFC 2822 plain-text message: headers, blank line, then body (CRLF). */
 function gmailBuildPlainTextMime({ toAddr, cc, bcc, subject, inReplyTo, references, bodyText }) {
-  const headerLines = [`To: ${toAddr}`, `Subject: ${subject || '(no subject)'}`];
+  const headerLines = [`To: ${toAddr}`, `Subject: ${gmailMimeRepairSubject(subject)}`];
   if (cc && String(cc).trim()) headerLines.push(`Cc: ${String(cc).trim()}`);
   if (bcc && String(bcc).trim()) headerLines.push(`Bcc: ${String(bcc).trim()}`);
   if (inReplyTo) headerLines.push(`In-Reply-To: ${inReplyTo}`);
@@ -9957,9 +9967,22 @@ function gmailEscapeHtmlForBody(s) {
 /** Turn user draft plain text into a minimal HTML fragment (Gmail multipart/alternative). */
 function gmailPlainUserBodyToHtmlFragment(plain) {
   const t = navioRepairUtf8Mojibake(String(plain ?? '').replace(/\r\n/g, '\n'));
+  const lines = t.split('\n');
+  const sectionLabel = /^(\s*(?:Shipper|Consignee|Shipment details)\s*:)(.*)$/i;
+  const inner = lines
+    .map((line) => {
+      const m = line.match(sectionLabel);
+      if (m) {
+        const label = m[1].trimEnd();
+        const rest = m[2] || '';
+        return '<strong>' + gmailEscapeHtmlForBody(label) + '</strong>' + gmailEscapeHtmlForBody(rest);
+      }
+      return gmailEscapeHtmlForBody(line);
+    })
+    .join('<br>');
   return (
     '<div style="font-family:Roboto,Helvetica,Arial,sans-serif;font-size:14px;color:#202124;line-height:1.5;">' +
-    gmailEscapeHtmlForBody(t).replace(/\n/g, '<br>') +
+    inner +
     '</div>'
   );
 }
@@ -9978,7 +10001,7 @@ function gmailBuildMultipartAlternativeMime({
   htmlBody
 }) {
   const boundary = `navio_alt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 11)}`;
-  const headerLines = [`To: ${toAddr}`, `Subject: ${subject || '(no subject)'}`];
+  const headerLines = [`To: ${toAddr}`, `Subject: ${gmailMimeRepairSubject(subject)}`];
   if (cc && String(cc).trim()) headerLines.push(`Cc: ${String(cc).trim()}`);
   if (bcc && String(bcc).trim()) headerLines.push(`Bcc: ${String(bcc).trim()}`);
   if (inReplyTo) headerLines.push(`In-Reply-To: ${inReplyTo}`);
@@ -10105,8 +10128,8 @@ function navioNormalizeGmailToolBodies(args) {
 }
 
 /**
- * Builds RFC822 for Gmail API drafts: multipart/alternative (plain + HTML) when Send-as
- * includes HTML so signatures keep colors/layout in compose; otherwise text/plain only.
+ * Builds RFC822 for Gmail API drafts: multipart/alternative (text/plain + text/html) so Gmail
+ * compose shows formatting; optional Send-as HTML signature appended to the HTML part.
  */
 async function gmailComposeSignedDraftMime(token, headerFields, userBodyPlain, userBodyHtml) {
   const trimmedHtmlIn = navioRepairUtf8Mojibake(String(userBodyHtml ?? '').trim());
@@ -10137,26 +10160,20 @@ async function gmailComposeSignedDraftMime(token, headerFields, userBodyPlain, u
     fullPlain = rawBody.replace(/\r\n/g, '\n').trimEnd() + '\n\n' + plainSig;
   }
 
-  let mime;
-  if (!hasRichHtml && (signatureAlreadyInBody || (!htmlSig && !appendPlain && !appendHtmlOnly))) {
-    mime = gmailBuildPlainTextMime({ ...headerFields, bodyText: rawBody });
-  } else if (hasRichHtml || (htmlSig && (appendPlain || appendHtmlOnly))) {
-    const userOnly = rawBody.replace(/\r\n/g, '\n').trimEnd();
-    const plainForMime = appendPlain ? fullPlain : rawBody;
-    const wrapUser =
-      '<div style="font-family:Roboto,Helvetica,Arial,sans-serif;font-size:14px;color:#202124;line-height:1.5;">';
-    const userHtmlPart = hasRichHtml ? wrapUser + richHtml + '</div>' : gmailPlainUserBodyToHtmlFragment(userOnly);
-    const htmlInner = userHtmlPart + (appendAnySignatureHtml ? '<br><br>' + htmlSig : '');
-    mime = gmailBuildMultipartAlternativeMime({
-      ...headerFields,
-      plainBody: plainForMime,
-      htmlBody: htmlInner
-    });
-  } else if (appendPlain) {
-    mime = gmailBuildPlainTextMime({ ...headerFields, bodyText: fullPlain });
-  } else {
-    mime = gmailBuildPlainTextMime({ ...headerFields, bodyText: rawBody });
-  }
+  const plainForMime = appendPlain ? fullPlain : rawBody;
+  const userOnly = rawBody.replace(/\r\n/g, '\n').trimEnd();
+  const plainForHtmlFragment = appendPlain ? fullPlain.replace(/\r\n/g, '\n').trimEnd() : userOnly;
+  const wrapUser =
+    '<div style="font-family:Roboto,Helvetica,Arial,sans-serif;font-size:14px;color:#202124;line-height:1.5;">';
+  const userHtmlPart = hasRichHtml
+    ? wrapUser + richHtml + '</div>'
+    : gmailPlainUserBodyToHtmlFragment(plainForHtmlFragment);
+  const htmlInner = userHtmlPart + (appendAnySignatureHtml ? '<br><br>' + htmlSig : '');
+  const mime = gmailBuildMultipartAlternativeMime({
+    ...headerFields,
+    plainBody: plainForMime,
+    htmlBody: htmlInner
+  });
 
   const bodyWithSigPlain = appendPlain ? fullPlain : rawBody;
   return { mime, bodyWithSigPlain };
@@ -10317,7 +10334,8 @@ ipcMain.handle('gmail-create-reply-draft', async (_, { messageId, body: replyBod
     const toAddr = parseEmailAddressFromHeader(replyTo || from);
     if (!toAddr) return { error: 'Could not determine reply recipient' };
 
-    let subjOut = subject || '(no subject)';
+    let subjOut = subject ? navioRepairUtf8Mojibake(subject.trim()) : '';
+    if (!subjOut) subjOut = '(no subject)';
     if (!/^re:\s/i.test(subjOut)) subjOut = 'Re: ' + subjOut;
 
     const refs = [prevRefs, msgIdHdr].filter(Boolean).join(' ').trim();
