@@ -4936,6 +4936,61 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     } catch (_) { /* non-critical */ }
   }
 
+  /**
+   * Tab id whose guest webview receives browser tools this turn, or null for API-only / sidebar-only work.
+   */
+  _agentAutomationTargetTabId() {
+    try {
+      if (typeof TabManager !== 'undefined') {
+        const ag = TabManager.getAgentControlledTab?.();
+        if (ag?.id != null && String(ag.id) !== '') return String(ag.id);
+      }
+      if (this._guestAnchoredTabId != null && String(this._guestAnchoredTabId) !== '') {
+        return String(this._guestAnchoredTabId);
+      }
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+
+  /** True when the focused tab shows the webview Navio is driving (including the split partner pane). */
+  _activeSurfaceCoversAgentTab(agentTabId) {
+    const tid = String(agentTabId || '');
+    if (!tid || typeof TabManager === 'undefined') return false;
+    const active = TabManager.getActiveTab();
+    if (!active?.id) return false;
+    if (String(active.id) === tid) return true;
+    const sp = active.splitPartnerId;
+    return sp != null && String(sp) === tid;
+  }
+
+  _guestChatSurfaceActive() {
+    try {
+      if (!this._guestChatWebview || typeof TabManager === 'undefined') return false;
+      return TabManager.getActiveTab()?.webview === this._guestChatWebview;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Full-viewport shell overlay should only sit above the guest webview when the user is actually
+   * looking at the automated page (or the full-page guest chat that launched it). Grouped tabs share
+   * one `g:` busy key — without this, a turn on one tab locked every sibling tab’s web surface.
+   */
+  _shouldShellBlockGuestWebWhileBusy(busy, sbBusy, active, sk) {
+    if (!busy) return false;
+    const agentTid = this._agentAutomationTargetTabId();
+    if (agentTid) {
+      if (this._activeSurfaceCoversAgentTab(agentTid)) return true;
+      if (this._guestChatSurfaceActive()) return true;
+      return false;
+    }
+    if (sbBusy) return false;
+    return !!(active && sk && this._busyTabs.has(sk));
+  }
+
   _updateAssistantBusyChrome() {
     const active = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
     const sk = active ? this._storageKeyForTab(active) : '';
@@ -4952,7 +5007,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       send.hidden = false;
       send.disabled = false;
     }
-    this._syncAiControlOverlay(busy);
+    const shellBlock = this._shouldShellBlockGuestWebWhileBusy(busy, sbBusy, active, sk);
+    this._syncAiControlOverlay(shellBlock, busy);
   }
 
   /**
@@ -4960,16 +5016,16 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
    * Electron views above the shell) the visual indicator is injected directly
    * into the guest page by the main process — the shell overlay is invisible
    * there, so we only use it in classic <webview> mode as a fallback.
-   * Regardless of mode, we always open the assistant panel and keep the stop
-   * button wired so the user can intervene.
+   * `shellBlockGuest` gates hit-testing on the guest region; `anyBusy` still opens the assistant
+   * so Stop stays reachable while work continues in another tab.
    */
-  _syncAiControlOverlay(busy) {
+  _syncAiControlOverlay(shellBlockGuest, anyBusy) {
     const isWcv = document.body.classList.contains('navio-wcv-tabs-below');
     const overlay = document.getElementById('ai-control-overlay');
 
     // Classic webview mode: use the shell-side overlay (it sits above the <webview> tag)
     if (overlay && !isWcv) {
-      if (busy) {
+      if (shellBlockGuest) {
         overlay.hidden = false;
         if (!this._aiControlStopWired) {
           this._aiControlStopWired = true;
@@ -5004,8 +5060,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       overlay.hidden = true;
     }
 
-    // Both modes: open the assistant panel so the user can see what's happening
-    if (busy) {
+    // Both modes: when any surface is still busy, peel open the assistant so Stop stays reachable
+    // even if the user moved to a tab that no longer shows the blocking overlay.
+    if (anyBusy) {
       try {
         if (typeof AssistantManager !== 'undefined' && !AssistantManager.isOpen) {
           AssistantManager.open();
