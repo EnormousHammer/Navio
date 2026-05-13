@@ -1724,6 +1724,117 @@ function createMainWindow() {
     });
   }
 
+  if (process.env.NAVIO_E2E_DELEGATION === '1') {
+    const e2eDelegConsole = [];
+    mainWindow.webContents.on('console-message', (_event, level, message) => {
+      try {
+        e2eDelegConsole.push({ level, message: String(message || '').slice(0, 600) });
+        if (e2eDelegConsole.length > 80) e2eDelegConsole.shift();
+      } catch {
+        /* ignore */
+      }
+    });
+    mainWindow.webContents.once('did-finish-load', () => {
+      void (async () => {
+        const outPath = path.join(app.getPath('userData'), 'navio-e2e-delegation.json');
+        const result = { ok: false, error: null, details: null, consoleTail: e2eDelegConsole };
+        try {
+          navioPrimeGlobalShortcutsIfFocused();
+          let probe = null;
+          for (let attempt = 0; attempt < 80; attempt++) {
+            await new Promise((r) => setTimeout(r, 250));
+            navioPrimeGlobalShortcutsIfFocused();
+            probe = await mainWindow.webContents.executeJavaScript(`(() => {
+              return {
+                href: String(location.href || ''),
+                readyState: document.readyState,
+                hasAssistantEnable: !!(window.AssistantManager && typeof window.AssistantManager.enableTakeover === 'function'),
+                hasAssistantDisable:
+                  !!(window.AssistantManager && typeof window.AssistantManager.disableTakeover === 'function'),
+                hasDeleg: !!(window.NavioDelegationController && typeof window.NavioDelegationController.getSnapshot === 'function')
+              };
+            })()`);
+            if (probe && probe.hasAssistantEnable && probe.hasDeleg) break;
+          }
+          if (!probe || !probe.hasAssistantEnable || !probe.hasDeleg) {
+            result.error = 'AssistantManager takeover API or NavioDelegationController missing after wait';
+            result.details = probe;
+          } else {
+            const afterStart = await mainWindow.webContents.executeJavaScript(`(() => {
+              window.AssistantManager.enableTakeover();
+              const snap = window.NavioDelegationController.getSnapshot();
+              return {
+                takeoverBodyClass: document.body.classList.contains('navio-takeover-active'),
+                delegActive: window.NavioDelegationController.isActive(),
+                hasBanner: !!document.getElementById('navio-takeover-banner'),
+                hasChromePill: !!document.getElementById('navio-agent-chrome-pill'),
+                snapshotSessionId: snap && snap.sessionId ? String(snap.sessionId) : null,
+                snapshotPausedBefore: !!(snap && snap.paused)
+              };
+            })()`);
+
+            await mainWindow.webContents.executeJavaScript('window.AssistantManager._pauseTakeover()');
+            await new Promise((r) => setTimeout(r, 150));
+            const afterPause = await mainWindow.webContents.executeJavaScript(`(() => {
+              const snap = window.NavioDelegationController.getSnapshot();
+              return { snapshotPaused: !!(snap && snap.paused), takeoverMode: !!(window.AssistantManager && window.AssistantManager._takeoverMode) };
+            })()`);
+
+            await mainWindow.webContents.executeJavaScript('window.AssistantManager._resumeTakeover()');
+            await new Promise((r) => setTimeout(r, 150));
+            const afterResume = await mainWindow.webContents.executeJavaScript(`(() => {
+              const snap = window.NavioDelegationController.getSnapshot();
+              return { snapshotPaused: !!(snap && snap.paused) };
+            })()`);
+
+            await mainWindow.webContents.executeJavaScript('window.AssistantManager.disableTakeover()');
+            await new Promise((r) => setTimeout(r, 150));
+            const afterStop = await mainWindow.webContents.executeJavaScript(`(() => {
+              return {
+                takeoverBodyClass: document.body.classList.contains('navio-takeover-active'),
+                delegActive: window.NavioDelegationController.isActive(),
+                snapshotAfter: window.NavioDelegationController.getSnapshot()
+              };
+            })()`);
+
+            const startOk =
+              afterStart.takeoverBodyClass &&
+              afterStart.delegActive &&
+              afterStart.hasBanner &&
+              afterStart.hasChromePill &&
+              !!afterStart.snapshotSessionId &&
+              afterStart.snapshotPausedBefore === false;
+            const pauseOk = afterPause.snapshotPaused === true;
+            const resumeOk = afterResume.snapshotPaused === false;
+            const stopOk =
+              !afterStop.takeoverBodyClass &&
+              !afterStop.delegActive &&
+              afterStop.snapshotAfter === null;
+
+            result.ok = startOk && pauseOk && resumeOk && stopOk;
+            result.details = {
+              probe: { ...probe },
+              afterStart,
+              afterPause,
+              afterResume,
+              afterStop,
+              checks: { startOk, pauseOk, resumeOk, stopOk }
+            };
+            if (!result.ok) result.error = 'delegation HUD lifecycle assertions failed';
+          }
+        } catch (e) {
+          result.error = e && e.message ? e.message : String(e);
+        }
+        try {
+          fs.writeFileSync(outPath, JSON.stringify(result, null, 2), 'utf8');
+        } catch (e2) {
+          console.error('[navio] e2e delegation write failed', e2);
+        }
+        app.quit();
+      })();
+    });
+  }
+
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
     console.error(
       '[navio] render-process-gone:',

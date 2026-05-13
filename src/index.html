@@ -1147,6 +1147,14 @@
                 <span>Agent step mode — pause after each browser action until you click Continue</span>
               </label>
               <label class="setting-toggle-row">
+                <input type="checkbox" id="setting-ai-delegation-default-strict">
+                <span>Default takeover to <strong>Strict</strong> — block clicks on the automated tab while you watch (you can still toggle Observe in the pill)</span>
+              </label>
+              <label class="setting-toggle-row">
+                <input type="checkbox" id="setting-ai-delegation-remember-strict">
+                <span>Remember Strict/Observe when you change it in the takeover bar (saves as default above)</span>
+              </label>
+              <label class="setting-toggle-row">
                 <input type="checkbox" id="setting-tts-enabled">
                 <span>Read AI replies aloud (text-to-speech)</span>
               </label>
@@ -2130,6 +2138,7 @@
   <script src="js/ntp.js"></script>
   <script src="js/ui-shell-extras.js"></script>
   <script src="js/navio-intent-router.js"></script>
+  <script src="js/delegation-session.js"></script>
   <script src="js/assistant.js"></script>
   <script src="js/app.js"></script>
   <script src="js/debug-log.js"></script>

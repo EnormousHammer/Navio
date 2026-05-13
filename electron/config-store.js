@@ -101,6 +101,18 @@ const DEFAULT_CONFIG = {
   aiAutoExecute: false,
   aiAutoScreenshotAfterNavigate: false,
   aiAgentStepMode: false,
+  /**
+   * When true, new browser takeover sessions start in Strict mode (shell overlay blocks the automated tab
+   * while you watch). Observe stays the safe default unless this or the chrome toggle is used.
+   */
+  aiDelegationDefaultStrictMode: false,
+  /** When true, flipping Strict in the takeover pill persists as aiDelegationDefaultStrictMode. */
+  aiDelegationRememberStrictMode: false,
+  /**
+   * Observe UX is enabled (non-blocking delegation by default); reserved for forward compatibility.
+   * When false would imply legacy behavior — unused in current UI.
+   */
+  aiDelegationObserveMode: true,
   /** Max agent loop iterations (50-500). Higher = browsing/research less likely to stop mid-task. */
   aiAgentMaxToolSteps: 300,
   aiUseToolCalling: true,

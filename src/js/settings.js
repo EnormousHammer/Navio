@@ -109,6 +109,8 @@ class SettingsManagerClass {
       aiAutoExecute: document.getElementById('setting-ai-auto-execute'),
       aiAutoScreenshot: document.getElementById('setting-ai-auto-screenshot'),
       aiAgentStepMode: document.getElementById('setting-ai-agent-step-mode'),
+      aiDelegationDefaultStrict: document.getElementById('setting-ai-delegation-default-strict'),
+      aiDelegationRememberStrict: document.getElementById('setting-ai-delegation-remember-strict'),
       ttsEnabled: document.getElementById('setting-tts-enabled'),
       ttsVoice: document.getElementById('setting-tts-voice'),
       sttModel: document.getElementById('setting-stt-model'),
@@ -728,6 +730,12 @@ class SettingsManagerClass {
     }
     if (this.elements.aiAgentStepMode) {
       this.elements.aiAgentStepMode.checked = !!this.config.aiAgentStepMode;
+    }
+    if (this.elements.aiDelegationDefaultStrict) {
+      this.elements.aiDelegationDefaultStrict.checked = !!this.config.aiDelegationDefaultStrictMode;
+    }
+    if (this.elements.aiDelegationRememberStrict) {
+      this.elements.aiDelegationRememberStrict.checked = !!this.config.aiDelegationRememberStrictMode;
     }
     if (this.elements.ttsEnabled) {
       this.elements.ttsEnabled.checked = !!this.config.ttsEnabled;
@@ -1772,6 +1780,8 @@ class SettingsManagerClass {
       aiAutoExecute: !!(this.elements.aiAutoExecute && this.elements.aiAutoExecute.checked),
       aiAutoScreenshotAfterNavigate: !!(this.elements.aiAutoScreenshot && this.elements.aiAutoScreenshot.checked),
       aiAgentStepMode: !!(this.elements.aiAgentStepMode && this.elements.aiAgentStepMode.checked),
+      aiDelegationDefaultStrictMode: !!(this.elements.aiDelegationDefaultStrict && this.elements.aiDelegationDefaultStrict.checked),
+      aiDelegationRememberStrictMode: !!(this.elements.aiDelegationRememberStrict && this.elements.aiDelegationRememberStrict.checked),
       ttsEnabled: !!(this.elements.ttsEnabled && this.elements.ttsEnabled.checked),
       ttsVoice: this.elements.ttsVoice
         ? typeof window.navioNormalizeTtsVoiceId === 'function'

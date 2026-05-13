@@ -961,10 +961,38 @@
       0%, 100% { opacity: 1; transform: scale(1); }
       50%       { opacity: 0.6; transform: scale(0.85); }
     }
+    .guest-takeover-banner .gtb-text {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
     .gtb-label {
-      flex: 1; font-size: 12px; font-weight: 600;
+      font-size: 12px; font-weight: 600;
       color: var(--cyan); letter-spacing: 0.2px;
     }
+    .gtb-sub {
+      font-size: 10.5px;
+      font-weight: 500;
+      color: var(--muted);
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .gtb-mode {
+      padding: 3px 9px;
+      border-radius: 99px;
+      font-size: 10.5px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      border: 1px solid rgba(74, 222, 128, 0.38);
+      background: transparent;
+      color: #4ade80;
+      flex-shrink: 0;
+      transition: all 0.15s;
+    }
+    .gtb-mode:hover { background: rgba(74, 222, 128, 0.1); }
     .gtb-pause, .gtb-stop {
       padding: 3px 10px; border-radius: 99px; font-size: 11px;
       font-weight: 600; font-family: inherit; cursor: pointer; transition: all 0.15s;
@@ -2265,6 +2293,7 @@
   /** Full-page chat: lock composer while host reports browser takeover (matches sidebar behavior). */
   let guestTakeoverComposerLocked = false;
   let guestComposerPlaceholderBackup = null;
+  let lastDelegationSnapshot = null;
 
   function setGuestTakeoverComposerLocked(locked) {
     if (!inputEl || !sendBtn) return;
@@ -3343,17 +3372,23 @@
           updateLayoutMode();
           break;
         }
+        case 'delegationSnapshot': {
+          lastDelegationSnapshot = msg.snapshot || null;
+          if (!lastDelegationSnapshot) hideTakeoverBanner();
+          else showTakeoverBanner(!!lastDelegationSnapshot.paused, lastDelegationSnapshot);
+          break;
+        }
         case 'takeoverStart':
-          showTakeoverBanner(false);
+          showTakeoverBanner(false, null);
           break;
         case 'takeoverStop':
           hideTakeoverBanner();
           break;
         case 'takeoverPaused':
-          showTakeoverBanner(true);
+          showTakeoverBanner(true, lastDelegationSnapshot);
           break;
         case 'takeoverResumed':
-          showTakeoverBanner(false);
+          showTakeoverBanner(false, lastDelegationSnapshot);
           break;
         case 'historyLoad': {
           // Pre-populate this chat with the shared sidebar history for the anchored tab.
@@ -3382,7 +3417,7 @@
   };
 
   // ── In-tab takeover control banner ───────────────────────────────────────
-  function showTakeoverBanner(paused) {
+  function showTakeoverBanner(paused, snap) {
     let banner = document.getElementById('guest-takeover-banner');
     if (!banner) {
       banner = document.createElement('div');
@@ -3390,7 +3425,11 @@
       banner.className = 'guest-takeover-banner';
       banner.innerHTML = [
         '<span class="gtb-dot"></span>',
+        '<div class="gtb-text">',
         '<span class="gtb-label">Navio is in control</span>',
+        '<span class="gtb-sub" hidden></span>',
+        '</div>',
+        '<button class="gtb-mode" type="button" title="Toggle Strict / Observe">Observe</button>',
         '<button class="gtb-pause" type="button">Pause</button>',
         '<button class="gtb-stop"  type="button">Stop</button>'
       ].join('');
@@ -3404,24 +3443,63 @@
       banner.querySelector('.gtb-stop').addEventListener('click', function () {
         post({ action: 'stopTakeover' });
       });
-      // Insert at the very top of the chat area (before messages)
+      banner.querySelector('.gtb-mode').addEventListener('click', function () {
+        post({ action: 'toggleDelegationMode' });
+      });
       const container = document.querySelector('.chat-wrap') || document.body;
       container.insertBefore(banner, container.firstChild);
     }
     banner.hidden = false;
+    const labelEl = banner.querySelector('.gtb-label');
+    const subEl = banner.querySelector('.gtb-sub');
+    const modeBtn = banner.querySelector('.gtb-mode');
+    var effSnap = snap || lastDelegationSnapshot;
+    if (effSnap && effSnap.mode === 'strict' && modeBtn) {
+      modeBtn.textContent = 'Strict';
+      modeBtn.setAttribute('aria-pressed', 'true');
+    } else if (modeBtn) {
+      modeBtn.textContent = 'Observe';
+      modeBtn.setAttribute('aria-pressed', 'false');
+    }
     if (paused) {
       banner.classList.add('gtb-paused');
-      banner.querySelector('.gtb-label').textContent = 'Navio paused';
+      if (labelEl) labelEl.textContent = 'Navio paused';
       banner.querySelector('.gtb-pause').textContent = 'Resume';
     } else {
       banner.classList.remove('gtb-paused');
-      banner.querySelector('.gtb-label').textContent = 'Navio is in control';
+      if (labelEl) {
+        labelEl.textContent =
+          effSnap && effSnap.mode === 'strict'
+            ? 'Strict — delegated'
+            : effSnap
+              ? 'Observe — delegated'
+              : 'Navio is in control';
+      }
       banner.querySelector('.gtb-pause').textContent = 'Pause';
+    }
+    if (subEl && effSnap) {
+      if (effSnap.stepTotal) {
+        subEl.hidden = false;
+        let line = effSnap.stepIndex + ' / ' + effSnap.stepTotal;
+        if (effSnap.verb) line += ' — ' + effSnap.verb;
+        if (paused) line += ' (paused)';
+        subEl.textContent = line;
+      } else if (effSnap.waitingLoginHost) {
+        subEl.hidden = false;
+        subEl.textContent = 'Login: ' + effSnap.waitingLoginHost;
+      } else {
+        subEl.textContent = '';
+        subEl.hidden = true;
+      }
+    } else if (subEl) {
+      subEl.textContent = '';
+      subEl.hidden = true;
     }
     setGuestTakeoverComposerLocked(true);
   }
 
   function hideTakeoverBanner() {
+    lastDelegationSnapshot = null;
     const banner = document.getElementById('guest-takeover-banner');
     if (banner) banner.hidden = true;
     setGuestTakeoverComposerLocked(false);

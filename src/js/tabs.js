@@ -2138,6 +2138,13 @@ class TabManagerClass {
     const prev = this._agentControlledTabId;
     this._agentControlledTabId = next;
     this._applyAgentControlledTabClasses();
+    try {
+      if (typeof window !== 'undefined' && window.NavioDelegationController?.isActive?.()) {
+        window.NavioDelegationController.syncTab(next);
+      }
+    } catch {
+      /* ignore */
+    }
     if (next && next !== prev) {
       try {
         document.getElementById(`tabitem-${next}`)?.scrollIntoView({

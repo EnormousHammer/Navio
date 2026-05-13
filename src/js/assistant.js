@@ -824,8 +824,8 @@ class AssistantManagerClass {
     /** Original `#assistant-input` placeholder; restored when takeover ends. */
     this._composerPlaceholderBackup = null;
     this._agentLogEntries = [];
-    /** @type {{ stepIndex: number, stepTotal: number, verb: string } | null} Live takeover HUD (step line + action). */
-    this._takeoverHud = null;
+    /** Unsubscribe NavioDelegationController HUD listener when takeover ends. */
+    this._delegationUnsub = null;
     this._lastProactiveUrlKey = '';
     /** When set, agent activity + final reply render in the full-page chat webview. */
     this._guestChatWebview = null;
@@ -5174,7 +5174,19 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       send.disabled = false;
     }
     const shellBlock = this._shouldShellBlockGuestWebWhileBusy(busy, sbBusy, active, sk);
-    this._syncAiControlOverlay(shellBlock, busy);
+    /** Strict delegation overlay: blocking is separate from model streaming busy. */
+    let delegationViewBlock = false;
+    const snapDlg = typeof window.NavioDelegationController !== 'undefined' ? window.NavioDelegationController.getSnapshot() : null;
+    if (
+      this._takeoverMode &&
+      snapDlg &&
+      snapDlg.mode === 'strict' &&
+      !snapDlg.paused
+    ) {
+      const agentTid = snapDlg.tabId || this._agentAutomationTargetTabId();
+      if (agentTid && this._activeSurfaceCoversAgentTab(agentTid)) delegationViewBlock = true;
+    }
+    this._syncAiControlOverlay(shellBlock, busy, { delegationViewBlock });
   }
 
   /**
@@ -5184,20 +5196,29 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
    * there, so we only use it in classic <webview> mode as a fallback.
    * `shellBlockGuest` gates hit-testing on the guest region; `anyBusy` still opens the assistant
    * so Stop stays reachable while work continues in another tab.
+   * `opts.delegationViewBlock` — strict takeover while the user is watching the automated tab (Comet-style block).
    */
-  _syncAiControlOverlay(shellBlockGuest, anyBusy) {
+  _syncAiControlOverlay(shellBlockGuest, anyBusy, opts = {}) {
+    const delegationViewBlock = !!opts.delegationViewBlock;
+    const blockGuestShell = !!(shellBlockGuest || delegationViewBlock);
     const isWcv = document.body.classList.contains('navio-wcv-tabs-below');
     const overlay = document.getElementById('ai-control-overlay');
 
     // Classic webview mode: use the shell-side overlay (it sits above the <webview> tag)
     if (overlay && !isWcv) {
-      if (shellBlockGuest) {
+      if (blockGuestShell) {
         overlay.hidden = false;
+        const titleEl = overlay.querySelector('.ai-control-title');
+        if (titleEl) {
+          titleEl.textContent = delegationViewBlock
+            ? 'Navio is controlling this tab'
+            : 'Navio is working';
+        }
         if (!this._aiControlStopWired) {
           this._aiControlStopWired = true;
           const stopBtn = document.getElementById('ai-control-stop-btn');
           if (stopBtn) {
-            stopBtn.addEventListener('click', () => this.stopGeneration());
+            stopBtn.addEventListener('click', () => this._aiControlOverlayStopClicked());
           }
           overlay.addEventListener('click', (e) => {
             if (e.target.closest('.ai-control-stop-btn')) return;
@@ -5235,6 +5256,14 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         }
       } catch { /* ignore */ }
     }
+  }
+
+  /** Overlay Stop: end strict delegation if active, then abort whatever model stream is running. */
+  _aiControlOverlayStopClicked() {
+    if (this._takeoverMode && typeof window.NavioDelegationController !== 'undefined' && window.NavioDelegationController.isActive()) {
+      this.disableTakeover();
+    }
+    this.stopGeneration();
   }
 
   /** Mirror the typing-indicator label onto the shell overlay status line (classic webview mode only). */
@@ -5856,6 +5885,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     }
     if (payload.action === 'stopTakeover') {
       this.disableTakeover();
+      return;
+    }
+    if (payload.action === 'toggleDelegationMode') {
+      this._delegationToggleStrict();
       return;
     }
     if (payload.action === 'openSidebarAssistant') {
@@ -9246,25 +9279,57 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (tid) TabManager.switchToTab(tid);
   }
 
-  /** Keep sidebar subline + floating bar in sync with the current plan step. */
+  /** Keep sidebar subline + floating bar in sync via NavioDelegationController. */
   _refreshTakeoverHud({ stepIndex, stepTotal, action, paramsStr }) {
-    if (!this._takeoverMode) return;
+    if (!this._takeoverMode || typeof window.NavioDelegationController === 'undefined') return;
     const verb = this._humanizeTakeoverVerb(action, paramsStr);
-    this._takeoverHud = {
-      stepIndex: Math.max(1, stepIndex | 0),
-      stepTotal: Math.max(0, stepTotal | 0),
+    window.NavioDelegationController.updateStep({
+      stepIndex,
+      stepTotal,
       verb
-    };
-    this._paintTakeoverHudSubviews();
+    });
   }
 
-  _paintTakeoverHudSubviews() {
-    const h = this._takeoverHud;
+  /** Paint takeover chrome from delegation snapshot (single source of truth). */
+  _applyDelegationSnapshot(snap) {
+    const h = snap && this._takeoverMode ? snap : null;
     const sub = document.querySelector('#navio-takeover-banner .ntb-sub');
+    const delegBtn = document.querySelector('#navio-takeover-banner .ntb-deleg-mode');
+    if (delegBtn) {
+      const strict = !!(h && h.mode === 'strict');
+      delegBtn.textContent = strict ? 'Strict' : 'Observe';
+      delegBtn.setAttribute('aria-pressed', strict ? 'true' : 'false');
+      delegBtn.title = strict
+        ? 'Strict: blocks clicks on the automated tab while you watch'
+        : 'Observe: interact with the page; click for strict blocking';
+    }
+    const delegPillBtn = document.querySelector('#navio-agent-chrome-pill .nacp-deleg-mode');
+    if (delegPillBtn) {
+      const strict = !!(h && h.mode === 'strict');
+      delegPillBtn.textContent = strict ? 'Strict' : 'Observe';
+      delegPillBtn.setAttribute('aria-pressed', strict ? 'true' : 'false');
+    }
     if (sub) {
       if (!h || !h.stepTotal) {
-        sub.textContent = '';
-        sub.hidden = true;
+        if (h && h.paused && h.waitingLoginHost) {
+          sub.hidden = false;
+          sub.textContent = `Sign in at ${h.waitingLoginHost} — then Continue in chat`;
+        } else if (h && h.paused) {
+          sub.hidden = false;
+          sub.textContent = 'Automation suspended — Resume to continue';
+        } else if (h && h.waitingLoginHost) {
+          sub.hidden = false;
+          sub.textContent = `Blocked by login (${h.waitingLoginHost})`;
+        } else {
+          sub.textContent = '';
+          sub.hidden = true;
+        }
+      } else if (h.paused) {
+        sub.hidden = false;
+        sub.textContent = `${h.stepIndex} / ${h.stepTotal} · ${h.verb || '…'} — paused`;
+      } else if (h.waitingLoginHost) {
+        sub.hidden = false;
+        sub.textContent = `${h.stepIndex} / ${h.stepTotal} · ${h.verb || '…'} · login at ${h.waitingLoginHost}`;
       } else {
         sub.hidden = false;
         sub.textContent = `${h.stepIndex} / ${h.stepTotal} · ${h.verb || '…'}`;
@@ -9274,28 +9339,61 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (bar) {
       const stepEl = bar.querySelector('.atb-step');
       if (stepEl) {
-        stepEl.textContent =
-          h && h.stepTotal ? `Step ${h.stepIndex} of ${h.stepTotal} · ${h.verb || ''}` : '';
+        if (!h) stepEl.textContent = '';
+        else if (h.paused) stepEl.textContent = 'Paused';
+        else if (h.stepTotal)
+          stepEl.textContent = `Step ${h.stepIndex} of ${h.stepTotal} · ${h.verb || ''}`;
+        else stepEl.textContent = h.waitingLoginHost ? `Waiting: ${h.waitingLoginHost}` : '';
       }
     }
     const nacpSub = document.querySelector('#navio-agent-chrome-pill .nacp-sub');
     if (nacpSub) {
-      if (!h || !h.stepTotal) {
+      if (!h || (!h.stepTotal && !h.paused && !h.waitingLoginHost)) {
         nacpSub.textContent = '';
         nacpSub.hidden = true;
-      } else {
+      } else if (h.stepTotal && !h.paused) {
         nacpSub.hidden = false;
         nacpSub.textContent = `${h.stepIndex}/${h.stepTotal} · ${h.verb || '…'}`;
+      } else if (h.paused) {
+        nacpSub.hidden = false;
+        nacpSub.textContent = 'Paused';
+      } else if (h.waitingLoginHost) {
+        nacpSub.hidden = false;
+        nacpSub.textContent = `Login: ${h.waitingLoginHost}`;
       }
     }
-    if (
-      document.body.classList.contains('navio-wcv-tabs-below') ||
-      document.getElementById('ai-control-overlay')?.hidden
-    ) {
-      return;
+    if (!document.body.classList.contains('navio-wcv-tabs-below')) {
+      const statusEl = document.getElementById('ai-control-status');
+      if (statusEl && h && h.verb) statusEl.textContent = h.verb;
     }
-    const statusEl = document.getElementById('ai-control-status');
-    if (statusEl && h && h.verb) statusEl.textContent = h.verb;
+  }
+
+  _relayDelegationToGuest(snap) {
+    if (!this._guestChatWebview) return;
+    void this._guestDeliver(this._guestChatWebview, { type: 'delegationSnapshot', snapshot: snap || null });
+  }
+
+  async _persistDelegationModeIfNeeded() {
+    try {
+      if (!window.navio || typeof window.navio.getConfig !== 'function' || typeof window.navio.saveConfig !== 'function')
+        return;
+      const cfg = await window.navio.getConfig();
+      if (!cfg.aiDelegationRememberStrictMode) return;
+      const snap =
+        typeof window.NavioDelegationController !== 'undefined' ? window.NavioDelegationController.getSnapshot() : null;
+      await window.navio.saveConfig({ aiDelegationDefaultStrictMode: !!(snap && snap.mode === 'strict') });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  _delegationToggleStrict() {
+    if (typeof window.NavioDelegationController === 'undefined' || !window.NavioDelegationController.isActive())
+      return;
+    const s = window.NavioDelegationController.getSnapshot();
+    const next = s && s.mode === 'strict' ? 'observe' : 'strict';
+    window.NavioDelegationController.setMode(next);
+    void this._persistDelegationModeIfNeeded();
   }
 
   /** Tab strip + banner: show which tab is receiving takeover actions. */
@@ -9303,6 +9401,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (typeof TabManager === 'undefined') return;
     const tid = TabManager.getTakeoverHighlightTabId?.() ?? null;
     TabManager.setAgentControlledTab?.(tid);
+    if (typeof window.NavioDelegationController !== 'undefined' && window.NavioDelegationController.isActive()) {
+      window.NavioDelegationController.syncTab(tid);
+    }
     const label = document.querySelector('#navio-takeover-banner .ntb-label');
     if (label && this._takeoverMode) {
       const tab = tid != null ? TabManager.tabs?.find((t) => t.id === tid) : null;
@@ -9310,7 +9411,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       label.textContent = name ? `In control — ${name}` : 'Navio is controlling the browser';
     }
     document.body.classList.toggle('navio-takeover-active', !!this._takeoverMode);
-    this._paintTakeoverHudSubviews();
+    this._applyDelegationSnapshot(
+      typeof window.NavioDelegationController !== 'undefined' ? window.NavioDelegationController.getSnapshot() : null
+    );
   }
 
   enableTakeover() {
@@ -9320,7 +9423,6 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     this._takeoverAbort = new AbortController();
     this._agentLogEntries = [];
     this._takeoverStepNum = 0;
-    this._takeoverHud = null;
     this._renderAgentLog();
     if (window.NavioAIBoost) window.NavioAIBoost.setOrbThinking(true);
     // Sidebar banner (Pause + Undo + Stop)
@@ -9336,6 +9438,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
             <span class="ntb-sub" hidden></span>
           </div>
           <div class="ntb-actions">
+            <button type="button" class="ntb-deleg-mode" title="Toggle strict blocking on the automated tab">Observe</button>
             <button class="ntb-watch" type="button" title="Show the tab being automated">Watch tab</button>
             <button class="ntb-undo" type="button">Undo</button>
             <button class="ntb-pause" type="button">Pause</button>
@@ -9350,10 +9453,35 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         else this._pauseTakeover();
       });
       banner.querySelector('.ntb-watch').addEventListener('click', () => this._focusTakeoverTargetTab());
+      banner.querySelector('.ntb-deleg-mode')?.addEventListener('click', () => this._delegationToggleStrict());
       const inputArea = this.panel.querySelector('.assistant-input-area');
       if (inputArea) this.panel.insertBefore(banner, inputArea);
     }
-    this._syncTakeoverTabHighlight();
+    try {
+      this._delegationUnsub?.();
+    } catch {
+      /* ignore */
+    }
+    this._delegationUnsub = null;
+    const tid0 = typeof TabManager !== 'undefined' ? TabManager.getTakeoverHighlightTabId?.() ?? null : null;
+    if (typeof window.NavioDelegationController !== 'undefined') {
+      window.NavioDelegationController.start({ tabId: tid0, mode: 'observe' });
+      void window.navio
+        .getConfig()
+        .then((cfg) => {
+          if (!this._takeoverMode || typeof window.NavioDelegationController === 'undefined') return;
+          if (!window.NavioDelegationController.isActive()) return;
+          if (cfg.aiDelegationDefaultStrictMode) window.NavioDelegationController.setMode('strict');
+        })
+        .catch(() => {});
+      this._delegationUnsub = window.NavioDelegationController.subscribe((snap) => {
+        if (!this._takeoverMode) return;
+        this._applyDelegationSnapshot(snap);
+        this._relayDelegationToGuest(snap);
+        this._updateAssistantBusyChrome();
+      });
+      this._relayDelegationToGuest(window.NavioDelegationController.getSnapshot());
+    }
     // Do not auto-switch the visible tab — the user may stay on another tab and keep using the assistant.
     // Also show the visual agent bar with the animated orb
     if (window.NavioAIBoost) {
@@ -9374,9 +9502,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           <span class="nacp-label">Navio is working</span>
           <span class="nacp-sub" hidden></span>
         </div>
+        <button type="button" class="nacp-deleg-mode" title="Delegation mode">Observe</button>
         <button class="nacp-watch" type="button" title="Show the automated tab">Watch</button>
         <button class="nacp-pause" type="button">Pause</button>
         <button class="nacp-stop" type="button">Stop</button>`;
+      pill.querySelector('.nacp-deleg-mode')?.addEventListener('click', () => this._delegationToggleStrict());
       pill.querySelector('.nacp-pause').addEventListener('click', () => {
         if (!this._takeoverMode) return;
         if (this._takeoverPaused) this._resumeTakeover();
@@ -9387,6 +9517,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       const navbar = document.getElementById('navbar');
       if (navbar) navbar.appendChild(pill);
     }
+    if (typeof window.NavioDelegationController !== 'undefined') {
+      this._applyDelegationSnapshot(window.NavioDelegationController.getSnapshot());
+    }
+    this._syncTakeoverTabHighlight();
+    this._updateAssistantBusyChrome();
     // Notify guest chat tab if agent triggered from there
     if (this._guestChatWebview) {
       void this._guestDeliver(this._guestChatWebview, { type: 'takeoverStart' });
@@ -9396,7 +9531,18 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   disableTakeover() {
     if (typeof TabManager !== 'undefined') TabManager.setAgentControlledTab?.(null);
     this._takeoverMode = false;
-    this._takeoverHud = null;
+    if (this._guestChatWebview) {
+      void this._guestDeliver(this._guestChatWebview, { type: 'delegationSnapshot', snapshot: null });
+    }
+    try {
+      this._delegationUnsub?.();
+    } catch {
+      /* ignore */
+    }
+    this._delegationUnsub = null;
+    if (typeof window.NavioDelegationController !== 'undefined') {
+      window.NavioDelegationController.end();
+    }
     document.body.classList.remove('navio-takeover-active');
     this._autoFollowCount = 0;
     // Release any pending pause before aborting so the loop can exit cleanly
@@ -9437,6 +9583,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     }
     this._setAssistantComposerTakeoverLocked(false);
     this._addContinuePill('Navio stopped. You\'re back in control.');
+    this._updateAssistantBusyChrome();
   }
 
   _renderAgentLog() {
@@ -9491,6 +9638,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
 
   _finishAuthGateContinue() {
     document.getElementById('navio-auth-gate-pill')?.remove();
+    if (typeof window.NavioDelegationController !== 'undefined' && window.NavioDelegationController.isActive()) {
+      window.NavioDelegationController.setWaitingLoginHost(null);
+    }
     const fn = this._takeoverAuthResume;
     this._takeoverAuthResume = null;
     if (typeof fn === 'function') fn();
@@ -9508,6 +9658,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       '</strong> — sign in, then continue.</span>' +
       '<button type="button" class="nag-continue">Continue</button>';
     pill.querySelector('.nag-continue').addEventListener('click', () => this._finishAuthGateContinue());
+    const safeHost = hostname.replace(/</g, '');
+    if (typeof window.NavioDelegationController !== 'undefined' && window.NavioDelegationController.isActive()) {
+      window.NavioDelegationController.setWaitingLoginHost(safeHost);
+    }
     this.messagesEl.appendChild(pill);
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
   }
@@ -10596,6 +10750,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   _pauseTakeover() {
     if (!this._takeoverMode) return;
     this._takeoverPaused = true;
+    if (typeof window.NavioDelegationController !== 'undefined' && window.NavioDelegationController.isActive()) {
+      window.NavioDelegationController.setPaused(true);
+    }
     const pill = document.getElementById('navio-agent-chrome-pill');
     if (pill) {
       const pauseBtn = pill.querySelector('.nacp-pause');
@@ -10640,6 +10797,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   _resumeTakeover() {
     if (!this._takeoverMode) return;
     this._takeoverPaused = false;
+    if (typeof window.NavioDelegationController !== 'undefined' && window.NavioDelegationController.isActive()) {
+      window.NavioDelegationController.setPaused(false);
+    }
     if (this._takeoverPausedResolve) {
       this._takeoverPausedResolve();
       this._takeoverPausedResolve = null;
