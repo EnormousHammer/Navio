@@ -171,7 +171,8 @@ const STATUS_LABELS = {
   gmail_send: 'Preparing email\u2026',
   run_workflow: 'Running a workflow\u2026',
   list_workflows: 'Checking workflows\u2026',
-  web_search: 'Searching the web\u2026'
+  web_search: 'Searching the web\u2026',
+  thinking: 'Thinking with the model\u2026'
 };
 
 /** @type {WeakSet<import('electron').WebContents>} */

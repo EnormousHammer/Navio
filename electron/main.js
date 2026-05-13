@@ -3001,6 +3001,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
     if (signal?.aborted) {
       return finishAgentRun({ content: '**Stopped.**', cancelled: true, toolLog });
     }
+    tp({ tool: 'thinking', step, result: { pulseOnly: true } });
     const result = await performAiFetchResilient(cfg, apiKey, currentMessages, { tools, signal });
 
     if (result.error) {

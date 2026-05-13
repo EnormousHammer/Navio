@@ -1835,6 +1835,13 @@ class AssistantManagerClass {
     }
     // Reset smart chips to defaults when switching tabs (navio-ai-boost will re-fill after navigation).
     try { this._updateSmartRow([]); } catch { /* ignore */ }
+    // Recompute shell overlay + Stop visibility: overlay must not stay above a new tab while AI
+    // works in the background on another tab (classic <webview> mode uses full-pane hit-blocking).
+    try {
+      this._updateAssistantBusyChrome();
+    } catch {
+      /* ignore */
+    }
   }
 
   /**
@@ -1978,9 +1985,19 @@ class AssistantManagerClass {
     if (!k) return;
     const storageKey = this._storageKeyForTabId(k);
     const turn = this._turnConversationKey;
-    // In-flight work stays on `turn` for history + tools, but the sidebar always reflects the **focused**
-    // tab’s thread (`_panelShowsTurnDom` gates live stream / activity DOM so another tab’s run does not
-    // paint into this view).
+    // While a sidebar tool/stream turn is in flight for another tab (or tab group), do not swap the
+    // transcript to the newly focused tab — that destroyed the live “Working” card and made `_panelShowsTurnDom`
+    // false, so the UI froze (no steps/final bubble) until the user switched back.
+    if (
+      turn != null &&
+      String(turn).length &&
+      this._busyTabs.has(String(turn)) &&
+      String(storageKey) !== String(turn)
+    ) {
+      return;
+    }
+    // In-flight work stays on `turn` for history + tools, but the sidebar follows the focused tab
+    // when idle (`_panelShowsTurnDom` gates live stream / activity DOM).
 
     const prevPanelId = this._panelDisplayTabId;
     const prevStorageKey = prevPanelId ? this._storageKeyForTabId(String(prevPanelId)) : '';
@@ -5013,6 +5030,13 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (this._guestAnchoredTabId != null && String(this._guestAnchoredTabId) !== '') {
         return String(this._guestAnchoredTabId);
       }
+      if (
+        this._dockBrowsingAnchorTabId != null &&
+        String(this._dockBrowsingAnchorTabId) !== '' &&
+        this._busyTabs.size > 0
+      ) {
+        return String(this._dockBrowsingAnchorTabId);
+      }
     } catch {
       /* ignore */
     }
@@ -5161,7 +5185,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       gmail_read: 'Reading email\u2026',
       gmail_send: 'Preparing email\u2026',
       run_workflow: 'Running a workflow\u2026',
-      list_workflows: 'Checking workflows\u2026'
+      list_workflows: 'Checking workflows\u2026',
+      thinking: 'Thinking with the model\u2026'
     };
     statusEl.textContent = labels[tool] || 'Working\u2026';
   }
@@ -5588,9 +5613,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       this._updateAssistantBusyChrome();
       // Do NOT call _syncPanelToTab here: it replays from `_conversationsByTab` and can wipe the live
       // transcript (empty key / wrong-tab timing / async ordering) back to the welcome screen mid-work.
-      // Tab switches already call _syncPanelToTab from onActiveTabChanged; addMessage keeps DOM in sync.
-      // Exception: while a turn was in-flight, `_syncPanelToTab` skipped updating `_panelDisplayTabId` so
-      // the busy tab's stream stayed in the sidebar. After the turn ends, realign with the focused tab.
+      // While a turn is busy, `_syncPanelToTab` returns early when switching to another tab's thread so
+      // the sidebar keeps showing live progress. After the turn ends, realign with the focused tab.
       try {
         if (!this._sidebarThreadKey && typeof TabManager !== 'undefined' && TabManager.activeTabId) {
           const aid = String(TabManager.activeTabId);
@@ -6649,6 +6673,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (payload && payload.tabId != null && String(payload.tabId) !== tk) return;
       const { step, tool, result } = payload || {};
       if (tool === 'navigate') return; // already shown
+      if (result && result.pulseOnly) {
+        this._updateTypingLabel(tool || 'thinking');
+        this._updateAiControlOverlayStatus(tool || 'thinking');
+        return;
+      }
       if (tool === 'gmail_search' && result && !result.error) {
         void this._ingestGmailSearchToolResults(result);
       }
@@ -10888,7 +10917,8 @@ ${pageInfo}${snapText}`;
       go_forward: 'Going forward',
       go_back: 'Going back',
       run_workflow: 'Running a workflow',
-      list_workflows: 'Checking saved workflows'
+      list_workflows: 'Checking saved workflows',
+      thinking: 'Thinking with the model…'
     };
     labelEl.textContent = labels[tool] || 'On it';
   }
