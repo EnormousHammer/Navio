@@ -1988,23 +1988,29 @@ class AssistantManagerClass {
     this.setReceipt('');
     document.getElementById('navio-continue-pill')?.remove();
 
-    // Check if an AI stream is currently active for this tab before touching DOM.
-    // Keep this explicit so empty-history handling never preserves stale bubbles.
-    const isStreamingTab = !!(turn && storageKey === turn && this._busyTabs.has(String(turn)));
+    // Busy on this storage bucket (tool loop or awaiting stream chunks).
+    const isBusyHere = !!(turn && String(storageKey) === String(turn) && this._busyTabs.has(String(turn)));
+    // Token stream for this turn — replaying history would wipe the live streaming bubble.
+    const tokenStreamActive = !!(turn && this._streamUnsubsByTab.has(String(turn)));
+    const isStreamingTab = !!(isBusyHere && tokenStreamActive);
 
     const h = this._conversationsByTab.get(storageKey) || [];
-    // Replaying history destroys the live "Working" card and streaming bubble — skip while this tab's turn is active.
+    // Replaying history destroys the live streaming bubble — skip only while a token stream is active.
+    // Tool-calling turns have no sidebar stream listener; replay committed history so tab switches are not blank.
     if (h.length && !isStreamingTab) {
       this._renderDomFromHistoryKey(storageKey);
-    } else if (this.messagesEl && !isStreamingTab) {
+    } else if (this.messagesEl && !isBusyHere) {
       this.messagesEl.innerHTML = '';
-      await this._showGreeting();
+      this._assistantHistoryDomReplay = true;
+      try {
+        await this._showGreeting();
+      } finally {
+        this._assistantHistoryDomReplay = false;
+      }
     }
 
-    // If the AI is mid-stream for this tab, immediately show the typing indicator so
-    // the user sees activity rather than a blank gap before the next chunk re-creates
-    // the streaming element (the chunk handler detects the detached element via isConnected).
-    if (isStreamingTab) {
+    // Mid-turn on this tab: typing indicator (tool path) or stream re-hydrate path (handled in onAiStreamChunk).
+    if (isBusyHere) {
       this.showTypingIndicator();
     }
   }
@@ -5265,11 +5271,17 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       turnKey = this._conversationKey();
       for (const busy of this._busyTabs) {
         if (String(busy) !== String(turnKey)) {
-          this.addMessage(
-            'assistant',
-            'Navio is still answering in another tab or chat. Switch back to that tab to see progress, wait for it to finish, or press **Stop** there before starting something new here.',
-            'error'
-          );
+          const msg =
+            'Navio is still answering in another tab or chat. Switch back to that tab to see progress, wait for it to finish, or press **Stop** there before starting something new here.';
+          if (this._panelShowsTurnDom()) {
+            this.addMessage('assistant', msg, 'error');
+          } else {
+            try {
+              this.setReceipt(msg.replace(/\*\*/g, ''));
+            } catch {
+              /* ignore */
+            }
+          }
           return;
         }
       }
@@ -5285,13 +5297,22 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     // All requests go through _processWithTools when tool calling is enabled.
     // The legacy XML action path is kept only as a fallback when explicitly disabled.
     if (config.aiUseToolCalling !== false) {
-    try {
-      await this._processWithTools(text, config, historyUserLabel || this._historyLabelForAttachments(text), null, { isQuickAction });
-    } catch (err) {
-      this.removeTypingIndicator();
-      this._turnStartedAt = null;
-      this.addMessage('assistant', err.message || 'Tool-calling error', 'error');
-    }
+      try {
+        await this._processWithTools(text, config, historyUserLabel || this._historyLabelForAttachments(text), null, { isQuickAction });
+      } catch (err) {
+        this.removeTypingIndicator();
+        this._turnStartedAt = null;
+        const em = err.message || 'Tool-calling error';
+        this.addMessage('assistant', em, 'error');
+        try {
+          const hist = this._currentHistory();
+          hist.push({ role: 'assistant', content: em });
+          this._trimHistory();
+          this._schedulePersistAssistantHistory?.();
+        } catch {
+          /* ignore */
+        }
+      }
       return;
     }
     // ── Legacy <navio-actions> path (only when aiUseToolCalling explicitly false) ──
@@ -6047,6 +6068,26 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     this._guestChatWebview = guestWv || null;
     try {
     const tk = String(this._turnConversationKey || '__default__');
+    const historyKey = String(this._turnConversationKey || this._conversationKey());
+    this._ensureConversationEntry(historyKey);
+    const uhSnap = (historyUserLabel && String(historyUserLabel).trim())
+      ? String(historyUserLabel).trim()
+      : !isQuickAction
+        ? String(this._historyLabelForAttachments(text) || '').trim()
+        : '';
+    if (uhSnap) {
+      const hist = this._currentHistory();
+      const last = hist[hist.length - 1];
+      if (!(last && last.role === 'user' && last.content === uhSnap)) {
+        hist.push({ role: 'user', content: uhSnap });
+        this._trimHistory();
+        try {
+          this._schedulePersistAssistantHistory?.();
+        } catch {
+          /* ignore */
+        }
+      }
+    }
     if (this.inputEl && typeof this.inputEl.blur === 'function') this.inputEl.blur();
     if (guestWv) {
       await this._guestDeliver(guestWv, { type: 'activityStart' });
@@ -6190,13 +6231,17 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
 
     // Conversation history (skip stale page snapshots). Read by explicit **turn** storage key so an async
     // gap cannot accidentally use `_currentHistory()` with a key that no longer matches the user’s turn.
-    const historyKey = String(this._turnConversationKey || this._conversationKey());
-    this._ensureConversationEntry(historyKey);
-    const recentHistory = this._buildRelevantHistory(
+    let recentHistory = this._buildRelevantHistory(
       text,
       historyKey,
       (m) => !(m.role === 'system' && typeof m.content === 'string' && m.content.startsWith('[Page elements'))
     );
+    if (uhSnap && recentHistory.length) {
+      const tail = recentHistory[recentHistory.length - 1];
+      if (tail && tail.role === 'user' && tail.content === uhSnap) {
+        recentHistory = recentHistory.slice(0, -1);
+      }
+    }
     messages.push(...recentHistory);
     this._maybePushAttachmentSystemHint(messages);
     messages.push({ role: 'user', content: this._buildAttachmentPayloadForApi(text) });
@@ -6780,7 +6825,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       const errText = String(response.error || 'Unknown error');
       if (guestWv) await this._guestDeliver(guestWv, { type: 'assistant', error: true, content: errText });
       else this.addMessage('assistant', errText, 'error', toolTurnMs != null ? { durationMs: toolTurnMs } : null);
-      this._currentHistory().push({ role: 'user', content: userHistory }, { role: 'assistant', content: errText });
+      this._currentHistory().push({ role: 'assistant', content: errText });
       this._trimHistory();
     } else {
       const outText = response.content != null ? String(response.content) : '';
@@ -6802,7 +6847,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           this.addMessage('assistant', outText, '', meta);
           this._pendingConnectorCitations = null;
         }
-        this._currentHistory().push({ role: 'user', content: userHistory }, { role: 'assistant', content: outText });
+        this._currentHistory().push({ role: 'assistant', content: outText });
         this._trimHistory();
         // If the AI emitted a <navio-memory>save:...</navio-memory> block,
         // main.js#extractAndSaveMemory has already persisted it. Refresh the
@@ -6831,7 +6876,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
             toolTurnMs != null ? { durationMs: toolTurnMs } : null
           );
         }
-        this._currentHistory().push({ role: 'user', content: userHistory }, { role: 'assistant', content: emptyMsg });
+        this._currentHistory().push({ role: 'assistant', content: emptyMsg });
         this._trimHistory();
       }
     }
