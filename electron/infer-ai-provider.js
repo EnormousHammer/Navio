@@ -24,7 +24,7 @@ function inferAiProviderFromApiKey(key) {
 }
 
 const DEFAULTS = {
-  openai: { aiModel: 'gpt-5.4', aiPlannerModel: 'gpt-5.4-mini' },
+  openai: { aiModel: 'gpt-5-mini', aiPlannerModel: 'gpt-5-mini' },
   anthropic: { aiModel: 'claude-opus-4-5', aiPlannerModel: 'claude-sonnet-4-5' },
   google: { aiModel: 'gemini-2.0-flash', aiPlannerModel: 'gemini-2.0-flash' }
 };

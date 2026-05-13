@@ -409,8 +409,13 @@ class OnboardingManager {
     if (!this.selectedProvider || this.apiKey.length < 8) return;
 
     const modelDefaults = {
-      openai: 'gpt-5.4',
+      openai: 'gpt-5-mini',
       anthropic: 'claude-opus-4-5',
+      google: 'gemini-2.0-flash'
+    };
+    const plannerDefaults = {
+      openai: 'gpt-5-mini',
+      anthropic: 'claude-sonnet-4-5',
       google: 'gemini-2.0-flash'
     };
 
@@ -418,7 +423,8 @@ class OnboardingManager {
       const config = await window.navio.getConfig();
       config.aiProvider = this.selectedProvider;
       config.apiKey = this.apiKey;
-      config.aiModel = modelDefaults[this.selectedProvider] || 'gpt-5.4';
+      config.aiModel = modelDefaults[this.selectedProvider] || 'gpt-5-mini';
+      config.aiPlannerModel = plannerDefaults[this.selectedProvider] || config.aiPlannerModel;
       await window.navio.saveConfig(config);
     } catch (e) { /* proceed */ }
 

@@ -177,8 +177,8 @@ class SettingsManagerClass {
 
     document.getElementById('btn-model-back-presets')?.addEventListener('click', () => {
       const provider = this.elements.provider.value;
-      const defaults = { openai: 'gpt-5.4', anthropic: 'claude-opus-4-5', google: 'gemini-2.0-flash', ollama: 'llama3.2', custom: '__custom__' };
-      this.elements.model.value = defaults[provider] || 'gpt-5.4';
+      const defaults = { openai: 'gpt-5-mini', anthropic: 'claude-opus-4-5', google: 'gemini-2.0-flash', ollama: 'llama3.2', custom: '__custom__' };
+      this.elements.model.value = defaults[provider] || 'gpt-5-mini';
       this._syncModelCustomUI();
     });
 
@@ -777,9 +777,9 @@ class SettingsManagerClass {
     // Known-fake legacy model names from old defaults — silently upgrade
     const LEGACY_FAKE = new Set(['claude-opus-4.6', 'gemini-3.1-pro']);
     const LEGACY_OPENAI_GPT4 = new Set(['gpt-4o', 'gpt-4o-mini']);
-    let savedModel = this.config.aiModel || 'gpt-5.4';
-    if (LEGACY_FAKE.has(savedModel)) savedModel = 'gpt-5.4';
-    if (LEGACY_OPENAI_GPT4.has(savedModel)) savedModel = 'gpt-5.4';
+    let savedModel = this.config.aiModel || 'gpt-5-mini';
+    if (LEGACY_FAKE.has(savedModel)) savedModel = 'gpt-5-mini';
+    if (LEGACY_OPENAI_GPT4.has(savedModel)) savedModel = 'gpt-5-mini';
 
     const modelOpts = Array.from(this.elements.model.options).map(o => o.value).filter(v => v !== '__custom__');
     if (modelOpts.includes(savedModel)) {
@@ -802,8 +802,8 @@ class SettingsManagerClass {
       if (apiKeyRow) apiKeyRow.style.opacity = '0.4';
     }
     if (this.elements.aiPlannerModel) {
-      let planner = this.config.aiPlannerModel || 'gpt-5.4-mini';
-      if (LEGACY_OPENAI_GPT4.has(planner)) planner = 'gpt-5.4-mini';
+      let planner = this.config.aiPlannerModel || 'gpt-5-mini';
+      if (LEGACY_OPENAI_GPT4.has(planner)) planner = 'gpt-5-mini';
       this.elements.aiPlannerModel.value = planner;
     }
     this.elements.searchEngine.value = this.config.searchEngine || 'https://www.google.com/search?q=';
@@ -968,12 +968,12 @@ class SettingsManagerClass {
     });
 
     // If current selection belongs to a now-hidden optgroup, reset to provider default
-    const defaults = { openai: 'gpt-5.4', anthropic: 'claude-opus-4-5', google: 'gemini-2.0-flash', ollama: 'llama3.2', custom: '__custom__' };
+    const defaults = { openai: 'gpt-5-mini', anthropic: 'claude-opus-4-5', google: 'gemini-2.0-flash', ollama: 'llama3.2', custom: '__custom__' };
     const currentOption = modelSelect.options[modelSelect.selectedIndex];
     const currentGroupProvider = currentOption?.closest('optgroup')?.getAttribute('data-provider');
 
     if (!currentGroupProvider || (currentGroupProvider !== provider && provider !== 'custom')) {
-      const def = defaults[provider] || 'gpt-5.4';
+      const def = defaults[provider] || 'gpt-5-mini';
       const match = Array.from(modelSelect.options).find(
         o => o.value === def && o.closest('optgroup')?.getAttribute('data-provider') === provider
       );
@@ -1805,11 +1805,11 @@ class SettingsManagerClass {
       aiProvider: this.elements.provider.value,
       apiKey: this.elements.apiKey.value.trim(),
       aiModel: this.elements.model.value === '__custom__'
-        ? (this.elements.modelCustom.value.trim() || 'gpt-5.4')
+        ? (this.elements.modelCustom.value.trim() || 'gpt-5-mini')
         : this.elements.model.value,
       aiPlannerModel: this.elements.aiPlannerModel
-        ? (this.elements.aiPlannerModel.value.trim() || 'gpt-5.4-mini')
-        : (this.config.aiPlannerModel || 'gpt-5.4-mini'),
+        ? (this.elements.aiPlannerModel.value.trim() || 'gpt-5-mini')
+        : (this.config.aiPlannerModel || 'gpt-5-mini'),
       customEndpoint: this.elements.endpoint.value.trim(),
       searchEngine: this.elements.searchEngine.value,
       homepage: this.elements.homepage.value.trim() || 'https://www.google.com',

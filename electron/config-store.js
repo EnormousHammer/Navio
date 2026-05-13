@@ -12,8 +12,8 @@ function getConfigPath() {
 
 const DEFAULT_CONFIG = {
   aiProvider: 'openai',
-  aiModel: 'gpt-5.4',
-  aiPlannerModel: 'gpt-5.4-mini',
+  aiModel: 'gpt-5-mini',
+  aiPlannerModel: 'gpt-5-mini',
   customEndpoint: '',
   theme: 'dark',
   /** Accent palette: aurora | ocean | ember | forest | magenta | slate — see css/parts/colorways.css */
@@ -251,12 +251,28 @@ function loadConfig() {
   const NAVIO_STT_MODELS = new Set(['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe']);
   const sttM = String(merged.sttModel || '').trim();
   merged.sttModel = NAVIO_STT_MODELS.has(sttM) ? sttM : 'whisper-1';
-  // Drop retired GPT-4o defaults for direct OpenAI usage (replaced by GPT-5.4 family).
+  // Drop retired GPT-4o defaults for direct OpenAI usage; prefer GPT-5 mini tier for cost.
   const LEGACY_OPENAI_GPT4 = new Set(['gpt-4o', 'gpt-4o-mini']);
   if (merged.aiProvider === 'openai') {
-    if (LEGACY_OPENAI_GPT4.has(merged.aiModel)) merged.aiModel = 'gpt-5.4';
-    if (LEGACY_OPENAI_GPT4.has(merged.aiPlannerModel)) merged.aiPlannerModel = 'gpt-5.4-mini';
-    if (merged.aiPlannerModel === 'gpt-5.4-nano') merged.aiPlannerModel = 'gpt-5.4-mini';
+    const beforeMain = merged.aiModel;
+    const beforePlanner = merged.aiPlannerModel;
+    if (LEGACY_OPENAI_GPT4.has(merged.aiModel)) merged.aiModel = 'gpt-5-mini';
+    if (LEGACY_OPENAI_GPT4.has(merged.aiPlannerModel)) merged.aiPlannerModel = 'gpt-5-mini';
+    if (merged.aiPlannerModel === 'gpt-5.4-nano') merged.aiPlannerModel = 'gpt-5-mini';
+    if (merged.aiModel === 'gpt-5.4') merged.aiModel = 'gpt-5-mini';
+    if (merged.aiModel === 'gpt-5.4-mini') merged.aiModel = 'gpt-5-mini';
+    if (merged.aiPlannerModel === 'gpt-5.4-mini') merged.aiPlannerModel = 'gpt-5-mini';
+    if (merged.aiModel !== beforeMain || merged.aiPlannerModel !== beforePlanner) {
+      try {
+        const disk = readConfigFile();
+        disk.aiModel = merged.aiModel;
+        disk.aiPlannerModel = merged.aiPlannerModel;
+        delete disk.apiKey;
+        writeConfigFile(disk);
+      } catch (_) {
+        /* ignore disk errors */
+      }
+    }
   }
   const key = secureConfig.getApiKey(userData);
   merged.hasApiKey = !!key;
