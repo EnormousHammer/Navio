@@ -94,6 +94,9 @@ function createStore(userData) {
     return crypto.createHash('sha256').update(text.slice(0, 2000)).digest('hex').slice(0, 16);
   }
 
+  /** Keep disk transcripts aligned with long threads (renderer trims in-memory separately). */
+  const NAVIO_ASSISTANT_DISK_HARD_CAP = 420;
+
   function _cleanAssistantMessages(msgs) {
     let messages = Array.isArray(msgs) ? msgs : [];
     messages = messages
@@ -104,7 +107,7 @@ function createStore(userData) {
           typeof m.content === 'string'
       )
       .map((m) => ({ role: m.role, content: m.content }));
-    if (messages.length > 80) messages = messages.slice(-60);
+    if (messages.length > NAVIO_ASSISTANT_DISK_HARD_CAP) messages = messages.slice(-360);
     return messages;
   }
 

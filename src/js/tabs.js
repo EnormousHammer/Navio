@@ -392,7 +392,13 @@ class TabManagerClass {
       /** Which tab id is laid out in the left pane (both partners share the same value). */
       splitLeftPaneTabId: null,
       /** Per-tab zoom override (null = use Settings default zoom). */
-      zoomFactor: null
+      zoomFactor: null,
+      /** Stable conversation bucket for AI history — survives recycled tab ids (`tab-7`) across sessions. */
+      aiConvKey:
+        'tc:' +
+        (typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}_${Math.random().toString(36).slice(2, 11)}`)
     };
 
     // Tab partition uses persist:navio (main) — its UA + Sec-CH-UA are set in session-setup.js.
@@ -1869,6 +1875,14 @@ class TabManagerClass {
     if (tabEl) tabEl.remove();
 
     const hadGroup = tab.groupId;
+    let conversationKey = String(id);
+    try {
+      if (typeof AssistantManager !== 'undefined' && typeof AssistantManager._storageKeyForTab === 'function') {
+        conversationKey = AssistantManager._storageKeyForTab(tab);
+      }
+    } catch {
+      conversationKey = String(id);
+    }
     if (this._agentControlledTabId === id) {
       this._agentControlledTabId = null;
     }
@@ -1881,7 +1895,8 @@ class TabManagerClass {
       AssistantManager.onTabClosed(id, {
         groupId: tab.groupId || null,
         incognito: !!tab.incognito,
-        archiveTitle: (this.getTabDisplayTitle(tab) || tab.title || '').trim()
+        archiveTitle: (this.getTabDisplayTitle(tab) || tab.title || '').trim(),
+        conversationKey
       });
     }
 
@@ -2557,7 +2572,17 @@ class TabManagerClass {
 
   createGroup(name, color) {
     const id = `grp-${++this._groupCounter}`;
-    this.groups[id] = { id, name: name || `Group ${this._groupCounter}`, color: color || this._GROUP_COLORS[0] };
+    const aiConvKey =
+      'gc:' +
+      (typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}_${Math.random().toString(36).slice(2, 11)}`);
+    this.groups[id] = {
+      id,
+      name: name || `Group ${this._groupCounter}`,
+      color: color || this._GROUP_COLORS[0],
+      aiConvKey
+    };
     return id;
   }
 

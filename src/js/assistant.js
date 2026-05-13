@@ -186,6 +186,44 @@ function navioSessionTitleFromUserContent(raw) {
   return (sp > 22 ? slice.slice(0, sp) : slice) + '\u2026';
 }
 
+/**
+ * Prefer the first substantive user question over tiny replies like "ok" so History titles stay readable.
+ * @param {Array<{role?: string, content?: string}>} messages
+ * @returns {string}
+ */
+function navioBestSessionTitleFromHistory(messages) {
+  if (!Array.isArray(messages)) return '';
+  const junk =
+    /^(ok|okay|yes|yeah|yep|no|nope|thanks|thank you|sure|cool|nice|got it|continue|same|more|next)\.?$/i;
+  let fallback = '';
+  for (const m of messages) {
+    if (!m || m.role !== 'user') continue;
+    const raw = String(m.content || '').trim();
+    if (!raw) continue;
+    const t = navioSessionTitleFromUserContent(raw);
+    if (!t) continue;
+    if (!fallback) fallback = t;
+    if (t.length >= 14 || (!junk.test(t) && t.length >= 6)) return t;
+  }
+  return fallback;
+}
+
+/**
+ * Old persistence keyed chats to recycled tab/group ids (`tab-27`, `g:grp-3`). Those collide after restart —
+ * migrate surviving rows into Saved chats (`sb:…`) once per load.
+ * @param {string} k
+ * @returns {boolean}
+ */
+function navioIsLegacyVolatileAssistantKey(k) {
+  if (!k || typeof k !== 'string') return false;
+  if (k.startsWith('sb:')) return false;
+  if (k === '__guest__' || k === '__profile__') return false;
+  if (k.startsWith('tc:') || k.startsWith('gc:')) return false;
+  if (/^tab-\d+$/.test(k)) return true;
+  if (/^g:grp-\d+$/.test(k)) return true;
+  return false;
+}
+
 /** First token after "… mail to " when user names a person without an email address (for tighter prompts). */
 function navioMailComposeRecipientToken(text) {
   const s = (text || '').trim();
@@ -1555,16 +1593,33 @@ class AssistantManagerClass {
   }
 
   /**
-   * Assistant transcript + API history: one bucket per **ungrouped** tab, or one shared per **tab group**
-   * (`g:${groupId}`). Grouped tabs share memory; everything else stays isolated.
+   * Assistant transcript + API history: one bucket per **ungrouped** tab (`tc:…`), or one shared per **tab group**
+   * (`gc:…`). Ephemeral strip ids (`tab-12`) are only UI keys — persistence uses stable conversation ids so history
+   * does not collide after restart or swap tabs.
    *
    * **Split view:** each tab keeps its own id until grouped — automation uses `switch_tab` / target webview;
-   * chat history still follows tab id (or group) like normal.
+   * chat history still follows storage keys like normal.
    */
   _storageKeyForTab(tab) {
     if (!tab) return NAVIO_PROFILE_CHAT_KEY;
-    if (tab.groupId) return `g:${tab.groupId}`;
+    if (tab.groupId) return this._groupConversationStorageKey(tab.groupId);
+    if (tab.aiConvKey && typeof tab.aiConvKey === 'string') return tab.aiConvKey;
     return String(tab.id);
+  }
+
+  /** Stable bucket for the group's shared transcript (survives recycled `grp-N` ids). */
+  _groupConversationStorageKey(groupId) {
+    const gid = String(groupId || '');
+    if (!gid) return 'g:';
+    try {
+      if (typeof TabManager !== 'undefined' && TabManager.groups && TabManager.groups[gid]) {
+        const g = TabManager.groups[gid];
+        if (g && g.aiConvKey && typeof g.aiConvKey === 'string') return g.aiConvKey;
+      }
+    } catch {
+      /* ignore */
+    }
+    return `g:${gid}`;
   }
 
   _storageKeyForTabId(tabId) {
@@ -1585,11 +1640,7 @@ class AssistantManagerClass {
     const pin = this._sidebarPinnedStorageKey;
     if (!pin || pin === NAVIO_PROFILE_CHAT_KEY || pin === '__guest__') return false;
     if (typeof TabManager === 'undefined' || !TabManager.tabs) return false;
-    if (String(pin).startsWith('g:')) {
-      const gid = String(pin).slice(2);
-      return TabManager.tabs.some((t) => String(t.groupId || '') === gid);
-    }
-    return TabManager.tabs.some((t) => String(t.id) === String(pin));
+    return TabManager.tabs.some((t) => String(this._storageKeyForTab(t)) === String(pin));
   }
 
   /**
@@ -1689,16 +1740,10 @@ class AssistantManagerClass {
   /** Tab object for the tab that started the current assistant turn (or active tab). */
   _tabForTurnContext() {
     const tid = this._turnConversationKey;
-    if (tid && typeof TabManager !== 'undefined') {
+    if (tid && typeof TabManager !== 'undefined' && TabManager.tabs) {
       const ts = String(tid);
-      if (ts.startsWith('g:')) {
-        const gid = ts.slice(2);
-        const t = TabManager.tabs.find((x) => x.groupId === gid);
-        if (t) return t;
-      } else {
-        const t = TabManager.tabs.find((x) => String(x.id) === ts);
-        if (t) return t;
-      }
+      const t = TabManager.tabs.find((x) => String(this._storageKeyForTab(x)) === ts);
+      if (t) return t;
     }
     return typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
   }
@@ -1786,14 +1831,45 @@ class AssistantManagerClass {
         for (const kid of this._conversationsByTab.keys()) {
           if (!kid.startsWith(NAVIO_SIDEBAR_THREAD_PREFIX)) continue;
           if (cleaned.some((x) => x.id === kid)) continue;
-          cleaned.push({ id: kid, title: 'Saved chat', updatedAt: Date.now() });
+          const inferred =
+            navioBestSessionTitleFromHistory(this._conversationsByTab.get(kid) || []) || 'Saved chat';
+          cleaned.push({ id: kid, title: inferred.slice(0, 120), updatedAt: Date.now() });
         }
         cleaned.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
         this._sidebarSessionOrder = cleaned.slice(0, 80);
+        this._migrateLegacyVolatileAssistantKeys();
         return;
       }
     } catch (e) {
       console.warn('[navio-assistant] load persisted chat failed', e);
+    }
+  }
+
+  /**
+   * Old builds keyed transcripts to strip ids (`tab-12`) / default groups (`g:grp-7`). Those collide across sessions —
+   * promote any leftover rows into **Saved chats** once so threads are not glued to the wrong tab after restart.
+   */
+  _migrateLegacyVolatileAssistantKeys() {
+    try {
+      const keys = [...this._conversationsByTab.keys()].filter(navioIsLegacyVolatileAssistantKey);
+      if (!keys.length) return;
+      for (const key of keys) {
+        const msgs = this._conversationsByTab.get(key);
+        if (!msgs || !msgs.length) {
+          this._conversationsByTab.delete(key);
+          continue;
+        }
+        this._archiveThreadToSavedHistory(msgs, '');
+        this._conversationsByTab.delete(key);
+      }
+      try {
+        this._renderSidebarSessionList();
+      } catch {
+        /* ignore */
+      }
+      this._schedulePersistAssistantHistory();
+    } catch (e) {
+      console.warn('[navio-assistant] migrate legacy assistant keys failed', e);
     }
   }
 
@@ -1920,8 +1996,7 @@ class AssistantManagerClass {
       id = NAVIO_SIDEBAR_THREAD_PREFIX + `${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
     }
     this._conversationsByTab.set(id, copy);
-    const firstUser = copy.find((m) => m && m.role === 'user' && String(m.content || '').trim());
-    let title = firstUser ? navioSessionTitleFromUserContent(String(firstUser.content)) : '';
+    let title = navioBestSessionTitleFromHistory(copy);
     const hint = navioSessionTitleFromUserContent(String(titleHint || ''));
     if (!title && hint) title = hint;
     if (!title) title = 'Saved chat';
@@ -1941,25 +2016,29 @@ class AssistantManagerClass {
     const id = String(tabId);
     const gid = meta && meta.groupId != null && meta.groupId !== '' ? String(meta.groupId) : '';
     const skipArchive = !!(meta && meta.incognito);
+    const convKey = gid
+      ? this._groupConversationStorageKey(gid)
+      : meta && meta.conversationKey
+        ? String(meta.conversationKey)
+        : id;
     if (gid) {
-      const gk = `g:${gid}`;
       const stillGrouped =
         typeof TabManager !== 'undefined' && TabManager.tabs.some((t) => t.groupId === gid);
       if (!stillGrouped) {
         if (!skipArchive) {
-          const h = this._conversationsByTab.get(gk);
+          const h = this._conversationsByTab.get(convKey);
           if (h && h.length) this._archiveThreadToSavedHistory(h, meta.archiveTitle);
         }
-        this._conversationsByTab.delete(gk);
+        this._conversationsByTab.delete(convKey);
       }
-      this._busyTabs.delete(gk);
+      this._busyTabs.delete(convKey);
     } else {
       if (!skipArchive) {
-        const h = this._conversationsByTab.get(id);
+        const h = this._conversationsByTab.get(convKey);
         if (h && h.length) this._archiveThreadToSavedHistory(h, meta.archiveTitle);
       }
-      this._conversationsByTab.delete(id);
-      this._busyTabs.delete(id);
+      this._conversationsByTab.delete(convKey);
+      this._busyTabs.delete(convKey);
     }
   }
 
@@ -1968,16 +2047,20 @@ class AssistantManagerClass {
    */
   onTabLeftGroup(tabId, groupId) {
     if (!tabId || !groupId) return;
-    const gk = `g:${groupId}`;
-    const id = String(tabId);
+    const gk = this._groupConversationStorageKey(groupId);
+    const tab =
+      typeof TabManager !== 'undefined' && TabManager.tabs
+        ? TabManager.tabs.find((t) => String(t.id) === String(tabId))
+        : null;
+    const soloKey = tab ? this._storageKeyForTab(tab) : String(tabId);
     const grp = this._conversationsByTab.get(gk);
     if (grp && grp.length) {
       this._conversationsByTab.set(
-        id,
+        soloKey,
         grp.map((m) => ({ role: m.role, content: m.content }))
       );
     } else {
-      this._ensureConversationEntry(id);
+      this._ensureConversationEntry(soloKey);
     }
 
     const stillGrouped =
@@ -1993,14 +2076,19 @@ class AssistantManagerClass {
    */
   onTabJoinedGroup(tabId, groupId) {
     if (!tabId || !groupId) return;
-    const id = String(tabId);
-    const gk = `g:${groupId}`;
-    const solo = this._conversationsByTab.get(id);
+    const tab =
+      typeof TabManager !== 'undefined' && TabManager.tabs
+        ? TabManager.tabs.find((t) => String(t.id) === String(tabId))
+        : null;
+    const soloKey =
+      tab && tab.aiConvKey && typeof tab.aiConvKey === 'string' ? tab.aiConvKey : String(tabId);
+    const gk = this._groupConversationStorageKey(groupId);
+    const solo = this._conversationsByTab.get(soloKey);
     if (solo && solo.length) {
       const cur = this._conversationsByTab.get(gk) || [];
       this._conversationsByTab.set(gk, [...cur, ...solo]);
     }
-    this._conversationsByTab.delete(id);
+    this._conversationsByTab.delete(soloKey);
   }
 
   _renderDomFromHistoryKey(k) {
@@ -4991,8 +5079,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   _migrateAssistantTurnStorageKey(oldSoloKey, groupId) {
     const oldK = String(oldSoloKey || '');
     const gid = String(groupId || '');
-    if (!oldK || !gid || oldK.startsWith('g:')) return;
-    const gk = `g:${gid}`;
+    if (!oldK || !gid || oldK.startsWith('g:') || oldK.startsWith('gc:')) return;
+    const gk = this._groupConversationStorageKey(gid);
     if (this._busyTabs.has(oldK)) {
       this._busyTabs.delete(oldK);
       this._busyTabs.add(gk);
@@ -5080,16 +5168,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   _syncTabStripBadge(storageKey, busy) {
     if (!storageKey || storageKey === '__profile__' || storageKey === '__guest__') return;
     try {
-      if (storageKey.startsWith('g:')) {
-        const groupId = storageKey.slice(2);
-        if (typeof TabManager === 'undefined' || !TabManager.tabs) return;
-        for (const tab of TabManager.tabs) {
-          if (tab.groupId !== groupId) continue;
-          const el = document.getElementById(`tabitem-${tab.id}`);
-          el?.classList.toggle('tab-ai-busy', !!busy);
-        }
-      } else {
-        const el = document.getElementById(`tabitem-${storageKey}`);
+      if (typeof TabManager === 'undefined' || !TabManager.tabs) return;
+      for (const tab of TabManager.tabs) {
+        if (String(this._storageKeyForTab(tab)) !== String(storageKey)) continue;
+        const el = document.getElementById(`tabitem-${tab.id}`);
         el?.classList.toggle('tab-ai-busy', !!busy);
       }
     } catch (_) { /* non-critical */ }
@@ -5325,13 +5407,14 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       // Resolve the tab to jump to
       let targetTabId = null;
       let tabTitle = 'another tab';
-      if (storageKey && storageKey.startsWith('g:')) {
-        const groupId = storageKey.slice(2);
-        const groupTab = TabManager.tabs.find((t) => t.groupId === groupId);
-        if (groupTab) { targetTabId = groupTab.id; tabTitle = groupTab.customTitle || groupTab.title || tabTitle; }
-      } else if (storageKey && storageKey !== '__profile__' && storageKey !== '__guest__') {
-        const tab = TabManager.tabs.find((t) => String(t.id) === storageKey);
-        if (tab) { targetTabId = tab.id; tabTitle = tab.customTitle || tab.title || tabTitle; }
+      const matchTabs =
+        typeof TabManager !== 'undefined' && TabManager.tabs
+          ? TabManager.tabs.filter((t) => String(this._storageKeyForTab(t)) === String(storageKey))
+          : [];
+      if (matchTabs.length) {
+        const gt = matchTabs[0];
+        targetTabId = gt.id;
+        tabTitle = gt.customTitle || gt.title || tabTitle;
       }
       if (!targetTabId) return;
 
@@ -11391,9 +11474,10 @@ ${pageInfo}${snapText}`;
     const h = this._conversationsByTab.get(storageKey);
     if (!h || !h.length) return;
     const firstUser = h.find((m) => m && m.role === 'user' && String(m.content || '').trim());
-    const title = firstUser
-      ? navioSessionTitleFromUserContent(String(firstUser.content)) || 'Saved chat'
-      : 'Saved chat';
+    const title =
+      navioBestSessionTitleFromHistory(h) ||
+      (firstUser ? navioSessionTitleFromUserContent(String(firstUser.content)) : '') ||
+      'Saved chat';
     let meta = this._sidebarSessionOrder.find((x) => x.id === storageKey);
     if (!meta) {
       meta = { id: storageKey, title, updatedAt: Date.now() };
@@ -11445,18 +11529,12 @@ ${pageInfo}${snapText}`;
       seen.add(sk);
       const h = this._conversationsByTab.get(sk) || [];
       if (!h.length) continue;
-      const firstUser = h.find((m) => m && m.role === 'user' && String(m.content || '').trim());
       const tabLabel =
         (TabManager.getTabDisplayTitle && TabManager.getTabDisplayTitle(t)) || t.title || 'Tab';
-      let title;
-      if (firstUser) {
-        title = navioSessionTitleFromUserContent(String(firstUser.content));
-        if (title.length > 52) title = title.slice(0, 51) + '\u2026';
-      } else {
-        title = tabLabel.slice(0, 56);
-      }
+      let title = navioBestSessionTitleFromHistory(h) || tabLabel.slice(0, 56);
+      if (title.length > 52) title = title.slice(0, 51) + '\u2026';
       const sub =
-        sk.startsWith('g:') && TabManager.tabs.filter((x) => x && x.groupId === t.groupId).length > 1
+        t.groupId && TabManager.tabs.filter((x) => x && x.groupId === t.groupId).length > 1
           ? `${tabLabel} \u00b7 tab group`
           : tabLabel;
       out.push({ tabId: String(t.id), title, sub });
@@ -12597,6 +12675,18 @@ if (typeof window !== 'undefined') window.AssistantManager = AssistantManager;
 // The normal 400 ms debounce in _schedulePersistAssistantHistory can miss
 // the last turn(s) if the user closes the window right after a response.
 if (typeof window !== 'undefined') {
+  window.addEventListener('visibilitychange', () => {
+    try {
+      if (document.visibilityState !== 'hidden') return;
+      if (AssistantManager._assistantPersistTimer) {
+        clearTimeout(AssistantManager._assistantPersistTimer);
+        AssistantManager._assistantPersistTimer = null;
+      }
+      void AssistantManager._persistAssistantHistoryNow();
+    } catch {
+      /* ignore */
+    }
+  });
   window.addEventListener('beforeunload', () => {
     try {
       // Cancel any pending debounce — we're about to save right now.
