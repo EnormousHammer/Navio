@@ -4,7 +4,11 @@ const { app, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const secureConfig = require('./secure-config');
-const { inferAiProviderFromApiKey, coerceModelsForProvider } = require('./infer-ai-provider');
+const {
+  inferAiProviderFromApiKey,
+  coerceModelsForProvider,
+  normalizeLegacyOpenAiChatModels
+} = require('./infer-ai-provider');
 
 function getConfigPath() {
   return path.join(app.getPath('userData'), 'navio-config.json');
@@ -251,29 +255,6 @@ function loadConfig() {
   const NAVIO_STT_MODELS = new Set(['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe']);
   const sttM = String(merged.sttModel || '').trim();
   merged.sttModel = NAVIO_STT_MODELS.has(sttM) ? sttM : 'whisper-1';
-  // Drop retired GPT-4o defaults for direct OpenAI usage; prefer GPT-5 mini tier for cost.
-  const LEGACY_OPENAI_GPT4 = new Set(['gpt-4o', 'gpt-4o-mini']);
-  if (merged.aiProvider === 'openai') {
-    const beforeMain = merged.aiModel;
-    const beforePlanner = merged.aiPlannerModel;
-    if (LEGACY_OPENAI_GPT4.has(merged.aiModel)) merged.aiModel = 'gpt-5-mini';
-    if (LEGACY_OPENAI_GPT4.has(merged.aiPlannerModel)) merged.aiPlannerModel = 'gpt-5-mini';
-    if (merged.aiPlannerModel === 'gpt-5.4-nano') merged.aiPlannerModel = 'gpt-5-mini';
-    if (merged.aiModel === 'gpt-5.4') merged.aiModel = 'gpt-5-mini';
-    if (merged.aiModel === 'gpt-5.4-mini') merged.aiModel = 'gpt-5-mini';
-    if (merged.aiPlannerModel === 'gpt-5.4-mini') merged.aiPlannerModel = 'gpt-5-mini';
-    if (merged.aiModel !== beforeMain || merged.aiPlannerModel !== beforePlanner) {
-      try {
-        const disk = readConfigFile();
-        disk.aiModel = merged.aiModel;
-        disk.aiPlannerModel = merged.aiPlannerModel;
-        delete disk.apiKey;
-        writeConfigFile(disk);
-      } catch (_) {
-        /* ignore disk errors */
-      }
-    }
-  }
   const key = secureConfig.getApiKey(userData);
   merged.hasApiKey = !!key;
   delete merged.apiKey;
@@ -321,6 +302,27 @@ function loadConfig() {
     }
   }
 
+  {
+    const norm = normalizeLegacyOpenAiChatModels(
+      merged.aiProvider,
+      merged.aiModel,
+      merged.aiPlannerModel
+    );
+    if (norm.aiModel !== merged.aiModel || norm.aiPlannerModel !== merged.aiPlannerModel) {
+      merged.aiModel = norm.aiModel;
+      merged.aiPlannerModel = norm.aiPlannerModel;
+      try {
+        const disk = readConfigFile();
+        disk.aiModel = merged.aiModel;
+        disk.aiPlannerModel = merged.aiPlannerModel;
+        delete disk.apiKey;
+        writeConfigFile(disk);
+      } catch (_) {
+        /* ignore disk errors */
+      }
+    }
+  }
+
   return merged;
 }
 
@@ -361,6 +363,12 @@ function saveConfig(partial) {
       next.aiModel = coerced.aiModel;
       next.aiPlannerModel = coerced.aiPlannerModel;
     }
+  }
+
+  {
+    const norm = normalizeLegacyOpenAiChatModels(next.aiProvider, next.aiModel, next.aiPlannerModel);
+    next.aiModel = norm.aiModel;
+    next.aiPlannerModel = norm.aiPlannerModel;
   }
 
   writeConfigFile(next);

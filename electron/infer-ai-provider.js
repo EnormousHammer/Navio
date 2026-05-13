@@ -63,7 +63,24 @@ function coerceModelsForProvider(provider, aiModel, aiPlannerModel) {
   return { aiModel: m, aiPlannerModel: p };
 }
 
+/** Retired OpenAI chat presets → gpt-5-mini. Does not touch STT/TTS (`sttModel`, `ttsVoice`, etc.). */
+const LEGACY_OPENAI_GPT4_CHAT = new Set(['gpt-4o', 'gpt-4o-mini']);
+
+function normalizeLegacyOpenAiChatModels(aiProvider, aiModel, aiPlannerModel) {
+  if (aiProvider !== 'openai') {
+    return { aiModel, aiPlannerModel };
+  }
+  let m = aiModel;
+  let p = aiPlannerModel;
+  if (LEGACY_OPENAI_GPT4_CHAT.has(m)) m = 'gpt-5-mini';
+  if (LEGACY_OPENAI_GPT4_CHAT.has(p)) p = 'gpt-5-mini';
+  if (m === 'gpt-5.4' || m === 'gpt-5.4-mini' || m === 'gpt-5.4-nano') m = 'gpt-5-mini';
+  if (p === 'gpt-5.4-mini' || p === 'gpt-5.4-nano') p = 'gpt-5-mini';
+  return { aiModel: m, aiPlannerModel: p };
+}
+
 module.exports = {
   inferAiProviderFromApiKey,
-  coerceModelsForProvider
+  coerceModelsForProvider,
+  normalizeLegacyOpenAiChatModels
 };

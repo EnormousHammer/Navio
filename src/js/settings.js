@@ -36,6 +36,19 @@ const ABOUT_DOC_LINKS = [
   ['btn-about-doc-third-party', 'https://github.com/EnormousHammer/Navio/blob/main/docs/THIRD_PARTY_NOTICES.md']
 ];
 
+/** Mirror `normalizeLegacyOpenAiChatModels` in electron/infer-ai-provider.js — chat only; never STT/TTS. */
+function _normalizeLegacyOpenAiChatModelsUi(aiProvider, aiModel, aiPlannerModel) {
+  if (aiProvider !== 'openai') return { aiModel, aiPlannerModel };
+  const LEGACY_OPENAI_GPT4_CHAT = new Set(['gpt-4o', 'gpt-4o-mini']);
+  let m = aiModel;
+  let p = aiPlannerModel;
+  if (LEGACY_OPENAI_GPT4_CHAT.has(m)) m = 'gpt-5-mini';
+  if (LEGACY_OPENAI_GPT4_CHAT.has(p)) p = 'gpt-5-mini';
+  if (m === 'gpt-5.4' || m === 'gpt-5.4-mini' || m === 'gpt-5.4-nano') m = 'gpt-5-mini';
+  if (p === 'gpt-5.4-mini' || p === 'gpt-5.4-nano') p = 'gpt-5-mini';
+  return { aiModel: m, aiPlannerModel: p };
+}
+
 class SettingsManagerClass {
   constructor() {
     this.modal = document.getElementById('settings-modal');
@@ -774,12 +787,16 @@ class SettingsManagerClass {
     } catch {
       this.elements.apiKey.value = '';
     }
-    // Known-fake legacy model names from old defaults — silently upgrade
+    // Known-fake legacy model names from old defaults — silently upgrade (chat models only; never voice/STT).
     const LEGACY_FAKE = new Set(['claude-opus-4.6', 'gemini-3.1-pro']);
-    const LEGACY_OPENAI_GPT4 = new Set(['gpt-4o', 'gpt-4o-mini']);
+    const prov = this.config.aiProvider || 'openai';
     let savedModel = this.config.aiModel || 'gpt-5-mini';
     if (LEGACY_FAKE.has(savedModel)) savedModel = 'gpt-5-mini';
-    if (LEGACY_OPENAI_GPT4.has(savedModel)) savedModel = 'gpt-5-mini';
+    let plannerModel = this.config.aiPlannerModel || 'gpt-5-mini';
+    if (LEGACY_FAKE.has(plannerModel)) plannerModel = 'gpt-5-mini';
+    const normChat = _normalizeLegacyOpenAiChatModelsUi(prov, savedModel, plannerModel);
+    savedModel = normChat.aiModel;
+    plannerModel = normChat.aiPlannerModel;
 
     const modelOpts = Array.from(this.elements.model.options).map(o => o.value).filter(v => v !== '__custom__');
     if (modelOpts.includes(savedModel)) {
@@ -802,9 +819,7 @@ class SettingsManagerClass {
       if (apiKeyRow) apiKeyRow.style.opacity = '0.4';
     }
     if (this.elements.aiPlannerModel) {
-      let planner = this.config.aiPlannerModel || 'gpt-5-mini';
-      if (LEGACY_OPENAI_GPT4.has(planner)) planner = 'gpt-5-mini';
-      this.elements.aiPlannerModel.value = planner;
+      this.elements.aiPlannerModel.value = plannerModel;
     }
     this.elements.searchEngine.value = this.config.searchEngine || 'https://www.google.com/search?q=';
     this.elements.homepage.value = this.config.homepage || 'https://www.google.com';
