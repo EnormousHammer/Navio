@@ -129,7 +129,18 @@ const OVERLAY_CSS = `
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
-  max-width: 220px !important;
+  max-width: 280px !important;
+}
+#${OVERLAY_ID} .__navio_detail {
+  display: none !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  color: rgba(226,232,240,0.78) !important;
+  line-height: 1.25 !important;
+  max-width: 280px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
 }
 `.trim();
 
@@ -145,9 +156,12 @@ const OVERLAY_HTML = `
   <div class="__navio_text">
     <span class="__navio_title">Navio is working</span>
     <span class="__navio_status">Working\u2026</span>
+    <span class="__navio_detail" hidden></span>
   </div>
 </div>
 `.trim();
+
+const RIPPLE_STYLE_ID = '__navio_ripple_flash_style__';
 
 const STATUS_LABELS = {
   navigate: 'Opening the page\u2026',
@@ -211,17 +225,63 @@ async function injectAgentOverlay(wc) {
 
 /**
  * Update the status text on the injected overlay.
+ * @param {string} [detailLine] — short subtitle (e.g. click target ref / field label); empty hides the line.
  */
-async function updateAgentOverlayStatus(wc, toolName) {
+async function updateAgentOverlayStatus(wc, toolName, detailLine) {
   if (!wc || wc.isDestroyed() || !_injected.has(wc)) return;
   const label = STATUS_LABELS[toolName] || 'Working\u2026';
+  const detail = detailLine != null && String(detailLine).trim()
+    ? String(detailLine).trim().slice(0, 140)
+    : '';
   try {
     await wc.executeJavaScript(`
       (function(){
         var s=document.querySelector('#${OVERLAY_ID} .__navio_status');
         if(s) s.textContent=${JSON.stringify(label)};
+        var d=document.querySelector('#${OVERLAY_ID} .__navio_detail');
+        if(d) {
+          d.textContent=${JSON.stringify(detail)};
+          d.hidden=!d.textContent;
+          d.style.display=d.textContent?'block':'none';
+        }
       })()
     `);
+  } catch { /* ignore */ }
+}
+
+/**
+ * Brief cyan pulse at viewport (client) coordinates so the user sees where automation is acting.
+ */
+async function flashAgentActionRipple(wc, x, y) {
+  if (!wc || wc.isDestroyed()) return;
+  const xi = Math.round(Number(x));
+  const yi = Math.round(Number(y));
+  if (!Number.isFinite(xi) || !Number.isFinite(yi)) return;
+  const sid = JSON.stringify(RIPPLE_STYLE_ID);
+  const script = `
+    (function(){
+      var x=${xi}, y=${yi};
+      var stId=${sid};
+      if(!document.getElementById(stId)){
+        var st=document.createElement('style');
+        st.id=stId;
+        st.textContent=
+          '@keyframes __navioRipFlash{0%{transform:translate(-50%,-50%) scale(0.35);opacity:1}' +
+          '70%{opacity:0.85}100%{transform:translate(-50%,-50%) scale(2.35);opacity:0}}';
+        document.documentElement.appendChild(st);
+      }
+      var ring=document.createElement('div');
+      ring.setAttribute('data-navio-action-flash','1');
+      ring.style.cssText='position:fixed;left:'+x+'px;top:'+y+'px;z-index:2147483646;pointer-events:none;'+
+        'width:52px;height:52px;border-radius:50%;border:3px solid rgba(56,189,248,0.95);'+
+        'box-shadow:0 0 28px rgba(56,189,248,0.55), inset 0 0 12px rgba(255,255,255,0.12);'+
+        'animation:__navioRipFlash 0.58s cubic-bezier(0.22,1,0.36,1) forwards';
+      document.documentElement.appendChild(ring);
+      setTimeout(function(){ try{ ring.remove(); }catch(e){} }, 620);
+    })()
+  `;
+  try {
+    await wc.executeJavaScript(script);
   } catch { /* ignore */ }
 }
 
@@ -249,5 +309,6 @@ async function removeAgentOverlay(wc) {
 module.exports = {
   injectAgentOverlay,
   updateAgentOverlayStatus,
-  removeAgentOverlay
+  removeAgentOverlay,
+  flashAgentActionRipple
 };

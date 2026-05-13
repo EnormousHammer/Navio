@@ -43,7 +43,12 @@ const navioCrashReporter = require('./navio-crash-reporter');
 const navioLogger = require('./navio-logger');
 const { wcCanGoBack, wcCanGoForward } = require('./wc-nav-history');
 const { ensureGuestWebviewKeyboardFocus } = require('./agent-input-focus');
-const { injectAgentOverlay, updateAgentOverlayStatus, removeAgentOverlay } = require('./agent-page-overlay');
+const {
+  injectAgentOverlay,
+  updateAgentOverlayStatus,
+  removeAgentOverlay,
+  flashAgentActionRipple
+} = require('./agent-page-overlay');
 const { BINARY_MAX_BYTES, shouldDownloadAndExtract, extractDriveFileText } = require('./drive-file-text');
 const { tabManager } = require('./tab-manager');
 const { exportMigrationToFolder, createTimestampedMigrationDir } = require('./migration');
@@ -3083,13 +3088,72 @@ async function performAiFetchResilient(cfg, apiKey, messages, fetchOpts, attempt
  * Navigate actions are handled specially: a 'tool-navigate' event is sent to the
  * renderer (which calls TabManager.navigateActive), and we wait for an ack.
  */
+function navioFormatToolArgsSummary(name, args) {
+  if (!args || typeof args !== 'object') return '';
+  const trunc = (s, max) => {
+    const t = String(s || '').trim();
+    if (!t) return '';
+    return t.length <= max ? t : `${t.slice(0, Math.max(0, max - 1))}\u2026`;
+  };
+  try {
+    switch (name) {
+      case 'click': {
+        if (args.ref) return String(args.ref);
+        if (args.text) return trunc(args.text, 48);
+        if (args.aria) return `aria \u00b7 ${trunc(args.aria, 40)}`;
+        if (args.xy) return `xy ${trunc(args.xy, 24)}`;
+        return '';
+      }
+      case 'type_text': {
+        const n = args.value != null ? String(args.value).length : 0;
+        if (args.ref) return `${args.ref} \u00b7 ${n} chars`;
+        if (args.text) return trunc(args.text, 44);
+        return n ? `${n} chars` : '';
+      }
+      case 'navigate':
+        return trunc(String(args.url || '').replace(/^https?:\/\//i, ''), 52);
+      case 'scroll':
+        if (args.direction) return String(args.direction);
+        if (args.delta_y != null) return `\u0394y ${args.delta_y}`;
+        return '';
+      case 'wait':
+        return args.ms != null ? `${args.ms} ms` : '';
+      case 'read_page':
+        return args.filter ? String(args.filter) : '';
+      case 'web_search':
+        return trunc(args.query, 56);
+      case 'select_option': {
+        if (args.ref) return String(args.ref);
+        return trunc(args.option_text || args.text, 44);
+      }
+      case 'insertText':
+        return args.ref ? String(args.ref) : trunc(args.text, 40);
+      case 'press_key':
+        return args.key != null ? String(args.key) : '';
+      case 'open_tab':
+      case 'switch_tab':
+        return trunc(args.url || args.title, 48);
+      default:
+        return '';
+    }
+  } catch {
+    return '';
+  }
+}
+
 async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts = {}) {
   const signal = opts && opts.signal;
   const tabId = opts.tabId != null ? String(opts.tabId) : '__default__';
   const tp = (p) => {
     sender.send('tool-progress', { ...p, tabId });
     if (p && p.tool) {
-      try { updateAgentOverlayStatus(activeWc, p.tool); } catch { /* ignore */ }
+      try {
+        const overlayDetail =
+          p.phase === 'start'
+            ? (p.detail != null ? String(p.detail).trim().slice(0, 140) : '')
+            : '';
+        updateAgentOverlayStatus(activeWc, p.tool, overlayDetail);
+      } catch { /* ignore */ }
     }
   };
   const tr = (p) => sender.send('tool-reasoning', { ...p, tabId });
@@ -3272,6 +3336,13 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
         // making different kinds of progress.
         stallTrack.length = 0;
       }
+
+      tp({
+        step,
+        tool: tc.name,
+        phase: 'start',
+        detail: navioFormatToolArgsSummary(tc.name, tc.arguments)
+      });
 
       // Web search — Perplexity (best citations) → Brave Search (independent, cited)
       // → active LLM provider native web search. Users never need all three; each
@@ -6684,6 +6755,10 @@ async function executeBrowserActionInternal(wc, action, params) {
         if (selLower.startsWith('xy=')) {
           const parts = sel.slice(3).split(/[,;\s]+/).map(Number);
           if (Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+            try {
+              await flashAgentActionRipple(wc, parts[0], parts[1]);
+              await new Promise((r) => setTimeout(r, 50));
+            } catch { /* ignore */ }
             wc.sendInputEvent({ type: 'mouseMove', x: parts[0], y: parts[1] });
             await new Promise((r) => setTimeout(r, 40));
             wc.sendInputEvent({ type: 'mouseDown', x: parts[0], y: parts[1], button: 'left', clickCount: 1 });
@@ -7025,6 +7100,10 @@ async function navioDeepClickBySelectorCore(wc, selector) {
 
   if (res.cx != null && res.cy != null) {
     const { cx, cy } = res;
+    try {
+      await flashAgentActionRipple(wc, cx, cy);
+      await new Promise((r) => setTimeout(r, 55));
+    } catch { /* ignore */ }
     wc.sendInputEvent({ type: 'mouseMove', x: cx, y: cy });
     await new Promise((r) => setTimeout(r, 40));
     wc.sendInputEvent({ type: 'mouseDown', x: cx, y: cy, button: 'left', clickCount: 1 });

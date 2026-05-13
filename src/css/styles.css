@@ -2192,7 +2192,18 @@ body.navio-takeover-active #assistant-panel.open {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 220px;
+  max-width: 280px;
+}
+
+.ai-control-detail {
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(226, 232, 240, 0.75);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
 }
 
 /* Stop button */

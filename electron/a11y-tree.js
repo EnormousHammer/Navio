@@ -12,6 +12,7 @@
 
 const { ensureGuestWebviewKeyboardFocus } = require('./agent-input-focus');
 const { checkOcclusion } = require('./navio-agent-verify');
+const { flashAgentActionRipple } = require('./agent-page-overlay');
 
 // ── Module-level ref maps ────────────────────────────────────────────────────
 // Key: webContentsId, Value: Map<string, { backendDOMNodeId, role, name, fingerprint }>
@@ -403,6 +404,11 @@ async function clickByRef(wc, refId) {
     } catch { /* box unavailable, fall through */ }
 
     if (cx != null && cy != null && cx > 0 && cy > 0) {
+      try {
+        await flashAgentActionRipple(wc, cx, cy);
+        await new Promise((r) => setTimeout(r, 40));
+      } catch { /* ignore */ }
+
       // Step 3: occlusion — bail before click if a banner/modal sits on the hit point
       try {
         const occ = await checkOcclusion(wc, cx, cy, refRole || '');
@@ -485,6 +491,13 @@ async function typeByRef(wc, refId, value) {
         cy = Math.round((content[1] + content[3] + content[5] + content[7]) / 4);
       }
     } catch { /* box unavailable */ }
+
+    if (cx != null && cy != null && cx > 0 && cy > 0) {
+      try {
+        await flashAgentActionRipple(wc, cx, cy);
+        await new Promise((r) => setTimeout(r, 35));
+      } catch { /* ignore */ }
+    }
 
     const { object } = await wc.debugger.sendCommand('DOM.resolveNode', { backendNodeId: backendDOMNodeId });
 

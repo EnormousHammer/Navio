@@ -3246,6 +3246,16 @@
           appendMessage('assistant', ptxt, { scroll: 'ifPinned' });
           break;
         }
+        case 'toolLive': {
+          var tb = String(msg.badge || msg.tool || '').trim() || 'Working';
+          var td = String(msg.detail || '').trim();
+          var liveLine = td ? tb + ' · ' + td.slice(0, 96) : tb;
+          if (drawerStatus) drawerStatus.textContent = td ? tb + ' · ' + td.slice(0, 72) : tb;
+          if (ctThinkingLabelEl && ctThinkingLabelEl.firstChild) {
+            ctThinkingLabelEl.firstChild.textContent = liveLine;
+          }
+          break;
+        }
         case 'toolStep': {
           agentStepIndex += 1;
           const badge = String(msg.badge || msg.tool || '').trim() || msg.tool;

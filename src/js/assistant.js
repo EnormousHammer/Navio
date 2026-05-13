@@ -5241,6 +5241,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         overlay.hidden = true;
         const statusEl = document.getElementById('ai-control-status');
         if (statusEl) statusEl.textContent = 'Reading the page\u2026';
+        const detailEl = document.getElementById('ai-control-detail');
+        if (detailEl) {
+          detailEl.textContent = '';
+          detailEl.hidden = true;
+        }
       }
     } else if (overlay) {
       // WCV mode: keep the shell overlay hidden — main process handles the page injection
@@ -5267,9 +5272,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   }
 
   /** Mirror the typing-indicator label onto the shell overlay status line (classic webview mode only). */
-  _updateAiControlOverlayStatus(tool) {
+  _updateAiControlOverlayStatus(tool, detailOpt) {
     if (document.body.classList.contains('navio-wcv-tabs-below')) return;
     const statusEl = document.getElementById('ai-control-status');
+    const detailEl = document.getElementById('ai-control-detail');
     if (!statusEl) return;
     const labels = {
       navigate: 'Opening the page\u2026',
@@ -5295,6 +5301,14 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       thinking: 'Thinking with the model\u2026'
     };
     statusEl.textContent = labels[tool] || 'Working\u2026';
+    const d =
+      detailOpt != null && String(detailOpt).trim()
+        ? String(detailOpt).trim().slice(0, 120)
+        : '';
+    if (detailEl) {
+      detailEl.textContent = d;
+      detailEl.hidden = !d;
+    }
   }
 
   /**
@@ -6798,7 +6812,30 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     // Set up progress handler
     const unProgress = window.navio.onToolProgress((payload) => {
       if (payload && payload.tabId != null && String(payload.tabId) !== tk) return;
-      const { step, tool, result } = payload || {};
+      const { step, tool, result, phase, detail } = payload || {};
+
+      if (phase === 'start') {
+        if (tool !== 'navigate') {
+          const d = detail != null ? String(detail).trim() : '';
+          if (d) {
+            this._updateTypingLabel(tool, d);
+            this._updateAiControlOverlayStatus(tool, d);
+          } else {
+            this._updateTypingLabel(tool);
+            this._updateAiControlOverlayStatus(tool);
+          }
+          if (this._guestChatWebview) {
+            void this._guestDeliver(this._guestChatWebview, {
+              type: 'toolLive',
+              tool,
+              badge: this._activityStepBadge(tool),
+              detail: d
+            });
+          }
+        }
+        return;
+      }
+
       if (tool === 'navigate') return; // already shown
       if (result && result.pulseOnly) {
         this._updateTypingLabel(tool || 'thinking');
@@ -11287,7 +11324,7 @@ ${pageInfo}${snapText}`;
   }
 
   /** Update the typing-indicator label with the current tool (short, human phrasing). */
-  _updateTypingLabel(tool) {
+  _updateTypingLabel(tool, detailOpt) {
     const labelEl = document.getElementById('typing-indicator-label');
     if (!labelEl) return;
     const labels = {
@@ -11336,7 +11373,9 @@ ${pageInfo}${snapText}`;
       list_workflows: 'Checking saved workflows',
       thinking: 'Thinking with the model…'
     };
-    labelEl.textContent = labels[tool] || 'On it';
+    const base = labels[tool] || 'On it';
+    const d = detailOpt != null && String(detailOpt).trim() ? String(detailOpt).trim() : '';
+    labelEl.textContent = d ? `${base} · ${d}`.slice(0, 160) : base;
   }
 
   removeTypingIndicator() {
