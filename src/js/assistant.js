@@ -824,6 +824,8 @@ class AssistantManagerClass {
     /** Original `#assistant-input` placeholder; restored when takeover ends. */
     this._composerPlaceholderBackup = null;
     this._agentLogEntries = [];
+    /** @type {{ stepIndex: number, stepTotal: number, verb: string } | null} Live takeover HUD (step line + action). */
+    this._takeoverHud = null;
     this._lastProactiveUrlKey = '';
     /** When set, agent activity + final reply render in the full-page chat webview. */
     this._guestChatWebview = null;
@@ -9193,6 +9195,109 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     });
   }
 
+  /**
+   * Short human-readable line for the takeover HUD (sidebar, chrome pill, agent bar).
+   * @param {string} action
+   * @param {string} paramsStr
+   */
+  _humanizeTakeoverVerb(action, paramsStr) {
+    const p = String(paramsStr || '').trim();
+    switch (action) {
+      case 'navigate':
+        try {
+          const u = new URL(p);
+          const h = u.hostname.replace(/^www\./i, '');
+          return `Opening ${h}`;
+        } catch {
+          return 'Opening page';
+        }
+      case 'click':
+        if (!p) return 'Clicking';
+        return p.length > 52 ? `Click: ${p.slice(0, 49)}…` : `Click: ${p}`;
+      case 'type':
+        return 'Typing in page';
+      case 'insertText':
+        return 'Inserting text';
+      case 'appendText':
+        return 'Appending text';
+      case 'pressKey':
+        return p ? `Key: ${p}` : 'Sending key';
+      case 'scroll':
+        return p ? `Scroll ${p}` : 'Scrolling';
+      case 'screenshot':
+        return 'Taking screenshot';
+      case 'wait':
+        return 'Waiting';
+      case 'waitForText':
+        return p ? `Waiting for “${p.slice(0, 40)}${p.length > 40 ? '…' : ''}”` : 'Waiting for text';
+      case 'select':
+        return 'Choosing option';
+      case 'gmailCreateReplyDraft':
+        return 'Gmail draft';
+      default:
+        return action ? `${action}` : 'Working…';
+    }
+  }
+
+  _focusTakeoverTargetTab() {
+    if (typeof TabManager === 'undefined') return;
+    const agent = TabManager.getAgentControlledTab?.();
+    const tid = agent?.id ?? TabManager.getTakeoverHighlightTabId?.() ?? null;
+    if (tid) TabManager.switchToTab(tid);
+  }
+
+  /** Keep sidebar subline + floating bar in sync with the current plan step. */
+  _refreshTakeoverHud({ stepIndex, stepTotal, action, paramsStr }) {
+    if (!this._takeoverMode) return;
+    const verb = this._humanizeTakeoverVerb(action, paramsStr);
+    this._takeoverHud = {
+      stepIndex: Math.max(1, stepIndex | 0),
+      stepTotal: Math.max(0, stepTotal | 0),
+      verb
+    };
+    this._paintTakeoverHudSubviews();
+  }
+
+  _paintTakeoverHudSubviews() {
+    const h = this._takeoverHud;
+    const sub = document.querySelector('#navio-takeover-banner .ntb-sub');
+    if (sub) {
+      if (!h || !h.stepTotal) {
+        sub.textContent = '';
+        sub.hidden = true;
+      } else {
+        sub.hidden = false;
+        sub.textContent = `${h.stepIndex} / ${h.stepTotal} · ${h.verb || '…'}`;
+      }
+    }
+    const bar = document.getElementById('agent-takeover-bar');
+    if (bar) {
+      const stepEl = bar.querySelector('.atb-step');
+      if (stepEl) {
+        stepEl.textContent =
+          h && h.stepTotal ? `Step ${h.stepIndex} of ${h.stepTotal} · ${h.verb || ''}` : '';
+      }
+    }
+    const nacpSub = document.querySelector('#navio-agent-chrome-pill .nacp-sub');
+    if (nacpSub) {
+      if (!h || !h.stepTotal) {
+        nacpSub.textContent = '';
+        nacpSub.hidden = true;
+      } else {
+        nacpSub.hidden = false;
+        nacpSub.textContent = `${h.stepIndex}/${h.stepTotal} · ${h.verb || '…'}`;
+      }
+    }
+    if (
+      document.body.classList.contains('navio-wcv-tabs-below') ||
+      document.getElementById('ai-control-overlay')?.hidden
+    ) {
+      return;
+    }
+    const statusEl = document.getElementById('ai-control-status');
+    if (statusEl && h && h.verb) statusEl.textContent = h.verb;
+  }
+
   /** Tab strip + banner: show which tab is receiving takeover actions. */
   _syncTakeoverTabHighlight() {
     if (typeof TabManager === 'undefined') return;
@@ -9202,8 +9307,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (label && this._takeoverMode) {
       const tab = tid != null ? TabManager.tabs?.find((t) => t.id === tid) : null;
       const name = tab ? TabManager.getTabDisplayTitle(tab) : '';
-      label.textContent = name ? `Navio is in control — ${name}` : 'Navio is in control';
+      label.textContent = name ? `In control — ${name}` : 'Navio is controlling the browser';
     }
+    document.body.classList.toggle('navio-takeover-active', !!this._takeoverMode);
+    this._paintTakeoverHudSubviews();
   }
 
   enableTakeover() {
@@ -9213,6 +9320,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     this._takeoverAbort = new AbortController();
     this._agentLogEntries = [];
     this._takeoverStepNum = 0;
+    this._takeoverHud = null;
     this._renderAgentLog();
     if (window.NavioAIBoost) window.NavioAIBoost.setOrbThinking(true);
     // Sidebar banner (Pause + Undo + Stop)
@@ -9221,14 +9329,27 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       banner.id = 'navio-takeover-banner';
       banner.className = 'navio-takeover-banner';
       banner.innerHTML = `
-        <span class="ntb-dot"></span>
-        <span class="ntb-label">Navio is in control</span>
-        <button class="ntb-undo" type="button">Undo</button>
-        <button class="ntb-pause" type="button">Pause</button>
-        <button class="ntb-stop" type="button">Stop</button>`;
+        <div class="ntb-row">
+          <span class="ntb-dot" aria-hidden="true"></span>
+          <div class="ntb-text-stack">
+            <span class="ntb-label">Navio is controlling the browser</span>
+            <span class="ntb-sub" hidden></span>
+          </div>
+          <div class="ntb-actions">
+            <button class="ntb-watch" type="button" title="Show the tab being automated">Watch tab</button>
+            <button class="ntb-undo" type="button">Undo</button>
+            <button class="ntb-pause" type="button">Pause</button>
+            <button class="ntb-stop" type="button">Stop</button>
+          </div>
+        </div>`;
       banner.querySelector('.ntb-stop').addEventListener('click', () => this.disableTakeover());
       banner.querySelector('.ntb-undo').addEventListener('click', () => this._undoLastNavigation());
-      banner.querySelector('.ntb-pause').addEventListener('click', () => this._pauseTakeover());
+      banner.querySelector('.ntb-pause').addEventListener('click', () => {
+        if (!this._takeoverMode) return;
+        if (this._takeoverPaused) this._resumeTakeover();
+        else this._pauseTakeover();
+      });
+      banner.querySelector('.ntb-watch').addEventListener('click', () => this._focusTakeoverTargetTab());
       const inputArea = this.panel.querySelector('.assistant-input-area');
       if (inputArea) this.panel.insertBefore(banner, inputArea);
     }
@@ -9236,7 +9357,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     // Do not auto-switch the visible tab — the user may stay on another tab and keep using the assistant.
     // Also show the visual agent bar with the animated orb
     if (window.NavioAIBoost) {
-      const bar = window.NavioAIBoost.buildAgentTakeoverBar('Agent is working...', '');
+      const bar = window.NavioAIBoost.buildAgentTakeoverBar('Browser agent', '');
       const agentLog = document.getElementById('assistant-agent-log');
       if (agentLog && agentLog.parentNode) {
         agentLog.parentNode.insertBefore(bar, agentLog);
@@ -9248,12 +9369,21 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       pill.id = 'navio-agent-chrome-pill';
       pill.className = 'navio-agent-chrome-pill';
       pill.innerHTML = `
-        <span class="nacp-dot"></span>
-        <span class="nacp-label">Navio is working</span>
+        <span class="nacp-dot" aria-hidden="true"></span>
+        <div class="nacp-text">
+          <span class="nacp-label">Navio is working</span>
+          <span class="nacp-sub" hidden></span>
+        </div>
+        <button class="nacp-watch" type="button" title="Show the automated tab">Watch</button>
         <button class="nacp-pause" type="button">Pause</button>
         <button class="nacp-stop" type="button">Stop</button>`;
-      pill.querySelector('.nacp-pause').addEventListener('click', () => this._pauseTakeover());
+      pill.querySelector('.nacp-pause').addEventListener('click', () => {
+        if (!this._takeoverMode) return;
+        if (this._takeoverPaused) this._resumeTakeover();
+        else this._pauseTakeover();
+      });
       pill.querySelector('.nacp-stop').addEventListener('click', () => this.disableTakeover());
+      pill.querySelector('.nacp-watch').addEventListener('click', () => this._focusTakeoverTargetTab());
       const navbar = document.getElementById('navbar');
       if (navbar) navbar.appendChild(pill);
     }
@@ -9266,6 +9396,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   disableTakeover() {
     if (typeof TabManager !== 'undefined') TabManager.setAgentControlledTab?.(null);
     this._takeoverMode = false;
+    this._takeoverHud = null;
+    document.body.classList.remove('navio-takeover-active');
     this._autoFollowCount = 0;
     // Release any pending pause before aborting so the loop can exit cleanly
     this._takeoverPaused = false;
@@ -10393,8 +10525,17 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       contentEl.querySelectorAll('.browser-action-card:not(.bac-done):not(.bac-skipped):not(.bac-error)')
     );
     let completedAll = true;
+    const total = cards.length;
+    let stepIdx = 0;
     for (const card of cards) {
       if (!this._takeoverMode || this._takeoverAbort?.signal.aborted) break;
+      stepIdx += 1;
+      this._refreshTakeoverHud({
+        stepIndex: stepIdx,
+        stepTotal: total,
+        action: card.dataset.action,
+        paramsStr: card.dataset.params
+      });
       await this._executeAction(card.dataset.action, card.dataset.params, card, true);
       if (card.classList.contains('bac-error')) {
         completedAll = false;
@@ -10455,27 +10596,41 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   _pauseTakeover() {
     if (!this._takeoverMode) return;
     this._takeoverPaused = true;
-    // Update chrome pill button → Resume
     const pill = document.getElementById('navio-agent-chrome-pill');
     if (pill) {
       const pauseBtn = pill.querySelector('.nacp-pause');
       if (pauseBtn) {
         pauseBtn.textContent = 'Resume';
         pauseBtn.classList.add('nacp-paused');
-        pauseBtn.onclick = () => this._resumeTakeover();
       }
       const label = pill.querySelector('.nacp-label');
       if (label) label.textContent = 'Navio paused';
+      const sub = pill.querySelector('.nacp-sub');
+      if (sub) {
+        sub.hidden = false;
+        sub.textContent = 'Automation suspended';
+      }
     }
-    // Update sidebar banner
     const banner = document.getElementById('navio-takeover-banner');
     if (banner) {
       const pauseBtn = banner.querySelector('.ntb-pause');
-      if (pauseBtn) { pauseBtn.textContent = 'Resume'; pauseBtn.onclick = () => this._resumeTakeover(); }
+      if (pauseBtn) {
+        pauseBtn.textContent = 'Resume';
+        pauseBtn.classList.add('paused');
+      }
       const labelEl = banner.querySelector('.ntb-label');
       if (labelEl) labelEl.textContent = 'Navio paused';
+      const sub = banner.querySelector('.ntb-sub');
+      if (sub) {
+        sub.hidden = false;
+        sub.textContent = 'Automation suspended — Resume to continue';
+      }
     }
-    // Notify guest chat tab
+    const bar = document.getElementById('agent-takeover-bar');
+    if (bar) {
+      const stepEl = bar.querySelector('.atb-step');
+      if (stepEl) stepEl.textContent = 'Paused';
+    }
     if (this._guestChatWebview) {
       void this._guestDeliver(this._guestChatWebview, { type: 'takeoverPaused' });
     }
@@ -10489,35 +10644,36 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       this._takeoverPausedResolve();
       this._takeoverPausedResolve = null;
     }
-    // Restore chrome pill button → Pause
     const pill = document.getElementById('navio-agent-chrome-pill');
     if (pill) {
       const pauseBtn = pill.querySelector('.nacp-pause');
       if (pauseBtn) {
         pauseBtn.textContent = 'Pause';
         pauseBtn.classList.remove('nacp-paused');
-        pauseBtn.onclick = () => this._pauseTakeover();
       }
       const label = pill.querySelector('.nacp-label');
       if (label) label.textContent = 'Navio is working';
     }
-    // Restore sidebar banner
     const banner = document.getElementById('navio-takeover-banner');
     if (banner) {
       const pauseBtn = banner.querySelector('.ntb-pause');
-      if (pauseBtn) { pauseBtn.textContent = 'Pause'; pauseBtn.onclick = () => this._pauseTakeover(); }
-      const labelEl = banner.querySelector('.ntb-label');
-      if (labelEl) labelEl.textContent = 'Navio is in control';
+      if (pauseBtn) {
+        pauseBtn.textContent = 'Pause';
+        pauseBtn.classList.remove('paused');
+      }
     }
-    // Notify guest chat tab
     if (this._guestChatWebview) {
       void this._guestDeliver(this._guestChatWebview, { type: 'takeoverResumed' });
     }
+    this._syncTakeoverTabHighlight();
   }
 
   async _undoLastNavigation() {
     try {
-      const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
+      const wv =
+        typeof TabManager !== 'undefined'
+          ? TabManager.getBrowserTargetWebview?.() || TabManager.getActiveWebview()
+          : null;
       if (!wv) {
         this._addContinuePill('No active tab to go back in.');
         return;

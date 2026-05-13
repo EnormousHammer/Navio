@@ -1976,8 +1976,35 @@ body.navio-wcv-tabs-below .ai-control-overlay:not([hidden]) {
   min-width: 0;
 }
 
+#browser-container webview.navio-agent-controlled-webview {
+  outline: 2px solid rgba(56, 189, 248, 0.48);
+  outline-offset: -2px;
+  animation: navio-agent-wv-glow 2s ease-in-out infinite alternate;
+}
+
+@keyframes navio-agent-wv-glow {
+  from {
+    outline-color: rgba(56, 189, 248, 0.38);
+    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0);
+  }
+  to {
+    outline-color: rgba(139, 92, 246, 0.45);
+    box-shadow:
+      inset 0 0 44px rgba(56, 189, 248, 0.06),
+      0 0 20px rgba(56, 189, 248, 0.12);
+  }
+}
+
+/* Stronger cue when the automated tab is the one you're watching */
 #browser-container webview.navio-agent-controlled-webview.active {
-  box-shadow: inset 0 0 0 3px rgba(56, 189, 248, 0.65);
+  outline-width: 3px;
+  box-shadow:
+    inset 0 0 0 2px rgba(56, 189, 248, 0.55),
+    0 0 32px rgba(56, 189, 248, 0.2);
+}
+
+body.navio-takeover-active #assistant-panel.open {
+  box-shadow: inset 3px 0 0 rgba(56, 189, 248, 0.22);
 }
 
 /* ============================================
@@ -13053,6 +13080,43 @@ button.navio-followup-chip:active {
 [data-theme="light"] .nacp-dot   { background: #0064dc; box-shadow: 0 0 6px #0064dc; }
 [data-theme="light"] .nacp-pause { border-color: rgba(0,100,220,0.3); color: #0064dc; }
 
+.navio-agent-chrome-pill .nacp-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  align-items: flex-start;
+}
+
+.navio-agent-chrome-pill .nacp-sub {
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  color: var(--text-secondary);
+  line-height: 1.35;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.navio-agent-chrome-pill .nacp-watch {
+  flex-shrink: 0;
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  border: 1px solid rgba(74, 222, 128, 0.38);
+  background: transparent;
+  color: #4ade80;
+  transition: all 0.15s ease;
+}
+
+.navio-agent-chrome-pill .nacp-watch:hover {
+  background: rgba(74, 222, 128, 0.08);
+}
+
 /* ── Agent activity feed (tool-calling mode) ── */
 .navio-agent-activity {
   margin: 6px 0 12px;
@@ -16667,6 +16731,65 @@ button:focus-visible,
   100% { left: 160%; }
 }
 
+.navio-takeover-banner .ntb-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+.navio-takeover-banner .ntb-text-stack {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.navio-takeover-banner .ntb-sub {
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  color: var(--text-secondary);
+  line-height: 1.38;
+  word-break: break-word;
+}
+
+.navio-takeover-banner .ntb-actions {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.navio-takeover-banner .ntb-watch {
+  padding: 5px 12px;
+  background: transparent;
+  border: 1px solid rgba(74, 222, 128, 0.42);
+  border-radius: var(--radius-full);
+  color: #4ade80;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+  white-space: nowrap;
+}
+.navio-takeover-banner .ntb-watch:hover {
+  background: rgba(74, 222, 128, 0.1);
+  border-color: #4ade80;
+}
+
+.navio-takeover-banner .ntb-text-stack .ntb-label {
+  text-transform: none;
+  letter-spacing: 0.2px;
+  line-height: 1.35;
+}
+
 .ntb-dot {
   width: 8px;
   height: 8px;
@@ -17998,13 +18121,17 @@ body.navio-wcv-tabs-below .pwd-bar-over-guest {
 /* ── Agent Mode Step-by-Step UI ────────────────────────────────────────────── */
 .agent-takeover-bar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
   gap: 10px;
   margin: 0 16px 8px;
   padding: 9px 12px;
   border-radius: 8px;
   background: var(--bg-deep);
-  border: 1px solid var(--border);
+  border: 1px solid var(--accent, rgba(56, 189, 248, 0.22));
+  box-shadow:
+    inset 0 0 0 1px rgba(56, 189, 248, 0.06),
+    0 0 18px rgba(56, 189, 248, 0.06);
   animation: agentBarIn 300ms var(--ease);
 }
 
@@ -18037,15 +18164,21 @@ body.navio-wcv-tabs-below .pwd-bar-over-guest {
 
 .agent-takeover-bar .atb-label {
   flex: 1;
+  min-width: 0;
   font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .agent-takeover-bar .atb-step {
+  display: block;
+  margin-top: 3px;
   font-size: 11px;
   color: var(--text-secondary);
-  font-weight: 400;
+  font-weight: 500;
+  line-height: 1.45;
+  max-width: 100%;
+  word-break: break-word;
 }
 
 .agent-takeover-bar .atb-stop {

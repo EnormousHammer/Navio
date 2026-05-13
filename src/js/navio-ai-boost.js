@@ -566,10 +566,11 @@
       `;
 
       bar.querySelector('#atb-stop-btn')?.addEventListener('click', () => {
-        if (typeof AssistantManager !== 'undefined' && AssistantManager._takeoverAbort) {
-          AssistantManager._takeoverAbort.abort();
+        if (typeof AssistantManager !== 'undefined') {
+          if (AssistantManager._takeoverMode) AssistantManager.disableTakeover();
+          else AssistantManager._takeoverAbort?.abort();
         }
-        bar.remove();
+        if (bar.parentNode) bar.remove();
       });
 
       return bar;
