@@ -158,6 +158,28 @@ function navioSessionTitleFromUserContent(raw) {
   }
   if (!line) return '';
   const max = 56;
+  /** First token is a bare URL — show host + path so History isn’t a wall of “https://…”. */
+  const urlHead = line.split(/\s+/)[0] || '';
+  if (/^https?:\/\//i.test(urlHead)) {
+    try {
+      const u = new URL(urlHead);
+      const host = u.hostname.replace(/^www\./i, '');
+      let path = (u.pathname || '/').replace(/\/+$/, '') || '/';
+      let piece = host;
+      if (path !== '/' && path.length) {
+        const pShort = path.length > 38 ? path.slice(0, 37) + '\u2026' : path;
+        piece += ` — ${pShort}`;
+      } else if (u.search && u.search.length < 34) {
+        piece += u.search;
+      }
+      if (piece.length <= max) return piece;
+      const slice = piece.slice(0, max - 1);
+      const sp = slice.lastIndexOf(' ');
+      return (sp > 22 ? slice.slice(0, sp) : slice) + '\u2026';
+    } catch {
+      /* fall through to generic line title */
+    }
+  }
   if (line.length <= max) return line;
   const slice = line.slice(0, max - 1);
   const sp = slice.lastIndexOf(' ');
@@ -824,6 +846,8 @@ class AssistantManagerClass {
      * (or tab group). Browsing tools still use the focused tab via TabManager.
      */
     this._sidebarThreadKey = null;
+    /** Clears the short “tab switch” hint in the context receipt line. */
+    this._tabSwitchReceiptTimer = null;
     /** @type {Array<{ id: string, title: string, updatedAt: number }>} */
     this._sidebarSessionOrder = [];
     /** When true, `addMessage` always appends (rebuilding history from disk). */
@@ -1768,6 +1792,7 @@ class AssistantManagerClass {
    */
   onActiveTabChanged(prevTabId, nextTabId) {
     if (!nextTabId || prevTabId === nextTabId) return;
+    const hadDetachedSidebar = !!this._sidebarThreadKey;
     if (this._sidebarThreadKey) {
       navioAssistantDebug('onActiveTabChanged: drop detached sidebar session for tab scope', {
         prevTabId,
@@ -1776,7 +1801,25 @@ class AssistantManagerClass {
       });
       this._sidebarThreadKey = null;
     }
-    void this._syncPanelToTab(String(nextTabId));
+    void this._syncPanelToTab(String(nextTabId)).then(
+      () => {
+        if (!hadDetachedSidebar) return;
+        if (this._tabSwitchReceiptTimer) {
+          clearTimeout(this._tabSwitchReceiptTimer);
+          this._tabSwitchReceiptTimer = null;
+        }
+        this.setReceipt('Showing this tab’s chat — open History to resume a saved thread.');
+        this._tabSwitchReceiptTimer = setTimeout(() => {
+          this._tabSwitchReceiptTimer = null;
+          if (this.receiptEl && /History to resume a saved thread/.test(this.receiptEl.textContent || '')) {
+            this.setReceipt('');
+          }
+        }, 12000);
+      },
+      () => {
+        /* ignore sync errors — receipt hint is optional */
+      }
+    );
     navioAssistantDebug('onActiveTabChanged', { prevTabId, nextTabId });
     try {
       this._renderSidebarSessionList();
@@ -7315,10 +7358,26 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       tip.onmouseleave = () => {
         tip._hideTimer = setTimeout(() => tip.classList.remove('nst-visible'), 120);
       };
+      if (!tip._navioSourceTipClickBound) {
+        tip._navioSourceTipClickBound = true;
+        tip.addEventListener(
+          'click',
+          (e) => {
+            const href = tip._navioOpenHref;
+            if (!href || !tip.classList.contains('nst-visible')) return;
+            e.preventDefault();
+            e.stopPropagation();
+            tip.classList.remove('nst-visible');
+            void this._openAssistantExternalUrl(href, { switchTo: true });
+          },
+          true
+        );
+      }
     }
 
     const _showSourceTip = (chip, raw, host) => {
       clearTimeout(tip._hideTimer);
+      tip._navioOpenHref = raw;
       const displayUrl = raw.length > 72 ? raw.slice(0, 69) + '…' : raw;
       tip.innerHTML = `
         <div class="nst-header">

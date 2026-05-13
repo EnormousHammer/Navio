@@ -12176,6 +12176,7 @@ a.navio-citation-chip:hover::after {
   visibility: visible;
   transform: translateY(0) scale(1);
   transition: opacity 0.13s ease, transform 0.13s ease, visibility 0s linear 0s;
+  cursor: pointer;
 }
 .nst-header {
   display: flex;
