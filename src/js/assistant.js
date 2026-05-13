@@ -248,18 +248,18 @@ const NAVIO_VOICE_END_SILENCE_MS = 4000;
 const NAVIO_VOICE_CONV_EXTRA_SILENCE_MS = 700;
 /**
  * Voice conversation: sustained quiet before we end the take and run STT.
- * Kept much shorter than legacy 5.2s so turns feel near–real-time; pause ~1.5s to finish a thought.
+ * Balance: long enough for mid-sentence breaths / pauses; still shorter than one-shot dictation (4s).
  */
-const NAVIO_VOICE_CONV_END_SILENCE_MS = 1550;
+const NAVIO_VOICE_CONV_END_SILENCE_MS = 4200;
 /**
- * After barge-in over TTS, user expects a fast handoff — shorter end-of-utterance than normal turns.
+ * After barge-in over TTS — still quicker than a normal turn, but enough time to start speaking clearly.
  */
-const NAVIO_VOICE_CONV_END_SILENCE_AFTER_INTERRUPT_MS = 680;
+const NAVIO_VOICE_CONV_END_SILENCE_AFTER_INTERRUPT_MS = 2200;
 /**
  * After quiet exceeds NAVIO_VOICE_CONV_END_SILENCE_MS, keep the recorder open briefly so
  * unvoiced word tails and room decay are not clipped before Whisper runs.
  */
-const NAVIO_VOICE_CONV_VAD_TRAIL_MS = 220;
+const NAVIO_VOICE_CONV_VAD_TRAIL_MS = 360;
 /** After sendMessage (or empty take), reopen mic this soon when scheduling the next listen cycle. */
 const NAVIO_VOICE_CONV_SCHEDULE_LISTEN_MS = 90;
 /** EMA blend for RMS when deciding voice-conv VAD — dampens single-frame dips between syllables. */
@@ -853,6 +853,11 @@ class AssistantManagerClass {
      * `processMessage` finally. Full-page guest chat uses `_guestAnchoredTabId` + `_guestChatWebview` instead.
      */
     this._dockBrowsingAnchorTabId = null;
+    /**
+     * Comet-class docked sidebar: keep showing this conversation bucket (plain tab id or `g:…`) while the user
+     * switches browser tabs. Cleared when stale; updated when they send from the focused tab or pick “this tab”.
+     */
+    this._sidebarPinnedStorageKey = null;
     /** Clears the short “tab switch” hint in the context receipt line. */
     this._tabSwitchReceiptTimer = null;
     /** @type {Array<{ id: string, title: string, updatedAt: number }>} */
@@ -1567,6 +1572,47 @@ class AssistantManagerClass {
     return t ? this._storageKeyForTab(t) : String(tabId);
   }
 
+  _maybeInvalidateStaleSidebarPin() {
+    if (!this._sidebarPinnedStorageKey) return;
+    if (this._sidebarPinnedStorageKeyIsLive()) return;
+    this._sidebarPinnedStorageKey = null;
+  }
+
+  /** Whether `_sidebarPinnedStorageKey` still maps to an open tab or tab group. */
+  _sidebarPinnedStorageKeyIsLive() {
+    const pin = this._sidebarPinnedStorageKey;
+    if (!pin || pin === NAVIO_PROFILE_CHAT_KEY || pin === '__guest__') return false;
+    if (typeof TabManager === 'undefined' || !TabManager.tabs) return false;
+    if (String(pin).startsWith('g:')) {
+      const gid = String(pin).slice(2);
+      return TabManager.tabs.some((t) => String(t.groupId || '') === gid);
+    }
+    return TabManager.tabs.some((t) => String(t.id) === String(pin));
+  }
+
+  /**
+   * When the focused browser tab changes: if the sidebar is pinned to another tab/group thread, do not
+   * swap the transcript to the newly focused tab (Comet-style — automation/context stay on the task tab).
+   */
+  _sidebarShouldStayPinnedVersusFocusedTab(focusedTabIdStr) {
+    if (this._sidebarThreadKey) return false;
+    this._maybeInvalidateStaleSidebarPin();
+    const pin = this._sidebarPinnedStorageKey;
+    if (!pin) return false;
+    const nextSk = this._storageKeyForTabId(String(focusedTabIdStr || ''));
+    return String(nextSk) !== String(pin);
+  }
+
+  async _syncPanelToTabUnlessPinned(tabId) {
+    const k = String(tabId || '');
+    if (!k) return;
+    if (this._sidebarShouldStayPinnedVersusFocusedTab(k)) {
+      navioAssistantDebug('sidebar pinned — skip following focused tab', { tabId: k, pin: this._sidebarPinnedStorageKey });
+      return;
+    }
+    await this._syncPanelToTab(k);
+  }
+
   /**
    * Conversation key for the full-page chat turn.
    * When anchored to a source tab (Comet-style), returns that tab's key so the
@@ -1609,6 +1655,10 @@ class AssistantManagerClass {
     if (oldSk !== newSk) {
       this._ensureConversationEntry(newSk);
       this._renderDomFromHistoryKey(newSk);
+    }
+    // Sending from the composer targets the focused tab — pin follows so idle tab switches don’t hide this thread.
+    if (newSk && newSk !== NAVIO_PROFILE_CHAT_KEY && newSk !== '__guest__') {
+      this._sidebarPinnedStorageKey = String(newSk);
     }
   }
 
@@ -1790,12 +1840,12 @@ class AssistantManagerClass {
   }
 
   /**
-   * When the user switches tabs: show that tab’s conversation (or its tab-group bucket). Do **not**
-   * cancel in-flight work — automation stays on the agent-controlled tab via TabManager; API history
-   * stays keyed by the tab that started the turn (`_turnConversationKey`). The sidebar **follows the
-   * focused tab** even while another tab’s turn is in flight (streaming updates only when that tab’s
-   * storage key matches the visible panel). A detached “New chat” / Saved session (`_sidebarThreadKey`)
-   * must **not** keep showing across tab switches.
+   * When the user switches tabs: show that tab’s conversation unless the sidebar is **pinned** to another
+   * tab/group (Comet-class — task thread stays visible while you glance elsewhere). Do **not** cancel
+   * in-flight work — automation stays on the agent-controlled tab via TabManager; API history stays keyed
+   * by the tab that started the turn (`_turnConversationKey`). While pinned or busy elsewhere,
+   * `_syncPanelToTab` may no-op; streaming still gates on `_panelShowsTurnDom`. A detached saved session
+   * (`_sidebarThreadKey`) must **not** keep showing across tab switches — cleared here first.
    */
   onActiveTabChanged(prevTabId, nextTabId) {
     if (!nextTabId || prevTabId === nextTabId) return;
@@ -1808,7 +1858,7 @@ class AssistantManagerClass {
       });
       this._sidebarThreadKey = null;
     }
-    void this._syncPanelToTab(String(nextTabId)).then(
+    void this._syncPanelToTabUnlessPinned(String(nextTabId)).then(
       () => {
         if (!hadDetachedSidebar) return;
         if (this._tabSwitchReceiptTimer) {
@@ -2700,10 +2750,13 @@ class AssistantManagerClass {
               const qLo = pick(0.48);
               speakGateSoft = voiceConvRelaxedVad
                 ? Math.max(
-                    Math.max(6.0, qLo + 2.2),
-                    Math.min(speakGateLoud - 0.9, qMid + 4.2)
+                    Math.max(5.2, qLo + 1.8),
+                    Math.min(speakGateLoud - 0.9, qMid + 3.9)
                   )
-                : speakGateLoud;
+                : Math.max(
+                    6.0,
+                    Math.min(speakGateLoud - 2.0, qLo + 4.0)
+                  );
               vadCalibrated = true;
               vadCalibratedAt = now;
             }
@@ -2719,11 +2772,19 @@ class AssistantManagerClass {
               } else {
                 speechBurstStart = 0;
               }
-            } else if (gateRms > speakGateSoft) {
-              // Hands-free: quiet syllables / breath noise often sit below speakGateLoud but above room floor;
-              // refreshing lastLoudMs here prevents a mid-sentence breath from starting the end timer.
-              lastLoudMs = now;
-              pendingTrailEnd = 0;
+            } else {
+              let stillTalking = gateRms > speakGateSoft;
+              // Hands-free uses smoothed gateRms — brief raw spikes between syllables can sit below EMA;
+              // a modest raw-RMS bridge prevents ending the take mid-sentence on quiet mics.
+              if (voiceConvRelaxedVad && !stillTalking && hasSpoken) {
+                stillTalking =
+                  rms >
+                  Math.max(4.9, speakGateSoft * 0.76, speakGateLoud - 4.8);
+              }
+              if (stillTalking) {
+                lastLoudMs = now;
+                pendingTrailEnd = 0;
+              }
             }
           }
           const quietLongEnough =
@@ -3261,7 +3322,6 @@ class AssistantManagerClass {
           if (!this._voiceConvActive) return;
           if (transcriptEl) transcriptEl.textContent = '';
           if (text.trim()) {
-            this._voiceConvSetState('thinking');
             this._applyVoiceTranscriptToInput(text, { replace: true });
             this._voiceConvDiscardInFlightGeneration();
             // Await so the safety-net below runs only after sendMessage has had a chance
@@ -3272,7 +3332,13 @@ class AssistantManagerClass {
               this.inputEl.value = '';
               this._fitAssistantInputHeight?.();
             }
-            if (this._voiceConvActive && document.getElementById('voice-conv-hud')?.dataset.vcState === 'thinking') {
+            const vcSt = document.getElementById('voice-conv-hud')?.dataset.vcState;
+            if (
+              this._voiceConvActive &&
+              vcSt === 'listening' &&
+              !this._voiceConvRec &&
+              !this._vcMicMuted
+            ) {
               this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_SCHEDULE_LISTEN_MS);
             }
           } else {
@@ -3485,7 +3551,6 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           if (!this._voiceConvActive) return;
           if (transcriptEl) transcriptEl.textContent = '';
           if (text.trim()) {
-            this._voiceConvSetState('thinking');
             this._applyVoiceTranscriptToInput(text, { replace: false });
             this._voiceConvDiscardInFlightGeneration();
             // MUST await — sendMessage is async and clears the input at its first internal await.
@@ -3499,7 +3564,13 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
               this.inputEl.value = '';
               this._fitAssistantInputHeight?.();
             }
-            if (this._voiceConvActive && document.getElementById('voice-conv-hud')?.dataset.vcState === 'thinking') {
+            const vcSt2 = document.getElementById('voice-conv-hud')?.dataset.vcState;
+            if (
+              this._voiceConvActive &&
+              vcSt2 === 'listening' &&
+              !this._voiceConvRec &&
+              !this._vcMicMuted
+            ) {
               this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_SCHEDULE_LISTEN_MS);
             }
           } else {
@@ -3554,7 +3625,6 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         this._voiceConvRec = null;
         if (transcriptEl) transcriptEl.textContent = '';
         if (text.trim()) {
-          this._voiceConvSetState('thinking');
           const b = vcBaseline.trim();
           if (b && this.inputEl) {
             this.inputEl.value = `${b}\n${text.trim()}`;
@@ -3718,9 +3788,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
    * @param {{ ok?: boolean, audio?: string, mimeType?: string }} result
    * @param {number} mySession
    * @param {HTMLElement|null} btn
-   * @param {boolean} isLastChunk — only then reopen mic in voice conversation mode
+   * @param {boolean} isLastChunk — last clip in this speak session (primary reply or work nudge)
+   * @param {{ voiceConvReopenMic?: boolean }} [clipOpts] — if true and voice conv active, reopen mic after this clip ends (primary assistant speech only — never status nudges)
    */
-  async _playOpenAITtsClip(result, mySession, btn, isLastChunk) {
+  async _playOpenAITtsClip(result, mySession, btn, isLastChunk, clipOpts = {}) {
+    const reopenMic = !!(clipOpts.voiceConvReopenMic && this._voiceConvActive);
     if (mySession !== this._ttsSessionId) return;
     if (!result || !result.ok || !result.audio) return;
     if (btn) {
@@ -3748,7 +3820,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         if (btn && isLastChunk) btn.classList.remove('tts-speaking');
         if (isLastChunk) {
           this._setTTSBarVisible(false);
-          this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
+          if (reopenMic) this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
         }
         safeResolve();
       };
@@ -3759,7 +3831,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           if (btn) btn.classList.remove('tts-speaking', 'tts-loading');
           if (isLastChunk) {
             this._setTTSBarVisible(false);
-            this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
+            if (reopenMic) this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
           }
           safeResolve();
         },
@@ -3780,7 +3852,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         if (btn) btn.classList.remove('tts-speaking', 'tts-loading');
         if (isLastChunk) {
           this._setTTSBarVisible(false);
-          this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
+          if (reopenMic) this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
         }
         safeResolve();
       });
@@ -3818,12 +3890,12 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         const tail = chunks.slice(i).join('').trim();
         if (tail) {
           await this._speakWebSpeechUtterance(tail, voicePref, mySession, btn, true, speechOpts || {});
-        } else if (isLast) {
+        } else if (isLast && speechOpts?.voiceConvReopenMic) {
           this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
         }
         return true;
       }
-      await this._playOpenAITtsClip(result, mySession, btn, isLast);
+      await this._playOpenAITtsClip(result, mySession, btn, isLast, speechOpts || {});
       if (this._voiceConvActive && !isLast) {
         await new Promise((r) => setTimeout(r, 28));
       }
@@ -3834,9 +3906,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   /** Web Speech fallback / tail after chunked OpenAI partial failure. */
   async _speakWebSpeechUtterance(plain, voicePref, mySession, btn, isLastChunk = true, speechOpts = {}) {
     if (mySession !== this._ttsSessionId) return;
+    const reopenMic = !!(speechOpts?.voiceConvReopenMic && this._voiceConvActive);
     if (!window.speechSynthesis) {
       if (btn) btn.classList.remove('tts-speaking');
-      if (isLastChunk) {
+      if (isLastChunk && reopenMic) {
         this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
       }
       return;
@@ -3887,7 +3960,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         }
         if (btn) btn.classList.remove('tts-speaking');
         if (isLastChunk) this._setTTSBarVisible(false);
-        if (isLastChunk) {
+        if (isLastChunk && reopenMic) {
           this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
         }
         resolve();
@@ -3899,7 +3972,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         }
         if (btn) btn.classList.remove('tts-speaking', 'tts-loading');
         if (isLastChunk) this._setTTSBarVisible(false);
-        if (isLastChunk) {
+        if (isLastChunk && reopenMic) {
           this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
         }
         resolve();
@@ -3951,6 +4024,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       } else {
         speechOpts.webSpeechRate = 1.0;
       }
+      /** Only full assistant replies reopen the mic — never tool-status / thinking nudges (prevents TTS→mic bleed → bogus user turns). */
+      speechOpts.voiceConvReopenMic = !!(this._voiceConvActive && !opts.workNudge);
 
       const chunkPlan = navioVoiceConvTtsChunkPlan(plain.slice(0, 4000));
       const chunkMinChars = this._voiceConvActive ? 640 : 2200;
@@ -3983,7 +4058,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           if (mySession !== this._ttsSessionId) return;
 
           if (result && result.ok && result.audio) {
-            await this._playOpenAITtsClip(result, mySession, btn, true);
+            await this._playOpenAITtsClip(result, mySession, btn, true, speechOpts);
             return;
           }
         } catch { /* fall through to Web Speech API */ }
@@ -4497,7 +4572,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           }
         }
       } else if (aid) {
-        await this._syncPanelToTab(aid);
+        await this._syncPanelToTabUnlessPinned(aid);
       }
       this._renderSidebarSessionList();
     } catch (err) {
@@ -5319,6 +5394,14 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       }
     }
     this._turnConversationKey = turnKey;
+    if (
+      !this._sidebarThreadKey &&
+      turnKey &&
+      String(turnKey) !== NAVIO_PROFILE_CHAT_KEY &&
+      turnKey !== '__guest__'
+    ) {
+      this._sidebarPinnedStorageKey = String(turnKey);
+    }
     this._dockBrowsingAnchorTabId = null;
     if (typeof TabManager !== 'undefined') {
       const dockCtx = TabManager.getBrowserContextTab?.();
@@ -5614,13 +5697,17 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       // Do NOT call _syncPanelToTab here: it replays from `_conversationsByTab` and can wipe the live
       // transcript (empty key / wrong-tab timing / async ordering) back to the welcome screen mid-work.
       // While a turn is busy, `_syncPanelToTab` returns early when switching to another tab's thread so
-      // the sidebar keeps showing live progress. After the turn ends, realign with the focused tab.
+      // the sidebar keeps showing live progress. After the turn ends, do **not** jump the sidebar to a
+      // randomly focused tab if we pinned to the task bucket (Comet-style).
       try {
+        this._maybeInvalidateStaleSidebarPin();
         if (!this._sidebarThreadKey && typeof TabManager !== 'undefined' && TabManager.activeTabId) {
           const aid = String(TabManager.activeTabId);
           const activeSk = this._storageKeyForTabId(aid);
           const panelSk = this._panelDisplayStorageKey();
-          if (panelSk == null || activeSk !== panelSk) {
+          const pin = this._sidebarPinnedStorageKey;
+          const focusAwayFromPin = !!(pin && String(activeSk) !== String(pin));
+          if ((panelSk == null || activeSk !== panelSk) && !focusAwayFromPin) {
             void this._syncPanelToTab(aid);
           }
         }
@@ -5963,7 +6050,12 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       }
       // Sync the sidebar panel for the anchored tab so it reflects the new messages
       if (this._guestAnchoredTabId) {
-        void this._syncPanelToTab(this._guestAnchoredTabId);
+        const gAid = String(this._guestAnchoredTabId);
+        const gSk = this._storageKeyForTabId(gAid);
+        if (gSk && gSk !== NAVIO_PROFILE_CHAT_KEY && gSk !== '__guest__') {
+          this._sidebarPinnedStorageKey = String(gSk);
+        }
+        void this._syncPanelToTab(gAid);
       }
       await this._guestDeliver(guestWv, { type: 'hostTurnEnd' });
     }
@@ -7177,6 +7269,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
             elapsed != null ? { durationMs: elapsed } : null
           );
         }
+        if (this._voiceConvActive) this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
         return;
       }
 
@@ -7847,8 +7940,15 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   _maybeAutoSpeakAssistantReply(plainText) {
     this._clearPendingAutoTts();
     const t = String(plainText || '').trim().slice(0, 4000);
-    if (!t) return;
-    if (this._shouldSkipAutoSpeakStopMeta(t)) return;
+    const vc = this._voiceConvActive;
+    if (!t) {
+      if (vc) this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
+      return;
+    }
+    if (this._shouldSkipAutoSpeakStopMeta(t)) {
+      if (vc) this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
+      return;
+    }
     const voiceWasActive = this._voiceConvActive;
     const voiceSid = this._vcSid;
     const delayMs = voiceWasActive
@@ -11184,6 +11284,7 @@ ${pageInfo}${snapText}`;
       id = NAVIO_SIDEBAR_THREAD_PREFIX + `${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
     }
     this._conversationsByTab.set(id, []);
+    this._sidebarPinnedStorageKey = null;
     this._sidebarThreadKey = id;
     this._sidebarSessionOrder = this._sidebarSessionOrder.filter((x) => x.id !== id);
     this._sidebarSessionOrder.unshift({ id, title: 'New chat', updatedAt: Date.now() });
@@ -11210,6 +11311,7 @@ ${pageInfo}${snapText}`;
     if (this._threadBusyForSend()) return;
     const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
     if (aid && this._tabIsBusy(aid)) return;
+    this._sidebarPinnedStorageKey = null;
     this._sidebarThreadKey = sid;
     this._ensureConversationEntry(sid);
     if (aid) this._panelDisplayTabId = aid;
@@ -11233,8 +11335,14 @@ ${pageInfo}${snapText}`;
     if (this._threadBusyForSend()) return;
     this._sidebarThreadKey = null;
     const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
-    if (aid) await this._syncPanelToTab(aid);
+    if (aid) {
+      const sk = this._storageKeyForTabId(aid);
+      this._sidebarPinnedStorageKey =
+        sk && sk !== NAVIO_PROFILE_CHAT_KEY && sk !== '__guest__' ? String(sk) : null;
+      await this._syncPanelToTab(aid);
+    }
     else {
+      this._sidebarPinnedStorageKey = null;
       this.messagesEl.innerHTML = '';
       await this._showGreeting();
     }
@@ -11252,8 +11360,13 @@ ${pageInfo}${snapText}`;
     if (this._sidebarThreadKey === sid) {
       this._sidebarThreadKey = null;
       const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
-      if (aid) await this._syncPanelToTab(aid);
-      else {
+      if (aid) {
+        const sk = this._storageKeyForTabId(aid);
+        this._sidebarPinnedStorageKey =
+          sk && sk !== NAVIO_PROFILE_CHAT_KEY && sk !== '__guest__' ? String(sk) : null;
+        await this._syncPanelToTab(aid);
+      } else {
+        this._sidebarPinnedStorageKey = null;
         this.messagesEl.innerHTML = '';
         await this._showGreeting();
       }
@@ -11280,7 +11393,14 @@ ${pageInfo}${snapText}`;
     this._showGreeting();
     if (wasSidebar) {
       const aid = typeof TabManager !== 'undefined' && TabManager.activeTabId ? String(TabManager.activeTabId) : '';
-      if (aid) void this._syncPanelToTab(aid);
+      if (aid) {
+        const sk = this._storageKeyForTabId(aid);
+        this._sidebarPinnedStorageKey =
+          sk && sk !== NAVIO_PROFILE_CHAT_KEY && sk !== '__guest__' ? String(sk) : null;
+        void this._syncPanelToTab(aid);
+      } else {
+        this._sidebarPinnedStorageKey = null;
+      }
     }
     this._renderSidebarSessionList();
   }
