@@ -35,8 +35,8 @@ const NTP = (() => {
   let _ntpChatStreaming  = false;
   let _ntpChatStreamUnsubs = []; // cleanup fns for stream listeners
   const _ntpChatStreamKey = 'ntp-chat-' + Date.now();
-  /** Keep in sync with NAVIO_VOICE_END_SILENCE_MS in assistant.js (Whisper + browser STT end-of-utterance). */
-  const NTP_VOICE_END_SILENCE_MS = 2800;
+  /** Keep in sync with voice end-of-utterance pacing in assistant.js (Whisper + browser STT debounce). */
+  const NTP_VOICE_END_SILENCE_MS = 4200;
   const DEFAULT_NTP_SHORTCUTS = [
     { title: 'Google', url: 'https://www.google.com' },
     { title: 'Gmail', url: 'https://mail.google.com' },
@@ -3273,6 +3273,8 @@ const NTP = (() => {
           const recordStart = Date.now();
           const MAX_RECORD_MS = 90_000;
           let speechThresh = 14;
+          /** Below loud thresh but above noise — keeps lastLoudMs fresh between syllables (same idea as assistant Whisper VAD). */
+          let speakGateSoft = 8;
 
           const vadLoop = () => {
             if (aborted) return;
@@ -3296,11 +3298,15 @@ const NTP = (() => {
                   return vadCalSamples[idx];
                 };
                 const qHi = pick(0.72);
+                const qLo = pick(0.48);
                 speechThresh = Math.min(28, Math.max(11, qHi + 6));
+                speakGateSoft = Math.max(6.0, Math.min(speechThresh - 4.5, qLo + 3.8));
                 vadCalibrated = true;
               }
             } else if (rms > speechThresh) {
               hasSpoken = true;
+              lastLoudMs = now;
+            } else if (hasSpoken && rms > speakGateSoft) {
               lastLoudMs = now;
             }
             if (vadCalibrated && hasSpoken && lastLoudMs && now - lastLoudMs >= NTP_VOICE_END_SILENCE_MS) {
