@@ -1765,15 +1765,109 @@ function createMainWindow() {
   });
 }
 
-ipcMain.on('window-minimize', () => mainWindow?.minimize());
-ipcMain.on('window-maximize', () => {
-  if (mainWindow?.isMaximized()) {
-    mainWindow.unmaximize();
-  } else {
-    mainWindow?.maximize();
+/**
+ * Embeds `{ v, u: url, i: incognito }` in the shell URL hash so a new BrowserWindow
+ * can open the same profile/session tab in isolation (see NavioApp.startBrowser).
+ */
+function navioEncodeDetachLaunchHash({ url, incognito }) {
+  const obj = {
+    v: 1,
+    u: typeof url === 'string' ? url : '',
+    i: !!incognito
+  };
+  try {
+    return 'navio-detach=' + Buffer.from(JSON.stringify(obj), 'utf8').toString('base64url');
+  } catch {
+    return 'navio-detach=' + Buffer.from('{"v":1,"u":"","i":false}', 'utf8').toString('base64url');
+  }
+}
+
+ipcMain.handle('navio-open-detached-tab-window', async (_event, payload) => {
+  try {
+    const p = payload && typeof payload === 'object' ? payload : {};
+    const url = typeof p.url === 'string' ? p.url : '';
+    const incognito = !!p.incognito;
+    const sx = Number(p.screenX);
+    const sy = Number(p.screenY);
+    const config = loadConfig();
+    const isDark = config.theme !== 'light';
+    const hash = navioEncodeDetachLaunchHash({ url, incognito });
+    const win = new BrowserWindow({
+      width: 1200,
+      height: 780,
+      minWidth: 800,
+      minHeight: 600,
+      frame: false,
+      titleBarStyle: 'hidden',
+      show: false,
+      backgroundColor: isDark ? '#080c18' : '#f4f5f7',
+      icon: path.join(__dirname, '..', 'src', 'assets', 'icon.png'),
+      x: Number.isFinite(sx) ? Math.max(0, Math.round(sx - 72)) : undefined,
+      y: Number.isFinite(sy) ? Math.max(0, Math.round(sy - 36)) : undefined,
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        webviewTag: true,
+        sandbox: true
+      }
+    });
+    win.webContents.on('will-attach-webview', (_e, webPreferences) => {
+      try {
+        if (webPreferences && 'nativeWindowOpen' in webPreferences) {
+          webPreferences.nativeWindowOpen = false;
+        }
+      } catch {
+        /* ignore */
+      }
+    });
+    win.webContents.on('did-attach-webview', (_e, guestContents) => {
+      bindNavioGuestWindowOpenOnce(guestContents);
+    });
+    win.on('focus', () => navioPrimeGlobalShortcutsIfFocused());
+    win.once('ready-to-show', () => {
+      win.show();
+      win.focus();
+      queueMicrotask(() => navioPrimeGlobalShortcutsIfFocused());
+      setTimeout(() => navioPrimeGlobalShortcutsIfFocused(), 200);
+    });
+    win.on('maximize', () => {
+      try {
+        win.webContents.send('window-state-changed', 'maximized');
+      } catch {
+        /* ignore */
+      }
+    });
+    win.on('unmaximize', () => {
+      try {
+        win.webContents.send('window-state-changed', 'normal');
+      } catch {
+        /* ignore */
+      }
+    });
+    await win.loadFile(path.join(__dirname, '..', 'src', 'index.html'), { hash });
+    return { ok: true };
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    console.warn('[navio] navio-open-detached-tab-window:', msg);
+    return { ok: false, error: msg };
   }
 });
-ipcMain.on('window-close', () => mainWindow?.close());
+
+ipcMain.on('window-minimize', (event) => {
+  const w = BrowserWindow.fromWebContents(event.sender);
+  (w || mainWindow)?.minimize();
+});
+ipcMain.on('window-maximize', (event) => {
+  const w = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+  if (!w || w.isDestroyed()) return;
+  if (w.isMaximized()) w.unmaximize();
+  else w.maximize();
+});
+ipcMain.on('window-close', (event) => {
+  const w = BrowserWindow.fromWebContents(event.sender);
+  (w || mainWindow)?.close();
+});
 
 ipcMain.on('navio-shell-log', (_, message) => {
   const msg = typeof message === 'string' ? message : String(message);

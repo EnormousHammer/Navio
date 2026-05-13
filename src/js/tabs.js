@@ -3386,6 +3386,81 @@ class TabManagerClass {
     });
   }
 
+  /** Live guest URL when available (for tear-off); falls back to tab model `url`. */
+  _resolveTabGuestUrl(tab) {
+    let u = (tab && tab.url) ? String(tab.url).trim() : '';
+    try {
+      if (tab.webview && typeof tab.webview.getURL === 'function') {
+        const live = tab.webview.getURL();
+        if (live && typeof live === 'string' && live !== 'about:blank') u = live.trim();
+      }
+    } catch {
+      /* ignore */
+    }
+    return u;
+  }
+
+  _shouldDetachTabToNewWindow(e) {
+    const strip = this.tabListEl.getBoundingClientRect();
+    const vertical = document.body.classList.contains('navio-vertical-tabs');
+    const pad = 20;
+    if (vertical) {
+      if (e.clientX > strip.right + pad) return true;
+    } else if (e.clientY > strip.bottom + pad) {
+      return true;
+    }
+    const edge = 6;
+    try {
+      if (
+        e.screenX < window.screenX + edge ||
+        e.screenX > window.screenX + window.outerWidth - edge ||
+        e.screenY < window.screenY + edge ||
+        e.screenY > window.screenY + window.outerHeight - edge
+      ) {
+        return true;
+      }
+    } catch {
+      /* ignore */
+    }
+    return false;
+  }
+
+  async _detachTabToNewWindow(tabId, e) {
+    const tab = this.tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    if (tab.pinned) {
+      if (typeof _showAppToast === 'function') {
+        _showAppToast('Unpin the tab before moving it to a new window.', 'warning');
+      }
+      return;
+    }
+    if (!window.navio || typeof window.navio.openDetachedTabWindow !== 'function') return;
+    const url = this._resolveTabGuestUrl(tab);
+    const incognito = !!tab.incognito;
+    let r;
+    try {
+      r = await window.navio.openDetachedTabWindow({
+        url,
+        incognito,
+        screenX: e.screenX,
+        screenY: e.screenY
+      });
+    } catch {
+      r = { ok: false };
+    }
+    if (!r || !r.ok) {
+      if (typeof _showAppToast === 'function') {
+        _showAppToast((r && r.error) || 'Could not open a new window.', 'error');
+      }
+      return;
+    }
+    try {
+      this.closeTab(tabId);
+    } catch {
+      /* ignore */
+    }
+  }
+
   _startDrag(type, id, el, e) {
     if (this._dragState) return;
     const rect = el.getBoundingClientRect();
@@ -3580,23 +3655,36 @@ class TabManagerClass {
     const ds = this._dragState;
     if (!ds) return;
 
-    // Remove event listeners
-    ds.el.removeEventListener('pointermove', this._boundDragPointerMove);
-    ds.el.removeEventListener('pointerup',   this._boundDragPointerUp);
-    ds.el.removeEventListener('pointercancel', this._boundDragPointerUp);
-    ds.el.classList.remove('tab-dragging-source');
+    const wasDragging = ds.isDragging;
+    const dragType = ds.type;
+    const dragId = ds.id;
+    const dragEl = ds.el;
 
-    // Remove ghost, indicator, overlay
+    dragEl.removeEventListener('pointermove', this._boundDragPointerMove);
+    dragEl.removeEventListener('pointerup',   this._boundDragPointerUp);
+    dragEl.removeEventListener('pointercancel', this._boundDragPointerUp);
+    dragEl.classList.remove('tab-dragging-source');
+
     if (ds.ghost) ds.ghost.remove();
     document.getElementById('tab-drag-indicator')?.remove();
     ds.overlay?.remove();
 
-    // Clear group drop highlights
     this.tabListEl.querySelectorAll('.tab-drag-over').forEach(el => el.classList.remove('tab-drag-over'));
 
-    if (ds.isDragging) {
+    if (wasDragging && dragType === 'tab' && this._shouldDetachTabToNewWindow(e)) {
+      void this._detachTabToNewWindow(dragId, e);
+      const suppressClick = (ev) => {
+        ev.stopPropagation();
+        ev.preventDefault();
+        dragEl.removeEventListener('click', suppressClick, true);
+      };
+      dragEl.addEventListener('click', suppressClick, true);
+      this._dragState = null;
+      return;
+    }
+
+    if (wasDragging) {
       if (ds.insertInGroupId && ds.type === 'tab') {
-        // Dropped on a group header or grouped tab → join group AND move adjacent to it
         this._dropTabIntoGroup(ds.id, ds.insertInGroupId);
       } else if (ds.type === 'tab') {
         this._moveTabToIndex(ds.id, ds.insertBeforeTabId);
@@ -3604,13 +3692,12 @@ class TabManagerClass {
         this._moveGroupToIndex(ds.id, ds.insertBeforeTabId);
       }
 
-      // Suppress the click that would fire after pointerup
       const suppressClick = (ev) => {
         ev.stopPropagation();
         ev.preventDefault();
-        ds.el.removeEventListener('click', suppressClick, true);
+        dragEl.removeEventListener('click', suppressClick, true);
       };
-      ds.el.addEventListener('click', suppressClick, true);
+      dragEl.addEventListener('click', suppressClick, true);
     }
 
     this._dragState = null;

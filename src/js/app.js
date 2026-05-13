@@ -90,12 +90,59 @@ class NavioApp {
     this._finishInitialShellReady();
   }
 
+  /**
+   * If the shell was loaded with `#navio-detach=…` (tab torn off into a new window),
+   * parse it once and clear the hash so the address bar fragment does not linger.
+   * @returns {{ url: string, incognito: boolean } | null}
+   */
+  _consumeNavioDetachLaunch() {
+    try {
+      const raw = (window.location.hash || '').replace(/^#/, '');
+      if (!raw.startsWith('navio-detach=')) return null;
+      const b64 = raw.slice('navio-detach='.length);
+      let bin = '';
+      try {
+        const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
+        const std = b64.replace(/-/g, '+').replace(/_/g, '/') + pad;
+        bin = atob(std);
+      } catch {
+        return null;
+      }
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const json = new TextDecoder().decode(bytes);
+      let o;
+      try {
+        o = JSON.parse(json);
+      } catch {
+        return null;
+      }
+      if (!o || o.v !== 1) return null;
+      const url = typeof o.u === 'string' ? o.u : '';
+      const incognito = !!o.i;
+      try {
+        history.replaceState(null, '', location.href.split('#')[0]);
+      } catch {
+        /* ignore */
+      }
+      return { url, incognito };
+    } catch {
+      return null;
+    }
+  }
+
   async startBrowser() {
     if (this._sessionStarted) return;
     this._sessionStarted = true;
     await new Promise((r) => setTimeout(r, 0));
     if (typeof TabManager === 'undefined') return;
     this._maybeProactiveTip();
+    const detach = this._consumeNavioDetachLaunch();
+    if (detach) {
+      if (detach.url) TabManager.createTab(detach.url, { incognito: detach.incognito });
+      else TabManager.createTab(null, { incognito: detach.incognito });
+      return;
+    }
     const mode = this.config.startupMode || 'new-tab';
     if (mode === 'homepage') {
       const hp = (this.config.homepage || 'https://www.google.com').trim() || 'https://www.google.com';

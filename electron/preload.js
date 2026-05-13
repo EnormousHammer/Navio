@@ -4,6 +4,11 @@ contextBridge.exposeInMainWorld('navio', {
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
+  /**
+   * Open a second shell window with one tab (used when dragging a tab out of the strip).
+   * @param {{ url?: string, incognito?: boolean, screenX?: number, screenY?: number }} [opts]
+   */
+  openDetachedTabWindow: (opts) => ipcRenderer.invoke('navio-open-detached-tab-window', opts || {}),
   /** Echo a line to the terminal (main process stdout). For debugging shell UI (e.g. assistant toggle). */
   shellLog: (message) => ipcRenderer.send('navio-shell-log', String(message)),
 
