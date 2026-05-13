@@ -118,6 +118,39 @@ const INTRO_VIDEO_PATH = path.join(__dirname, '..', 'public', 'intro_video', 'in
 
 let mainWindow = null;
 let store = null;
+
+/**
+ * Guest pages run in `<webview>` WebContents. `BrowserWindow.fromWebContents(guest)` often
+ * returns null (same class of issue as WebContentsView), so password/autofill IPC would
+ * be dropped. Prefer `getOwnerBrowserWindow` when Electron exposes it.
+ */
+function navioBrowserWindowHostingGuestWebContents(guestWc) {
+  if (!guestWc) return null;
+  try {
+    if (typeof guestWc.getOwnerBrowserWindow === 'function') {
+      const w = guestWc.getOwnerBrowserWindow();
+      if (w && typeof w.isDestroyed === 'function' && !w.isDestroyed()) return w;
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (typeof BrowserWindow.fromWebContents === 'function') {
+      const w = BrowserWindow.fromWebContents(guestWc);
+      if (w && typeof w.isDestroyed === 'function' && !w.isDestroyed()) return w;
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (mainWindow && typeof mainWindow.isDestroyed === 'function' && !mainWindow.isDestroyed()) {
+      return mainWindow;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
 // Tracked across the session so Settings → "Install update" knows when there is
 // a downloaded installer ready to apply on quit.
 let navioUpdateState = {
@@ -2028,6 +2061,53 @@ ipcMain.on('navio-chat-host-relay-from-guest', (event, payload) => {
     mainWindow.webContents.send('navio-chat-host-relay-to-shell', {
       webContentsId: wc.id,
       payload: safe
+    });
+  } catch {
+    /* ignore */
+  }
+});
+
+/**
+ * Guest tab preload → shell: `sendToHost` / `<webview>` ipc-message is unreliable on some
+ * Electron + contextIsolation stacks (channel/args missing; guestInstanceId falsy). Same
+ * pattern as navio-chat-host-relay — main validates and forwards to the BrowserWindow
+ * that owns the guest (main window or detached tab window).
+ */
+ipcMain.on('navio-tab-guest-ipc', (event, packet) => {
+  try {
+    const wc = event.sender;
+    if (!wc || typeof wc.getURL !== 'function') return;
+    if (typeof wc.isDestroyed === 'function' && wc.isDestroyed()) return;
+    const win = navioBrowserWindowHostingGuestWebContents(wc);
+    if (!win || win.isDestroyed()) return;
+    const shell = win.webContents;
+    if (!shell || (typeof shell.isDestroyed === 'function' && shell.isDestroyed())) return;
+
+    const p = packet && typeof packet === 'object' ? packet : {};
+    const channel = typeof p.channel === 'string' ? p.channel : '';
+    if (!channel) return;
+
+    const navioGuestIpcAllow = new Set([
+      'navio-form-submit',
+      'navio-login-form',
+      'navio-text-selected',
+      'navio-selection-cleared',
+      'navio-guest-pointer-down',
+      'navio-chat-host'
+    ]);
+    if (!navioGuestIpcAllow.has(channel)) return;
+
+    if (channel === 'navio-chat-host') {
+      const url = String(wc.getURL() || '').toLowerCase();
+      if (!url.includes('navio-chat-tab.html')) return;
+    }
+
+    const args = Array.isArray(p.args) ? p.args : p.args != null ? [p.args] : [];
+
+    shell.send('navio-tab-guest-ipc-to-shell', {
+      webContentsId: wc.id,
+      channel,
+      args
     });
   } catch {
     /* ignore */

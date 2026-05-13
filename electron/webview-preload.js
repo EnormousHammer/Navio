@@ -142,22 +142,21 @@ try {
   }
 
   /**
-   * In classic <webview> mode, process.guestInstanceId is set to a non-zero integer.
-   * In WebContentsView (WCV) mode, there is no embedding webview, so it is falsy.
-   * sendToHost() delivers directly in webview mode but silently drops messages in WCV mode.
-   * In WCV mode we route via ipcMain → tab-manager → renderer instead.
+   * Guest → shell: use both paths so saves/autofill work across Electron builds.
+   * - `sendToHost` → `<webview>` `ipc-message` when the embedder delivers it (Chrome-like path).
+   * - `navio-tab-guest-ipc` → main resolves the real BrowserWindow (fromWebContents is often
+   *   null for webview guests; getOwnerBrowserWindow in main) and forwards to the shell.
    */
-  const _isWcvMode = !process.guestInstanceId;
-
   function _sendToTabHost(channel, payload) {
-    if (_isWcvMode) {
-      try {
-        ipcRenderer.send('wcv-tab-preload-message', { channel, args: [payload] });
-      } catch { /* ignore */ }
-    } else {
-      try {
-        ipcRenderer.sendToHost(channel, payload);
-      } catch { /* ignore */ }
+    try {
+      ipcRenderer.sendToHost(channel, payload);
+    } catch {
+      /* ignore */
+    }
+    try {
+      ipcRenderer.send('navio-tab-guest-ipc', { channel, args: [payload] });
+    } catch {
+      /* ignore */
     }
   }
 
@@ -875,24 +874,36 @@ try {
     }, 800);
   }
 
-  ipcRenderer.on('navio-autofill', (_, { username, password, autoSubmit }) => {
-    try {
-      const pwdField = pickPasswordFieldForAutofill(document);
-      if (!pwdField) return;
-      const root = loginRootForPassword(pwdField);
-      const usernameEl = findUsernameFieldForAutofill(root);
-      if (usernameEl) {
-        usernameEl.focus();
-        fillField(usernameEl, username);
-        _flashFilledField(usernameEl);
-      }
-      pwdField.focus();
-      fillField(pwdField, password);
-      _flashFilledField(pwdField);
-      if (autoSubmit) {
-        setTimeout(() => trySubmitLoginAfterAutofill(root), 140);
-      }
-    } catch {}
+  ipcRenderer.on('navio-autofill', (_, payload) => {
+    const pack = payload && typeof payload === 'object' ? payload : {};
+    const username = pack.username;
+    const password = pack.password;
+    const autoSubmit = !!pack.autoSubmit;
+    let tries = 0;
+    const run = () => {
+      try {
+        const pwdField = pickPasswordFieldForAutofill(document);
+        if (!pwdField) {
+          tries += 1;
+          if (tries <= 6) setTimeout(run, tries === 1 ? 50 : tries * 100);
+          return;
+        }
+        const root = loginRootForPassword(pwdField);
+        const usernameEl = findUsernameFieldForAutofill(root);
+        if (usernameEl) {
+          usernameEl.focus();
+          fillField(usernameEl, username);
+          _flashFilledField(usernameEl);
+        }
+        pwdField.focus();
+        fillField(pwdField, password);
+        _flashFilledField(pwdField);
+        if (autoSubmit) {
+          setTimeout(() => trySubmitLoginAfterAutofill(root), 140);
+        }
+      } catch {}
+    };
+    run();
   });
 
   // ── Cosmetic ad blocking (streaming / embed-player overlay removal) ──────────

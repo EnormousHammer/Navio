@@ -69,6 +69,30 @@ contextBridge.exposeInMainWorld('navio', {
     };
   },
 
+  /**
+   * Tab guest preload → main → shell (`navio-tab-guest-ipc`). Reliable replacement for
+   * sendToHost when embedder ipc-message is broken or guestInstanceId is unset.
+   * @param {(detail: { webContentsId: number, channel: string, args: any[] }) => void} callback
+   */
+  onNavioTabGuestIpc: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const handler = (_evt, detail) => {
+      try {
+        callback(detail);
+      } catch {
+        /* ignore */
+      }
+    };
+    ipcRenderer.on('navio-tab-guest-ipc-to-shell', handler);
+    return () => {
+      try {
+        ipcRenderer.removeListener('navio-tab-guest-ipc-to-shell', handler);
+      } catch {
+        /* ignore */
+      }
+    };
+  },
+
   getConfig: () => ipcRenderer.invoke('get-config'),
   /** file:// URL of the full-page in-tab AI chat (Navio AI tab). */
   getInternalChatPageUrl: () => ipcRenderer.invoke('navio-internal-chat-page-url'),

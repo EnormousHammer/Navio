@@ -93,6 +93,7 @@ class TabManagerClass {
     this._boundDragPointerUp   = this._onDragPointerUp.bind(this);
 
     this._installNavioChatHostRelayListener();
+    this._installNavioTabGuestIpcListener();
 
     setTimeout(() => {
       try {
@@ -934,6 +935,107 @@ class TabManagerClass {
     });
   }
 
+  /**
+   * Guest preload → main → shell (`navio-tab-guest-ipc`). Delivers the same payloads as
+   * `<webview>` `ipc-message` when sendToHost/embedder delivery fails (Electron 35 + webview).
+   */
+  _installNavioTabGuestIpcListener() {
+    if (this._navioTabGuestIpcInstalled) return;
+    this._navioTabGuestIpcInstalled = true;
+    if (!window.navio || typeof window.navio.onNavioTabGuestIpc !== 'function') return;
+    window.navio.onNavioTabGuestIpc((detail) => {
+      try {
+        const wid = detail && detail.webContentsId != null ? Number(detail.webContentsId) : NaN;
+        const channel = detail && typeof detail.channel === 'string' ? detail.channel : '';
+        const args = detail && Array.isArray(detail.args) ? detail.args : [];
+        if (!Number.isFinite(wid) || wid <= 0 || !channel) return;
+        const tab = this.tabs.find((t) => {
+          try {
+            return (
+              t.webview &&
+              typeof t.webview.getWebContentsId === 'function' &&
+              t.webview.getWebContentsId() === wid
+            );
+          } catch {
+            return false;
+          }
+        });
+        if (!tab || !tab.webview) return;
+        this._handleWebviewPreloadIpcMessage(tab, tab.webview, channel, args);
+      } catch {
+        /* ignore */
+      }
+    });
+  }
+
+  /**
+   * Shared handler for `<webview>` `ipc-message` and main-relayed `navio-tab-guest-ipc`.
+   * @param {any} tab
+   * @param {any} wv
+   * @param {string} channel
+   * @param {any[]} args
+   */
+  _handleWebviewPreloadIpcMessage(tab, wv, channel, args) {
+    try {
+      const data = args && args[0];
+      if (channel === 'navio-form-submit' && data) {
+        if (!tab.incognito && typeof PasswordManager !== 'undefined') {
+          Promise.resolve(PasswordManager.showSavePrompt(data, wv)).catch(() => {});
+        }
+      } else if (channel === 'navio-login-form' && data) {
+        if (!tab.incognito && typeof PasswordManager !== 'undefined') {
+          PasswordManager.checkAutofill(data.url, wv);
+        }
+      } else if (channel === 'navio-text-selected' && data) {
+        if (typeof InlineAI !== 'undefined') {
+          const wvRect = wv.getBoundingClientRect();
+          InlineAI.show(data.text, wvRect.left + data.x, wvRect.top + data.y, wv);
+        }
+      } else if (channel === 'navio-selection-cleared') {
+        if (typeof InlineAI !== 'undefined') InlineAI.hide();
+      } else if (channel === 'navio-guest-pointer-down') {
+        try {
+          if (typeof window.__navioCloseDownloadsDrawer === 'function') {
+            window.__navioCloseDownloadsDrawer();
+          }
+        } catch {
+          /* ignore */
+        }
+      } else if (channel === 'navio-chat-host') {
+        const payload = data;
+        const deliverGuest = () => {
+          const AM =
+            (typeof window !== 'undefined' && window.AssistantManager) ||
+            (typeof AssistantManager !== 'undefined' ? AssistantManager : null);
+          if (payload && AM && typeof AM.handleGuestChatHostMessage === 'function') {
+            AM.handleGuestChatHostMessage(tab, wv, payload);
+            return true;
+          }
+          return false;
+        };
+        if (payload && !deliverGuest()) {
+          const delays = [50, 120, 280, 600, 1400];
+          delays.forEach((ms) => {
+            setTimeout(() => {
+              if (deliverGuest()) return;
+            }, ms);
+          });
+        }
+      }
+    } catch (err) {
+      if (channel === 'navio-chat-host') {
+        try {
+          console.warn('[navio] navio-chat-host handler error', err);
+          window.navio?.shellLog?.(
+            `[navio] navio-chat-host: ${err && err.message != null ? err.message : String(err)}`
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }
+
   bindWebviewEvents(tab) {
     const wv = tab.webview;
 
@@ -1233,54 +1335,9 @@ class TabManagerClass {
     // Handle IPC messages from the webview-preload script
     wv.addEventListener('ipc-message', (e) => {
       try {
-        const data = e.args && e.args[0];
-        if (e.channel === 'navio-form-submit' && data) {
-          // Credential capture — offer to save
-          if (!tab.incognito && typeof PasswordManager !== 'undefined') {
-            Promise.resolve(PasswordManager.showSavePrompt(data, wv)).catch(() => {});
-          }
-        } else if (e.channel === 'navio-login-form' && data) {
-          // Login form detected — check if we have saved credentials to autofill
-          if (!tab.incognito && typeof PasswordManager !== 'undefined') {
-            PasswordManager.checkAutofill(data.url, wv);
-          }
-        } else if (e.channel === 'navio-text-selected' && data) {
-          // Text selected — show inline AI toolbar
-          if (typeof InlineAI !== 'undefined') {
-            const wvRect = wv.getBoundingClientRect();
-            InlineAI.show(data.text, wvRect.left + data.x, wvRect.top + data.y, wv);
-          }
-        } else if (e.channel === 'navio-selection-cleared') {
-          if (typeof InlineAI !== 'undefined') InlineAI.hide();
-        } else if (e.channel === 'navio-guest-pointer-down') {
-          try {
-            if (typeof window.__navioCloseDownloadsDrawer === 'function') {
-              window.__navioCloseDownloadsDrawer();
-            }
-          } catch {
-            /* ignore */
-          }
-        } else if (e.channel === 'navio-chat-host') {
-          const payload = data;
-          const deliverGuest = () => {
-            const AM =
-              (typeof window !== 'undefined' && window.AssistantManager) ||
-              (typeof AssistantManager !== 'undefined' ? AssistantManager : null);
-            if (payload && AM && typeof AM.handleGuestChatHostMessage === 'function') {
-              AM.handleGuestChatHostMessage(tab, wv, payload);
-              return true;
-            }
-            return false;
-          };
-          if (payload && !deliverGuest()) {
-            const delays = [50, 120, 280, 600, 1400];
-            delays.forEach((ms) => {
-              setTimeout(() => {
-                if (deliverGuest()) return;
-              }, ms);
-            });
-          }
-        }
+        const channel = e.channel;
+        const args = e.args || [];
+        this._handleWebviewPreloadIpcMessage(tab, wv, channel, args);
       } catch (err) {
         if (e && e.channel === 'navio-chat-host') {
           try {

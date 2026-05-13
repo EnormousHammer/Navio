@@ -2087,6 +2087,11 @@ const PasswordManager = (() => {
     'https://app.stremio.com'
   ]);
   let _stremioSilentTimers = [];
+  /** Same guest event can arrive via sendToHost and navio-tab-guest-ipc within a few ms. */
+  let _dedupeSaveKey = '';
+  let _dedupeSaveAt = 0;
+  let _dedupeAutofillKey = '';
+  let _dedupeAutofillAt = 0;
 
   const saveBar       = document.getElementById('pwd-save-bar');
   const autofillBar   = document.getElementById('pwd-autofill-bar');
@@ -2191,6 +2196,11 @@ const PasswordManager = (() => {
     _hideAutofill();
     if (!saveBar) return;
     if (!String(password || '').trim()) return;
+    const dedupeKey = `${String(url || '')}\t${String(username || '')}\t${String(password || '')}`;
+    const now = Date.now();
+    if (dedupeKey === _dedupeSaveKey && now - _dedupeSaveAt < 700) return;
+    _dedupeSaveKey = dedupeKey;
+    _dedupeSaveAt = now;
     if (_isStremioSilentAutofillUrl(url)) {
       try {
         const r = await window.navio.passwordsGet(url);
@@ -2248,6 +2258,11 @@ const PasswordManager = (() => {
   // ── Check if we have credentials for the current URL ──────────────────────
   async function checkAutofill(url, wv) {
     _hideSave();
+    const dedupeKey = String(url || '');
+    const now = Date.now();
+    if (dedupeKey === _dedupeAutofillKey && now - _dedupeAutofillAt < 700) return;
+    _dedupeAutofillKey = dedupeKey;
+    _dedupeAutofillAt = now;
     try {
       const r = await window.navio.passwordsGet(url);
       if (!r.ok || !r.entries.length) return;
