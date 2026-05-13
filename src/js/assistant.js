@@ -846,6 +846,13 @@ class AssistantManagerClass {
      * (or tab group). Browsing tools still use the focused tab via TabManager.
      */
     this._sidebarThreadKey = null;
+    /**
+     * Docked sidebar only: browsing tab captured at send time (`processMessage`). While a turn runs,
+     * `TabManager.getBrowserContextTab()` prefers this id so tools/excerpts/domain hints stay on the
+     * page the user was working with if they focus another tab (Comet-class behavior). Cleared in
+     * `processMessage` finally. Full-page guest chat uses `_guestAnchoredTabId` + `_guestChatWebview` instead.
+     */
+    this._dockBrowsingAnchorTabId = null;
     /** Clears the short “tab switch” hint in the context receipt line. */
     this._tabSwitchReceiptTimer = null;
     /** @type {Array<{ id: string, title: string, updatedAt: number }>} */
@@ -5287,6 +5294,13 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       }
     }
     this._turnConversationKey = turnKey;
+    this._dockBrowsingAnchorTabId = null;
+    if (typeof TabManager !== 'undefined') {
+      const dockCtx = TabManager.getBrowserContextTab?.();
+      if (dockCtx && TabManager.isHttpBrowsingSurface?.(dockCtx)) {
+        this._dockBrowsingAnchorTabId = dockCtx.id;
+      }
+    }
     try {
     this._setTabBusy(turnKey, true);
     if (!isQuickAction) this._actionFormatRetries = 0;
@@ -5324,7 +5338,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (_voiceLegacy) messages.push(_voiceLegacy);
 
     const mailBackendPreferred = await this._gmailApiMailBackendPreferred(text, config);
-    const activeUrl = typeof TabManager !== 'undefined' ? TabManager.getActiveTab()?.url || '' : '';
+    const hintTabLegacy =
+      typeof TabManager !== 'undefined'
+        ? TabManager.getBrowserContextTab?.() || TabManager.getActiveTab()
+        : null;
+    const activeUrl = hintTabLegacy?.url || '';
 
     // ── Browsing surface (when Navio AI tab is focused, use another tab as context) ──
     if (!isQuickAction && typeof TabManager !== 'undefined') {
@@ -5560,6 +5578,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     }
 
     } finally {
+      this._dockBrowsingAnchorTabId = null;
       const busyClear =
         this._turnConversationKey != null && String(this._turnConversationKey).length
           ? String(this._turnConversationKey)
@@ -6094,7 +6113,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     }
 
     // ── Agent Router — detect domain and add focused context ────────────────
-    const agentDomain = this._detectAgentDomain(text, typeof TabManager !== 'undefined' ? TabManager.getActiveTab()?.url || '' : '');
+    const ctxTabForHints =
+      typeof TabManager !== 'undefined'
+        ? TabManager.getBrowserContextTab?.() || TabManager.getActiveTab()
+        : null;
+    const agentDomain = this._detectAgentDomain(text, ctxTabForHints?.url || '');
 
     // Build context messages
     const messages = [{ role: 'system', content: this.systemPrompt }];
@@ -6105,7 +6128,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const _voiceTools = this._voiceConversationModeSystemMessage();
     if (_voiceTools) messages.push(_voiceTools);
     const mailBackendPreferred = await this._gmailApiMailBackendPreferred(text, config);
-    const activeUrl = typeof TabManager !== 'undefined' ? TabManager.getActiveTab()?.url || '' : '';
+    const hintTabTools =
+      typeof TabManager !== 'undefined'
+        ? TabManager.getBrowserContextTab?.() || TabManager.getActiveTab()
+        : null;
+    const activeUrl = hintTabTools?.url || '';
 
     /** Full-page guest host or Navio AI tab focused: do not inject another tab’s URL/page as context “sources”. */
     let skipBrowsingSurfaceContext = !!guestWv;
@@ -6135,6 +6162,16 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           content: `[Browsing context tab]\nEmpty / new tab — use **navigate** or **open_tab** when you need a URL.\nTab id: ${browserTab.id}`
         });
       }
+    }
+
+    if (!guestWv) {
+      messages.push({
+        role: 'system',
+        content:
+          '[Primary surface — docked side assistant]\nThe user relies on the **side assistant** next to live tabs for most work. Same bar as full-page Navio AI: when they want something **done**, **call tools** and drive the session — do not replace execution with a how-to checklist. ' +
+          '**Take over** means automate the **browsing context tab** named in this turn (use `read_page`, `click`, `type_text`, `navigate`, …). Prefer **API tools** (`gmail_*`, `drive_*`, `calendar_*`, `web_search`, …) over clicking webmail or search UIs when those tools apply. ' +
+          'Use `list_tabs` / `switch_tab` when they mention another tab, compare pages, or you must target a different open tab.'
+      });
     }
 
     this._maybePushNonMailTaskFocus(messages, text);

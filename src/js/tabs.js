@@ -614,6 +614,18 @@ class TabManagerClass {
       if (isWebSurface(au)) return agentTab;
     }
 
+    try {
+      const AM = typeof AssistantManager !== 'undefined' ? AssistantManager : null;
+      if (AM && AM._dockBrowsingAnchorTabId != null && AM._dockBrowsingAnchorTabId !== '') {
+        const docked = this.tabs.find((t) => t.id === AM._dockBrowsingAnchorTabId);
+        if (docked && docked.webview && isWebSurface(docked.url || '')) {
+          return docked;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
     // Comet-style: guest full-page chat anchored to a tab — keep that tab as browsing context
     // while the turn runs, so focusing another site does not steal context from the AI task.
     try {
