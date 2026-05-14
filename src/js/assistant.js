@@ -5600,23 +5600,8 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       turnKey = String(this._turnConversationKey);
     } else {
       turnKey = this._conversationKey();
-      // Comet-style: if the user actively sends a message in a DIFFERENT context than what is
-      // currently busy, auto-abort the old task and let this new request proceed immediately.
-      // This mirrors "task follows focus" — no hard block, no error dialog.
-      const otherBusy = [...this._busyTabs].filter((b) => String(b) !== String(turnKey));
-      if (otherBusy.length > 0) {
-        for (const b of otherBusy) {
-          try {
-            if (window.navio && typeof window.navio.aiAbort === 'function') {
-              void window.navio.aiAbort({ tabId: b });
-            }
-          } catch { /* ignore */ }
-          this._busyTabs.delete(b);
-        }
-        this._updateAssistantBusyChrome?.();
-        // Brief settle so main-process abort registers before we start the new request
-        await new Promise((r) => setTimeout(r, 80));
-      }
+      // Each tab/context runs independently — no cross-tab blocking.
+      // Busy state on another tab has no bearing on starting a new request here.
     }
     this._turnConversationKey = turnKey;
     if (
