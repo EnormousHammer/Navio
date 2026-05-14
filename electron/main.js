@@ -3221,11 +3221,41 @@ function navioFormatToolArgsSummary(name, args) {
   }
 }
 
+/**
+ * Whether the visible guest tab should get shell hit-test blocking for this tool step.
+ * API/connector tools stay false so users can keep using the tab (e.g. Gmail API search).
+ * navigate / open_tab send false here and flip on via `guest-shell` only when real navigation runs.
+ * Read-only browser tools (read_page, screenshot, …) stay false so multimodal / “look at the page”
+ * work does not feel like takeover — blocking is reserved for actions that can race user input.
+ */
+function blocksGuestShellOnToolStart(toolName) {
+  const t = String(toolName || '');
+  if (!t) return false;
+  if (t === 'thinking') return false;
+  if (t === 'web_search') return false;
+  if (t === 'list_tabs') return false;
+  if (t === 'propose_plan') return false;
+  if (t === 'list_workflows') return false;
+  if (t === 'read_local_file' || t === 'save_local_file') return false;
+  if (t.startsWith('gmail_')) return false;
+  if (t.startsWith('drive_')) return false;
+  if (t.startsWith('calendar_')) return false;
+  if (t.startsWith('mcp_')) return false;
+  if (t === 'navigate' || t === 'open_tab') return false;
+  if (t === 'read_page' || t === 'get_page_text' || t === 'screenshot') return false;
+  if (t === 'wait' || t === 'read_console' || t === 'read_network') return false;
+  return true;
+}
+
 async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts = {}) {
   const signal = opts && opts.signal;
   const tabId = opts.tabId != null ? String(opts.tabId) : '__default__';
   const tp = (p) => {
-    sender.send('tool-progress', { ...p, tabId });
+    const payload = { ...p, tabId };
+    if (p && p.phase === 'start' && p.tool) {
+      payload.blocksGuestShell = blocksGuestShellOnToolStart(p.tool);
+    }
+    sender.send('tool-progress', payload);
     if (p && p.tool) {
       try {
         const overlayDetail =
@@ -3517,6 +3547,7 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
           tp({ step, tool: tc.name, result: sanitizeToolResultForLog('navigate', toolResult) });
           continue;
         }
+        tp({ phase: 'guest-shell', active: true });
         const navOpId = crypto.randomUUID();
         sender.send('tool-navigate', { url: tc.arguments.url, stepIndex: step, tabId, operationId: navOpId });
         const navResult = await waitForRendererAck(sender, 'tool-navigate-ack', 60000, navOpId);
@@ -3584,6 +3615,9 @@ async function executeToolLoop(cfg, apiKey, messages, wc, sender, maxSteps, opts
             tp({ step, tool: tc.name, result: sanitizeToolResultForLog('open_tab', toolResult) });
             continue;
           }
+        }
+        if (tc.name === 'open_tab') {
+          tp({ phase: 'guest-shell', active: true });
         }
         const tabResult = await executeTabTool(tc, sender, tabId);
         // switch_tab returns a new webContentsId — update activeWc

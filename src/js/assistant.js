@@ -822,6 +822,11 @@ class AssistantManagerClass {
     this.isOpen = false;
     /** Conversation storage keys (`tabId`, `g:…`, `__guest__`, etc.) with an in-flight model/tool turn. */
     this._busyTabs = new Set();
+    /**
+     * When the agent targets this tab but only runs API/connector tools, the guest webview stays interactive.
+     * Main sends `blocksGuestShell` on tool-start and `guest-shell` when real navigation begins.
+     */
+    this._agentGuestShellBlockActive = false;
     /** Tab group id (`grp-*`) created this tool-turn so open_tab targets stay under one named strip group. */
     this._aiTurnWorkspaceGroupId = null;
     /** @type {Map<string, Array<{ role: string, content: unknown }>>} */
@@ -5231,12 +5236,33 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (!busy) return false;
     const agentTid = this._agentAutomationTargetTabId();
     if (agentTid) {
+      if (!this._agentGuestShellBlockActive) return false;
       if (this._activeSurfaceCoversAgentTab(agentTid)) return true;
       if (this._guestChatSurfaceActive()) return true;
       return false;
     }
     if (sbBusy) return false;
     return !!(active && sk && this._busyTabs.has(sk));
+  }
+
+  /** Fallback when main does not send `blocksGuestShell` (keeps API-only tools non-blocking). */
+  _inferGuestShellBlockFromToolStart(toolName) {
+    const t = String(toolName || '');
+    if (!t) return false;
+    if (t === 'thinking') return false;
+    if (t === 'web_search') return false;
+    if (t === 'list_tabs') return false;
+    if (t === 'propose_plan') return false;
+    if (t === 'list_workflows') return false;
+    if (t === 'read_local_file' || t === 'save_local_file') return false;
+    if (t.startsWith('gmail_')) return false;
+    if (t.startsWith('drive_')) return false;
+    if (t.startsWith('calendar_')) return false;
+    if (t.startsWith('mcp_')) return false;
+    if (t === 'navigate' || t === 'open_tab') return false;
+    if (t === 'read_page' || t === 'get_page_text' || t === 'screenshot') return false;
+    if (t === 'wait' || t === 'read_console' || t === 'read_network') return false;
+    return true;
   }
 
   _updateAssistantBusyChrome() {
@@ -6897,7 +6923,19 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (payload && payload.tabId != null && String(payload.tabId) !== tk) return;
       const { step, tool, result, phase, detail } = payload || {};
 
+      if (phase === 'guest-shell') {
+        this._agentGuestShellBlockActive = !!payload.active;
+        this._updateAssistantBusyChrome();
+        return;
+      }
+
       if (phase === 'start') {
+        if (Object.prototype.hasOwnProperty.call(payload, 'blocksGuestShell')) {
+          this._agentGuestShellBlockActive = !!payload.blocksGuestShell;
+        } else {
+          this._agentGuestShellBlockActive = this._inferGuestShellBlockFromToolStart(tool);
+        }
+        this._updateAssistantBusyChrome();
         if (tool !== 'navigate') {
           const d = detail != null ? String(detail).trim() : '';
           if (d) {
@@ -6918,6 +6956,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         }
         return;
       }
+
+      this._agentGuestShellBlockActive = false;
+      this._updateAssistantBusyChrome();
 
       if (tool === 'navigate') return; // already shown
       if (result && result.pulseOnly) {
@@ -7200,6 +7241,12 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (!guestWv) this._guestChatWebview = null;
       if (this._turnStartedAt != null) this._turnStartedAt = null;
       this._aiTurnWorkspaceGroupId = null;
+      this._agentGuestShellBlockActive = false;
+      try {
+        this._updateAssistantBusyChrome();
+      } catch {
+        /* ignore */
+      }
       if (typeof TabManager !== 'undefined') {
         if (this._takeoverMode) TabManager.setAgentControlledTab?.(TabManager.getTakeoverHighlightTabId?.() ?? null);
         else TabManager.setAgentControlledTab?.(null);
