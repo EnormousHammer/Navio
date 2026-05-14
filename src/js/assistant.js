@@ -5600,21 +5600,22 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       turnKey = String(this._turnConversationKey);
     } else {
       turnKey = this._conversationKey();
-      for (const busy of this._busyTabs) {
-        if (String(busy) !== String(turnKey)) {
-          const msg =
-            'Navio is still answering in another tab or chat. Switch back to that tab to see progress, wait for it to finish, or press **Stop** there before starting something new here.';
-          if (this._panelShowsTurnDom()) {
-            this.addMessage('assistant', msg, 'error');
-          } else {
-            try {
-              this.setReceipt(msg.replace(/\*\*/g, ''));
-            } catch {
-              /* ignore */
+      // Comet-style: if the user actively sends a message in a DIFFERENT context than what is
+      // currently busy, auto-abort the old task and let this new request proceed immediately.
+      // This mirrors "task follows focus" — no hard block, no error dialog.
+      const otherBusy = [...this._busyTabs].filter((b) => String(b) !== String(turnKey));
+      if (otherBusy.length > 0) {
+        for (const b of otherBusy) {
+          try {
+            if (window.navio && typeof window.navio.aiAbort === 'function') {
+              void window.navio.aiAbort({ tabId: b });
             }
-          }
-          return;
+          } catch { /* ignore */ }
+          this._busyTabs.delete(b);
         }
+        this._updateAssistantBusyChrome?.();
+        // Brief settle so main-process abort registers before we start the new request
+        await new Promise((r) => setTimeout(r, 80));
       }
     }
     this._turnConversationKey = turnKey;
