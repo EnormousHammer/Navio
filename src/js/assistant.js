@@ -20,13 +20,81 @@ const NAVIO_ASSISTANT_LOCAL_HISTORY_KEEP = 220;
 const NAVIO_THREAD_DISCIPLINE_SYSTEM =
   '[Thread discipline]\nThe **latest user message** (see **What to do now** on it) is the only target. ' +
   'Do not do work they did not ask for. Do not switch to a new goal mid-turn. ' +
-  'Earlier messages are **full working context**, not a fresh chat: short replies mean \u201ccontinue the same task,\u201d not \u201cstart something new.\u201d ' +
+  'Earlier messages are **working context**: short replies (\u201cyes\u201d, \u201csame\u201d, \u201cthis one\u201d, \u201cwhy\u201d, \u201cgo on\u201d) usually **continue the same task**. ' +
+  'If the latest line is clearly a **new, self-contained question** or **different subject** (or they say new question / forget that / instead / unrelated), treat it as a **fresh ask** — answer that line directly; do **not** keep answering or assuming the old task unless they explicitly tie this message back to it. ' +
   'Before any question, scan prior user + assistant turns for file names, pasted content, steps, and conclusions already given. ' +
   'Resolve **this/that/the quote/the shipment/the email** from prior turns when the thread already named one subject \u2014 do not ask for identifiers again unless two unrelated subjects are both live. ' +
   'Attachment markers without fresh bytes still bind you to what you already said about those files in this thread; do not demand re-upload unless new visual detail is strictly required. ' +
   'If intent is unclear: prefer one-line assumption + proceed, or **one** blocking question if you truly cannot act. ' +
   'Do not re-ask tone, length, format, or style choices already fixed in this thread; do not permission-theater (\u201ccontinue?\u201d, \u201cshort or detailed?\u201d, \u201cshould I start?\u201d). ' +
+  '**Information vs. action:** When the user asks "what to do", "how does X work", "explain", "what is", "provide", "tell me" — respond with the ANSWER (text, steps, layout, explanation). Do NOT offer to draft, send, or take action on their behalf unless they explicitly say so. Context they give (e.g. "email goes to Laura") is BACKGROUND for your answer, not a command to send email. ' +
+  '**No unsolicited offers after corrections:** When the user corrects you ("I never asked for X"), simply acknowledge and stop. Do NOT follow up with "Do you want me to Y instead?" — wait for them to ask. ' +
   'NEVER respond to an action request with only text and zero tool calls. If they said investigate/search/find/draft/check, your response MUST include tool calls.';
+
+/** Injected when heuristics detect a likely topic change so the model drops stale-task bias. */
+const NAVIO_TOPIC_PIVOT_SYSTEM =
+  '[NEW TOPIC — stop the previous task]\n' +
+  'The user has switched to a **different subject**. STOP any prior task. ' +
+  'Answer **ONLY** the latest user message. Do NOT continue, summarize, or finish the old task. ' +
+  'The prior transcript below is shown only so you can resolve explicit references (same file name, "that email", "that order") — ' +
+  'if the new question has no tie to the old topic, treat the history as **irrelevant**. ' +
+  'When in doubt, answer the new question as if it were the start of a fresh conversation.';
+
+/** When pivoting, keep only this many recent user/assistant rows (avoids long unrelated threads confusing the model). */
+const NAVIO_PIVOT_HISTORY_KEEP = 4;
+
+const NAVIO_TOPIC_PIVOT_STOP = new Set([
+  'the', 'a', 'an', 'is', 'it', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'but', 'not', 'with',
+  'this', 'that', 'what', 'how', 'why', 'when', 'where', 'who', 'can', 'do', 'did', 'does', 'has', 'have',
+  'had', 'will', 'would', 'could', 'should', 'you', 'your', 'me', 'my', 'we', 'they', 'their', 'its', 'be',
+  'am', 'are', 'was', 'were', 'been', 'get', 'use', 'make', 'just', 'also', 'about', 'from', 'by', 'as',
+  'so', 'if', 'then', 'than', 'up', 'out', 'no', 'yes', 'please', 'let', 'want', 'need', 'like', 'know',
+  'think', 'see', 'look', 'say', 'said', 'tell', 'told', 'now', 'here', 'there', 'some', 'any', 'all',
+  'more', 'very', 'much', 'many', 'one', 'two', 'really', 'actually', 'into', 'over', 'after', 'before',
+  'again', 'still', 'even', 'well', 'being', 'such', 'both', 'each', 'few', 'other', 'than'
+]);
+
+/**
+ * Heuristic: long transcript + latest line shares little wording with recent turns → user pivoted topic.
+ * @param {string} queryText
+ * @param {Array<{role:string,content:string}>} filteredMsgs
+ * @returns {boolean}
+ */
+function navioHistoryLooksLikeTopicPivot(queryText, filteredMsgs) {
+  const q = (queryText || '').trim();
+  if (q.length < 12) return false;
+  if (
+    /^(yes|yeah|yep|yup|no|nope|nah|ok|okay|sure|thanks|thank you|thx|please|continue|go on|next|same|why|how|what about|and |also |the |this |that |now |still |more |again )\b/i.test(
+      q
+    )
+  ) {
+    return false;
+  }
+  if (
+    /\b(new question|different question|unrelated topic|forget (about )?that|never mind|nevermind|scratch that|instead,? i want|rather,? i|switching topics|unrelated:?|different topic:?)\b/i.test(
+      q
+    )
+  ) {
+    return true;
+  }
+  if (!Array.isArray(filteredMsgs) || filteredMsgs.length < 4) return false;
+  const terms = new Set();
+  for (const w of q
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)) {
+    if (w.length >= 3 && !NAVIO_TOPIC_PIVOT_STOP.has(w)) terms.add(w);
+  }
+  if (terms.size < 2) return false;
+  const tail = filteredMsgs.slice(-8);
+  const tailText = tail.map((m) => String(m.content || '').toLowerCase()).join(' ');
+  let hits = 0;
+  for (const t of terms) {
+    if (tailText.includes(t)) hits++;
+  }
+  const ratio = hits / terms.size;
+  return ratio < 0.25;
+}
 
 /** Natural-language mailbox ask — shared by Gmail + Outlook connector prefetch. */
 function navioDetectMailboxIntent(text) {
@@ -2575,6 +2643,8 @@ class AssistantManagerClass {
       'Infer missing detail from **earlier turns in this thread** when possible (tone, length, format, audience, deadlines, order refs, shipment, quote, email thread). ' +
       'Phrases like **this quote**, **that shipment**, **the email above**, **email Laura** refer to what the thread already established — do not ask them to re-paste IDs unless two unrelated deals are genuinely mixed. ' +
       'Ask **one** question only when a fact is missing that makes **any** correct action impossible — not for style preferences already stated, not for permission between steps, not to re-choose options they already picked.\n' +
+      '**INFORMATION vs. ACTION:** If the user says "what to do", "how does X work", "explain", "what is", "provide", "tell me about" — give the ANSWER as text. Do NOT pivot to offering drafts, asking which draft to send, or offering to paste email text. Context they mention (e.g. "quote goes to Laura, booking to Maggie") is background for your ANSWER, not a request for you to take action. ' +
+      '**After a correction** ("I never asked for X") — stop, acknowledge once, do NOT follow up with "Do you want Y instead?" — wait for the user to ask.\n' +
       '**ACTION MANDATE:** If the user asked you to DO something (search, investigate, find, look up, draft, check, read emails, compare), your response MUST include tool calls. ' +
       'A text-only response to an action request is WRONG. Do not give instructions, checklists, or explanations instead of calling tools. ' +
       'When investigating emails: call gmail_search immediately with relevant keywords — do not ask which account (search both), do not list steps, do not explain what you would need. Just search and report findings.\n\n'
@@ -5780,14 +5850,15 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     }
     const histKey = String(this._turnConversationKey || this._conversationKey());
     this._ensureConversationEntry(histKey);
-    const recentHistory = this._buildRelevantHistory(
-      text,
-      histKey,
-      (m) => !(m.role === 'system' && typeof m.content === 'string' && m.content.startsWith('[Page elements'))
-    );
+    const histFilter = (m) =>
+      !(m.role === 'system' && typeof m.content === 'string' && m.content.startsWith('[Page elements'));
+    const { history: recentHistory, topicPivot } = this._buildRelevantHistory(text, histKey, histFilter);
+    if (topicPivot) messages.push({ role: 'system', content: NAVIO_TOPIC_PIVOT_SYSTEM });
     messages.push(...recentHistory);
     this._maybePushAttachmentSystemHint(messages);
-    const userContent = this._buildAttachmentPayloadForApi(text);
+    const userContent = topicPivot
+      ? this._buildAttachmentPayloadForApi('[NEW QUESTION — unrelated to the previous topic. Answer ONLY this.]\n' + (text || ''))
+      : this._buildAttachmentPayloadForApi(text);
     messages.push({ role: 'user', content: userContent });
     const userHistory = historyUserLabel || this._historyLabelForAttachments(text);
 
@@ -6258,9 +6329,15 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (connectorCtx) messages.push({ role: 'system', content: connectorCtx });
     }
     messages.push({ role: 'system', content: NAVIO_THREAD_DISCIPLINE_SYSTEM });
-    const recentHistory = this._currentHistory().slice(-NAVIO_ASSISTANT_API_HISTORY_MAX);
+    const gHistKey = String(this._turnConversationKey || this._conversationKey());
+    this._ensureConversationEntry(gHistKey);
+    const { history: recentHistory, topicPivot } = this._buildRelevantHistory(text, gHistKey, null);
+    if (topicPivot) messages.push({ role: 'system', content: NAVIO_TOPIC_PIVOT_SYSTEM });
     messages.push(...recentHistory);
-    messages.push({ role: 'user', content: this._taskAnchorPrefix() + (text || '') });
+    const guestUserContent = topicPivot
+      ? this._taskAnchorPrefix() + '[NEW QUESTION — unrelated to the previous topic. Answer ONLY this.]\n' + (text || '')
+      : this._taskAnchorPrefix() + (text || '');
+    messages.push({ role: 'user', content: guestUserContent });
     const userHistory = this._historyLabelForAttachments(text);
 
     // Use the already-set _turnConversationKey so stream chunks are routed
@@ -6542,20 +6619,22 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
 
     // Conversation history (skip stale page snapshots). Read by explicit **turn** storage key so an async
     // gap cannot accidentally use `_currentHistory()` with a key that no longer matches the user’s turn.
-    let recentHistory = this._buildRelevantHistory(
-      text,
-      historyKey,
-      (m) => !(m.role === 'system' && typeof m.content === 'string' && m.content.startsWith('[Page elements'))
-    );
+    const histFilterTools = (m) =>
+      !(m.role === 'system' && typeof m.content === 'string' && m.content.startsWith('[Page elements'));
+    let { history: recentHistory, topicPivot } = this._buildRelevantHistory(text, historyKey, histFilterTools);
     if (uhSnap && recentHistory.length) {
       const tail = recentHistory[recentHistory.length - 1];
       if (tail && tail.role === 'user' && tail.content === uhSnap) {
         recentHistory = recentHistory.slice(0, -1);
       }
     }
+    if (topicPivot) messages.push({ role: 'system', content: NAVIO_TOPIC_PIVOT_SYSTEM });
     messages.push(...recentHistory);
     this._maybePushAttachmentSystemHint(messages);
-    messages.push({ role: 'user', content: this._buildAttachmentPayloadForApi(text) });
+    const toolsUserContent = topicPivot
+      ? this._buildAttachmentPayloadForApi('[NEW QUESTION — unrelated to the previous topic. Answer ONLY this.]\n' + (text || ''))
+      : this._buildAttachmentPayloadForApi(text);
+    messages.push({ role: 'user', content: toolsUserContent });
 
     // Agent activity UI — sidebar DOM or guest tab via executeJavaScript
     let activityEl = null;
@@ -7724,13 +7803,15 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
    * critical context on short follow-ups (“yes”, “same zip”, “now ship-to”) because they share no
    * tokens with earlier turns. For same-chat continuity we send the **chronological tail** only
    * (capped by `NAVIO_ASSISTANT_API_HISTORY_MAX`), after optional `msgFilter` (e.g. stale page trees).
+   * When the latest user line looks unrelated to recent turns, we trim to `NAVIO_PIVOT_HISTORY_KEEP`
+   * and set `topicPivot` so callers can inject `NAVIO_TOPIC_PIVOT_SYSTEM`.
    *
-   * @param {string} _queryText  Reserved (same signature as prior relevance pass)
+   * @param {string} queryText  Current user text (for topic-pivot heuristic)
    * @param {string} historyKey  Key in `_conversationsByTab`
    * @param {function} [msgFilter]  Optional per-message predicate (return false to skip)
-   * @returns {Array<{role:string,content:string}>}
+   * @returns {{ history: Array<{role:string,content:string}>, topicPivot: boolean }}
    */
-  _buildRelevantHistory(_queryText, historyKey, msgFilter) {
+  _buildRelevantHistory(queryText, historyKey, msgFilter) {
     const raw = (this._conversationsByTab.get(historyKey) || []).filter(
       (m) => m && (m.role === 'user' || m.role === 'assistant')
     );
@@ -7739,8 +7820,15 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       content: this._stringifyHistoryMessageContent(m)
     }));
     const filtered = msgFilter ? all.filter(msgFilter) : all;
-    if (filtered.length <= NAVIO_ASSISTANT_API_HISTORY_MAX) return filtered.slice();
-    return filtered.slice(-NAVIO_ASSISTANT_API_HISTORY_MAX);
+    let slice = filtered;
+    let topicPivot = false;
+    const qt = (queryText || '').trim();
+    if (qt && navioHistoryLooksLikeTopicPivot(qt, filtered)) {
+      topicPivot = true;
+      slice = filtered.slice(-NAVIO_PIVOT_HISTORY_KEEP);
+    }
+    if (slice.length <= NAVIO_ASSISTANT_API_HISTORY_MAX) return { history: slice.slice(), topicPivot };
+    return { history: slice.slice(-NAVIO_ASSISTANT_API_HISTORY_MAX), topicPivot };
   }
 
   _appendCitationChips(msgEl, urls) {
