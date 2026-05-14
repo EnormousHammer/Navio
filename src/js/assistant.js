@@ -31,7 +31,10 @@ const NAVIO_THREAD_DISCIPLINE_SYSTEM =
   '**SCOPE MATCHING (informational answers only):** When answering an information/explanation request ("what to do", "tell me", "explain", "provide"), match the scope exactly to what was asked. "Who to send quote to" = one line. Do NOT add unrequested workflow stages, internal steps, or extra context. This rule does NOT apply to agentic tasks where persistence rules govern. ' +
   '**Information vs. action:** The test — is the user commanding YOU to act right now with an imperative verb (find, search, send, draft, check, open)? YES = call tools. NO (they say "what to do", "explain", "tell me", "provide", "how does X work") = text answer only. Action words used IN DESCRIPTION ("the quote goes to Laura", "you send the booking to Maggi") are NOT commands to act right now. ' +
   '**No unsolicited offers after corrections:** When the user corrects you ("I never asked for X"), simply acknowledge and stop. Do NOT follow up with "Do you want me to Y instead?" — wait for them to ask. ' +
-  'NEVER respond to a direct action command (imperative: find/search/send/draft/check) with only text and zero tool calls. If they commanded action, your response MUST include tool calls.';
+  'NEVER respond to a direct action command (imperative: find/search/send/draft/check) with only text and zero tool calls. If they commanded action, your response MUST include tool calls. ' +
+  '**GMAIL CITATION FORMAT \u2014 MANDATORY:** When Gmail tool results appear, ALWAYS format each email as a markdown link: `- [Subject line](web_url) \u2014 From: Sender`. Use the `web_url` field from the tool result verbatim. NEVER output raw URLs on their own line. NEVER output a subject line followed by a bare URL on the next line. The markdown link syntax makes the link clickable in the UI. ' +
+  '**NO PERMISSION THEATER after tool runs:** After Gmail search, Drive search, or any connector result, do NOT output "Next steps I can take" lists or ask "Which should I do?". Report what you found, then stop unless the user asked for next steps. ' +
+  '**DOCUMENT ANALYSIS — no history cross-contamination:** When the thread contains a user-uploaded document (PDF, image, file), all specific facts in your answer (names, emails, companies, part numbers, prices, addresses, procedures) MUST come from that document or a tool result — NOT from earlier conversation turns about unrelated topics. If a fact was discussed in old turns but is NOT in the current document, do not carry it forward unless the user explicitly asks you to.';
 
 /** Injected when heuristics detect a likely topic change so the model drops stale-task bias. */
 const NAVIO_TOPIC_PIVOT_SYSTEM =
@@ -43,7 +46,7 @@ const NAVIO_TOPIC_PIVOT_SYSTEM =
   'When in doubt, answer the new question as if it were the start of a fresh conversation.';
 
 /** When pivoting, keep only this many recent user/assistant rows (avoids long unrelated threads confusing the model). */
-const NAVIO_PIVOT_HISTORY_KEEP = 4;
+const NAVIO_PIVOT_HISTORY_KEEP = 10;
 
 const NAVIO_TOPIC_PIVOT_STOP = new Set([
   'the', 'a', 'an', 'is', 'it', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'but', 'not', 'with',
@@ -64,7 +67,10 @@ const NAVIO_TOPIC_PIVOT_STOP = new Set([
  */
 function navioHistoryLooksLikeTopicPivot(queryText, filteredMsgs) {
   const q = (queryText || '').trim();
-  if (q.length < 12) return false;
+  // Raise minimum length — short messages are almost always corrections or continuations, not pivots.
+  if (q.length < 25) return false;
+  // Corrections are never topic pivots — they continue the same thread.
+  if (navioIsUserCorrection(q)) return false;
   if (
     /^(yes|yeah|yep|yup|no|nope|nah|ok|okay|sure|thanks|thank you|thx|please|continue|go on|next|same|why|how|what about|and |also |the |this |that |now |still |more |again )\b/i.test(
       q
@@ -96,6 +102,49 @@ function navioHistoryLooksLikeTopicPivot(queryText, filteredMsgs) {
   }
   const ratio = hits / terms.size;
   return ratio < 0.25;
+}
+
+/**
+ * Returns true when a user message is correcting the assistant ("I never asked for X",
+ * "don't mention Y", "you made that up", etc.). These messages must NEVER be dropped from
+ * history or treated as topic pivots — they are permanent thread constraints.
+ * @param {string} text
+ * @returns {boolean}
+ */
+function navioIsUserCorrection(text) {
+  const s = (text || '').trim();
+  if (s.length < 5 || s.length > 300) return false;
+  return /\b(never asked|didn'?t ask|did not ask|never said|never mentioned|i never|not what i asked|don'?t (mention|add|include|say|bring up)|never (add|include|mention|do)|stop (adding|mentioning|including|doing|saying)|that'?s not what|you made (that|it) up|i didn'?t (ask|say|mention)|you lied|you made up|you invented|you fabricated|lol you|bro (you|im)|you're so hard|i (only|just) asked (about|for)|i asked (about|for) .{1,40} on+l?y|just (the |)(shipping|pricing|email|order|tracking|summary|quote|total)|shipping only|email only|pricing only|price only)\b/i.test(s);
+}
+
+/**
+ * Returns true ONLY when a user message is clearly asking about a workflow, process, or
+ * contact — where the correct answer comes from thread context or system knowledge, NOT
+ * from external tools (Gmail, Drive, web_search).
+ *
+ * Deliberately narrow: only fires for specific "who do I contact / what's the process"
+ * patterns. Does NOT fire for general "what/how" questions that might need tool calls
+ * (e.g. "what emails do I have", "what's the weather", "what are the shipping rates").
+ *
+ * @param {string} text
+ * @returns {boolean}
+ */
+function navioIsInformationalQuery(text) {
+  const s = (text || '').trim();
+  if (s.length < 3 || s.length > 250) return false;
+  // Only match very specific workflow / contact / process questions.
+  // These are answerable from thread knowledge without tool calls.
+  const isWorkflowPattern =
+    /^(who do i (contact|send|email|call|talk to|reach|forward)|who should i (contact|send|email|call|notify)|who to (contact|send|email|call|forward to)|what'?s the (flow|process|procedure|workflow|step[s]?|order of operations)|what is the (flow|process|procedure|workflow|step[s]?)|what are the step[s]?(\s+for|\s+to\b)|how does the (process|flow|workflow|procedure) work|what is the process for|tell me the (flow|process|step[s]?)|explain the (flow|process|procedure)|provide the (flow|process|step[s]?)|be concis|just the (step[s]?|flow|process|contact[s]?)|simple (breakdown|flow|process|step[s]?)|concise (breakdown|flow|process)|what is the correct (way|order|flow|process) to|what order do i|what'?s the correct (way|order|flow|process))\b/i.test(
+      s
+    );
+  if (!isWorkflowPattern) return false;
+  // If it has an explicit action command (search, check my inbox, find me, etc.), it needs tools.
+  const hasActionCommand =
+    /\b(search|look up|check my|check the (email|inbox|mail|drive|calendar)|find (me|the|my)|show me (my|the email|the inbox)|search my|fetch|pull up|draft|send|compose|write me|create me|open the|navigate to)\b/i.test(
+      s
+    );
+  return !hasActionCommand;
 }
 
 /** Natural-language mailbox ask — shared by Gmail + Outlook connector prefetch. */
@@ -2727,7 +2776,14 @@ class AssistantManagerClass {
     messages.push({
       role: 'system',
       content:
-        '[User attachments]\nThe user included file attachments in this message. Their contents appear in the next user message (text, images, PDFs, or other parts). Read and use them as the primary source when answering. On later turns, attachment bytes may not repeat — use earlier turns in this thread where you already interpreted them unless a new read is strictly required. Use browser tools only when the task requires live web interaction.'
+        '[User attachments — document is the exclusive factual source]\n' +
+        'The user included file attachments in this message. Their contents appear in the next user message (text, images, PDFs, or other parts).\n' +
+        '**DOCUMENT ANCHOR — MANDATORY:** For all factual claims (names, emails, companies, addresses, part numbers, prices, procedures, dates, quantities, requirements) your answer MUST come ONLY from the attached document(s). ' +
+        'Do NOT supplement with contacts, company names, procedures, or any other factual data from earlier turns in conversation history. ' +
+        'If a fact is not in the document, say "not in the document" — do NOT substitute historical data from prior conversations. ' +
+        'On later follow-up turns about the same document: attachment bytes may not repeat — reference your earlier interpretation of the document from this thread. ' +
+        'Do not cross-contaminate the document analysis with unrelated historical conversation data. ' +
+        'Use browser tools only when the task requires live web interaction.'
     });
   }
 
@@ -2861,7 +2917,9 @@ class AssistantManagerClass {
       '**NO FABRICATION:** NEVER invent email addresses, names, phone numbers, PO numbers, company names, addresses, prices, or any identifier not verified from this thread or a tool result. If you do not have it, say "I don\u2019t have that \u2014 want me to search?" and stop. ' +
       '**SCOPE (informational answers only):** When giving an information/explanation answer, match the scope exactly — no extra workflow stages or unrequested context. This does NOT constrain agentic tasks. ' +
       '**CORRECTIONS ARE PERMANENT:** When corrected ("don\u2019t mention X"), apply that to every message after this, not just the acknowledgment. ' +
-      '**After a correction** ("I never asked for X") — acknowledge once and stop. Do NOT offer alternatives.\n' +
+      '**After a correction** ("I never asked for X") — acknowledge once and stop. Do NOT offer alternatives. Do NOT ask "want me to Y instead?" — wait for the user to ask. ' +
+      '**If your previous response acknowledged a correction**, your NEXT reply must contain only what the user literally asked for in the current message — no offers, no suggestions, no alternatives. ' +
+      'The [PERMANENT CORRECTIONS] block in your context is the authoritative list — honor every item in it, every turn, without re-introducing any corrected behavior.\n' +
       '**ACTION MANDATE:** If the user commanded action (search, investigate, find, look up, draft, check, read emails, compare), your response MUST include tool calls. ' +
       'When investigating emails: call gmail_search immediately — do not ask which account (search both), do not list steps. Just search and report.\n\n'
     );
@@ -6100,6 +6158,21 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (topicPivot) messages.push({ role: 'system', content: NAVIO_TOPIC_PIVOT_SYSTEM });
     messages.push(...recentHistory);
     this._maybePushAttachmentSystemHint(messages);
+    // Correction registry + informational scope (legacy non-tool path)
+    const _legacyCorrBlock = this._buildThreadCorrectionsBlock(histKey);
+    if (_legacyCorrBlock) messages.push({ role: 'system', content: _legacyCorrBlock });
+    if (navioIsInformationalQuery(text)) {
+      messages.push({
+        role: 'system',
+        content:
+          '[WORKFLOW KNOWLEDGE QUERY \u2014 strict scope, answer from thread context]\n' +
+          'The user is asking about a process, contact, or workflow \u2014 NOT commanding an action. ' +
+          'Answer ONLY what was asked, matched to scope: ' +
+          '"Who to contact" = one name/email, one line. "What is the flow" = only the steps they asked about, no extras. ' +
+          'Do NOT add unrequested workflow stages, internal steps, email drafts, or offers to do extra work. ' +
+          'Do NOT ask permission or list "next steps" options. Answer and stop.'
+      });
+    }
     const userContent = topicPivot
       ? this._buildAttachmentPayloadForApi('[NEW QUESTION — unrelated to the previous topic. Answer ONLY this.]\n' + (text || ''))
       : this._buildAttachmentPayloadForApi(text);
@@ -6578,6 +6651,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const { history: recentHistory, topicPivot } = this._buildRelevantHistory(text, gHistKey, null);
     if (topicPivot) messages.push({ role: 'system', content: NAVIO_TOPIC_PIVOT_SYSTEM });
     messages.push(...recentHistory);
+    // Correction registry (guest legacy path)
+    const _guestCorrBlock = this._buildThreadCorrectionsBlock(gHistKey);
+    if (_guestCorrBlock) messages.push({ role: 'system', content: _guestCorrBlock });
     const guestUserContent = topicPivot
       ? this._taskAnchorPrefix() + '[NEW QUESTION — unrelated to the previous topic. Answer ONLY this.]\n' + (text || '')
       : this._taskAnchorPrefix() + (text || '');
@@ -6764,8 +6840,14 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         role: 'system',
         content:
           '[Primary surface — docked side assistant]\nThe user relies on the **side assistant** next to live tabs for most work. Same bar as full-page Navio AI: when they want something **done**, **call tools** and drive the session — do not replace execution with a how-to checklist. ' +
-          '**Take over** means automate the **browsing context tab** named in this turn (use `read_page`, `click`, `type_text`, `navigate`, …). Prefer **API tools** (`gmail_*`, `drive_*`, `calendar_*`, `web_search`, …) over clicking webmail or search UIs when those tools apply. ' +
-          'Use `list_tabs` / `switch_tab` when they mention another tab, compare pages, or you must target a different open tab.'
+          '**Take over** means automate the **browsing context tab** named in this turn (use `click`, `type_text`, `fill_form`, `navigate`, …). Prefer **API tools** (`gmail_*`, `drive_*`, `calendar_*`, `web_search`, …) over clicking webmail or search UIs when those tools apply. ' +
+          'Use `list_tabs` / `switch_tab` when they mention another tab, compare pages, or you must target a different open tab.\n' +
+          '**TAB ISOLATION — each tab has its own independent conversation history.** The history shown above belongs ONLY to this tab\'s session. Other open tabs have completely separate conversation histories that you cannot see. ' +
+          'When the user is working in this tab, rely on THIS tab\'s history for all context — do not assume anything about other tabs.\n' +
+          '**BROWSER TOOL DISCIPLINE — do NOT lock/interact with the browsing tab unless the user explicitly asks you to click, fill, or navigate the page.** ' +
+          'For reading emails, searching, or any data operation: ALWAYS use API tools (`gmail_*`, `drive_*`, `calendar_*`, `web_search`). ' +
+          'Only call `click`, `type_text`, `fill_form`, `select_option`, `drag`, `press_key`, or `scroll` (interactive DOM tools) when the task genuinely requires page interaction that has no API equivalent. ' +
+          'Use `read_page` or `screenshot` sparingly — only when you truly need to see current page state and cannot get that information from an API tool.'
       });
     }
 
@@ -6875,6 +6957,25 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     if (topicPivot) messages.push({ role: 'system', content: NAVIO_TOPIC_PIVOT_SYSTEM });
     messages.push(...recentHistory);
     this._maybePushAttachmentSystemHint(messages);
+    // Inject programmatic correction registry — makes "don't mention X" corrections sticky
+    // across all turns without relying solely on the model re-reading the full history.
+    const _toolsHistKey = String(this._turnConversationKey || this._conversationKey());
+    const _toolsCorrBlock = this._buildThreadCorrectionsBlock(_toolsHistKey);
+    if (_toolsCorrBlock) messages.push({ role: 'system', content: _toolsCorrBlock });
+    // Inject scope constraint for specific workflow/process/contact questions.
+    // NOTE: does NOT suppress tool calls — only prevents scope inflation and draft offers.
+    if (navioIsInformationalQuery(text)) {
+      messages.push({
+        role: 'system',
+        content:
+          '[WORKFLOW KNOWLEDGE QUERY \u2014 strict scope, answer from thread context]\n' +
+          'The user is asking about a process, contact, or workflow \u2014 NOT commanding an action. ' +
+          'Answer ONLY what was asked, matched to scope: ' +
+          '"Who to contact" = one name/email, one line. "What is the flow" = only the steps they asked about, no extras. ' +
+          'Do NOT add unrequested workflow stages, internal steps, email drafts, or offers to do extra work. ' +
+          'Do NOT ask permission or list "next steps" options. Answer and stop.'
+      });
+    }
     const toolsUserContent = topicPivot
       ? this._buildAttachmentPayloadForApi('[NEW QUESTION — unrelated to the previous topic. Answer ONLY this.]\n' + (text || ''))
       : this._buildAttachmentPayloadForApi(text);
@@ -7241,6 +7342,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       });
     });
 
+    // Tab id to highlight as agent-controlled — deferred: only set on first browser-interactive tool.
+    // API-only turns (gmail_*, web_search, etc.) should NOT light up the tab as locked.
+    let _deferredAgentTabId = null;
+
     // Set up progress handler
     const unProgress = window.navio.onToolProgress((payload) => {
       if (payload && payload.tabId != null && String(payload.tabId) !== tk) return;
@@ -7257,6 +7362,12 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           this._agentGuestShellBlockActive = !!payload.blocksGuestShell;
         } else {
           this._agentGuestShellBlockActive = this._inferGuestShellBlockFromToolStart(tool);
+        }
+        // Show the agent-controlled tab highlight only when a browser-interactive tool runs.
+        // API-only tools (gmail_*, web_search, read_page, screenshot, navigate…) must NOT
+        // light up the tab as locked — the user can still interact with it freely.
+        if (this._agentGuestShellBlockActive && _deferredAgentTabId && typeof TabManager !== 'undefined') {
+          TabManager.setAgentControlledTab?.(_deferredAgentTabId);
         }
         this._updateAssistantBusyChrome();
         if (tool !== 'navigate') {
@@ -7372,7 +7483,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         toolWv = TabManager.getBrowserTargetWebview?.();
         wait++;
       }
-      TabManager.setAgentControlledTab?.(TabManager.findTabIdForWebview?.(toolWv));
+      // Store the resolved target tab id but do NOT set the agent-controlled highlight yet.
+      // The highlight will only appear when the first browser-interactive (blocking) tool
+      // starts running — API-only turns never show the tab as locked.
+      _deferredAgentTabId = TabManager.findTabIdForWebview?.(toolWv) ?? null;
     }
 
     let toolTabWebContentsId = activePopupWcId;
@@ -8066,6 +8180,33 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
    * @param {function} [msgFilter]  Optional per-message predicate (return false to skip)
    * @returns {{ history: Array<{role:string,content:string}>, topicPivot: boolean }}
    */
+  /**
+   * Scans the stored conversation for user correction messages ("I never asked for X",
+   * "don't mention Y", etc.) and builds a hard system-block string injected right before
+   * the current user message every turn — making corrections programmatically sticky.
+   * Returns null when no corrections exist in this thread.
+   * @param {string} historyKey  Key in `_conversationsByTab`
+   * @returns {string|null}
+   */
+  _buildThreadCorrectionsBlock(historyKey) {
+    const raw = this._conversationsByTab.get(historyKey) || [];
+    const corrections = [];
+    for (const m of raw) {
+      if (m.role !== 'user') continue;
+      const txt = this._stringifyHistoryMessageContent(m).trim();
+      if (navioIsUserCorrection(txt) && !corrections.includes(txt)) {
+        corrections.push(txt);
+      }
+    }
+    if (!corrections.length) return null;
+    const tail = corrections.slice(-10);
+    return (
+      '[PERMANENT CORRECTIONS \u2014 apply to EVERY reply in this thread, no exceptions]\n' +
+      tail.map((c, i) => `${i + 1}. User said: "${c.slice(0, 150)}"`).join('\n') +
+      '\nDo NOT repeat any behavior the user corrected above. Do not offer alternatives after a correction. Comply and move on.'
+    );
+  }
+
   _buildRelevantHistory(queryText, historyKey, msgFilter) {
     const raw = (this._conversationsByTab.get(historyKey) || []).filter(
       (m) => m && (m.role === 'user' || m.role === 'assistant')
@@ -8080,7 +8221,14 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const qt = (queryText || '').trim();
     if (qt && navioHistoryLooksLikeTopicPivot(qt, filtered)) {
       topicPivot = true;
-      slice = filtered.slice(-NAVIO_PIVOT_HISTORY_KEEP);
+      const recentSlice = filtered.slice(-NAVIO_PIVOT_HISTORY_KEEP);
+      // Preserve correction messages from the portion being dropped so that user-declared
+      // constraints ("don't mention X", "I never asked for Y") survive topic changes.
+      const olderPart = filtered.slice(0, Math.max(0, filtered.length - NAVIO_PIVOT_HISTORY_KEEP));
+      const preservedCorrections = olderPart.filter(
+        (m) => m.role === 'user' && navioIsUserCorrection(String(m.content || ''))
+      );
+      slice = [...preservedCorrections, ...recentSlice];
     }
     if (slice.length <= NAVIO_ASSISTANT_API_HISTORY_MAX) return { history: slice.slice(), topicPivot };
     return { history: slice.slice(-NAVIO_ASSISTANT_API_HISTORY_MAX), topicPivot };
@@ -12540,7 +12688,11 @@ ${pageInfo}${snapText}`;
         /\b(how\s+(much|many|long|far|old|often)|what\s+does|who\s+is|where\s+is|what\s+year|what\s+time|what\s+are\s+the\s+(best|top|most))\b/i.test(text) ||
         /\b(price|cost|rate|stock|weather|definition|meaning|explain|difference\s+between|compare|vs\.?|versus|pros\s+and\s+cons|review|rating|recommend)\b/i.test(text) ||
         /\b(how\s+to|best\s+way\s+to|steps\s+to|guide\s+(to|for)|tutorial)\b/i.test(text);
-      const webSearchIntent = webMode === 'always' || (webMode === 'auto' && webSearchIntentAuto);
+      // Don't fire web search for internal workflow / contact / process questions — the answer
+      // lives in thread context or system knowledge, not on the web.
+      const webSearchIntent =
+        webMode === 'always' ||
+        (webMode === 'auto' && webSearchIntentAuto && !navioIsInformationalQuery(text));
 
       if (webMode !== 'never' && webSearchIntent && (has('perplexity') || has('brave'))) {
         try {
@@ -12562,6 +12714,12 @@ ${pageInfo}${snapText}`;
       // ── Gmail ──────────────────────────────────────────────────────────
       let gmailIntent = navioMailContextActiveForTurn(text, () => this._currentHistory());
       if (mailMode === 'never') gmailIntent = false;
+      // Suppress Gmail prefetch for purely informational queries (workflow questions, "who do I contact",
+      // "what's the flow") that have no actual mailbox intent. Without this guard the injected mail context
+      // primes the model toward email-action mode even when the user asked a text-only question.
+      if (gmailIntent && navioIsInformationalQuery(text) && !navioDetectMailboxIntent(text)) {
+        gmailIntent = false;
+      }
       // "Mail: always" used to prefetch on every message — that matched non-mail questions. Intent must still be mail-like.
       const gmailApiConnected = has('gmail') || has('gmail_2');
       if (gmailApiConnected && gmailIntent && oauthGoogle && oauthGoogle2 && oauthSt?.google?.email && oauthSt?.google_2?.email) {
