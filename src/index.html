@@ -1104,6 +1104,10 @@
             <div class="settings-section">
               <h3>Policy</h3>
               <label class="setting-toggle-row">
+                <input type="checkbox" id="setting-ai-use-tool-calling">
+                <span><strong>Browser agent and tools</strong> — allow multi-step automation (tabs, clicks, connectors, many model calls). Leave off for quick chat: one reply per message, lower cost.</span>
+              </label>
+              <label class="setting-toggle-row">
                 <input type="checkbox" id="setting-ai-kill-switch">
                 <span>Turn off all AI requests (kill switch)</span>
               </label>
@@ -1914,7 +1918,7 @@
           </div>
           <div class="welcome-headline">
             <h3 class="welcome-title">Navio <span class="wt-ai">AI</span></h3>
-            <p class="welcome-sub">Your intelligent browser companion —<br>ask anything, automate, research deeply</p>
+            <p class="welcome-sub">Ask anything for a quick reply in chat.<br>Enable <strong>Browser agent and tools</strong> in Settings → AI for multi-step browsing automation.</p>
           </div>
           <p class="welcome-cta">Add your API key in <strong>Settings</strong> to get started.</p>
           <p class="welcome-starter-hint">Starter prompts — pick a category, choose a task (runs immediately), or Back to return.</p>

@@ -115,7 +115,8 @@ const DEFAULT_CONFIG = {
   aiDelegationObserveMode: true,
   /** Max agent loop iterations (50-500). Higher = browsing/research less likely to stop mid-task. */
   aiAgentMaxToolSteps: 300,
-  aiUseToolCalling: true,
+  /** When false (default), sidebar and Chat with AI use one model call per message (quick chat). When true, Navio runs the multi-step browser tool loop (more API usage). */
+  aiUseToolCalling: false,
   /** Perplexity web search in assistant: auto = keyword intent, always = every message (if key), never = off */
   assistantConnectorWeb: 'auto',
   /** Gmail (and mail connector prefetch): auto = natural intent, always = include inbox context when connected, never = off */

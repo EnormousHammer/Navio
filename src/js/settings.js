@@ -101,6 +101,7 @@ class SettingsManagerClass {
       clearApiKey: document.getElementById('btn-clear-api-key'),
       clearSiteData: document.getElementById('btn-clear-site-data'),
       clearSiteDataStatus: document.getElementById('clear-site-data-status'),
+      aiUseToolCalling: document.getElementById('setting-ai-use-tool-calling'),
       aiKillSwitch: document.getElementById('setting-ai-kill-switch'),
       aiDataScope: document.getElementById('setting-ai-data-scope'),
       aiRedact: document.getElementById('setting-ai-redact'),
@@ -716,6 +717,9 @@ class SettingsManagerClass {
     this.elements.aiPageContext.checked = scope !== 'none';
     if (this.elements.aiDataScope) {
       this.elements.aiDataScope.value = ['none', 'selection', 'excerpt', 'full'].includes(scope) ? scope : 'excerpt';
+    }
+    if (this.elements.aiUseToolCalling) {
+      this.elements.aiUseToolCalling.checked = this.config.aiUseToolCalling === true;
     }
     if (this.elements.aiKillSwitch) this.elements.aiKillSwitch.checked = !!this.config.aiKillSwitch;
     if (this.elements.aiRedact) this.elements.aiRedact.checked = this.config.aiRedactPII !== false;
@@ -1771,6 +1775,7 @@ class SettingsManagerClass {
       aiIncludePageContext: aiDataScope !== 'none',
       aiDataScope,
       mcpServers: Array.isArray(this.config.mcpServers) ? this.config.mcpServers : [],
+      aiUseToolCalling: !!(this.elements.aiUseToolCalling && this.elements.aiUseToolCalling.checked),
       aiKillSwitch: !!(this.elements.aiKillSwitch && this.elements.aiKillSwitch.checked),
       aiRedactPII: !!(this.elements.aiRedact && this.elements.aiRedact.checked),
       aiStreamResponses: !!(this.elements.aiStream && this.elements.aiStream.checked),
