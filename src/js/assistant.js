@@ -386,6 +386,8 @@ const NAVIO_VOICE_TTS_CHUNK_MAX = 2000;
 const NAVIO_VOICE_CONV_THINKING_NUDGE_DELAY_MS = 420;
 /** Minimum gap between spoken tool-progress / reasoning nudges in voice conversation (ms). */
 const NAVIO_VOICE_CONV_PROGRESS_TTS_MIN_GAP_MS = 4200;
+/** Minimum gap for tool-START narrations — slightly shorter so the first action fires promptly. */
+const NAVIO_VOICE_CONV_START_TTS_MIN_GAP_MS = 3000;
 /** If nothing was spoken this long during an agent run, say a short professional hold line (voice conv only). */
 const NAVIO_VOICE_CONV_HOLD_SILENCE_MS = 7800;
 /** How often we check for that awkward silence (ms). */
@@ -435,24 +437,72 @@ function navioVcMicFrameLooksLikeHumanVoiceForBargeIn(freqBuf, sampleRate) {
 }
 
 let _navioVcHoldPhraseIx = 0;
-const NAVIO_VOICE_CONV_HOLD_PHRASES = [
-  'Still here — this part is taking a little longer than usual.',
-  'Thanks for waiting — I am still working through it.',
-  'Almost there — just sorting a few more details.',
-  'Bear with me — I am narrowing in on the answer.',
-  'Just a bit longer — I want to make sure I get this right.',
-  'Still on it — pulling a few things together now.',
-  'Hang tight — cross-checking some details for you.',
-  'Nearly done — wrapping up the last bit.',
-  'Getting there — a little more to go.',
-  'Still reading through this — almost ready.',
-];
+/** Last tool that started during a voice-conv agent run — used to contextualise hold phrases. */
+let _navioVcLastActiveTool = '';
+/** Last meaningful detail string (URL host, query, etc.) from the most recent tool start. */
+let _navioVcLastActiveDetail = '';
 
 function navioNextVoiceConvHoldPhrase() {
-  const a = NAVIO_VOICE_CONV_HOLD_PHRASES;
-  const s = a[_navioVcHoldPhraseIx % a.length];
-  _navioVcHoldPhraseIx++;
-  return s;
+  const tool = _navioVcLastActiveTool;
+  const detail = _navioVcLastActiveDetail;
+  const ix = _navioVcHoldPhraseIx++;
+
+  // Contextual hold phrases based on what we last saw the agent doing.
+  if (tool === 'navigate' || tool === 'read_page' || tool === 'get_page_text') {
+    const site = detail ? detail.replace(/^www\./i, '').split('/')[0] : '';
+    const phrases = site
+      ? [
+          `Still reading through ${site} — almost there.`,
+          `Going through ${site} — this is taking a moment.`,
+          `Still on ${site} — pulling out what you need.`,
+          `Scanning ${site} — just a little more.`,
+        ]
+      : [
+          'Still reading through the page — almost there.',
+          'Going through this page carefully — just a moment.',
+          'Pulling out what you need — nearly done.',
+        ];
+    return phrases[ix % phrases.length];
+  }
+  if (tool === 'web_search') {
+    const q = detail ? `"${detail.length > 40 ? detail.slice(0, 37) + '…' : detail}"` : 'that';
+    const phrases = [
+      `Still going through the search results for ${q}.`,
+      `Reading what came up for ${q} — almost there.`,
+      `Checking the sources for ${q} — just a moment.`,
+    ];
+    return phrases[ix % phrases.length];
+  }
+  if (tool === 'gmail_search' || tool === 'gmail_get_thread' || tool === 'gmail_get_message') {
+    return [
+      'Still reading through your email — almost done.',
+      'Going through that thread — this one is long.',
+      'Scanning your inbox — nearly there.',
+    ][ix % 3];
+  }
+  if (tool === 'drive_get_file' || tool === 'drive_search') {
+    return [
+      'Still reading that Drive file — almost ready.',
+      'Going through the document — just a bit longer.',
+      'Working through that file from Drive.',
+    ][ix % 3];
+  }
+  if (tool === 'click' || tool === 'type_text' || tool === 'select_option') {
+    return [
+      'Waiting for the page to respond — still on it.',
+      'The page is loading — holding on.',
+      'Just waiting for this to go through.',
+    ][ix % 3];
+  }
+
+  // Generic fallback — still better than the old "hang tight" loop.
+  return [
+    'Still working through it — almost there.',
+    'This part is taking a little longer — still on it.',
+    'Nearly there — just a bit more to sort through.',
+    'Still on it — I want to get this right for you.',
+    'Almost done — reading through the last few details.',
+  ][ix % 5];
 }
 
 let _navioVcOpenPhraseIx = 0;
@@ -465,19 +515,126 @@ const NAVIO_VOICE_CONV_OPEN_PHRASES = [
   'Sure thing — give me just a moment.',
 ];
 
-/** First spoken line after the user’s request (voice conversation); YouTube / transcript asks get a tailored opener. */
+/** First spoken line after the user’s request (voice conversation). Content-type detection gives a tailored opener. */
 function navioVoiceConvOpenPhraseForText(userText) {
   const t = String(userText || '');
   if (/\b(youtube|youtu\.be)\b/i.test(t) || /\b(transcript|captions?|timestamps?|chapters?|video)\b/i.test(t)) {
     return 'One moment — I am scanning the video and timeline for what you asked about.';
+  }
+  if (/\b(gmail|email|inbox|thread|message)\b/i.test(t)) {
+    return 'On it — let me pull up your email.';
+  }
+  if (/\b(drive|doc|document|sheet|spreadsheet|file)\b/i.test(t)) {
+    return 'Got it — opening that from Drive now.';
+  }
+  if (/\b(search|find|look up|look for|google)\b/i.test(t)) {
+    return 'On it — searching that for you now.';
   }
   const a = NAVIO_VOICE_CONV_OPEN_PHRASES;
   return a[_navioVcOpenPhraseIx++ % a.length];
 }
 
 /**
- * Return a natural spoken sentence for a tool progress event in voice conversation.
- * Returns null for tools that should use the generic label or stay silent.
+ * Return a natural spoken sentence for when a tool is STARTING (before the result arrives).
+ * Narrates what the agent is doing in real time so the user hears what is happening, not generic hold phrases.
+ * Updates hold-phrase context variables as a side effect.
+ * Returns null for tools that should stay silent at the start phase.
+ */
+function navioVoiceConvSpokenToolStart(tool, detail) {
+  const d = String(detail || '').trim();
+  _navioVcLastActiveTool = tool || '';
+  _navioVcLastActiveDetail = d;
+
+  const trunc = (s, n) => s.length > n ? s.slice(0, n - 1) + '\u2026' : s;
+
+  switch (tool) {
+    case 'navigate': {
+      if (!d) return 'Navigating now.';
+      const host = d.replace(/^www\./i, '').split('/')[0];
+      return 'Heading to ' + host + '.';
+    }
+    case 'web_search':
+      return d ? 'Searching for \u201c' + trunc(d, 55) + '\u201d.' : 'Searching the web now.';
+    case 'read_page':
+      return 'Let me read what\u2019s on this page.';
+    case 'get_page_text':
+      return 'Pulling the text from this page.';
+    case 'screenshot':
+      return 'Taking a look at what\u2019s on screen.';
+    case 'click':
+      return d ? 'Clicking \u201c' + trunc(d, 48) + '\u201d.' : 'Clicking that now.';
+    case 'type_text':
+      return 'Filling that in now.';
+    case 'select_option':
+      return d ? 'Selecting \u201c' + trunc(d, 48) + '\u201d.' : 'Choosing an option.';
+    case 'scroll':
+      return d === 'up' ? 'Scrolling up.' : d === 'down' ? 'Scrolling down.' : 'Scrolling through the page.';
+    case 'go_back':
+      return 'Going back to the previous page.';
+    case 'go_forward':
+      return 'Going forward.';
+    case 'open_tab': {
+      if (!d) return 'Opening a new tab.';
+      const host = d.replace(/^www\./i, '').split('/')[0];
+      return 'Opening a tab for ' + host + '.';
+    }
+    case 'close_tab':
+      return 'Closing that tab.';
+    case 'switch_tab':
+      return d ? 'Switching to the ' + trunc(d, 40) + ' tab.' : 'Switching tabs.';
+    case 'press_key':
+      return d ? 'Pressing ' + d + '.' : null;
+    case 'gmail_search':
+      return d ? 'Searching Gmail for \u201c' + trunc(d, 50) + '\u201d.' : 'Searching your Gmail.';
+    case 'gmail_get_thread':
+    case 'gmail_get_message':
+      return 'Opening that email.';
+    case 'gmail_create_draft':
+      return 'Drafting that email now.';
+    case 'gmail_create_reply_draft':
+      return 'Writing a reply.';
+    case 'gmail_send_draft':
+      return 'Sending that message now.';
+    case 'gmail_list_drafts':
+      return 'Checking your drafts.';
+    case 'drive_search':
+      return d ? 'Looking in Drive for \u201c' + trunc(d, 50) + '\u201d.' : 'Searching Drive.';
+    case 'drive_get_file':
+      return 'Opening that file from Drive.';
+    case 'drive_list_folder':
+      return 'Looking at what\u2019s in that folder.';
+    case 'drive_create_file':
+      return 'Creating that file now.';
+    case 'drive_update_text_file':
+    case 'drive_update_google_doc':
+      return 'Updating that document.';
+    case 'calendar_list_events':
+      return 'Checking your calendar.';
+    case 'calendar_create_event':
+      return 'Adding that to your calendar.';
+    case 'list_tabs':
+      return 'Checking your open tabs.';
+    case 'read_console':
+      return 'Reading the console messages.';
+    case 'read_network':
+      return 'Looking at the network requests.';
+    case 'save_local_file':
+      return 'Saving that file.';
+    case 'run_workflow':
+      return d ? 'Running the \u201c' + trunc(d, 50) + '\u201d workflow.' : 'Running a workflow.';
+    case 'wait':
+    case 'thinking':
+    case 'propose_plan':
+    case 'list_workflows':
+      return null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Return a natural spoken sentence for a tool COMPLETION event in voice conversation.
+ * Reports meaningful results; returns null to stay silent when nothing interesting came back.
  * Rotates through variants to avoid sounding repetitive.
  */
 let _navioVcSpokenReadIx = 0;
@@ -488,9 +645,9 @@ function navioVoiceConvSpokenToolUpdate(tool, result) {
     case 'read_page': {
       const title = String(result?.title || '').trim();
       const readVariants = [
-        title ? `Reading ${title} now.` : 'Looking at that page now.',
-        title ? `I can see ${title} — going through it.` : 'Going through the page now.',
-        title ? `On ${title} — reading through it.` : 'Reading the page.',
+        title ? `I can see ${title}.` : 'Got the page.',
+        title ? `I’m on ${title} now.` : 'Read the page.',
+        title ? `On ${title} — going through it.` : 'Looking at the page.',
       ];
       return readVariants[_navioVcSpokenReadIx++ % readVariants.length];
     }
@@ -503,28 +660,64 @@ function navioVoiceConvSpokenToolUpdate(tool, result) {
             `Pulled up ${cites} source${cites === 1 ? '' : 's'} — reading through.`,
           ]
         : [
-            'Searched the web — looking at what came up.',
-            'Done searching — checking the results.',
             'Got some results — looking them over.',
+            'Done searching — checking what came up.',
           ];
       return searchVariants[_navioVcSpokenSearchIx++ % searchVariants.length];
     }
     case 'gmail_get_thread': {
       const n = result?.message_count ?? result?.messages?.length ?? 0;
-      return n ? `Reading a thread — ${n} message${n === 1 ? '' : 's'} in it.` : 'Reading that email thread.';
+      return n ? `Reading the thread — ${n} message${n === 1 ? '' : 's'} in it.` : 'Got that email thread.';
     }
     case 'gmail_search': {
       const n = result?.results?.length ?? 0;
-      return n > 0 ? `Found ${n} email${n === 1 ? '' : 's'} — looking through them.` : 'Checked Gmail.';
+      return n > 0 ? `Found ${n} email${n === 1 ? '' : 's'} — looking through them.` : 'Checked Gmail — nothing matched.';
     }
+    case 'gmail_send_draft':
+      return 'Message sent.';
+    case 'gmail_create_draft':
+    case 'gmail_create_reply_draft':
+      return 'Draft is ready.';
     case 'drive_get_file': {
       const name = String(result?.name || '').trim();
-      return name ? `Reading ${name} from Drive.` : 'Reading a file from Drive.';
+      return name ? `Got ${name} from Drive.` : 'Got the file from Drive.';
     }
+    case 'drive_search': {
+      const n = result?.count ?? result?.results?.length ?? 0;
+      return n > 0 ? `Found ${n} file${n === 1 ? '' : 's'} in Drive.` : 'Searched Drive — nothing found.';
+    }
+    case 'drive_create_file':
+      return result?.name ? `Created “${result.name}” in Drive.` : 'File created in Drive.';
+    case 'drive_update_text_file':
+    case 'drive_update_google_doc':
+      return 'Document updated.';
     case 'get_page_text': {
       const kb = ((result?.text || '').length / 1000).toFixed(1);
-      return `Pulled about ${kb}k of text from the page.`;
+      return `Got about ${kb}k of text from the page.`;
     }
+    case 'screenshot':
+      return null;
+    case 'click':
+      return result?.success === false ? 'That click did not land — trying another way.' : null;
+    case 'open_tab':
+      return result?.title ? `Opened ${result.title}.` : null;
+    case 'switch_tab':
+      return result?.title ? `I’m now on ${result.title}.` : null;
+    case 'list_tabs': {
+      const n = result?.tabs?.length ?? 0;
+      return n ? `You have ${n} tab${n === 1 ? '' : 's'} open.` : null;
+    }
+    case 'calendar_list_events': {
+      const ev = result?.events?.length ?? result?.count ?? 0;
+      return ev ? `Found ${ev} event${ev === 1 ? '' : 's'} on your calendar.` : 'Nothing on the calendar for that range.';
+    }
+    case 'calendar_create_event':
+      return result?.htmlLink || result?.id ? 'Event added to your calendar.' : null;
+    case 'save_local_file':
+      return result?.path ? `Saved to ${result.path.split(/[\\/]/).pop()}.` : result?.canceled ? 'Save was cancelled.' : null;
+    case 'go_back':
+    case 'go_forward':
+      return null;
     default:
       return null;
   }
@@ -593,6 +786,23 @@ function navioVoiceConvTtsChunkPlan(text) {
   const sub = navioSplitTtsChunks(firstSeg, NAVIO_VOICE_TTS_FIRST_CHUNK);
   return sub.length ? [...sub, ...rough.slice(1)] : rough;
 }
+/** For manual read-aloud: smaller first chunk so the first sentence starts playing ASAP. */
+const NAVIO_MANUAL_TTS_FIRST_CHUNK = 100;
+
+/**
+ * Chunk plan for manual Read-aloud button: uses a smaller first chunk (~1-2 sentences)
+ * so the user hears audio within ~200ms while the rest of the text is prefetched in parallel.
+ */
+function navioManualTtsChunkPlan(text) {
+  const t = String(text || '').trim();
+  if (!t) return [];
+  const rough = navioSplitTtsChunks(t, NAVIO_VOICE_TTS_CHUNK_MAX);
+  const firstSeg = rough[0] || t;
+  if (firstSeg.length <= NAVIO_MANUAL_TTS_FIRST_CHUNK) return rough;
+  const sub = navioSplitTtsChunks(firstSeg, NAVIO_MANUAL_TTS_FIRST_CHUNK);
+  return sub.length ? [...sub, ...rough.slice(1)] : rough;
+}
+
 
 /** Light comma pause after ? / ! so the next clause flows (avoids “dot dot dot” TTS glitches). */
 function navioAddSpokenBreathingPauses(s) {
@@ -1525,9 +1735,11 @@ class AssistantManagerClass {
         // Stop any other in-progress TTS and clear their states
         this.messagesEl.querySelectorAll('.assistant-tts-btn.tts-speaking, .assistant-tts-btn.tts-loading')
           .forEach(b => b.classList.remove('tts-speaking', 'tts-loading'));
-        // Immediate feedback — loading state before API call
+        // Immediate visual feedback
         btn.classList.add('tts-loading');
-        this._setTTSBarVisible(true, 'Preparing audio…');
+        this._setTTSBarVisible(true, 'Starting audio…');
+        // Warm the voice cache before _speakText so the IPC fires without waiting on it.
+        void this._refreshCachedTtsVoice?.();
         try {
           await this._speakText(text, btn);
         } catch {
@@ -3391,10 +3603,29 @@ class AssistantManagerClass {
       }
 
       // During assistant TTS, sustained loud RMS is almost always speaker bleed into the mic,
-      // not the user talking. Rely on spike-over-EMA (above) for barge-in; the plain sustained
-      // path caused false interrupts → Whisper hallucinations → fake "user" lines and self-replies.
+      // not the user talking. The spike-over-EMA path above handles the typical speaker case.
+      // Low-bleed path: headphones / very low speaker volume keep speakTtsBleedEma near 0.
+      // In that environment, re-enable plain voiced-audio detection with a modest threshold
+      // so the user can still barge in without shouting.
       if (vcState === 'speaking') {
-        speechStart = null;
+        if (noiseMeasured && speakTtsBleedEma < 6) {
+          // Near-zero bleed (headphones) — treat like the thinking state but require voiced spectrum.
+          analyser.getByteFrequencyData(freqBuf);
+          const voicedLow =
+            loudEnough &&
+            navioVcMicFrameLooksLikeHumanVoiceForBargeIn(freqBuf, audioCtx.sampleRate);
+          if (voicedLow) {
+            if (!speechStart) speechStart = Date.now();
+            else if (Date.now() - speechStart >= NAVIO_VOICE_CONV_INTERRUPT_SPEAKING_MS) {
+              this._handleVoiceConvInterrupt();
+              return;
+            }
+          } else {
+            speechStart = null;
+          }
+        } else {
+          speechStart = null;
+        }
         this._vcInterruptRaf = requestAnimationFrame(loop);
         return;
       }
@@ -3652,7 +3883,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     // Do NOT tear down the AudioContext when TTS starts — that blinded barge-in for hundreds of ms.
     // Instead recalibrate the noise floor in-place when leaving quiet (thinking) for loud (speaking) or back.
     if (state === 'thinking' || state === 'speaking' || state === 'summarizing') {
-      if (!this._vcInterruptActive) {
+      // Restart if flag is stale (AudioContext was closed by browser without us knowing).
+      const ctxDead = this._vcInterruptAudioCtx && this._vcInterruptAudioCtx.state === 'closed';
+      if (!this._vcInterruptActive || ctxDead) {
+        if (ctxDead) this._stopVoiceConvInterruptListener();
         this._startVoiceConvInterruptListener();
       } else if (state === 'speaking' && prevVcState !== 'speaking') {
         this._vcInterruptRecalib = true;
@@ -3663,7 +3897,12 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     } else {
       this._stopVoiceConvInterruptListener();
       if (state === 'muted') this._updateVchAudioBars(null);
-      // Bars will be driven by live RMS data once _voiceConvListen starts recording
+      // Safety net: when entering 'listening' without an active recording, ensure a listen
+      // cycle starts. Covers edge cases where TTS ends but the normal reopen path was skipped
+      // (IPC timeout, audio element error, barge-in + schedule race, etc.).
+      if (state === 'listening' && !this._vcMicMuted && !this._voiceConvRec) {
+        this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_SCHEDULE_LISTEN_MS);
+      }
     }
   }
 
@@ -3707,6 +3946,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
   _voiceConvListen() {
     if (!this._voiceConvActive) return;
     if (this._vcMicMuted) return;
+    // Guard: don't start a second Whisper session if one is already active (e.g. from barge-in
+    // interrupt that fired in the narrow window before the scheduled listen timer fires).
+    if (this._voiceConvRec) return;
     this._voiceConvSetState('listening');
     this._vchMeterSmoothed = 0;
     const transcriptEl = document.getElementById('vch-transcript');
@@ -4043,6 +4285,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     const ttsPayload = (txt) => {
       const o = { text: txt.slice(0, 4000), voice: voicePref };
       if (ttsSpeed != null && Number.isFinite(Number(ttsSpeed))) o.speed = Number(ttsSpeed);
+      if (speechOpts.ttsModel) o.model = speechOpts.ttsModel;
       return o;
     };
     let prefetched = window.navio.navioTTS(ttsPayload(chunks[0]));
@@ -4196,8 +4439,18 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       /** Only full assistant replies reopen the mic — never tool-status / thinking nudges (prevents TTS→mic bleed → bogus user turns). */
       speechOpts.voiceConvReopenMic = !!(this._voiceConvActive && !opts.workNudge);
 
-      const chunkPlan = navioVoiceConvTtsChunkPlan(plain.slice(0, 4000));
-      const chunkMinChars = this._voiceConvActive ? 640 : 2200;
+      // Manual reads use tts-1 (lower latency: ~200ms vs ~1s for tts-1-hd).
+      // Voice conversation keeps tts-1-hd for better prosody and naturalness.
+      const isManualRead = !this._voiceConvActive && !opts.workNudge;
+      if (isManualRead) speechOpts.ttsModel = 'tts-1';
+
+      // For manual reads use a shorter first-chunk target so the first sentence
+      // plays in ~200-300ms while the rest is prefetched in parallel.
+      const chunkPlan = isManualRead
+        ? navioManualTtsChunkPlan(plain.slice(0, 4000))
+        : navioVoiceConvTtsChunkPlan(plain.slice(0, 4000));
+      // Lower the manual-read threshold: enable chunking even for short replies.
+      const chunkMinChars = this._voiceConvActive ? 640 : 80;
       const useChunkedOpenAi =
         window.navio?.navioTTS &&
         !opts.workNudge &&
@@ -4221,6 +4474,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
         try {
           const req = { text: plain.slice(0, 4000), voice: voicePref };
           if (ttsSpeed != null && Number.isFinite(ttsSpeed)) req.speed = ttsSpeed;
+          if (isManualRead) req.model = 'tts-1';
           const result = await window.navio.navioTTS(req);
 
           // Bail if superseded while waiting for TTS IPC
@@ -7023,6 +7277,17 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
             });
           }
         }
+        // Real-time voice narration: speak what the agent is about to do
+        if (this._voiceConvActive && tool) {
+          const startLine = navioVoiceConvSpokenToolStart(tool, detail != null ? String(detail).trim() : '');
+          if (startLine) {
+            const now = Date.now();
+            if (now - (this._voiceConvProgressTtsAt || 0) >= NAVIO_VOICE_CONV_START_TTS_MIN_GAP_MS) {
+              this._voiceConvProgressTtsAt = now;
+              void this._speakVoiceConvWorkNudge(startLine);
+            }
+          }
+        }
         return;
       }
 
@@ -8239,7 +8504,17 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (voiceWasActive) {
         if (!this._voiceConvActive || this._vcSid !== voiceSid) return;
         this._voiceConvSetState('speaking');
-        void this._speakText(t);
+        void this._speakText(t).finally(() => {
+          // Safety net: _speakText schedules mic reopen via audio events, but if those fire
+          // with an unexpected state (TTS API error, audio element issue, interrupted session),
+          // the mic might never reopen. Force the transition here as a backstop.
+          if (!this._voiceConvActive || this._vcSid !== voiceSid) return;
+          if (this._voiceConvRec || this._vcMicMuted) return;
+          const nowState = document.getElementById('voice-conv-hud')?.dataset.vcState;
+          if (nowState === 'speaking') {
+            this._scheduleVoiceConvListen(NAVIO_VOICE_CONV_AFTER_TTS_MS);
+          }
+        });
         return;
       }
       void window.navio.getConfig().then((cfg) => {
