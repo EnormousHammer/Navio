@@ -451,6 +451,7 @@ contextBridge.exposeInMainWorld('navio', {
   bookmarksUpdate: (payload) => ipcRenderer.invoke('bookmarks-update', payload),
   bookmarksRemove: (id) => ipcRenderer.invoke('bookmarks-remove', { id }),
   bookmarksReorder: (payload) => ipcRenderer.invoke('bookmarks-reorder', payload),
+  bookmarksImportBulk: (items) => ipcRenderer.invoke('bookmarks-import-bulk', { items }),
   bookmarksMigrateImported: () => ipcRenderer.invoke('bookmarks-migrate-imported'),
   bookmarksPatchFaviconForUrl: (payload) => ipcRenderer.invoke('bookmarks-patch-favicon-for-url', payload),
 

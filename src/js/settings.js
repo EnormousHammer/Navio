@@ -288,15 +288,54 @@ class SettingsManagerClass {
 
     this.elements.importScan?.addEventListener('click', async () => {
       const st = this.elements.importScanStatus;
+      const listEl = document.getElementById('settings-import-browsers-list');
       if (st) st.textContent = 'Scanning…';
+      if (listEl) listEl.innerHTML = '';
       try {
         const browsers = await window.navio.detectBrowsers();
+        if (st) st.textContent = '';
         if (!browsers.length) {
-          if (st) st.textContent = 'No supported browser bookmark files found.';
+          if (st) st.textContent = 'No supported browsers found on this computer.';
           return;
         }
-        const lines = browsers.map((b) => `${b.name}: ${b.bookmarkCount} bookmarks`).join('\n');
-        if (st) st.textContent = `Found:\n${lines}\nUse onboarding import or add bookmarks manually.`;
+        if (!listEl) return;
+        listEl.innerHTML = '';
+        for (const b of browsers) {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.07)';
+          const info = document.createElement('span');
+          info.style.flex = '1';
+          info.innerHTML = `<strong>${b.name}</strong> <span style="opacity:0.6;font-size:12px">${b.bookmarkCount} bookmarks</span>`;
+          const statusSpan = document.createElement('span');
+          statusSpan.className = 'settings-hint';
+          statusSpan.style.minWidth = '80px';
+          const btn = document.createElement('button');
+          btn.className = 'btn btn-secondary btn-sm';
+          btn.textContent = 'Import';
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            btn.textContent = 'Importing…';
+            statusSpan.textContent = '';
+            try {
+              const result = await window.navio.importBookmarks(b.path);
+              if (result.error) { statusSpan.textContent = 'Error: ' + result.error; btn.textContent = 'Retry'; btn.disabled = false; return; }
+              const bookmarks = result.bookmarks || [];
+              if (!bookmarks.length) { statusSpan.textContent = 'Nothing to import.'; btn.textContent = 'Import'; btn.disabled = false; return; }
+              const r = await window.navio.bookmarksImportBulk(bookmarks);
+              statusSpan.textContent = r.ok ? `✓ ${r.imported} imported` : ('Error: ' + (r.error || 'unknown'));
+              btn.textContent = r.ok ? 'Done' : 'Retry';
+              if (!r.ok) btn.disabled = false;
+            } catch (e) {
+              statusSpan.textContent = e.message || 'Import failed';
+              btn.textContent = 'Retry';
+              btn.disabled = false;
+            }
+          });
+          row.appendChild(info);
+          row.appendChild(statusSpan);
+          row.appendChild(btn);
+          listEl.appendChild(row);
+        }
       } catch (e) {
         if (st) st.textContent = e.message || 'Scan failed.';
       }
@@ -498,6 +537,15 @@ class SettingsManagerClass {
       const el = document.getElementById(`settings-panel-${id}`);
       if (el) el.classList.toggle('active', id === panelId);
     });
+
+    if (panelId === 'about') {
+      const verEl = document.getElementById('about-version');
+      if (verEl) {
+        window.navio.checkForUpdates().then((r) => {
+          if (r && r.currentVersion) verEl.textContent = 'v' + r.currentVersion;
+        }).catch(() => {});
+      }
+    }
   }
 
   async _renderPasswordList() {

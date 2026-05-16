@@ -8,7 +8,7 @@
  *  • Markets: TradingView embed; Yahoo quotes (IPC) for smart row / AI when prefetched
  *  • Live scores (ESPN via main IPC) — team logos from ESPN `team.logo` (Predicta-style); optional 2×2 slot
  *  • Inbox widget — unread emails from IMAP Gmail/Outlook
- *  • Dashboard: 2×2 grid (default Inbox | News over Markets | Live sports); chips + Settings per corner
+ *  • Dashboard: 2×2 grid (default Live sports | News over Markets | Inbox); chips + Settings per corner
  *  • "Draft All" button — triggers batch email drafting
  */
 
@@ -285,10 +285,10 @@ const NTP = (() => {
   function _ntpQuadFromConfig(cfg) {
     const c = cfg || {};
     return {
-      tl: _coerceNtpWidgetSlot(c.ntpWidgetTL, 'inbox'),
+      tl: _coerceNtpWidgetSlot(c.ntpWidgetTL, 'sports'),
       tr: _coerceNtpWidgetSlot(c.ntpWidgetTR, 'news'),
       bl: _coerceNtpWidgetSlot(c.ntpWidgetBL, 'stocks'),
-      br: _coerceNtpWidgetSlot(c.ntpWidgetBR, 'sports')
+      br: _coerceNtpWidgetSlot(c.ntpWidgetBR, 'inbox')
     };
   }
 
@@ -337,6 +337,14 @@ const NTP = (() => {
         cfg = {};
       }
       const rawQ = _ntpQuadFromConfig(cfg);
+      // If the chosen type already occupies a different slot, swap the two slots
+      // instead of dedup-killing the displaced widget (which made the old slot go blank).
+      if (newT !== 'none') {
+        const existingSlot = NTP_GRID_SLOTS.find(k => rawQ[k] === newT && k !== slot);
+        if (existingSlot) {
+          rawQ[existingSlot] = rawQ[slot]; // displace current occupant into the vacated slot
+        }
+      }
       rawQ[slot] = newT;
       const Q = _ntpDedupeQuadClient(rawQ);
       try {

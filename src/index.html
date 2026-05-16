@@ -1323,10 +1323,19 @@
               <p class="settings-inline-hint" id="full-migration-export-status" style="margin-top:8px;margin-bottom:0"></p>
             </div>
             <div class="settings-section">
-              <h3>Import (migration)</h3>
-              <p class="settings-inline-hint">Detect Chromium-based profiles and import bookmarks JSON-side (same as onboarding). Full extension migration is not available yet — see docs/EXTENSIONS.md.</p>
-              <button type="button" class="btn btn-secondary" id="btn-settings-import-scan">Scan browsers for import</button>
-              <p class="settings-inline-hint" id="settings-import-scan-status" style="margin-top:8px;margin-bottom:0"></p>
+              <h3>Import from another browser</h3>
+              <p class="settings-inline-hint">Automatically detects Chrome, Edge, Brave, Vivaldi, and Opera on this computer. Click <strong>Import</strong> next to any browser to bring its bookmarks into Navio.</p>
+              <button type="button" class="btn btn-secondary" id="btn-settings-import-scan">Scan for browsers</button>
+              <div id="settings-import-browsers-list" style="margin-top:10px"></div>
+              <p class="settings-inline-hint" id="settings-import-scan-status" style="margin-top:6px;margin-bottom:0"></p>
+            </div>
+            <div class="settings-section">
+              <h3>Import passwords from Chrome / Edge</h3>
+              <p class="settings-inline-hint">
+                In Chrome: go to <strong>chrome://password-manager/passwords</strong> → click the settings gear → <strong>Export passwords</strong> → save the CSV.
+                In Edge: <strong>edge://password-manager/passwords</strong> → same steps.<br>
+                Then click <strong>Import CSV</strong> in <strong>Settings → Passwords</strong> and select that file — Navio encrypts them immediately with your OS keychain.
+              </p>
             </div>
           </div>
 
@@ -1492,7 +1501,7 @@
                   <img src="assets/logo.svg" width="32" height="32" alt="Navio" />
                 </div>
                 <div>
-                  <strong>Navio</strong> v1.0.3<br>
+                  <strong>Navio</strong> <span id="about-version">v1.1.0</span><br>
                   <span class="text-muted">Futuristic AI-powered browser</span>
                 </div>
               </div>

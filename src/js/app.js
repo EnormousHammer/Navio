@@ -2517,10 +2517,12 @@ const PasswordManager = (() => {
         _inlineList.appendChild(row);
       }
 
-      // Position below the focused field
+      // Position below the focused field, clamped so the dropdown never
+      // overlaps the browser chrome (tab strip + navbar) above the webview.
       const left = wvRect.left + (fieldRect.left || 0);
       const fieldBottom = wvRect.top + (fieldRect.top || 0) + (fieldRect.height || 0);
-      const fieldWidth  = fieldRect.width || 200;
+      const fieldTop    = wvRect.top + (fieldRect.top || 0);
+      const minTop      = wvRect.top; // dropdown must stay inside the webview area
 
       _inlineDropdown.style.left = `${Math.max(4, Math.min(left, window.innerWidth - 300))}px`;
       _inlineDropdown.style.top  = '';
@@ -2529,10 +2531,9 @@ const PasswordManager = (() => {
       _inlineDropdown.hidden = false;
       const ddHeight = _inlineDropdown.offsetHeight || 160;
       if (fieldBottom + ddHeight + 8 > window.innerHeight) {
-        const fieldTop = wvRect.top + (fieldRect.top || 0);
-        _inlineDropdown.style.top = `${Math.max(4, fieldTop - ddHeight - 4)}px`;
+        _inlineDropdown.style.top = `${Math.max(minTop, fieldTop - ddHeight - 4)}px`;
       } else {
-        _inlineDropdown.style.top = `${fieldBottom + 4}px`;
+        _inlineDropdown.style.top = `${Math.max(minTop, fieldBottom + 4)}px`;
       }
       _inlineWv = wv;
     } catch {}

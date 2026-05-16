@@ -94,6 +94,40 @@ function registerBookmarksIpc(ipcMain, { app, loadConfig }) {
     return { ok: true, data };
   });
 
+  ipcMain.handle('bookmarks-import-bulk', (_, { items }) => {
+    if (!Array.isArray(items) || !items.length) return { ok: true, imported: 0 };
+    const userData = app.getPath('userData');
+    const data = loadBookmarks(userData);
+    let n = 0;
+    for (const b of items) {
+      const url = String(b.url || b.href || '').trim();
+      if (!url || !url.startsWith('http')) continue;
+      if (data.bar.some((x) => x.url === url) || treeHasUrl(data.tree, url)) continue;
+      const folder = String(b.folder || '').trim();
+      const entry = {
+        id: crypto.randomBytes(8).toString('hex'),
+        title: String(b.title || b.name || url).trim() || url,
+        url,
+        favicon: '',
+        createdAt: Date.now(),
+      };
+      if (!folder || folder === 'root' || folder === 'Bookmarks bar') {
+        data.tree.push(entry);
+      } else {
+        let target = data.tree.find((x) => x.type === 'folder' && x.title === folder);
+        if (!target) {
+          target = { id: crypto.randomBytes(8).toString('hex'), type: 'folder', title: folder, children: [], createdAt: Date.now() };
+          data.tree.push(target);
+        }
+        target.children = target.children || [];
+        target.children.push(entry);
+      }
+      n++;
+    }
+    saveBookmarks(userData, data);
+    return { ok: true, imported: n, data };
+  });
+
   ipcMain.handle('bookmarks-migrate-imported', () => {
     const userData = app.getPath('userData');
     const cfg = loadConfig();
