@@ -53,6 +53,7 @@ const { BINARY_MAX_BYTES, shouldDownloadAndExtract, extractDriveFileText } = req
 const { tabManager } = require('./tab-manager');
 const { exportMigrationToFolder, createTimestampedMigrationDir } = require('./migration');
 const { maybeOfferLegacyProfileImport } = require('./navio-offer-legacy-profile-import');
+const { maybeApplyProfileHygiene } = require('./navio-profile-hygiene');
 const { navioSanitizeEmailHtmlFragment } = require('./gmail-html-sanitize');
 
 function getProfileIdFromLaunch() {
@@ -10901,6 +10902,8 @@ app.whenReady().then(async () => {
   navioLogger.init(app.getPath('userData'));
 
   _ensureAutoCompatOrigins(app.getPath('userData'));
+
+  maybeApplyProfileHygiene({ app, loadConfig, saveConfig });
 
   await maybeOfferLegacyProfileImport({
     app,

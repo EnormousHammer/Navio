@@ -46,7 +46,7 @@ nsis:
   installerIcon: src/assets/icon.ico
   uninstallerIcon: src/assets/icon.ico
   shortcutName: Navio
-  deleteAppDataOnUninstall: false
+  deleteAppDataOnUninstall: true
   runAfterFinish: true
 
 # macOS: separate DMGs for Apple Silicon vs Intel.

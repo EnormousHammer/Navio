@@ -54,6 +54,18 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Write bundled Google OAuth defaults (optional)
+        shell: pwsh
+        env:
+          NAVIO_OAUTH_GOOGLE_CLIENT_ID: ${{ secrets.NAVIO_OAUTH_GOOGLE_CLIENT_ID }}
+          NAVIO_OAUTH_GOOGLE_CLIENT_SECRET: ${{ secrets.NAVIO_OAUTH_GOOGLE_CLIENT_SECRET }}
+        run: |
+          $o = [ordered]@{
+            oauthGoogleClientId = [string]$env:NAVIO_OAUTH_GOOGLE_CLIENT_ID
+            oauthGoogleClientSecret = [string]$env:NAVIO_OAUTH_GOOGLE_CLIENT_SECRET
+          }
+          $o | ConvertTo-Json | Set-Content -Encoding utf8 electron/bundled-oauth-defaults.json
+          if ($o.oauthGoogleClientId) { Write-Host 'bundled OAuth client id: set' } else { Write-Host 'bundled OAuth client id: empty (add NAVIO_OAUTH_GOOGLE_* repo secrets for Sign in with Google out of the box)' }
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -133,6 +145,13 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Write bundled Google OAuth defaults (optional)
+        shell: bash
+        env:
+          NAVIO_OAUTH_GOOGLE_CLIENT_ID: ${{ secrets.NAVIO_OAUTH_GOOGLE_CLIENT_ID }}
+          NAVIO_OAUTH_GOOGLE_CLIENT_SECRET: ${{ secrets.NAVIO_OAUTH_GOOGLE_CLIENT_SECRET }}
+        run: |
+          node -e "const fs=require('fs');const o={oauthGoogleClientId:String(process.env.NAVIO_OAUTH_GOOGLE_CLIENT_ID||'').trim(),oauthGoogleClientSecret:String(process.env.NAVIO_OAUTH_GOOGLE_CLIENT_SECRET||'').trim()};fs.writeFileSync('electron/bundled-oauth-defaults.json',JSON.stringify(o,null,2));console.log(o.oauthGoogleClientId?'bundled OAuth client id: set':'bundled OAuth client id: empty');"
       - uses: actions/setup-node@v4
         with:
           node-version: '20'

@@ -66,26 +66,56 @@ function findLegacyNavioDataDir(userData, profilesBase) {
   return null;
 }
 
-const COPY_FILES = [
+/** Safe to merge without bringing back another user's mail login or API keys. */
+const LEGACY_SAFE_FILES = [
   'navio-history.json',
   'navio-bookmarks.json',
   'navio-reading-list.json',
-  'navio-config.json',
-  'navio-memory.json',
-  'navio-context-graph.json',
-  'navio-site-permissions.json',
-  'navio-site-compat.json',
-  'navio-assistant-chat.json',
-  'navio-passwords.json',
-  'navio-schedules.json',
-  'navio-workflows.json'
 ];
 
+/** Optional extras when the user explicitly confirms a full restore. */
+const LEGACY_OPTIONAL_FILES = [
+  'navio-site-permissions.json',
+  'navio-site-compat.json',
+];
+
+/** Never copied — accounts, secrets, and assistant memory stay with the user who created them. */
+const LEGACY_NEVER_FILES = new Set([
+  'navio-oauth-tokens.json',
+  'navio-config.json',
+  'navio-passwords.json',
+  'navio-memory.json',
+  'navio-context-graph.json',
+  'navio-assistant-chat.json',
+  'navio-schedules.json',
+  'navio-workflows.json',
+  'navio-imap-creds.json',
+  'navio-api-key.bin',
+  'navio-sync-passphrase.sec',
+  'navio-sync.navbak',
+  'oem-stremio-credentials.json',
+]);
+
 function _copyIfExists(fromDir, toDir, name) {
+  if (LEGACY_NEVER_FILES.has(name)) return;
   const from = path.join(fromDir, name);
   const to = path.join(toDir, name);
   if (!fs.existsSync(from)) return;
   fs.copyFileSync(from, to);
+}
+
+function _importFiles(legacy, ud, { includeOptional = false } = {}) {
+  const list = includeOptional
+    ? [...LEGACY_SAFE_FILES, ...LEGACY_OPTIONAL_FILES]
+    : LEGACY_SAFE_FILES;
+  for (const f of list) {
+    try {
+      _copyIfExists(legacy, ud, f);
+    } catch (e) {
+      console.warn('[navio] legacy profile import skipped file', f, e && e.message ? e.message : e);
+    }
+  }
+  console.log('[navio] Profile browsing data restored from', legacy, '→', ud);
 }
 
 /** True when `userData` is a nested folder under `profilesBase` (e.g. profiles/work). */
@@ -102,7 +132,7 @@ function _isNestedUnderProfilesBase(userData, profilesBase) {
   }
 }
 
-/** Canonical dev-style Roaming / Application Support folder name (safe to auto-merge from). */
+/** Canonical dev-style Roaming / Application Support folder name. */
 function _trustedAutoLegacyRoots() {
   const out = [];
   if (process.platform === 'win32' && process.env.APPDATA) {
@@ -122,25 +152,12 @@ function _trustedAutoLegacyRoots() {
   return out;
 }
 
-function _importFiles(legacy, ud) {
-  for (const f of COPY_FILES) {
-    try {
-      _copyIfExists(legacy, ud, f);
-    } catch (e) {
-      console.warn('[navio] legacy profile import skipped file', f, e && e.message ? e.message : e);
-    }
-  }
-  console.log('[navio] Profile data restored from', legacy, '→', ud);
-}
-
 /**
  * If the active profile has no browsing history but another Navio data folder on disk
- * has a populated `navio-history.json`, copy core JSON stores into the active profile.
+ * has history, optionally copy **bookmarks + history only** (never mail OAuth or config).
  *
- * Auto-restores (no dialog) when: (1) you use an empty sub-profile under the default
- * root but `navio-history.json` in that root still has entries, or (2) on Windows/macOS/Linux
- * the canonical `navio-browser` user-data folder has history while the active `userData`
- * path is different and empty. Other legacy locations still show a confirmation dialog.
+ * Silent auto-restore only copies LEGACY_SAFE_FILES. Mail sign-in and settings from a
+ * previous install are never pulled in without the user connecting again.
  */
 async function maybeOfferLegacyProfileImport({ app, getMainWindow, profilesBase }) {
   try {
@@ -167,29 +184,29 @@ async function maybeOfferLegacyProfileImport({ app, getMainWindow, profilesBase 
         win && !win.isDestroyed() ? win : undefined,
         {
           type: 'question',
-          buttons: ['Restore', 'Not now'],
+          buttons: ['Restore bookmarks & history', 'Not now'],
           defaultId: 0,
           cancelId: 1,
           noLink: true,
-          title: 'Navio — Previous data found',
+          title: 'Navio — Previous browsing data found',
           message:
-            'This profile has no browsing history, but another Navio data folder on this computer has your saved pages, bookmarks, and settings.',
-          detail: `Restore from:\n${legacy}\n\ninto your current profile:\n${ud}\n\nThis brings back address bar suggestions, the History panel, bookmarks, and appearance-related settings.`
+            'This profile has no browsing history, but another Navio folder on this computer has saved pages and bookmarks.',
+          detail: `Restore only bookmarks and history from:\n${legacy}\n\nYour email sign-in and passwords are not copied — connect Gmail again after install.`
         }
       );
       if (response !== 0) return;
     } else {
       console.info(
         silentSubProfile
-          ? '[navio] Auto-restoring profile data from default folder into sub-profile (empty history).'
-          : '[navio] Auto-restoring profile data from canonical navio-browser folder (empty profile, data found there).'
+          ? '[navio] Auto-restoring bookmarks/history from default folder (empty history, no mail/config).'
+          : '[navio] Auto-restoring bookmarks/history from canonical navio-browser folder (no mail/config).'
       );
     }
 
-    _importFiles(legacy, ud);
+    _importFiles(legacy, ud, { includeOptional: false });
   } catch (e) {
     console.warn('[navio] legacy profile import:', e && e.message ? e.message : e);
   }
 }
 
-module.exports = { maybeOfferLegacyProfileImport, findLegacyNavioDataDir };
+module.exports = { maybeOfferLegacyProfileImport, findLegacyNavioDataDir, LEGACY_NEVER_FILES };
