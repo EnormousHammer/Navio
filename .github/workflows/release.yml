@@ -6,9 +6,9 @@
 # (e.g. tag v1.0.4 → "version": "1.0.4"). The test job fails fast if they disagree so the
 # release assets and GitHub Release always match the app version users see in-app.
 #
-# Published assets:
-#   Windows — NSIS Setup .exe + portable Navio-{version}-win.zip (electron-builder; gh upload) + Squirrel (Forge publish).
-#   macOS — DMGs + Navio-macPortable-{version}-{arch}.zip (electron-builder mac.artifactName) + Forge darwin zip (Forge publish).
+# Published assets (user-facing only — internal Squirrel/Forge/blockmap files are removed by finalize-release):
+#   Windows — Navio-Windows-Setup-{version}.exe (NSIS wizard) + Navio-{version}-win.zip (portable).
+#   macOS   — Navio-macOS-{version}-arm64.dmg + Navio-macOS-{version}-x64.dmg + portable ZIPs.
 
 name: Release
 
@@ -109,8 +109,6 @@ jobs:
           $setup = @(Get-ChildItem -Path dist-eb -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'Navio-Windows-Setup-*.exe' })
           if ($setup.Count -lt 1) { Write-Host "::error::No Navio-Windows-Setup-*.exe in dist-eb"; exit 1 }
           $setup | ForEach-Object { Copy-Item $_.FullName nsis-out/ }
-          if (Test-Path "dist-eb/latest.yml") { Copy-Item "dist-eb/latest.yml" nsis-out/ }
-          Get-ChildItem dist-eb -Filter "*.blockmap" -File -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName nsis-out/ }
           $pz = @(Get-ChildItem -Path dist-eb -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'Navio-*-win.zip' })
           if ($pz.Count -lt 1) {
             Write-Host "::error::Expected Navio-*-win.zip under dist-eb (electron-builder zip target). Files:"
@@ -159,9 +157,6 @@ jobs:
           ver=$(node -p "require('./package.json').version")
           cp "dist-eb/Navio-macOS-${ver}-arm64.dmg" "dist-eb/Navio-macOS-${ver}-x64.dmg" mac-eb-out/
           cp "dist-eb/Navio-macPortable-${ver}-arm64.zip" "dist-eb/Navio-macPortable-${ver}-x64.zip" mac-eb-out/
-          if [ -f dist-eb/latest-mac.yml ]; then cp dist-eb/latest-mac.yml mac-eb-out/; fi
-          shopt -s nullglob
-          for f in dist-eb/*.blockmap; do cp "$f" mac-eb-out/; done
           ls -la mac-eb-out
       - uses: actions/upload-artifact@v4
         with:
@@ -254,6 +249,31 @@ jobs:
     needs: [publish-mac]
     runs-on: ubuntu-latest
     steps:
+      - name: Remove internal artifacts from release page
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ github.ref_name }}"
+          repo="${{ github.repository }}"
+          # Delete Squirrel auto-update files, Forge darwin zip, blockmaps, and update manifests.
+          # These are consumed by the updater internally — they confuse users on the release page.
+          gh api "repos/${repo}/releases/tags/${tag}" \
+            --jq '.assets[] | "\(.id) \(.name)"' | \
+          while IFS=" " read -r id name; do
+            case "$name" in
+              RELEASES|*.nupkg|latest.yml|latest-mac.yml|*.blockmap|Navio-darwin-*)
+                echo "Removing internal asset: $name"
+                gh api --method DELETE "repos/${repo}/releases/assets/${id}" || true
+                ;;
+              Navio-[0-9]*.Setup.exe)
+                echo "Removing Squirrel Setup installer: $name"
+                gh api --method DELETE "repos/${repo}/releases/assets/${id}" || true
+                ;;
+            esac
+          done
+          echo "Cleanup complete."
       - name: Verify release has built binaries (not only Source code)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
