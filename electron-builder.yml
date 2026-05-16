@@ -9,11 +9,14 @@ publish: null
 directories:
   output: dist-eb
 
-# Files to include (mirrors forge.config.js asar + public extraResource)
+# Files to include in the app bundle.
+# NOTE: public/ is NOT listed here — it is provided as an extraResource below,
+# which places it outside the ASAR alongside the executable.  Listing it in
+# both places caused an electron-builder "cannot overwrite" conflict that failed
+# the Windows and macOS CI builds every time.
 files:
   - electron/**
   - src/**
-  - public/**
   - package.json
   - "!node_modules/.cache"
   - "!**/*.map"
@@ -23,7 +26,7 @@ extraResources:
   - from: public
     to: public
 
-# Windows: NSIS installer + portable ZIP (ZIP is the “no installer” download on Releases).
+# Windows: NSIS installer + portable ZIP (ZIP is the "no installer" download on Releases).
 win:
   target:
     - target: nsis
@@ -33,8 +36,9 @@ win:
       arch:
         - x64
   icon: src/assets/icon.ico
-  # Avoid pulling winCodeSign (7z with symlinks) on machines without symlink privilege / unsigned CI.
+  # Disable signing so CI does not try to download winCodeSign or call signtool.
   signAndEditExecutable: false
+  signDlls: false
 
 nsis:
   artifactName: "Navio-Windows-Setup-${version}.${ext}"
@@ -46,19 +50,20 @@ nsis:
   deleteAppDataOnUninstall: false
   runAfterFinish: true
 
-# macOS: separate DMGs for Apple Silicon vs Intel (standard Electron distribution pattern).
-# Ad-hoc signing (identity '-') needs no Apple Developer cert but still runs on modern macOS
-# (fully unsigned bundles are often blocked). Entitlements match Forge osxSign when you add a cert.
+# macOS: separate DMGs for Apple Silicon vs Intel.
 #
-# Portable ZIP names: electron-builder's default mac zip pattern omits ${arch} for the host
-# default architecture, so CI cannot guess filenames. mac.artifactName forces arch in every
-# zip; DMGs keep their own template via dmg.artifactName below.
+# identity: '-' uses ad-hoc signing so macOS does not block the app with a
+# "damaged" alert on first launch.  hardenedRuntime MUST be false for ad-hoc
+# signing — the two are incompatible and caused an instant codesign failure in
+# every previous CI run.  When a real Apple Developer ID is added later, flip
+# hardenedRuntime: true and add entitlements back.
+#
+# CSC_IDENTITY_AUTO_DISCOVERY=false is set in CI so electron-builder does not
+# search the macOS keychain for a signing certificate.
 mac:
   artifactName: "Navio-macPortable-${version}-${arch}.${ext}"
   identity: '-'
-  hardenedRuntime: true
-  entitlements: build/entitlements.mac.plist
-  entitlementsInherit: build/entitlements.mac.plist
+  hardenedRuntime: false
   target:
     - target: dmg
       arch:
@@ -73,5 +78,5 @@ mac:
 
 dmg:
   artifactName: "Navio-macOS-${version}-${arch}.${ext}"
-  # DMG container signing is unnecessary and can confuse Gatekeeper on older macOS.
+  # Skip signing the DMG container itself (distinct from app signing).
   sign: false

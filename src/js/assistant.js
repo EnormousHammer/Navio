@@ -34,6 +34,9 @@ const NAVIO_THREAD_DISCIPLINE_SYSTEM =
   'NEVER respond to a direct action command (imperative: find/search/send/draft/check) with only text and zero tool calls. If they commanded action, your response MUST include tool calls. ' +
   '**GMAIL CITATION FORMAT \u2014 MANDATORY:** When Gmail tool results appear, ALWAYS format each email as a markdown link: `- [Subject line](web_url) \u2014 From: Sender`. Use the `web_url` field from the tool result verbatim. NEVER output raw URLs on their own line. NEVER output a subject line followed by a bare URL on the next line. The markdown link syntax makes the link clickable in the UI. ' +
   '**NO PERMISSION THEATER after tool runs:** After Gmail search, Drive search, or any connector result, do NOT output "Next steps I can take" lists or ask "Which should I do?". Report what you found, then stop unless the user asked for next steps. ' +
+  '**COMPANY INVESTIGATION — MANDATORY SEARCH RULE:** When the user says "open a [Company] investigation", "investigate [Company]", "what is going on with [Company]", or asks about emails from/with a specific company — they want emails SENT BY that company, not internal discussions about it. ' +
+  'ALWAYS use `from:@companydomain.com` or `from:CompanyName` in the gmail_search query. NEVER return internal (same-domain) emails as part of a company investigation. ' +
+  'Only fall back to a broad name search if `from:` returns zero results, and still exclude the user\'s own domain.\n' +
   '**DOCUMENT ANALYSIS — no history cross-contamination:** When the thread contains a user-uploaded document (PDF, image, file), all specific facts in your answer (names, emails, companies, part numbers, prices, addresses, procedures) MUST come from that document or a tool result — NOT from earlier conversation turns about unrelated topics. If a fact was discussed in old turns but is NOT in the current document, do not carry it forward unless the user explicitly asks you to.';
 
 /** Injected when heuristics detect a likely topic change so the model drops stale-task bias. */
@@ -2921,7 +2924,13 @@ class AssistantManagerClass {
       '**If your previous response acknowledged a correction**, your NEXT reply must contain only what the user literally asked for in the current message — no offers, no suggestions, no alternatives. ' +
       'The [PERMANENT CORRECTIONS] block in your context is the authoritative list — honor every item in it, every turn, without re-introducing any corrected behavior.\n' +
       '**ACTION MANDATE:** If the user commanded action (search, investigate, find, look up, draft, check, read emails, compare), your response MUST include tool calls. ' +
-      'When investigating emails: call gmail_search immediately — do not ask which account (search both), do not list steps. Just search and report.\n\n'
+      'When investigating emails: call gmail_search immediately — do not ask which account (search both), do not list steps. Just search and report.\n\n' +
+      '**COMPANY INVESTIGATION RULE — CRITICAL:** When the user says "open a [Company] investigation", "investigate [Company]", "what is going on with [Company]", or similar — you are looking for what THAT COMPANY has communicated TO the user. ' +
+      'Your gmail_search query MUST use `from:CompanyName` or `from:@companydomain.com` to find emails SENT BY that company. ' +
+      'DO NOT search just the company name alone — that returns internal threads that merely mention the company, which is WRONG. ' +
+      'NEVER show internal emails (emails between users at the same company/domain) as part of a company investigation. ' +
+      'If you need the company domain, infer it from the company name (e.g. "Flowserve" → try `from:@flowserve.com`). ' +
+      'Only fall back to a broad name search AFTER `from:` returns zero results, and even then exclude the user\'s own domain from results.\n\n'
     );
   }
 
@@ -5211,6 +5220,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     }
 
     this._autoFollowCount = 0; // reset agent loop on new user message
+    this._stopSpeaking({ resumeVoiceListen: false }); // stop any TTS immediately on new message
     if (this._voiceConvActive) this._voiceConvSetState('thinking');
     this.inputEl.value = '';
     this._fitAssistantInputHeight();

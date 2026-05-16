@@ -61,11 +61,12 @@ try {
     }
     if (_navioCompatEarly) {
       try {
-        console.info('[navio] Compatibility Mode is ON for this site — skipping page-level injections.');
+        console.info('[navio] Compatibility Mode is ON for this site — skipping anti-bot patches; autofill/form detection still active.');
       } catch {
         /* ignore */
       }
-      throw new Error('navio_site_compat_skip_preload');
+      // Do NOT throw — only the navigator/window fingerprint patches below are skipped.
+      // Form detection and autofill still run so passwords work on these sites.
     }
   }
 
@@ -80,9 +81,10 @@ try {
     _navioSkipFingerprintJs = false;
   }
 
-  if (!_navioSkipFingerprintJs) {
+  if (!_navioSkipFingerprintJs && !_navioCompatEarly) {
     // ── Anti-bot-detection hardening ───────────────────────────────────────
-    // Skipped on challenges.cloudflare.com (see above). Opaque shells bail out earlier.
+    // Skipped on challenges.cloudflare.com and compat-mode sites (Purolator, FedEx, TQL, etc.).
+    // Opaque shells bail out earlier.
     //
     // 1. navigator.webdriver — belt-and-suspenders; primary fix is main-process switch.
     try {
@@ -505,6 +507,53 @@ try {
       el.dispatchEvent(new Event('change', { bubbles: true }));
     } catch {}
   }
+
+  // ── Field focus/blur → Chrome-style inline suggestion dropdown ───────────
+  // Send the focused field's rect to the shell so it can show a suggestion
+  // popup positioned right below the field — like Chrome's credential dropdown.
+  let _fieldBlurTimer = null;
+
+  document.addEventListener('focusin', function (e) {
+    try {
+      const el = e.target;
+      if (!el || el.tagName !== 'INPUT') return;
+      const type = (el.getAttribute('type') || 'text').toLowerCase();
+      const isPwd = type === 'password';
+      if (!isPwd) {
+        const isUserField = USERNAME_SELECTORS.some((sel) => {
+          try { return el.matches(sel); } catch { return false; }
+        });
+        if (!isUserField) return;
+      }
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 10 || rect.height < 6) return;
+      clearTimeout(_fieldBlurTimer);
+      _sendToTabHost('navio-field-focus', {
+        rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+        fieldType: isPwd ? 'password' : 'username',
+        url: window.location.href,
+      });
+    } catch {}
+  }, true);
+
+  document.addEventListener('focusout', function (e) {
+    try {
+      const el = e.target;
+      if (!el || el.tagName !== 'INPUT') return;
+      const type = (el.getAttribute('type') || 'text').toLowerCase();
+      const isPwd = type === 'password';
+      if (!isPwd) {
+        const isUserField = USERNAME_SELECTORS.some((sel) => {
+          try { return el.matches(sel); } catch { return false; }
+        });
+        if (!isUserField) return;
+      }
+      clearTimeout(_fieldBlurTimer);
+      _fieldBlurTimer = setTimeout(() => {
+        _sendToTabHost('navio-field-blur', {});
+      }, 200);
+    } catch {}
+  }, true);
 
   // ── Intercept form submissions ─────────────────────────────────────────────
   document.addEventListener('submit', function (e) {

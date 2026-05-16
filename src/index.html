@@ -528,8 +528,17 @@
         <span class="pwd-autofill-msg">Saved credentials available</span>
         <select id="pwd-autofill-account" class="pwd-autofill-account-select" hidden aria-label="Saved account"></select>
         <span class="pwd-autofill-user" id="pwd-autofill-user"></span>
-        <button id="pwd-autofill-btn" class="pwd-save-action">Autofill</button>
+        <button id="pwd-autofill-btn" class="pwd-save-action">Use</button>
         <button id="pwd-autofill-dismiss" class="pwd-save-dismiss" title="Dismiss">×</button>
+      </div>
+
+      <!-- Chrome-style inline credential dropdown (shown below focused username/password field) -->
+      <div id="pwd-inline-dropdown" class="pwd-inline-dropdown" hidden aria-label="Saved passwords" role="listbox">
+        <div class="pwd-inline-dropdown-header">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <span>Saved passwords</span>
+        </div>
+        <div id="pwd-inline-dropdown-list" class="pwd-inline-dropdown-list"></div>
       </div>
       <!-- AI Agent Control Overlay — blocks user interaction while AI is automating the page -->
       <div id="ai-control-overlay" class="ai-control-overlay" hidden>

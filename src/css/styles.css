@@ -17363,6 +17363,125 @@ body.navio-wcv-tabs-below .pwd-bar-over-guest {
 }
 .pwd-save-dismiss:hover { color: #c8d4f0; }
 
+/* ── Chrome-style inline credential suggestion dropdown ─────────────────── */
+.pwd-inline-dropdown {
+  position: fixed;
+  z-index: 15000;
+  background: #141e36;
+  border: 1px solid rgba(0, 216, 255, 0.2);
+  border-radius: 10px;
+  box-shadow: 0 8px 36px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.3);
+  min-width: 260px;
+  max-width: 380px;
+  padding: 4px 0 6px;
+  pointer-events: auto;
+  animation: pwdDropdownIn 0.15s ease;
+}
+
+.pwd-inline-dropdown[hidden] { display: none; }
+
+@keyframes pwdDropdownIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.pwd-inline-dropdown-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4a8acd;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 2px;
+}
+
+.pwd-inline-dropdown-header svg {
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.pwd-inline-dropdown-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.pwd-inline-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  cursor: pointer;
+  transition: background 0.12s;
+  border-radius: 0;
+}
+
+.pwd-inline-entry:hover,
+.pwd-inline-entry:focus-within {
+  background: rgba(0, 216, 255, 0.08);
+}
+
+.pwd-inline-entry-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(0,184,219,0.25), rgba(76,95,255,0.25));
+  border: 1px solid rgba(0,216,255,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #00d8ff;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.pwd-inline-entry-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.pwd-inline-entry-username {
+  font-size: 13px;
+  color: #dde8ff;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pwd-inline-entry-hint {
+  font-size: 11px;
+  color: #4a6898;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pwd-inline-entry-use {
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #00b8db, #4c5fff);
+  color: #fff;
+  border: none;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.15s;
+}
+.pwd-inline-entry-use:hover { opacity: 0.85; }
+
 /* ── Password manager panel ─────────────────────────────────────────────── */
 .pwd-mgr-toolbar {
   display: flex;

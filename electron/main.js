@@ -2090,6 +2090,8 @@ ipcMain.on('navio-tab-guest-ipc', (event, packet) => {
     const navioGuestIpcAllow = new Set([
       'navio-form-submit',
       'navio-login-form',
+      'navio-field-focus',
+      'navio-field-blur',
       'navio-text-selected',
       'navio-selection-cleared',
       'navio-guest-pointer-down',

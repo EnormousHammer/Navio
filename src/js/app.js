@@ -2280,30 +2280,27 @@ const PasswordManager = (() => {
       _autofillEntries = entries;
       _autofillPwd = entry;
 
-      if (entries.length === 1) {
-        try {
-          wv.send('navio-autofill', {
-            username: entry.username,
-            password: entry.password,
-          });
-          _showAppToast(`Credentials filled for ${_originLabel(url)}`, 'success');
-        } catch {}
-        return;
-      }
-
       if (!autofillBar) return;
-      if (entries.length > 1 && autofillAcct) {
-        autofillAcct.replaceChildren();
-        for (let i = 0; i < entries.length; i++) {
-          const e = entries[i];
-          const opt = document.createElement('option');
-          opt.value = String(i);
-          opt.textContent = (e.username && String(e.username).trim()) ? e.username : `Account ${i + 1}`;
-          autofillAcct.appendChild(opt);
+
+      const msgEl = autofillBar.querySelector('.pwd-autofill-msg');
+      const fillBtn = document.getElementById('pwd-autofill-btn');
+
+      if (entries.length > 1) {
+        if (autofillAcct) {
+          autofillAcct.replaceChildren();
+          for (let i = 0; i < entries.length; i++) {
+            const e = entries[i];
+            const opt = document.createElement('option');
+            opt.value = String(i);
+            opt.textContent = (e.username && String(e.username).trim()) ? e.username : `Account ${i + 1}`;
+            autofillAcct.appendChild(opt);
+          }
+          autofillAcct.selectedIndex = 0;
+          autofillAcct.hidden = false;
         }
-        autofillAcct.selectedIndex = 0;
-        autofillAcct.hidden = false;
         if (autofillUser) autofillUser.hidden = true;
+        if (msgEl) msgEl.textContent = `Saved passwords for ${_originLabel(url)}`;
+        if (fillBtn) fillBtn.textContent = 'Use';
       } else {
         if (autofillAcct) {
           autofillAcct.hidden = true;
@@ -2311,8 +2308,10 @@ const PasswordManager = (() => {
         }
         if (autofillUser) {
           autofillUser.hidden = false;
-          autofillUser.textContent = entry.username;
+          autofillUser.textContent = entry.username || '';
         }
+        if (msgEl) msgEl.textContent = 'Sign in as';
+        if (fillBtn) fillBtn.textContent = 'Use';
       }
       autofillBar.hidden = false;
       clearTimeout(autofillBar._timer);
@@ -2421,7 +2420,139 @@ const PasswordManager = (() => {
     }
   });
 
-  return { showSavePrompt, checkAutofill, triggerAutofill, updateKeyIcon };
+  // ── Chrome-style inline suggestion dropdown ────────────────────────────
+  const _inlineDropdown = document.getElementById('pwd-inline-dropdown');
+  const _inlineList     = document.getElementById('pwd-inline-dropdown-list');
+  let _inlineWv = null;
+  let _inlineHideTimer = null;
+
+  function hideInlineDropdown() {
+    clearTimeout(_inlineHideTimer);
+    if (_inlineDropdown) _inlineDropdown.hidden = true;
+    _inlineWv = null;
+  }
+
+  function _scheduleHideInlineDropdown(delay) {
+    clearTimeout(_inlineHideTimer);
+    _inlineHideTimer = setTimeout(hideInlineDropdown, delay || 200);
+  }
+
+  async function showInlineDropdown(url, fieldRect, wv, wvRect) {
+    if (!_inlineDropdown || !_inlineList) return;
+    if (!url || !wvRect) return;
+    clearTimeout(_inlineHideTimer);
+    try {
+      const r = await window.navio.passwordsGet(url);
+      if (!r.ok || !r.entries || !r.entries.length) return;
+      const entries = r.entries;
+
+      _inlineList.replaceChildren();
+      for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        const row = document.createElement('div');
+        row.className = 'pwd-inline-entry';
+        row.setAttribute('role', 'option');
+
+        const iconEl = document.createElement('div');
+        iconEl.className = 'pwd-inline-entry-icon';
+        const initial = (e.username || '?').trim().charAt(0).toUpperCase();
+        iconEl.textContent = initial;
+
+        const info = document.createElement('div');
+        info.className = 'pwd-inline-entry-info';
+
+        const uname = document.createElement('div');
+        uname.className = 'pwd-inline-entry-username';
+        uname.textContent = e.username || '(no username)';
+
+        const hint = document.createElement('div');
+        hint.className = 'pwd-inline-entry-hint';
+        try {
+          hint.textContent = new URL(url).hostname.replace(/^www\./, '');
+        } catch {
+          hint.textContent = '';
+        }
+
+        info.appendChild(uname);
+        info.appendChild(hint);
+
+        const useBtn = document.createElement('button');
+        useBtn.className = 'pwd-inline-entry-use';
+        useBtn.type = 'button';
+        useBtn.textContent = 'Use';
+        const entry = e;
+        const capturedWv = wv;
+        useBtn.addEventListener('mousedown', (ev) => {
+          ev.preventDefault();
+          clearTimeout(_inlineHideTimer);
+          try {
+            capturedWv.send('navio-autofill', {
+              username: entry.username,
+              password: entry.password,
+            });
+            _showAppToast(`Signed in as ${entry.username || 'saved account'}`, 'success');
+          } catch {}
+          hideInlineDropdown();
+          _hideAutofill();
+        });
+
+        row.addEventListener('mousedown', (ev) => {
+          if (ev.target === useBtn) return;
+          ev.preventDefault();
+          clearTimeout(_inlineHideTimer);
+          try {
+            capturedWv.send('navio-autofill', {
+              username: entry.username,
+              password: entry.password,
+            });
+            _showAppToast(`Signed in as ${entry.username || 'saved account'}`, 'success');
+          } catch {}
+          hideInlineDropdown();
+          _hideAutofill();
+        });
+
+        row.appendChild(iconEl);
+        row.appendChild(info);
+        row.appendChild(useBtn);
+        _inlineList.appendChild(row);
+      }
+
+      // Position below the focused field
+      const left = wvRect.left + (fieldRect.left || 0);
+      const fieldBottom = wvRect.top + (fieldRect.top || 0) + (fieldRect.height || 0);
+      const fieldWidth  = fieldRect.width || 200;
+
+      _inlineDropdown.style.left = `${Math.max(4, Math.min(left, window.innerWidth - 300))}px`;
+      _inlineDropdown.style.top  = '';
+      _inlineDropdown.style.bottom = '';
+
+      _inlineDropdown.hidden = false;
+      const ddHeight = _inlineDropdown.offsetHeight || 160;
+      if (fieldBottom + ddHeight + 8 > window.innerHeight) {
+        const fieldTop = wvRect.top + (fieldRect.top || 0);
+        _inlineDropdown.style.top = `${Math.max(4, fieldTop - ddHeight - 4)}px`;
+      } else {
+        _inlineDropdown.style.top = `${fieldBottom + 4}px`;
+      }
+      _inlineWv = wv;
+    } catch {}
+  }
+
+  // Hide inline dropdown when user clicks outside
+  document.addEventListener('mousedown', (e) => {
+    if (_inlineDropdown && !_inlineDropdown.hidden && !_inlineDropdown.contains(e.target)) {
+      _scheduleHideInlineDropdown(0);
+    }
+  }, true);
+
+  // Hide on Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && _inlineDropdown && !_inlineDropdown.hidden) {
+      hideInlineDropdown();
+    }
+  });
+
+  return { showSavePrompt, checkAutofill, triggerAutofill, updateKeyIcon, showInlineDropdown, hideInlineDropdown };
 })();
 
 // ── Inline AI ─────────────────────────────────────────────────────────────

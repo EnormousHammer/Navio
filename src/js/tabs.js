@@ -986,6 +986,17 @@ class TabManagerClass {
         if (!tab.incognito && typeof PasswordManager !== 'undefined') {
           PasswordManager.checkAutofill(data.url, wv);
         }
+      } else if (channel === 'navio-field-focus' && data) {
+        if (!tab.incognito && typeof PasswordManager !== 'undefined') {
+          const wvRect = wv.getBoundingClientRect();
+          Promise.resolve(
+            PasswordManager.showInlineDropdown(data.url, data.rect, wv, wvRect)
+          ).catch(() => {});
+        }
+      } else if (channel === 'navio-field-blur') {
+        if (typeof PasswordManager !== 'undefined') {
+          PasswordManager.hideInlineDropdown();
+        }
       } else if (channel === 'navio-text-selected' && data) {
         if (typeof InlineAI !== 'undefined') {
           const wvRect = wv.getBoundingClientRect();
