@@ -21,7 +21,53 @@ permissions:
   contents: write
 
 jobs:
+  # One-time per release tag: wipe every old GitHub Release and stale v* tags so the public
+  # downloads page only shows the installer built from this tag (no cluttered v1.1.x assets).
+  purge-old-releases:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete all existing GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="${{ github.repository }}"
+          page=1
+          while true; do
+            mapfile -t ids < <(gh api "repos/${repo}/releases?per_page=100&page=${page}" --jq '.[].id')
+            [ "${#ids[@]}" -eq 0 ] && break
+            for id in "${ids[@]}"; do
+              echo "Deleting release id ${id}"
+              gh api --method DELETE "repos/${repo}/releases/${id}" || true
+            done
+            [ "${#ids[@]}" -lt 100 ] && break
+            page=$((page + 1))
+          done
+          echo "All releases removed."
+      - name: Delete stale version tags (keep current release tag)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="${{ github.repository }}"
+          keep="${{ github.ref_name }}"
+          mapfile -t tags < <(gh api "repos/${repo}/tags?per_page=100" --jq '.[].name')
+          for t in "${tags[@]}"; do
+            case "$t" in
+              v*)
+                if [ "$t" != "$keep" ]; then
+                  echo "Deleting tag ${t}"
+                  gh api --method DELETE "repos/${repo}/git/refs/tags/${t}" || true
+                fi
+                ;;
+            esac
+          done
+          echo "Stale tags removed; keeping ${keep}."
+
   test:
+    needs: purge-old-releases
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -263,7 +309,7 @@ jobs:
             --jq '.assets[] | "\(.id) \(.name)"' | \
           while IFS=" " read -r id name; do
             case "$name" in
-              RELEASES|*.nupkg|latest.yml|latest-mac.yml|*.blockmap|Navio-darwin-*)
+              RELEASES|*.nupkg|latest.yml|latest-mac.yml|*.blockmap|Navio-darwin-*|Navio-*.Setup.exe|Navio-*-full.nupkg)
                 echo "Removing internal asset: $name"
                 gh api --method DELETE "repos/${repo}/releases/assets/${id}" || true
                 ;;
@@ -306,6 +352,8 @@ jobs:
           notes=$(mktemp)
           {
             echo "## Install Navio (built app)"
+            echo ""
+            echo "**Fresh public build** — no developer mail or passwords are bundled. After install, use **Sign in with Google** in Settings or the home page for your own Gmail."
             echo ""
             echo "**Ignore \"Source code (zip)\" and \"Source code (tar.gz)\"** — GitHub adds those to every release. They are a **git snapshot** (\`package.json\`, \`src\`, …), **not** the runnable installer."
             echo ""

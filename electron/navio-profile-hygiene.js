@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 /** Bump when a one-time cleanup must run for all installs (public-release hygiene). */
-const PROFILE_GENERATION = 2;
+const PROFILE_GENERATION = 3;
 
 /** Never restore these from an old folder — user signs in / imports themselves. */
 const STRIP_CONFIG_KEYS = [
