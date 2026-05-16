@@ -38,7 +38,6 @@ win:
   icon: src/assets/icon.ico
   # Disable signing so CI does not try to download winCodeSign or call signtool.
   signAndEditExecutable: false
-  signDlls: false
 
 nsis:
   artifactName: "Navio-Windows-Setup-${version}.${ext}"
