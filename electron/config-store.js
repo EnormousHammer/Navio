@@ -4,7 +4,6 @@ const { app, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const secureConfig = require('./secure-config');
-const { getBundledOAuthDefaults } = require('./bundled-oauth-defaults');
 const {
   inferAiProviderFromApiKey,
   coerceModelsForProvider,
@@ -273,16 +272,6 @@ function loadConfig() {
   merged.hasApiKey = !!key;
   delete merged.apiKey;
   delete merged.crashReportingAvailable;
-
-  if (!(merged.oauthGoogleClientId || '').trim()) {
-    const bundledOAuth = getBundledOAuthDefaults();
-    if (bundledOAuth.oauthGoogleClientId) {
-      merged.oauthGoogleClientId = bundledOAuth.oauthGoogleClientId;
-      if (!(merged.oauthGoogleClientSecret || '').trim() && bundledOAuth.oauthGoogleClientSecret) {
-        merged.oauthGoogleClientSecret = bundledOAuth.oauthGoogleClientSecret;
-      }
-    }
-  }
 
   // Self-heal: stored key shape vs wrong aiProvider (e.g. OpenAI key with Anthropic selected).
   if (

@@ -2,8 +2,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const { getBundledOAuthDefaults } = require('./bundled-oauth-defaults');
-
 /** Bump when a one-time cleanup must run for all installs (public-release hygiene). */
 const PROFILE_GENERATION = 2;
 
@@ -41,23 +39,6 @@ function clearImapCreds(userData) {
   }
 }
 
-function applyBundledOAuthDefaults(loadConfig, saveConfig) {
-  const bundled = getBundledOAuthDefaults();
-  if (!bundled.oauthGoogleClientId) return;
-
-  const cfg = loadConfig();
-  let changed = false;
-  if (!(cfg.oauthGoogleClientId || '').trim()) {
-    cfg.oauthGoogleClientId = bundled.oauthGoogleClientId;
-    changed = true;
-  }
-  if (!(cfg.oauthGoogleClientSecret || '').trim() && bundled.oauthGoogleClientSecret) {
-    cfg.oauthGoogleClientSecret = bundled.oauthGoogleClientSecret;
-    changed = true;
-  }
-  if (changed) saveConfig(cfg);
-}
-
 function stripPersonalConfigFields(loadConfig, saveConfig) {
   const cfg = loadConfig();
   let changed = false;
@@ -72,7 +53,8 @@ function stripPersonalConfigFields(loadConfig, saveConfig) {
 
 /**
  * One-time migration: clear signed-in mail accounts and dev-only config leftovers
- * so GitHub installers start empty. Re-applies bundled OAuth client when present.
+ * so public installers start empty. Does not inject any OAuth client — each user
+ * (or your org) configures Google credentials in Settings if needed.
  */
 function maybeApplyProfileHygiene({ app, loadConfig, saveConfig }) {
   const userData = app.getPath('userData');
@@ -85,15 +67,11 @@ function maybeApplyProfileHygiene({ app, loadConfig, saveConfig }) {
     /* first launch */
   }
 
-  if (current >= PROFILE_GENERATION) {
-    applyBundledOAuthDefaults(loadConfig, saveConfig);
-    return;
-  }
+  if (current >= PROFILE_GENERATION) return;
 
   clearOAuthTokens(userData);
   clearImapCreds(userData);
   stripPersonalConfigFields(loadConfig, saveConfig);
-  applyBundledOAuthDefaults(loadConfig, saveConfig);
 
   try {
     fs.writeFileSync(
@@ -115,6 +93,5 @@ function maybeApplyProfileHygiene({ app, loadConfig, saveConfig }) {
 module.exports = {
   PROFILE_GENERATION,
   maybeApplyProfileHygiene,
-  applyBundledOAuthDefaults,
   STRIP_CONFIG_KEYS,
 };

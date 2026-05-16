@@ -16,8 +16,6 @@ Thumbs.db
 *.local.md
 *.local.json
 *.local.env
-electron/bundled-oauth-defaults.json
-
 # Launch intro: track only the file the app loads (others stay local)
 public/intro_video/*
 !public/intro_video/.gitkeep
