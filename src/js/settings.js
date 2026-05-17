@@ -557,12 +557,10 @@ class SettingsManagerClass {
         container.innerHTML = '<p class="pwd-list-empty">No saved passwords yet.</p>';
         return;
       }
-      // Group rows by origin, ordered: visible entries first, then any hidden/managed ones.
-      const entries = r.entries.slice().sort((a, b) => {
-        const ho = Number(!!a.hidden) - Number(!!b.hidden);
-        if (ho !== 0) return ho;
-        return String(a.origin).localeCompare(String(b.origin));
-      });
+      const entries = r.entries
+        .filter((e) => !e.hidden)
+        .slice()
+        .sort((a, b) => String(a.origin).localeCompare(String(b.origin)));
       const eyeOpenSvg  = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
       const eyeOffSvg   = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a19.5 19.5 0 0 1 5.06-5.94"/><path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a19.5 19.5 0 0 1-3.17 4.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
       const copySvg     = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
@@ -571,15 +569,11 @@ class SettingsManagerClass {
       container.innerHTML = entries.map((e) => {
         const site = e.origin.replace(/^https?:\/\//, '');
         const date = e.created ? new Date(e.created).toLocaleDateString() : '';
-        const hiddenBadge = e.hidden
-          ? '<span class="pwd-entry-badge" title="Managed by Navio (auto-fill only)">Managed</span>'
-          : '';
         return `<div class="pwd-entry" data-origin="${_escAttr(e.origin)}" data-user="${_escAttr(e.username)}">
           <div class="pwd-entry-row">
             <div class="pwd-entry-info">
               <span class="pwd-entry-site">${_esc(site)}</span>
               <span class="pwd-entry-user">${_esc(e.username)}</span>
-              ${hiddenBadge}
               ${date ? `<span class="pwd-entry-date">${_esc(date)}</span>` : ''}
             </div>
             <div class="pwd-entry-actions">

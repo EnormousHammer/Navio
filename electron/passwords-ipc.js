@@ -102,6 +102,36 @@ function _pwdOriginAllowsHiddenManaged(origin) {
   return STREMIO_MANAGED_ORIGINS.has(origin);
 }
 
+/** Stremio OEM login — never list, reveal, export, or delete from Settings. */
+function _pwdIsManagedHiddenEntry(origin, entry) {
+  if (!entry || !entry.hidden) return false;
+  const allowed = _pwdAllowedVaultOrigin(origin);
+  return !!(allowed && _pwdOriginAllowsHiddenManaged(allowed));
+}
+
+function _pwdFindManagedEntry(vault, origin, username) {
+  const allowed = _pwdAllowedVaultOrigin(origin);
+  if (!allowed) return null;
+  for (const o of _pwdOriginSiblings(allowed)) {
+    const hit = (vault[o] || []).find((e) => e.username === username);
+    if (hit && _pwdIsManagedHiddenEntry(o, hit)) return hit;
+  }
+  return null;
+}
+
+function _pwdMarkStremioVaultHidden(vault) {
+  let changed = false;
+  for (const origin of STREMIO_MANAGED_ORIGINS) {
+    for (const e of vault[origin] || []) {
+      if (!e.hidden) {
+        e.hidden = true;
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
 function _pwdUpsertEntry(vault, origin, username, password, { hidden } = {}) {
   if (!vault[origin]) vault[origin] = [];
   const idx = vault[origin].findIndex((e) => e.username === username);
@@ -120,6 +150,13 @@ function _pwdUpsertEntry(vault, origin, username, password, { hidden } = {}) {
  * (resources/ when packaged) or in userData once; it is deleted after a successful import.
  * Shape: { "email": "...", "password": "..." } (username also accepted).
  */
+function _isBundledResourcePath(filePath) {
+  const res = path.resolve(String(process.resourcesPath || ''));
+  if (!res) return false;
+  const abs = path.resolve(filePath);
+  return abs === res || abs.startsWith(res + path.sep);
+}
+
 function maybeImportOemStremioCredentials() {
   const candidates = [
     path.join(process.resourcesPath || '', 'oem-stremio-credentials.json'),
@@ -133,20 +170,32 @@ function maybeImportOemStremioCredentials() {
       const password = String(raw.password || raw.pass || '').trim();
       if (!username || !password) {
         console.warn('[navio] OEM Stremio file missing email or password:', p);
-        try { fs.unlinkSync(p); } catch { /* ignore */ }
+        if (!_isBundledResourcePath(p)) {
+          try { fs.unlinkSync(p); } catch { /* ignore */ }
+        }
         continue;
       }
       const origin = 'https://web.stremio.com';
       const vault = _pwdLoad();
       _pwdUpsertEntry(vault, origin, username, password, { hidden: true });
       _pwdSave(vault);
-      try { fs.unlinkSync(p); } catch { /* ignore */ }
-      console.log('[navio] Imported managed Stremio login (OEM file removed).');
+      // Keep bundled OEM file in resources/ so updates can refresh; only remove userData copy.
+      if (!_isBundledResourcePath(p)) {
+        try { fs.unlinkSync(p); } catch { /* ignore */ }
+      }
+      console.log('[navio] Imported managed Stremio login.');
       return;
     } catch (e) {
       console.warn('[navio] OEM Stremio import failed:', p, e.message);
     }
   }
+}
+
+/** Re-apply OEM Stremio credentials after profile hygiene (vault is never cleared by hygiene). */
+function ensureStremioManagedLogin() {
+  maybeImportOemStremioCredentials();
+  const vault = _pwdLoad();
+  if (_pwdMarkStremioVaultHidden(vault)) _pwdSave(vault);
 }
 
 function _pwdNeverListPath() {
@@ -203,10 +252,11 @@ function registerPasswordsIpc(ipcMain) {
       if (!u) return { ok: false, error: 'Username is required.' };
       if (!p) return { ok: false, error: 'Password is empty.' };
       const vault = _pwdLoad();
-      if (hidden === true && !_pwdOriginAllowsHiddenManaged(origin)) {
+      const forceManaged = _pwdOriginAllowsHiddenManaged(origin);
+      if (hidden === true && !forceManaged) {
         return { ok: false, error: 'Managed hidden passwords are only supported for Stremio.' };
       }
-      _pwdUpsertEntry(vault, origin, u, p, { hidden: hidden === true });
+      _pwdUpsertEntry(vault, origin, u, p, { hidden: forceManaged || hidden === true });
       _pwdSave(vault);
       return { ok: true };
     } catch (e) {
@@ -220,8 +270,7 @@ function registerPasswordsIpc(ipcMain) {
       const entries = [];
       for (const [origin, list] of Object.entries(vault)) {
         for (const e of list) {
-          // Include hidden entries too so the user can manage them from settings.
-          // The `hidden` flag is forwarded so the UI can label / treat them differently.
+          if (_pwdIsManagedHiddenEntry(origin, e)) continue;
           entries.push({
             origin,
             username: e.username,
@@ -255,11 +304,17 @@ function registerPasswordsIpc(ipcMain) {
       });
       if (response !== 1) return { ok: false, error: 'cancelled' };
       const vault = _pwdLoad();
+      if (_pwdFindManagedEntry(vault, origin, username)) {
+        return { ok: false, error: 'managed' };
+      }
       const keys = _pwdOriginSiblings(allowed);
       for (const o of keys) {
         const list = vault[o] || [];
         const hit = list.find((e) => e.username === username);
         if (hit) {
+          if (_pwdIsManagedHiddenEntry(o, hit)) {
+            return { ok: false, error: 'managed' };
+          }
           const pwd = _pwdDecrypt(hit.password);
           return { ok: true, password: pwd };
         }
@@ -279,11 +334,13 @@ function registerPasswordsIpc(ipcMain) {
       const byUser = new Map();
       for (const o of origins) {
         for (const e of vault[o] || []) {
+          const managed = _pwdIsManagedHiddenEntry(o, e);
           const row = {
             username: e.username,
             password: _pwdDecrypt(e.password),
             created: e.created,
             hidden: !!e.hidden,
+            managed,
           };
           const prev = byUser.get(e.username);
           if (!prev || String(row.created || '') > String(prev.created || '')) {
@@ -303,6 +360,9 @@ function registerPasswordsIpc(ipcMain) {
       const allowed = _pwdAllowedVaultOrigin(origin);
       if (!allowed) return { ok: false, error: 'invalid origin' };
       const vault = _pwdLoad();
+      if (_pwdFindManagedEntry(vault, origin, username)) {
+        return { ok: false, error: 'Managed Stremio login cannot be removed.' };
+      }
       const keys = _pwdOriginSiblings(allowed);
       for (const o of keys) {
         if (vault[o]) {
@@ -367,6 +427,7 @@ function registerPasswordsIpc(ipcMain) {
         try {
           const origin = _pwdAllowedVaultOrigin(rawUrl);
           if (!origin) continue;
+          if (_pwdOriginAllowsHiddenManaged(origin)) continue;
           if (!vault[origin]) vault[origin] = [];
           const idx = vault[origin].findIndex(e => e.username === username);
           const entry = { username, password: _pwdEncrypt(password), created: new Date().toISOString() };
@@ -380,4 +441,8 @@ function registerPasswordsIpc(ipcMain) {
   });
 }
 
-module.exports = { registerPasswordsIpc, maybeImportOemStremioCredentials };
+module.exports = {
+  registerPasswordsIpc,
+  maybeImportOemStremioCredentials,
+  ensureStremioManagedLogin,
+};

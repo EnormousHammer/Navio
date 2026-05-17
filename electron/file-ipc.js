@@ -21,6 +21,25 @@ const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
+/** Safe basename only — blocks path traversal in public-asset lookups. */
+function resolvePublicAssetPath(app, fileName) {
+  const base = path.basename(String(fileName || '').trim());
+  if (!base || base !== String(fileName || '').trim()) return null;
+  const candidates = [
+    path.join(process.resourcesPath || '', 'public', base),
+    path.join(app.getAppPath(), 'public', base),
+    path.join(__dirname, '..', 'public', base),
+  ];
+  for (const p of candidates) {
+    try {
+      if (p && fs.existsSync(p) && fs.statSync(p).isFile()) return p;
+    } catch {
+      /* try next */
+    }
+  }
+  return null;
+}
+
 /** Match largest assistant attachment cap (PDF path in assistant.js). */
 const READ_ATTACHMENT_MAX_BYTES = 12 * 1024 * 1024;
 
@@ -77,6 +96,17 @@ function registerFileIpc(ipcMain, { app, shell }) {
     }
   });
 
+  /** file:// URL for wallpaper/icons shipped in extraResources/public (or dev public/). */
+  ipcMain.handle('navio-get-public-asset-url', (_, fileName) => {
+    try {
+      const resolved = resolvePublicAssetPath(app, fileName || 'navio_background.jpg');
+      if (!resolved) return { ok: false, error: 'asset not found' };
+      return { ok: true, href: pathToFileURL(resolved).href };
+    } catch (e) {
+      return { ok: false, error: e && e.message ? e.message : String(e) };
+    }
+  });
+
   /**
    * Extract readable text from an office/document file (DOCX, XLSX, PPTX, RTF, ODT, etc.)
    * already loaded in the renderer as base64. Used by the assistant and chat-tab file
@@ -125,4 +155,4 @@ function registerFileIpc(ipcMain, { app, shell }) {
   });
 }
 
-module.exports = { registerFileIpc };
+module.exports = { registerFileIpc, resolvePublicAssetPath };

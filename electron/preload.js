@@ -398,6 +398,8 @@ contextBridge.exposeInMainWorld('navio', {
   openFilePath: (filePath) => ipcRenderer.invoke('open-file-path', filePath),
   /** Stable file:// URL for a local path (open downloads in a tab). */
   pathToFileUrl: (filePath) => ipcRenderer.invoke('navio-path-to-file-url', filePath),
+  /** file:// URL for a file in public/ (wallpaper, bundled assets). */
+  getPublicAssetUrl: (fileName) => ipcRenderer.invoke('navio-get-public-asset-url', fileName),
   /** When a dropped File has size 0 but Electron set `path` (e.g. Windows Explorer / Downloads). */
   readFileForAttachment: (filePath) => ipcRenderer.invoke('read-file-for-attachment', filePath),
   /** Extract readable text from an office document (DOCX, XLSX, PPTX, RTF, ODT…) given its bytes as base64. */

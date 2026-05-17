@@ -160,6 +160,7 @@ const NTP = (() => {
   }
 
   function init() {
+    if (window.NavioWallpaper) void window.NavioWallpaper.applyNtp();
     _startClock();
     _bindModeTabs();
     _bindSearchInput();

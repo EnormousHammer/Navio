@@ -25,7 +25,7 @@ const { registerAgentPlanIpc } = require('./navio-agent-ipc');
 const { navioIsExternalProtocolUrl, navioExtractHttpsFromBrowserHandoffUrl, navioNormalizeTabOpenUrl } = require('./navio-url-utils');
 const { registerMemoryIpc, loadMemory, saveMemory, buildMemoryBlock, buildProfileBlock, extractAndSaveMemory } = require('./memory-ipc');
 const { registerReadingListIpc } = require('./reading-list-ipc');
-const { registerPasswordsIpc, maybeImportOemStremioCredentials } = require('./passwords-ipc');
+const { registerPasswordsIpc, ensureStremioManagedLogin } = require('./passwords-ipc');
 const { registerBrowserImportIpc } = require('./browser-import-ipc');
 const { registerContextMenuIpc } = require('./context-menu-ipc');
 const { registerSearchSuggestionsIpc } = require('./search-suggestions-ipc');
@@ -10912,9 +10912,9 @@ app.whenReady().then(async () => {
   });
 
   try {
-    maybeImportOemStremioCredentials();
+    ensureStremioManagedLogin();
   } catch (e) {
-    console.warn('[navio] OEM Stremio credential import:', e.message);
+    console.warn('[navio] Stremio managed login:', e.message);
   }
 
   try {

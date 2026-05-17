@@ -33,6 +33,7 @@ class OnboardingManager {
 
     document.body.classList.add('onboarding-active');
     if (this.el) this.el.classList.remove('hidden');
+    if (window.NavioWallpaper) void window.NavioWallpaper.applyOnboarding();
     this.initStarField('ob-stars');
     this.initStarField('ob-stars-2');
     this.bindEvents();

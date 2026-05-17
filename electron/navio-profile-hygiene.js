@@ -55,6 +55,9 @@ function stripPersonalConfigFields(loadConfig, saveConfig) {
  * One-time migration: clear signed-in mail accounts and dev-only config leftovers
  * so public installers start empty. Does not inject any OAuth client — each user
  * (or your org) configures Google credentials in Settings if needed.
+ *
+ * Does not touch navio-passwords.json — managed Stremio login stays in the vault.
+ * Call ensureStremioManagedLogin() after this runs to refresh from OEM file if present.
  */
 function maybeApplyProfileHygiene({ app, loadConfig, saveConfig }) {
   const userData = app.getPath('userData');

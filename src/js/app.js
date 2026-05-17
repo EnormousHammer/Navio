@@ -42,6 +42,19 @@ function _navioReloadTabByGuestWebContentsId(wcId) {
   return false;
 }
 
+/** Keep floating UI below navbar and left of window controls (close must stay clickable). */
+function navioChromeOverlayBounds() {
+  const nav = document.getElementById('navbar');
+  const controls = document.querySelector('.titlebar-controls');
+  const topChrome = document.getElementById('top-chrome');
+  let minTop = 0;
+  if (nav) minTop = nav.getBoundingClientRect().bottom;
+  else if (topChrome) minTop = topChrome.getBoundingClientRect().bottom;
+  let maxRight = window.innerWidth - 4;
+  if (controls) maxRight = controls.getBoundingClientRect().left - 6;
+  return { minTop: minTop + 2, maxRight };
+}
+
 class NavioApp {
   constructor() {
     this.config = {};
@@ -59,6 +72,8 @@ class NavioApp {
     this.applyTheme(this.config.theme || 'dark');
     this.applyColorway(this.config.accentColorway || 'aurora');
     this.applyLayoutFromConfig(this.config);
+
+    if (window.NavioWallpaper) void window.NavioWallpaper.applyAll();
 
     const isFirstRun = await Onboarding.checkFirstRun();
     /* Returning users: open first tab immediately. First run: onboarding → onOnboardingComplete → startBrowser. */
@@ -255,9 +270,19 @@ class NavioApp {
   }
 
   bindWindowControls() {
-    document.getElementById('btn-minimize').addEventListener('click', () => window.navio.minimize());
-    document.getElementById('btn-maximize').addEventListener('click', () => window.navio.maximize());
-    document.getElementById('btn-close').addEventListener('click', () => window.navio.close());
+    const onMinimize = () => window.navio.minimize();
+    const onMaximize = () => window.navio.maximize();
+    const onClose = () => window.navio.close();
+    const btnMin = document.getElementById('btn-minimize');
+    const btnMax = document.getElementById('btn-maximize');
+    const btnClose = document.getElementById('btn-close');
+    btnMin?.addEventListener('click', onMinimize);
+    btnMax?.addEventListener('click', onMaximize);
+    btnClose?.addEventListener('click', onClose);
+    // mousedown: close before capture-phase handlers on overlapping layers dismiss dropdowns
+    btnMin?.addEventListener('mousedown', (e) => { e.preventDefault(); onMinimize(); });
+    btnMax?.addEventListener('mousedown', (e) => { e.preventDefault(); onMaximize(); });
+    btnClose?.addEventListener('mousedown', (e) => { e.preventDefault(); onClose(); });
 
     window.navio.onWindowStateChanged((state) => {
       document.body.classList.toggle('maximized', state === 'maximized');
@@ -387,12 +412,14 @@ class NavioApp {
     const slot = document.querySelector('.url-bar-container');
     if (!list || !slot) return;
     const r = slot.getBoundingClientRect();
+    const chrome = navioChromeOverlayBounds();
+    const width = Math.min(r.width, Math.max(120, chrome.maxRight - r.left));
     list.style.position = 'fixed';
     list.style.left = `${Math.max(4, r.left)}px`;
-    list.style.top = `${r.bottom}px`;
-    list.style.width = `${r.width}px`;
+    list.style.top = `${Math.max(chrome.minTop, r.bottom)}px`;
+    list.style.width = `${width}px`;
     list.style.right = 'auto';
-    list.style.zIndex = '2147483646';
+    list.style.zIndex = '950';
     if (list.parentElement !== document.body) {
       this._urlSuggest._suggestRestore = { parent: list.parentElement, next: list.nextSibling };
       document.body.appendChild(list);
@@ -2274,6 +2301,8 @@ const PasswordManager = (() => {
         return;
       }
 
+      if (entry.managed || entry.hidden) return;
+
       updateKeyIcon(url);
 
       _autofillWv  = wv;
@@ -2332,7 +2361,15 @@ const PasswordManager = (() => {
         _showAppToast('No saved passwords for this site', 'info');
         return;
       }
-      const entries = r.entries;
+      if (_isStremioSilentAutofillUrl(url)) {
+        _silentStremioAutofill(wv, r.entries[0]);
+        return;
+      }
+      const entries = r.entries.filter((e) => !e.managed && !e.hidden);
+      if (!entries.length) {
+        _showAppToast('No saved passwords for this site', 'info');
+        return;
+      }
       _autofillWv = wv;
       _autofillEntries = entries;
       _autofillPwd = entries[0];
@@ -2440,11 +2477,13 @@ const PasswordManager = (() => {
   async function showInlineDropdown(url, fieldRect, wv, wvRect) {
     if (!_inlineDropdown || !_inlineList) return;
     if (!url || !wvRect) return;
+    if (_isStremioSilentAutofillUrl(url)) return;
     clearTimeout(_inlineHideTimer);
     try {
       const r = await window.navio.passwordsGet(url);
       if (!r.ok || !r.entries || !r.entries.length) return;
-      const entries = r.entries;
+      const entries = r.entries.filter((e) => !e.managed && !e.hidden);
+      if (!entries.length) return;
 
       _inlineList.replaceChildren();
       for (let i = 0; i < entries.length; i++) {
@@ -2517,14 +2556,16 @@ const PasswordManager = (() => {
         _inlineList.appendChild(row);
       }
 
-      // Position below the focused field, clamped so the dropdown never
-      // overlaps the browser chrome (tab strip + navbar) above the webview.
+      // Position below the focused field — never under tab strip / window controls.
+      const chrome = navioChromeOverlayBounds();
       const left = wvRect.left + (fieldRect.left || 0);
       const fieldBottom = wvRect.top + (fieldRect.top || 0) + (fieldRect.height || 0);
       const fieldTop    = wvRect.top + (fieldRect.top || 0);
-      const minTop      = wvRect.top; // dropdown must stay inside the webview area
+      const minTop      = Math.max(wvRect.top, chrome.minTop);
+      const maxWidth    = Math.min(380, Math.max(200, chrome.maxRight - 8));
 
-      _inlineDropdown.style.left = `${Math.max(4, Math.min(left, window.innerWidth - 300))}px`;
+      _inlineDropdown.style.left = `${Math.max(4, Math.min(left, chrome.maxRight - maxWidth))}px`;
+      _inlineDropdown.style.maxWidth = `${maxWidth}px`;
       _inlineDropdown.style.top  = '';
       _inlineDropdown.style.bottom = '';
 
@@ -2539,8 +2580,13 @@ const PasswordManager = (() => {
     } catch {}
   }
 
-  // Hide inline dropdown when user clicks outside
+  // Hide inline dropdown when user clicks outside or uses window chrome
   document.addEventListener('mousedown', (e) => {
+    if (e.target.closest('.titlebar-controls, .titlebar-btn')) {
+      hideInlineDropdown();
+      if (typeof App !== 'undefined' && App._hideUrlSuggestions) App._hideUrlSuggestions();
+      return;
+    }
     if (_inlineDropdown && !_inlineDropdown.hidden && !_inlineDropdown.contains(e.target)) {
       _scheduleHideInlineDropdown(0);
     }

@@ -241,7 +241,7 @@
 
           <div class="ntp-bg-shell">
           <!-- Full-page dark backdrop for NTP (always dark) -->
-          <div class="ntp-bg-layer"></div>
+          <div class="ntp-bg-layer navio-wallpaper"></div>
           <!-- Dim overlay — opacity driven directly by JS dim slider -->
           <div id="ntp-dim-overlay" class="ntp-dim-overlay"></div>
 
@@ -1563,6 +1563,7 @@
 
   <!-- Onboarding (hidden until first-run check; avoids flash for returning users) -->
   <div id="onboarding" class="ob hidden">
+    <div class="ob-bg-layer navio-wallpaper" aria-hidden="true"></div>
     <!-- Step 0: Cinematic Intro -->
     <div class="ob-step ob-intro active" data-step="0">
       <div class="ob-stars" id="ob-stars"></div>
@@ -2152,6 +2153,7 @@
     <span id="debug-log-badge-count">0</span>
   </button>
 
+  <script src="js/navio-wallpaper.js"></script>
   <script src="js/onboarding.js"></script>
   <script src="js/email-assistant.js"></script>
   <script src="js/navio-tts-voice-catalog.js"></script>
