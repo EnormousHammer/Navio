@@ -309,7 +309,7 @@ jobs:
             --jq '.assets[] | "\(.id) \(.name)"' | \
           while IFS=" " read -r id name; do
             case "$name" in
-              RELEASES|*.nupkg|latest.yml|latest-mac.yml|*.blockmap|Navio-darwin-*|Navio-*.Setup.exe|Navio-*-full.nupkg)
+              RELEASES|*.nupkg|latest.yml|latest-mac.yml|*.blockmap|Navio-darwin-*|Navio-*.Setup.exe|navio_browser-*)
                 echo "Removing internal asset: $name"
                 gh api --method DELETE "repos/${repo}/releases/assets/${id}" || true
                 ;;
@@ -320,6 +320,29 @@ jobs:
             esac
           done
           echo "Cleanup complete."
+      - name: Delete other GitHub Releases (only this tag remains public)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="${{ github.repository }}"
+          keep="${{ github.ref_name }}"
+          page=1
+          while true; do
+            mapfile -t rows < <(gh api "repos/${repo}/releases?per_page=100&page=${page}" --jq '.[] | "\(.id)\t\(.tag_name)"')
+            [ "${#rows[@]}" -eq 0 ] && break
+            for row in "${rows[@]}"; do
+              id="${row%%$'\t'*}"
+              tag="${row#*$'\t'}"
+              if [ "$tag" != "$keep" ]; then
+                echo "Deleting release ${tag} (id ${id})"
+                gh api --method DELETE "repos/${repo}/releases/${id}" || true
+              fi
+            done
+            [ "${#rows[@]}" -lt 100 ] && break
+            page=$((page + 1))
+          done
       - name: Verify release has built binaries (not only Source code)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

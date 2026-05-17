@@ -1,6 +1,6 @@
 {
   "name": "navio-browser",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Navio - Futuristic AI-powered browser with built-in intelligence",
   "main": "electron/main.js",
   "repository": {
