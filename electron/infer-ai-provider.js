@@ -24,7 +24,7 @@ function inferAiProviderFromApiKey(key) {
 }
 
 const DEFAULTS = {
-  openai: { aiModel: 'gpt-5.4-mini', aiPlannerModel: 'gpt-5.4-mini' },
+  openai: { aiModel: 'gpt-4.1', aiPlannerModel: 'gpt-4.1' },
   anthropic: { aiModel: 'claude-opus-4-5', aiPlannerModel: 'claude-sonnet-4-5' },
   google: { aiModel: 'gemini-2.5-flash', aiPlannerModel: 'gemini-2.5-flash' }
 };
@@ -70,14 +70,12 @@ function coerceModelsForProvider(provider, aiModel, aiPlannerModel) {
  * Does not touch STT/TTS (`sttModel`, `ttsVoice`, etc.).
  */
 /**
- * Retired / legacy OpenAI chat models → gpt-5.4-mini (current smart default).
- * gpt-5-mini and gpt-5 (the interim default) are also upgraded here so existing
- * installs automatically get the right default without a manual Settings change.
+ * Retired / legacy OpenAI chat models → gpt-4.1 (current default: 1M context, $2/$8).
+ * All prior interim defaults are normalised here so existing installs auto-update
+ * without a manual Settings change.
  * Does not touch STT/TTS (`sttModel`, `ttsVoice`, etc.).
- * gpt-5.4-mini, gpt-5.4, gpt-5.4-nano, gpt-5.4-pro are valid current models
- * and are never overridden.
  */
-const LEGACY_OPENAI_CHAT_UPGRADE = new Set(['gpt-4o', 'gpt-4o-mini', 'gpt-5-mini', 'gpt-5']);
+const LEGACY_OPENAI_CHAT_UPGRADE = new Set(['gpt-4o', 'gpt-4o-mini', 'gpt-5-mini', 'gpt-5', 'gpt-5.4-mini']);
 
 function normalizeLegacyOpenAiChatModels(aiProvider, aiModel, aiPlannerModel) {
   if (aiProvider !== 'openai') {
@@ -85,8 +83,8 @@ function normalizeLegacyOpenAiChatModels(aiProvider, aiModel, aiPlannerModel) {
   }
   let m = aiModel;
   let p = aiPlannerModel;
-  if (LEGACY_OPENAI_CHAT_UPGRADE.has(m)) m = 'gpt-5.4-mini';
-  if (LEGACY_OPENAI_CHAT_UPGRADE.has(p)) p = 'gpt-5.4-mini';
+  if (LEGACY_OPENAI_CHAT_UPGRADE.has(m)) m = 'gpt-4.1';
+  if (LEGACY_OPENAI_CHAT_UPGRADE.has(p)) p = 'gpt-4.1';
   return { aiModel: m, aiPlannerModel: p };
 }
 

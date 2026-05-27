@@ -16,8 +16,8 @@ function getConfigPath() {
 
 const DEFAULT_CONFIG = {
   aiProvider: 'openai',
-  aiModel: 'gpt-5.4-mini',
-  aiPlannerModel: 'gpt-5.4-mini',
+  aiModel: 'gpt-4.1',
+  aiPlannerModel: 'gpt-4.1',
   customEndpoint: '',
   theme: 'dark',
   /** Accent palette: aurora | ocean | ember | forest | magenta | slate — see css/parts/colorways.css */
