@@ -37,7 +37,7 @@ const { loadWorkflow, saveWorkflow, listWorkflows, deleteWorkflow } = require('.
 const { getMcpTools, callMcpTool, isMcpTool, initFromConfig: initMcpFromConfig, registerMcpIpc } = require('./navio-mcp');
 const { getSiteIntelForUrl, extractActiveUrl } = require('./navio-site-intel');
 const { initScheduler, registerSchedulerIpc, stopAll: stopAllSchedulers } = require('./navio-scheduler');
-const { shouldBlockWebPopup, isStreamingVideoOpenerOrigin, isShippingCarrierOpenerOrigin, isEnterprisePortalOpenerOrigin } = require('./ad-block-patterns');
+const { shouldBlockWebPopup, isStreamingVideoOpenerOrigin } = require('./ad-block-patterns');
 const { redactPII } = require('./pii-redact');
 const navioCrashReporter = require('./navio-crash-reporter');
 const navioLogger = require('./navio-logger');
@@ -930,6 +930,8 @@ function navioPopupDimsFromFeatures(feat) {
 
 /** One setWindowOpenHandler per guest webContents (did-attach + web-contents-created may both run). */
 const navioGuestWindowOpenBound = new WeakSet();
+/** Shell renderer (index.html) — target=_blank / window.open must become tabs, not BrowserWindows. */
+const navioShellWindowOpenBound = new WeakSet();
 let navioWebviewGuestPopupRoutingInstalled = false;
 let navioGuestAssistantShortcutForwardInstalled = false;
 let navioGuestZoomShortcutForwardInstalled = false;
@@ -1132,6 +1134,48 @@ function installNavioGuestHistoryShortcutForward() {
 }
 
 /**
+ * Route shell UI window.open / target=_blank (reading mode, settings markup, etc.)
+ * into Navio tabs. Without this, Electron opens a bare BrowserWindow and the user
+ * loses assistant, tabs, and extensions.
+ */
+function bindNavioShellWindowOpenOnce(shellContents) {
+  if (!shellContents || navioShellWindowOpenBound.has(shellContents)) return;
+  navioShellWindowOpenBound.add(shellContents);
+
+  shellContents.setWindowOpenHandler((details) => {
+    let url = (details && details.url) || '';
+    const ho = navioExtractHttpsFromBrowserHandoffUrl(url);
+    if (ho) url = ho;
+    if (navioIsExternalProtocolUrl(url)) {
+      try {
+        shell.openExternal(url);
+      } catch {
+        /* ignore */
+      }
+      return { action: 'deny' };
+    }
+    const openUrl = navioNormalizeTabOpenUrl(url);
+    if (!openUrl) return { action: 'deny' };
+    const mw = mainWindow;
+    if (!mw || (typeof mw.isDestroyed === 'function' && mw.isDestroyed())) {
+      return { action: 'deny' };
+    }
+    try {
+      const bg = !!(details && (details.disposition === 'background-tab' || details.disposition === 'background'));
+      mw.webContents.send('open-url-in-new-tab', {
+        url: openUrl,
+        incognito: false,
+        background: bg,
+        guestWindowOpen: false
+      });
+    } catch {
+      /* ignore */
+    }
+    return { action: 'deny' };
+  });
+}
+
+/**
  * Route guest <webview> window.open / target=_blank into Navio tabs instead of a
  * standalone BrowserWindow (Drive "new window", Gmail account switch, OAuth).
  * Must register on the guest as early as possible: did-attach-webview alone is
@@ -1230,58 +1274,6 @@ function bindNavioGuestWindowOpenOnce(guestContents) {
         /* ignore */
       }
       return { action: 'deny' };
-    }
-
-    // Carrier-portal and enterprise-portal popups (e.g. Purolator address-book,
-    // TQL load boards) use window.opener to pass selected data back to the calling
-    // page.  Converting these to a new tab sets window.opener = null and silently
-    // breaks the "Select" / "Apply" button.  Allow them as real Electron popup
-    // windows so the opener relationship is preserved.
-    if (isShippingCarrierOpenerOrigin(openerOrigin) || isEnterprisePortalOpenerOrigin(openerOrigin)) {
-      let openerBrowserWin = null;
-      try {
-        openerBrowserWin =
-          typeof BrowserWindow.fromWebContents === 'function'
-            ? BrowserWindow.fromWebContents(guestContents)
-            : null;
-      } catch {
-        openerBrowserWin = null;
-      }
-      if (
-        openerBrowserWin &&
-        typeof openerBrowserWin.isDestroyed === 'function' &&
-        openerBrowserWin.isDestroyed()
-      ) {
-        openerBrowserWin = null;
-      }
-      let guestSession = null;
-      try {
-        guestSession = guestContents.session || null;
-      } catch {
-        guestSession = null;
-      }
-      const popupWebPrefs = {
-        sandbox: false,
-        nodeIntegration: false,
-        contextIsolation: true,
-        preload: path.join(__dirname, 'webview-preload.js')
-      };
-      if (guestSession) {
-        popupWebPrefs.session = guestSession;
-      }
-      return {
-        action: 'allow',
-        overrideBrowserWindowOptions: {
-          width: (width && width >= 400) ? width : 960,
-          height: (height && height >= 300) ? height : 720,
-          center: true,
-          show: true,
-          parent: openerBrowserWin || undefined,
-          autoHideMenuBar: true,
-          backgroundThrottling: false,
-          webPreferences: popupWebPrefs
-        }
-      };
     }
 
     let incognito = false;
@@ -1581,6 +1573,8 @@ function createMainWindow() {
       sandbox: true
     }
   });
+
+  bindNavioShellWindowOpenOnce(mainWindow.webContents);
 
   // Phase 1 WCV migration — TabManager owns all tab WebContents.
   tabManager.init(mainWindow, {
@@ -1973,6 +1967,7 @@ ipcMain.handle('navio-open-detached-tab-window', async (_event, payload) => {
     win.webContents.on('did-attach-webview', (_e, guestContents) => {
       bindNavioGuestWindowOpenOnce(guestContents);
     });
+    bindNavioShellWindowOpenOnce(win.webContents);
     win.on('focus', () => navioPrimeGlobalShortcutsIfFocused());
     win.once('ready-to-show', () => {
       win.show();
@@ -5486,7 +5481,7 @@ const toolExecutors = {
       if (!token) return { error };
       const query = (args.query || '').trim();
       if (!query) return { error: 'query is required.' };
-      let maxResults = Math.min(Number(args.max_results) > 0 ? Number(args.max_results) : 25, 200);
+      let maxResults = Math.min(Number(args.max_results) > 0 ? Number(args.max_results) : 25, 500);
       // Models often pass tiny max_results for inbox triage; raise floor so bulk tasks don't silently cap at ~6–10.
       if (/in:inbox/i.test(query) && maxResults <= 10) maxResults = 25;
       const bounceBulk =
@@ -5494,7 +5489,7 @@ const toolExecutors = {
           query
         );
       if (bounceBulk && maxResults < 100) maxResults = 100;
-      let pages = Math.min(Math.max(Number(args.pages) || 1, 1), 8);
+      let pages = Math.min(Math.max(Number(args.pages) || 1, 1), 20);
       if (bounceBulk && pages < 2) pages = 2;
       const pageToken = (args.page_token || '').trim() || null;
       let data;
@@ -5576,7 +5571,7 @@ const toolExecutors = {
       const { token, error } = await resolveGmailToolToken(args);
       if (!token) return { error };
 
-      let maxList = Math.min(Math.max(Number(args.max_results) > 0 ? Number(args.max_results) : 30, 1), 100);
+      let maxList = Math.min(Math.max(Number(args.max_results) > 0 ? Number(args.max_results) : 30, 1), 200);
       const pageToken = (args.page_token || '').trim() || null;
       const maxBodyChars = Math.min(
         Number(args.max_body_chars) > 0 ? Number(args.max_body_chars) : 12000,
@@ -5939,7 +5934,7 @@ const toolExecutors = {
 
       const query = (args.query || '').trim();
       if (!query) return { error: 'query is required.' };
-      const maxResults = Math.min(Math.max(Number(args.max_results) > 0 ? Number(args.max_results) : 15, 1), 50);
+      const maxResults = Math.min(Math.max(Number(args.max_results) > 0 ? Number(args.max_results) : 15, 1), 200);
       const fileType = (args.file_type || 'any').toLowerCase();
       const folderId = (args.folder_id || '').trim();
 
@@ -6161,7 +6156,7 @@ const toolExecutors = {
       const { token } = auth;
 
       const folderId = (args.folder_id || 'root').trim();
-      const maxResults = Math.min(Math.max(Number(args.max_results) > 0 ? Number(args.max_results) : 30, 1), 100);
+      const maxResults = Math.min(Math.max(Number(args.max_results) > 0 ? Number(args.max_results) : 30, 1), 500);
       const pageToken = (args.page_token || '').trim() || null;
 
       const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -10876,6 +10871,11 @@ const NAVIO_AUTO_COMPAT_ORIGINS = [
   'https://www.purolator.com',
   'https://eshiponline.purolator.com',
   'https://www.tql.com',
+  'https://login.microsoftonline.com',
+  'https://outlook.office.com',
+  'https://www.office.com',
+  'https://github.com',
+  'https://app.slack.com',
 ];
 
 function _ensureAutoCompatOrigins(userData) {

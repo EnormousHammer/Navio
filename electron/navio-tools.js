@@ -506,13 +506,13 @@ const NAVIO_TOOLS = [
         max_results: {
           type: 'number',
           description:
-            'Maximum emails to return (max 200). Default 25. Use 100–200 for bounce lists, bulk triage, or "find all". ' +
+            'Maximum emails to return (max 500). Default 25. Use 100–500 for bounce lists, bulk triage, or "find all". ' +
             'Do not pass small numbers for bulk recovery.'
         },
         pages: {
           type: 'number',
           description:
-            'How many Gmail result pages to fetch in one call (1–8). Default 1. Use 2–4 for large bounce/NDR sweeps.'
+            'How many Gmail result pages to fetch in one call (1–20). Default 1. Use 2–5 for large bounce/NDR sweeps, higher for full-inbox scans.'
         },
         page_token: {
           type: 'string',
@@ -559,7 +559,7 @@ const NAVIO_TOOLS = [
       properties: {
         max_results: {
           type: 'number',
-          description: 'Drafts to fetch in this request (1–100). Default 30.'
+          description: 'Drafts to fetch in this request (1–200). Default 30.'
         },
         page_token: {
           type: 'string',
@@ -770,7 +770,7 @@ const NAVIO_TOOLS = [
         },
         max_results: {
           type: 'number',
-          description: 'Max files to return (1–50). Default 15.'
+          description: 'Max files to return (1–200). Default 15.'
         },
         file_type: {
           type: 'string',
@@ -828,7 +828,7 @@ const NAVIO_TOOLS = [
         },
         max_results: {
           type: 'number',
-          description: 'Max items to return (1–100). Default 30.'
+          description: 'Max items to return (1–500). Default 30.'
         },
         page_token: {
           type: 'string',
