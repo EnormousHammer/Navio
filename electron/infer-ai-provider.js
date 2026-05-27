@@ -24,9 +24,9 @@ function inferAiProviderFromApiKey(key) {
 }
 
 const DEFAULTS = {
-  openai: { aiModel: 'gpt-5-mini', aiPlannerModel: 'gpt-5-mini' },
+  openai: { aiModel: 'gpt-5.4-mini', aiPlannerModel: 'gpt-5.4-mini' },
   anthropic: { aiModel: 'claude-opus-4-5', aiPlannerModel: 'claude-sonnet-4-5' },
-  google: { aiModel: 'gemini-2.0-flash', aiPlannerModel: 'gemini-2.0-flash' }
+  google: { aiModel: 'gemini-2.5-flash', aiPlannerModel: 'gemini-2.5-flash' }
 };
 
 function _looksAnthropicModel(x) {
@@ -63,8 +63,21 @@ function coerceModelsForProvider(provider, aiModel, aiPlannerModel) {
   return { aiModel: m, aiPlannerModel: p };
 }
 
-/** Retired OpenAI chat presets → gpt-5-mini. Does not touch STT/TTS (`sttModel`, `ttsVoice`, etc.). */
-const LEGACY_OPENAI_GPT4_CHAT = new Set(['gpt-4o', 'gpt-4o-mini']);
+/**
+ * Retired / downgraded OpenAI chat presets → gpt-5 (full model, not mini).
+ * gpt-5-mini is also upgraded here so existing installs automatically get the
+ * smarter default without requiring a manual Settings change.
+ * Does not touch STT/TTS (`sttModel`, `ttsVoice`, etc.).
+ */
+/**
+ * Retired / legacy OpenAI chat models → gpt-5.4-mini (current smart default).
+ * gpt-5-mini and gpt-5 (the interim default) are also upgraded here so existing
+ * installs automatically get the right default without a manual Settings change.
+ * Does not touch STT/TTS (`sttModel`, `ttsVoice`, etc.).
+ * gpt-5.4-mini, gpt-5.4, gpt-5.4-nano, gpt-5.4-pro are valid current models
+ * and are never overridden.
+ */
+const LEGACY_OPENAI_CHAT_UPGRADE = new Set(['gpt-4o', 'gpt-4o-mini', 'gpt-5-mini', 'gpt-5']);
 
 function normalizeLegacyOpenAiChatModels(aiProvider, aiModel, aiPlannerModel) {
   if (aiProvider !== 'openai') {
@@ -72,10 +85,8 @@ function normalizeLegacyOpenAiChatModels(aiProvider, aiModel, aiPlannerModel) {
   }
   let m = aiModel;
   let p = aiPlannerModel;
-  if (LEGACY_OPENAI_GPT4_CHAT.has(m)) m = 'gpt-5-mini';
-  if (LEGACY_OPENAI_GPT4_CHAT.has(p)) p = 'gpt-5-mini';
-  if (m === 'gpt-5.4' || m === 'gpt-5.4-mini' || m === 'gpt-5.4-nano') m = 'gpt-5-mini';
-  if (p === 'gpt-5.4-mini' || p === 'gpt-5.4-nano') p = 'gpt-5-mini';
+  if (LEGACY_OPENAI_CHAT_UPGRADE.has(m)) m = 'gpt-5.4-mini';
+  if (LEGACY_OPENAI_CHAT_UPGRADE.has(p)) p = 'gpt-5.4-mini';
   return { aiModel: m, aiPlannerModel: p };
 }
 

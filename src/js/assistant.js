@@ -25,13 +25,14 @@ const NAVIO_THREAD_DISCIPLINE_SYSTEM =
   'Before any question, scan prior user + assistant turns for file names, pasted content, steps, and conclusions already given. ' +
   'Resolve **this/that/the quote/the shipment/the email** from prior turns when the thread already named one subject \u2014 do not ask for identifiers again unless two unrelated subjects are both live. ' +
   'Attachment markers without fresh bytes still bind you to what you already said about those files in this thread; do not demand re-upload unless new visual detail is strictly required. ' +
-  'If intent is unclear: prefer one-line assumption + proceed, or **one** blocking question if you truly cannot act. ' +
+  'If intent is unclear: **always default to assumption + proceed** — state your assumption in one line, then call tools immediately. A blocking question is a last resort used ONLY when proceeding would certainly produce the wrong outcome AND no tool can resolve the ambiguity. ' +
   'Do not re-ask tone, length, format, or style choices already fixed in this thread; do not permission-theater (\u201ccontinue?\u201d, \u201cshort or detailed?\u201d, \u201cshould I start?\u201d). ' +
   '**NO FABRICATION \u2014 HARD RULE:** NEVER invent specific identifiers you have not verified from this thread or a tool result: email addresses, full names, phone numbers, PO numbers, company names, postal addresses, prices, dates, document names. If you do not have it confirmed, say exactly \u201cI don\u2019t have that \u2014 want me to search?\u201d and stop. A plausible-sounding guess is worse than admitting you don\u2019t know. ' +
   '**SCOPE MATCHING (informational answers only):** When answering an information/explanation request ("what to do", "tell me", "explain", "provide"), match the scope exactly to what was asked. "Who to send quote to" = one line. Do NOT add unrequested workflow stages, internal steps, or extra context. This rule does NOT apply to agentic tasks where persistence rules govern. ' +
   '**Information vs. action:** The test — is the user commanding YOU to act right now with an imperative verb (find, search, send, draft, check, open)? YES = call tools. NO (they say "what to do", "explain", "tell me", "provide", "how does X work") = text answer only. Action words used IN DESCRIPTION ("the quote goes to Laura", "you send the booking to Maggi") are NOT commands to act right now. ' +
   '**No unsolicited offers after corrections:** When the user corrects you ("I never asked for X"), simply acknowledge and stop. Do NOT follow up with "Do you want me to Y instead?" — wait for them to ask. ' +
   'NEVER respond to a direct action command (imperative: find/search/send/draft/check) with only text and zero tool calls. If they commanded action, your response MUST include tool calls. ' +
+  '**TOOL-FIRST BEFORE ASKING:** Before posting any clarifying question, check: can `web_search`, `gmail_search`, `drive_search`, `calendar_list_events`, or `read_page` resolve the unknown right now? If yes — call the tool immediately; do not ask the user. Clarifying questions are reserved for private data only the user can supply (passwords, account numbers never mentioned, irreversible payment/send confirmations). ' +
   '**GMAIL CITATION FORMAT \u2014 MANDATORY:** When Gmail tool results appear, ALWAYS format each email as a markdown link: `- [Subject line](web_url) \u2014 From: Sender`. Use the `web_url` field from the tool result verbatim. NEVER output raw URLs on their own line. NEVER output a subject line followed by a bare URL on the next line. The markdown link syntax makes the link clickable in the UI. ' +
   '**NO PERMISSION THEATER after tool runs:** After Gmail search, Drive search, or any connector result, do NOT output "Next steps I can take" lists or ask "Which should I do?". Report what you found, then stop unless the user asked for next steps. ' +
   '**DOCUMENT ANALYSIS — no history cross-contamination:** When the thread contains a user-uploaded document (PDF, image, file), all specific facts in your answer (names, emails, companies, part numbers, prices, addresses, procedures) MUST come from that document or a tool result — NOT from earlier conversation turns about unrelated topics. If a fact was discussed in old turns but is NOT in the current document, do not carry it forward unless the user explicitly asks you to.';
@@ -145,6 +146,30 @@ function navioIsInformationalQuery(text) {
       s
     );
   return !hasActionCommand;
+}
+
+/**
+ * Light post-process on model replies before render/history — trims common quality issues
+ * without changing factual content or [FOLLOWUP]/[PRODUCTS] blocks.
+ * @param {string} text
+ * @returns {string}
+ */
+function navioPolishAssistantReply(text) {
+  if (!text || typeof text !== 'string') return text || '';
+  let s = text;
+  s = s.replace(
+    /^(?:Certainly|Of course|Absolutely|Sure thing|Great question|I'd be happy to)[!.,]?\s+/i,
+    ''
+  );
+  s = s.replace(
+    /\n{1,2}(?:\*{0,2})?(?:Next steps(?:\s+I can take)?|What (?:I can do|would you like me to do)(?: next)?|Here are (?:some )?options|I can also)[:\s—-]*[\s\S]*?(?=\n\n(?:#{1,3}\s|\*\*|[-*]\s|\[FOLLOWUP\])|$)/gi,
+    '\n\n'
+  );
+  s = s.replace(
+    /\n{1,2}(?:Let me know if (?:you'd like|you want)|Want me to|Should I|Do you want me to|Would you like me to|Shall I)[^\n]{0,120}[?.!]\s*$/i,
+    ''
+  );
+  return s.replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /** Natural-language mailbox ask — shared by Gmail + Outlook connector prefetch. */
@@ -1451,13 +1476,18 @@ class AssistantManagerClass {
   _scrubStaleShellPrelude() {
     try {
       const sp = document.getElementById('shell-prelude');
-      if (sp && sp.getAttribute('aria-hidden') === 'true') {
+      if (!sp || sp.getAttribute('aria-hidden') === 'true') {
         document.body.classList.remove(
           'shell-prelude-active',
           'shell-prelude-in',
           'shell-browser-reveal',
-          'shell-prelude-fading'
+          'shell-prelude-fading',
+          'launch-intro-active'
         );
+      }
+      const ob = document.getElementById('onboarding');
+      if (ob && (ob.classList.contains('hidden') || ob.hidden)) {
+        document.body.classList.remove('onboarding-active');
       }
     } catch {
       /* ignore */
@@ -2443,6 +2473,30 @@ class AssistantManagerClass {
     } finally {
       this._assistantHistoryDomReplay = false;
     }
+    this._syncAssistantChatChrome();
+  }
+
+  /** Hide welcome starters once the thread has real messages; restore on empty tab. */
+  _syncAssistantChatChrome() {
+    try {
+      const welcome = this.messagesEl?.querySelector('.assistant-welcome');
+      const hasThread = !!(
+        this.messagesEl &&
+        this.messagesEl.querySelector(
+          '.message.user-message, .message.assistant-message:not(.typing-indicator-wrap):not(.naa-pre-work-bubble)'
+        )
+      );
+      if (welcome) welcome.hidden = hasThread;
+      const smartRow = document.getElementById('assistant-smart-row');
+      if (smartRow) smartRow.classList.toggle('assistant-smart-row--in-thread', hasThread);
+      if (this.messagesEl && hasThread) {
+        requestAnimationFrame(() => {
+          this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+        });
+      }
+    } catch {
+      /* ignore */
+    }
   }
 
   /** Rebuild visible bubbles from profile API history (e.g. empty DOM after clear chat). */
@@ -2507,6 +2561,7 @@ class AssistantManagerClass {
       } finally {
         this._assistantHistoryDomReplay = false;
       }
+      this._syncAssistantChatChrome();
     }
 
     // Mid-turn on this tab: typing indicator (tool path) or stream re-hydrate path (handled in onAiStreamChunk).
@@ -2803,6 +2858,35 @@ class AssistantManagerClass {
       typeof ConnectorsManager !== 'undefined' &&
       (ConnectorsManager.isConnected('gmail') || ConnectorsManager.isConnected('gmail_2'));
     return hasConnector || oauth;
+  }
+
+  /**
+   * Whether this turn should use the agentic tool loop (gmail_search, navigate, …).
+   * Explicit aiUseToolCalling:false keeps simple Q&A on stream-only mode, but mail/action
+   * queries must still route to tools — legacy stream cannot execute what the prompts ask for.
+   */
+  async _resolveUseToolCallingPath(config, text) {
+    if (config.aiUseToolCalling !== false) return true;
+    const t = String(text || '').trim();
+    if (!t) return false;
+    if (await this._gmailApiMailBackendPreferred(text, config)) return true;
+    if (navioDetectMailboxIntent(text) || navioDetectGoogleWorkspaceIntent(text)) return true;
+    if (navioMailContextActiveForTurn(text, () => this._currentHistory())) return true;
+    if (
+      /\b(help me find|help me|find|search|look up|look for|check|pull up|fetch|get me|show me|ship(ping)?|logistics|inbox|mailbox|orders?|supplier|vendor|customer|thread|attachment)\b/i.test(
+        t
+      )
+    ) {
+      return true;
+    }
+    if (
+      /\b(take\s*over|handle\s+this|work\s+on\s+this|do\s+this\s+(for|on)|automate|browse\s+to|navigate|open\s+(the\s+)?(page|tab|site|url)|compare\s+(these\s+)?tabs|fill\s+(out|in)|complete\s+(the|this)|fix\s+(this|it)|read\s+(this\s+)?page|click|scroll|summarize\s+(this|the)\s+page|draft|write\s+(me\s+)?(an?\s+)?(email|reply)|research)\b/i.test(
+        t
+      )
+    ) {
+      return true;
+    }
+    return false;
   }
 
   async _maybePushMailBackendOnlyPolicy(messages, text, config, prefKnown) {
@@ -5112,7 +5196,10 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       const name = cfg.userName ? ` ${cfg.userName.split(' ')[0]}` : '';
       const tab = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
       // Render the greeting text first (no raw HTML in the string — formatMessage escapes it)
-      this.addMessage('assistant', `Hey${name}! I'm Navio — your AI co-pilot.\n\nJust ask me anything — about the page you're on, the web, your emails, or any task you want automated.`);
+      this.addMessage(
+        'assistant',
+        `Hey${name}! I'm Navio — I can read this page, search the web, check mail, and run multi-step tasks in the browser.\n\nAsk in plain language (e.g. "summarize this page", "check my inbox", "take over and finish this form").`
+      );
       // Then inject the page-context hint as a real DOM node into the last message's content area
       if (tab && tab.url && !tab.url.startsWith('about:')) {
         const lastMsg = this.messagesEl?.lastElementChild;
@@ -5229,6 +5316,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       : text;
 
     this.addMessage('user', userDisplay);
+    this._syncAssistantChatChrome();
     this._attachmentsSnapshot = this._attachmentQueue
       .filter((a) => a.status === 'ready')
       .map((a) => ({ ...a }));
@@ -5383,6 +5471,27 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       /* ignore */
     }
     this._clearPendingAutoTts();
+    this._agentGuestShellBlockActive = false;
+    try {
+      const keys = new Set();
+      if (this._sidebarThreadKey) keys.add(String(this._sidebarThreadKey));
+      if (this._turnConversationKey) keys.add(String(this._turnConversationKey));
+      const t = typeof TabManager !== 'undefined' ? TabManager.getActiveTab() : null;
+      if (t) {
+        const sk = this._storageKeyForTab(t);
+        if (sk) keys.add(String(sk));
+      }
+      for (const k of keys) {
+        if (this._busyTabs.has(k)) this._setTabBusy(k, false);
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
+      this._updateAssistantBusyChrome();
+    } catch {
+      /* ignore */
+    }
   }
 
   /**
@@ -5944,7 +6053,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     // ── Tool-calling mode (single agentic path) ─────────────────────────────
     // All requests go through _processWithTools when tool calling is enabled.
     // The legacy XML action path is kept only as a fallback when explicitly disabled.
-    if (config.aiUseToolCalling !== false) {
+    if (await this._resolveUseToolCallingPath(config, text)) {
       try {
         await this._processWithTools(text, config, historyUserLabel || this._historyLabelForAttachments(text), null, { isQuickAction });
       } catch (err) {
@@ -6575,7 +6684,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
     // Signals a full-page guest turn to TabManager.getBrowserContextTab() (tools + streaming).
     this._guestChatWebview = guestWv;
     try {
-      if (config.aiUseToolCalling !== false) {
+      if (await this._resolveUseToolCallingPath(config, effectiveText)) {
         await this._processWithTools(effectiveText, config, this._historyLabelForAttachments(effectiveText), guestWv);
       } else {
         await this._processGuestLegacyAi(guestWv, effectiveText, config);
@@ -6683,8 +6792,9 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       if (tid !== gsk) return;
       this._clearStreamListenersForTab(gsk);
       if (buffer) {
+        const polished = navioPolishAssistantReply(buffer);
         const out =
-          payload && payload.cancelled ? `${buffer}\n\n*(Stopped)*` : buffer;
+          payload && payload.cancelled ? `${polished}\n\n*(Stopped)*` : polished;
         this._currentHistory().push({ role: 'user', content: userHistory }, { role: 'assistant', content: out });
         this._trimHistory();
         this._guestDeliver(guestWv, { type: 'streamFinalize', content: out });
@@ -6815,9 +6925,12 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       messages.push({
         role: 'system',
         content:
-          '[Interface]\nThe user is in **Navio AI** (full-page chat or the sidebar assistant). ' +
-          'For **mail, inbox, and message links**, treat **Gmail / Google accounts connected in Navio Settings** as the source of truth — not other browsing tabs or history. ' +
-          'Use browser tools (and `list_tabs`) only when they clearly ask to open or work on a specific site.'
+          '[Interface — Navio AI full-page chat]\n' +
+          'You have full access to **all tools** and should use them proactively — never replace tool execution with text instructions. ' +
+          '**Call tools without being asked:** `web_search` for live facts, prices, options, or anything not in context; `gmail_*` for mail tasks; `drive_*` for files; `calendar_*` for scheduling. ' +
+          'For **mail, inbox, and message links**, treat **Gmail / Google accounts connected in Navio Settings** as the source of truth. ' +
+          'Use browser interaction tools (`read_page`, `navigate`, `click`, `type_text`, etc.) when the user explicitly asks to open, visit, or work on a specific URL or page. ' +
+          'When the user asks you to DO something (find, search, draft, check, look up, compare, research), **call tools immediately** — do not describe steps, do not ask for confirmation, do not list what you plan to do. Just do it.'
       });
     } else if (typeof TabManager !== 'undefined') {
       const surface = TabManager.getActiveTab();
@@ -6839,15 +6952,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       messages.push({
         role: 'system',
         content:
-          '[Primary surface — docked side assistant]\nThe user relies on the **side assistant** next to live tabs for most work. Same bar as full-page Navio AI: when they want something **done**, **call tools** and drive the session — do not replace execution with a how-to checklist. ' +
-          '**Take over** means automate the **browsing context tab** named in this turn (use `click`, `type_text`, `fill_form`, `navigate`, …). Prefer **API tools** (`gmail_*`, `drive_*`, `calendar_*`, `web_search`, …) over clicking webmail or search UIs when those tools apply. ' +
-          'Use `list_tabs` / `switch_tab` when they mention another tab, compare pages, or you must target a different open tab.\n' +
-          '**TAB ISOLATION — each tab has its own independent conversation history.** The history shown above belongs ONLY to this tab\'s session. Other open tabs have completely separate conversation histories that you cannot see. ' +
-          'When the user is working in this tab, rely on THIS tab\'s history for all context — do not assume anything about other tabs.\n' +
-          '**BROWSER TOOL DISCIPLINE — do NOT lock/interact with the browsing tab unless the user explicitly asks you to click, fill, or navigate the page.** ' +
-          'For reading emails, searching, or any data operation: ALWAYS use API tools (`gmail_*`, `drive_*`, `calendar_*`, `web_search`). ' +
-          'Only call `click`, `type_text`, `fill_form`, `select_option`, `drag`, `press_key`, or `scroll` (interactive DOM tools) when the task genuinely requires page interaction that has no API equivalent. ' +
-          'Use `read_page` or `screenshot` sparingly — only when you truly need to see current page state and cannot get that information from an API tool.'
+          '[Primary surface — docked side assistant]\nThe user is in the **side panel** beside live tabs. When they want something **done**, **call tools** and finish the job — never replace execution with a how-to checklist or permission theater. ' +
+          '**Take over / handle this / work on this page** = act on the **browsing context tab** in this turn: `read_page` first, then `click`, `type_text`, `navigate`, etc. Do not ask which tab. ' +
+          'Prefer **API tools** (`gmail_*`, `drive_*`, `calendar_*`, `web_search`) for mail, Drive, calendar, and live facts; use **browser tools** when the task needs the open page (forms, quotes, checkout, visual UI, attachments in Gmail UI). ' +
+          'Use `list_tabs` / `switch_tab` when they mention another tab or comparing pages.\n' +
+          '**TAB ISOLATION:** The transcript above is **only** this tab\'s session — other tabs have separate histories you cannot see.'
       });
     }
 
@@ -7630,7 +7739,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       this._currentHistory().push({ role: 'assistant', content: errText });
       this._trimHistory();
     } else {
-      const outText = response.content != null ? String(response.content) : '';
+      const outText = navioPolishAssistantReply(response.content != null ? String(response.content) : '');
       const hasOut = outText.trim().length > 0;
       if (hasOut) {
         if (guestWv) await this._guestDeliver(guestWv, { type: 'assistant', content: outText });
@@ -7965,13 +8074,14 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
           });
         }
       }
+      const historyAssistant = navioPolishAssistantReply(buffer);
       this._currentHistory().push(
         { role: 'user', content: userHistory },
-        { role: 'assistant', content: buffer }
+        { role: 'assistant', content: historyAssistant }
       );
       this._trimHistory();
       // Live-update the memory header badge if this response saved a fact.
-      if (typeof buffer === 'string' && /<navio-memory>/i.test(buffer)) {
+      if (typeof historyAssistant === 'string' && /<navio-memory>/i.test(historyAssistant)) {
         void this._refreshMemoryCountBadge();
       }
       // Notify user if they're on a different tab when this response finishes
@@ -7980,10 +8090,11 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
       await window.navio.contextGraph({
         op: 'addTurn',
         role: 'assistant',
-        summary: buffer.slice(0, 200),
+        summary: historyAssistant.slice(0, 200),
         tabId: graphTab?.id,
         url: graphTab?.url || ''
       });
+      this._syncAssistantChatChrome();
       // Auto-speak (Settings → read aloud and/or voice conversation) runs from
       // _maybeAutoSpeakAssistantReply inside the streamingMsg block above.
     };
@@ -9306,6 +9417,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
    */
   _extractFollowUpChips(text) {
     if (!text || typeof text !== 'string') return { clean: text || '', chips: [], products: null };
+    text = navioPolishAssistantReply(text);
     const re = /\[FOLLOWUP\]\s*(\{[\s\S]*?\})\s*\[\/FOLLOWUP\]/g;
     const chips = [];
     let clean = text
@@ -11071,11 +11183,7 @@ DATES AND NUMBERS (spoken naturally — never read digits one by one):
             newTab.webview?.removeEventListener('did-stop-loading', _onStop);
           }, 45000);
         } else {
-          // Fallback for non-Electron environments
-          const fallbackUrl = authEmail
-            ? `https://mail.google.com/mail/u/0/?authuser=${encodeURIComponent(authEmail)}#inbox/${msgId}`
-            : `https://mail.google.com/mail/u/${uSlot}/#inbox/${msgId}`;
-          window.open(fallbackUrl, '_blank');
+          console.warn('[navio-assistant] TabManager unavailable — cannot open Gmail message in-tab');
         }
       });
       chip.addEventListener('keydown', (e) => {

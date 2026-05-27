@@ -16,8 +16,8 @@ function getConfigPath() {
 
 const DEFAULT_CONFIG = {
   aiProvider: 'openai',
-  aiModel: 'gpt-5-mini',
-  aiPlannerModel: 'gpt-5-mini',
+  aiModel: 'gpt-5.4-mini',
+  aiPlannerModel: 'gpt-5.4-mini',
   customEndpoint: '',
   theme: 'dark',
   /** Accent palette: aurora | ocean | ember | forest | magenta | slate — see css/parts/colorways.css */
@@ -89,7 +89,7 @@ const DEFAULT_CONFIG = {
    */
   sttModel: 'whisper-1',
   /** When true, each download opens a system Save dialog (pick folder and name). When false, saves to Downloads automatically (Chrome-style). */
-  downloadAskWhere: true,
+  downloadAskWhere: false,
   /** When true, open File Explorer to the file after a successful download. Off by default to avoid interrupting browsing. */
   downloadRevealInFolder: false,
   /** 0 = off. After N minutes inactive, background http(s) tabs unload to about:blank to free memory (Chrome-style discard).
@@ -115,8 +115,8 @@ const DEFAULT_CONFIG = {
   aiDelegationObserveMode: true,
   /** Max agent loop iterations (50-500). Higher = browsing/research less likely to stop mid-task. */
   aiAgentMaxToolSteps: 300,
-  /** When false (default), sidebar and Chat with AI use one model call per message (quick chat). When true, Navio runs the multi-step browser tool loop (more API usage). */
-  aiUseToolCalling: false,
+  /** When false, sidebar and Chat with AI use stream-only quick chat (no Gmail/browser tools). When true (default), Navio runs the multi-step tool loop. */
+  aiUseToolCalling: true,
   /** Perplexity web search in assistant: auto = keyword intent, always = every message (if key), never = off */
   assistantConnectorWeb: 'auto',
   /** Gmail (and mail connector prefetch): auto = natural intent, always = include inbox context when connected, never = off */
