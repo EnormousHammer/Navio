@@ -17,6 +17,80 @@ function _navioHttpOriginFromUrl(url) {
 }
 
 /** Reload the guest tab that opened a blocked pop-up (may not be the active tab). */
+/**
+ * Unstick the shell when a full-screen drag overlay, AI guest block, or splash class
+ * leaves clicks/keyboard dead. Bound to Escape and window focus as an escape hatch.
+ */
+function navioRecoverInteraction() {
+  try {
+    if (typeof TabManager !== 'undefined' && typeof TabManager.cancelStaleTabDrag === 'function') {
+      TabManager.cancelStaleTabDrag();
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const overlay = document.getElementById('ai-control-overlay');
+    if (overlay) overlay.hidden = true;
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    if (typeof AssistantManager !== 'undefined') {
+      AssistantManager._agentGuestShellBlockActive = false;
+      if (AssistantManager._busyTabs && AssistantManager._busyTabs.size) {
+        for (const k of [...AssistantManager._busyTabs]) {
+          AssistantManager._setTabBusy(k, false);
+        }
+      }
+      if (typeof AssistantManager._updateAssistantBusyChrome === 'function') {
+        AssistantManager._updateAssistantBusyChrome();
+      }
+      if (typeof AssistantManager._scrubStaleShellPrelude === 'function') {
+        AssistantManager._scrubStaleShellPrelude();
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const sp = document.getElementById('shell-prelude');
+    if (!sp || sp.getAttribute('aria-hidden') === 'true') {
+      document.body.classList.remove(
+        'shell-prelude-active',
+        'shell-prelude-in',
+        'shell-browser-reveal',
+        'shell-prelude-fading',
+        'launch-intro-active'
+      );
+    }
+    const ob = document.getElementById('onboarding');
+    if (ob && (ob.classList.contains('hidden') || ob.hidden)) {
+      document.body.classList.remove('onboarding-active');
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    window.navio?.wcvEnsureShellOnTop?.();
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const wv = typeof TabManager !== 'undefined' ? TabManager.getActiveWebview() : null;
+    if (wv && typeof wv.focus === 'function') wv.focus();
+  } catch {
+    /* ignore */
+  }
+}
+
+window.__navioRecoverInteraction = navioRecoverInteraction;
+
 function _navioReloadTabByGuestWebContentsId(wcId) {
   const id = Number(wcId);
   if (!Number.isFinite(id) || typeof TabManager === 'undefined') return false;
@@ -76,6 +150,9 @@ class NavioApp {
     this._installDiagnosticsErrorForward();
 
     this._syncShellPreludeBodyClass();
+    window.addEventListener('focus', () => {
+      if (document.querySelector('.tab-drag-overlay')) navioRecoverInteraction();
+    });
   }
 
   async onOnboardingComplete() {
@@ -157,14 +234,16 @@ class NavioApp {
   _syncShellPreludeBodyClass() {
     requestAnimationFrame(() => {
       const sp = document.getElementById('shell-prelude');
-      if (sp && sp.getAttribute('aria-hidden') === 'true') {
+      if (!sp || sp.getAttribute('aria-hidden') === 'true') {
         document.body.classList.remove(
           'shell-prelude-active',
           'shell-prelude-in',
           'shell-browser-reveal',
-          'shell-prelude-fading'
+          'shell-prelude-fading',
+          'launch-intro-active'
         );
       }
+      navioRecoverInteraction();
     });
   }
 
@@ -1297,6 +1376,55 @@ ${badgeHtml(it.badge)}
   }
 
   bindShortcuts() {
+    // Shell UI links (reading mode, modals) with target=_blank — open in-tab, not a bare BrowserWindow.
+    if (!this._shellLinkDelegateBound) {
+      this._shellLinkDelegateBound = true;
+      const openShellHrefInTab = (href, switchTo) => {
+        if (typeof TabManager === 'undefined' || typeof TabManager.createTab !== 'function') return;
+        const u = String(href || '').trim();
+        if (!/^https?:\/\//i.test(u)) return;
+        TabManager.createTab(u, { switchTo: switchTo !== false });
+      };
+      document.addEventListener(
+        'click',
+        (e) => {
+          const a =
+            e.target && typeof e.target.closest === 'function'
+              ? e.target.closest('a[href]')
+              : null;
+          if (!a) return;
+          if (a.closest('webview')) return;
+          const href = (a.getAttribute('href') || a.dataset.href || '').trim();
+          if (!href || href.startsWith('javascript:') || href === '#') return;
+          if (!/^https?:\/\//i.test(href)) return;
+          const blank = (a.getAttribute('target') || '').toLowerCase() === '_blank';
+          const mod = e.ctrlKey || e.metaKey;
+          if (!blank && !mod) return;
+          e.preventDefault();
+          e.stopPropagation();
+          openShellHrefInTab(href, !(mod || e.shiftKey));
+        },
+        true
+      );
+      document.addEventListener(
+        'auxclick',
+        (e) => {
+          if (e.button !== 1) return;
+          const a =
+            e.target && typeof e.target.closest === 'function'
+              ? e.target.closest('a[href]')
+              : null;
+          if (!a || a.closest('webview')) return;
+          const href = (a.getAttribute('href') || a.dataset.href || '').trim();
+          if (!/^https?:\/\//i.test(href)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          openShellHrefInTab(href, false);
+        },
+        true
+      );
+    }
+
     // Handle "open in new tab" requests from the context menu
     window.navio.onOpenUrlInNewTab((url, opts = {}) => {
       if (typeof TabManager === 'undefined') return;
@@ -1567,6 +1695,17 @@ ${badgeHtml(it.badge)}
     // Fallback when the shell has focus (and to support Cmd on macOS in the UI process).
     // Deduped with onShortcut because globalShortcut and keydown can both fire.
     document.addEventListener('keydown', (e) => {
+      if ((e.key || '') === 'Escape' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const stuckDrag = document.querySelector('.tab-drag-overlay');
+        const aiOverlay = document.getElementById('ai-control-overlay');
+        const aiBlock = !!(aiOverlay && !aiOverlay.hidden);
+        if (stuckDrag || aiBlock) {
+          navioRecoverInteraction();
+          e.preventDefault();
+          return;
+        }
+      }
+
       // F12: page DevTools (matches globalShortcut; dedupe rapid double-fire).
       if ((e.key || '') === 'F12') {
         e.preventDefault();
@@ -2099,6 +2238,67 @@ const PasswordManager = (() => {
   const autofillUser  = document.getElementById('pwd-autofill-user');
   const autofillAcct  = document.getElementById('pwd-autofill-account');
   const urlPwdKey     = document.getElementById('url-pwd-key');
+  const credPicker    = document.getElementById('pwd-credential-picker');
+  const credPickerList = document.getElementById('pwd-credential-picker-list');
+
+  function _hideCredentialPicker() {
+    if (credPicker) credPicker.hidden = true;
+    if (credPickerList) credPickerList.replaceChildren();
+  }
+
+  /** Push saved accounts into the guest page — shell overlays paint behind <webview>. */
+  async function _sendToGuestPreload(wv, channel, payload) {
+    try {
+      if (wv && typeof wv.send === 'function') {
+        wv.send(channel, payload);
+        return true;
+      }
+    } catch {
+      /* fall through */
+    }
+    try {
+      const wcId = wv && typeof wv.getWebContentsId === 'function' ? Number(wv.getWebContentsId()) : 0;
+      if (wcId > 0 && window.navio && typeof window.navio.sendToGuestPreload === 'function') {
+        const r = await window.navio.sendToGuestPreload(wcId, channel, payload);
+        return !!(r && r.ok);
+      }
+    } catch {
+      /* ignore */
+    }
+    return false;
+  }
+
+  async function _pushCredentialPickerToGuest(url, wv) {
+    if (!wv) return false;
+    try {
+      const r = await window.navio.passwordsGet(url);
+      if (!r.ok || !r.entries.length) return false;
+      _autofillWv = wv;
+      _autofillEntries = r.entries;
+      _autofillPwd = r.entries[0];
+      _lastAutofillUrl = url;
+      updateKeyIcon(url);
+      const entries = r.entries.map((e) => ({
+        username: e.username,
+        password: e.password,
+      }));
+      if (await _sendToGuestPreload(wv, 'navio-credential-picker-show', { entries })) return true;
+      return await _sendToGuestPreload(wv, 'navio-request-credential-picker', {});
+    } catch {
+      return false;
+    }
+  }
+
+  function _hideGuestCredentialPicker(wv) {
+    void _sendToGuestPreload(wv, 'navio-credential-picker-hide', {});
+  }
+
+  async function showCredentialPicker(url, wv) {
+    _hideSave();
+    _hideAutofill();
+    _hideCredentialPicker();
+    await _pushCredentialPickerToGuest(url, wv);
+  }
 
   function _urlOriginStr(url) {
     try { return new URL(url).origin; } catch { return ''; }
@@ -2194,6 +2394,7 @@ const PasswordManager = (() => {
   // ── Show "Save password?" / "Replace password?" after submit ─────────────
   async function showSavePrompt({ username, password, url }, wv) {
     _hideAutofill();
+    _hideCredentialPicker();
     if (!saveBar) return;
     if (!String(password || '').trim()) return;
     const dedupeKey = `${String(url || '')}\t${String(username || '')}\t${String(password || '')}`;
@@ -2255,9 +2456,8 @@ const PasswordManager = (() => {
     saveBar._timer = setTimeout(_hideSave, 45000);
   }
 
-  // ── Check if we have credentials for the current URL ──────────────────────
+  // ── Login form detected — stash credentials for picker; do not auto-fill on load ──
   async function checkAutofill(url, wv) {
-    _hideSave();
     const dedupeKey = String(url || '');
     const now = Date.now();
     if (dedupeKey === _dedupeAutofillKey && now - _dedupeAutofillAt < 700) return;
@@ -2275,48 +2475,9 @@ const PasswordManager = (() => {
       }
 
       updateKeyIcon(url);
-
-      _autofillWv  = wv;
+      _autofillWv = wv;
       _autofillEntries = entries;
       _autofillPwd = entry;
-
-      if (entries.length === 1) {
-        try {
-          wv.send('navio-autofill', {
-            username: entry.username,
-            password: entry.password,
-          });
-          _showAppToast(`Credentials filled for ${_originLabel(url)}`, 'success');
-        } catch {}
-        return;
-      }
-
-      if (!autofillBar) return;
-      if (entries.length > 1 && autofillAcct) {
-        autofillAcct.replaceChildren();
-        for (let i = 0; i < entries.length; i++) {
-          const e = entries[i];
-          const opt = document.createElement('option');
-          opt.value = String(i);
-          opt.textContent = (e.username && String(e.username).trim()) ? e.username : `Account ${i + 1}`;
-          autofillAcct.appendChild(opt);
-        }
-        autofillAcct.selectedIndex = 0;
-        autofillAcct.hidden = false;
-        if (autofillUser) autofillUser.hidden = true;
-      } else {
-        if (autofillAcct) {
-          autofillAcct.hidden = true;
-          autofillAcct.replaceChildren();
-        }
-        if (autofillUser) {
-          autofillUser.hidden = false;
-          autofillUser.textContent = entry.username;
-        }
-      }
-      autofillBar.hidden = false;
-      clearTimeout(autofillBar._timer);
-      autofillBar._timer = setTimeout(_hideAutofill, 60000);
     } catch {}
   }
 
@@ -2327,39 +2488,8 @@ const PasswordManager = (() => {
     const wv = tab.webview;
     const url = tab.url || (wv && typeof wv.getURL === 'function' ? wv.getURL() : '');
     if (!url) return;
-    try {
-      const r = await window.navio.passwordsGet(url);
-      if (!r.ok || !r.entries.length) {
-        _showAppToast('No saved passwords for this site', 'info');
-        return;
-      }
-      const entries = r.entries;
-      _autofillWv = wv;
-      _autofillEntries = entries;
-      _autofillPwd = entries[0];
-      _lastAutofillUrl = url;
-
-      if (entries.length === 1) {
-        _doAutofill();
-        return;
-      }
-
-      if (!autofillBar) return;
-      autofillAcct.replaceChildren();
-      for (let i = 0; i < entries.length; i++) {
-        const e = entries[i];
-        const opt = document.createElement('option');
-        opt.value = String(i);
-        opt.textContent = (e.username && String(e.username).trim()) ? e.username : `Account ${i + 1}`;
-        autofillAcct.appendChild(opt);
-      }
-      autofillAcct.selectedIndex = 0;
-      autofillAcct.hidden = false;
-      if (autofillUser) autofillUser.hidden = true;
-      autofillBar.hidden = false;
-      clearTimeout(autofillBar._timer);
-      autofillBar._timer = setTimeout(_hideAutofill, 60000);
-    } catch {}
+    const ok = await _pushCredentialPickerToGuest(url, wv);
+    if (!ok) _showAppToast('No saved passwords for this site', 'info');
   }
 
   // Wire up the bar buttons
@@ -2421,7 +2551,7 @@ const PasswordManager = (() => {
     }
   });
 
-  return { showSavePrompt, checkAutofill, triggerAutofill, updateKeyIcon };
+  return { showSavePrompt, checkAutofill, triggerAutofill, updateKeyIcon, showCredentialPicker };
 })();
 
 // ── Inline AI ─────────────────────────────────────────────────────────────

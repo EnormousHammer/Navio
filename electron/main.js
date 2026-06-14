@@ -2085,6 +2085,7 @@ ipcMain.on('navio-tab-guest-ipc', (event, packet) => {
     const navioGuestIpcAllow = new Set([
       'navio-form-submit',
       'navio-login-form',
+      'navio-login-field-focus',
       'navio-text-selected',
       'navio-selection-cleared',
       'navio-guest-pointer-down',
@@ -2364,6 +2365,18 @@ ipcMain.on('navio-site-compat-is-enabled-sync', (event, payload) => {
   try {
     const url = payload && typeof payload.url === 'string' ? payload.url : '';
     event.returnValue = !!navioSiteCompat.isCompat(app.getPath('userData'), url);
+  } catch {
+    event.returnValue = false;
+  }
+});
+
+/** Guest preload: block password UI in private/incognito tabs. */
+ipcMain.on('navio-guest-is-incognito-sync', (event) => {
+  try {
+    const { NAVIO_PARTITION_INCOGNITO } = require('./navio-partitions');
+    const ses = event.sender && event.sender.session;
+    const partition = ses && typeof ses.getPartition === 'function' ? String(ses.getPartition()) : '';
+    event.returnValue = partition === NAVIO_PARTITION_INCOGNITO;
   } catch {
     event.returnValue = false;
   }

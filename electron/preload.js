@@ -474,6 +474,8 @@ contextBridge.exposeInMainWorld('navio', {
     ipcRenderer.invoke('webview-goto-nav-index', { webContentsId, index }),
   guestExecuteJavaScript: (webContentsId, code) =>
     ipcRenderer.invoke('navio-guest-execute-javascript', { webContentsId, code }),
+  sendToGuestPreload: (webContentsId, channel, payload) =>
+    ipcRenderer.invoke('navio-send-to-guest-preload', { webContentsId, channel, payload }),
   captureScreen: (opts) => ipcRenderer.invoke('capture-screen', opts || {}),
   captureScreenSources: (opts) => ipcRenderer.invoke('capture-screen-sources', opts || {}),
   onFoundInPageResult: (cb) => {
@@ -549,6 +551,8 @@ contextBridge.exposeInMainWorld('navio', {
    * Call after UI interactions that open overlays (WCV guests otherwise paint on top).
    */
   wcvEnsureShellOnTop: () => ipcRenderer.send('wcv-ensure-shell-on-top'),
+  /** During OS file drag, lower tab WCVs so drops reach the page (WCV mode only). */
+  wcvLowerTabsForFileDrop: () => ipcRenderer.send('wcv-lower-tabs-for-file-drop'),
 
   wcvDiscardTab: (tabId) => ipcRenderer.send('wcv-discard-tab', tabId),
   wcvRestoreTab: (tabId) => ipcRenderer.send('wcv-restore-tab', tabId),

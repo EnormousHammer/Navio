@@ -41,7 +41,7 @@ try {
     }
   }
 
-  /** Carrier / CF zones that default to compat — Akamai bot walls, Turnstile, etc. */
+  /** Carrier / CF zones — skip preload (plain Chromium). SaaS portals keep preload so password capture/autofill still work. */
   const NAVIO_ALWAYS_COMPAT_RE =
     /[./]purolator\.com(\/|$)|[./]eshiponline\.purolator\.com(\/|$)|[./]fedex\.com(\/|$)|[./]tql\.com(\/|$)|^https?:\/\/challenges\.cloudflare\.com\//i;
 
@@ -468,6 +468,10 @@ try {
     setTimeout(run, 0);
     setTimeout(run, 50);
     setTimeout(run, 120);
+    setTimeout(run, 250);
+    setTimeout(run, 500);
+    setTimeout(run, 800);
+    setTimeout(run, 1200);
   }
 
   let _lastCredSent = '';
@@ -506,56 +510,62 @@ try {
     } catch {}
   }
 
-  // ── Intercept form submissions ─────────────────────────────────────────────
-  document.addEventListener('submit', function (e) {
-    try {
-      const form = e.target;
-      if (form) scheduleSnapshotAndSend(form);
-    } catch {}
-  }, true /* capture phase — runs before the page's own handlers */);
+  // Capture-phase listeners on `window` — survive navigation (about:blank → real site).
+  function _installPasswordCaptureOnWindow() {
+    if (window.__navioPwdCaptureOnWindow) return;
+    window.__navioPwdCaptureOnWindow = true;
 
-  // SPAs often use button-driven POST without a native submit event — capture phase.
-  document.addEventListener('click', function (e) {
-    try {
-      const t = e.target;
-      if (!t || !t.closest) return;
-      const btn = t.closest('button, input[type="submit"]');
-      if (!btn) return;
-      const tag = btn.tagName;
-      let isSubmit = false;
-      if (tag === 'INPUT' && btn.type === 'submit') isSubmit = true;
-      else if (tag === 'BUTTON') {
-        const ty = (btn.getAttribute('type') || 'submit').toLowerCase();
-        if (ty === 'submit' || ty === '') isSubmit = true;
-      }
-      if (!isSubmit) return;
+    window.addEventListener('submit', function (e) {
+      try {
+        const form = e.target;
+        if (form && form.tagName === 'FORM') scheduleSnapshotAndSend(form);
+      } catch {}
+    }, true);
 
-      let root = btn.form || btn.closest('form');
-      if (root && !queryPasswordFieldsInTree(root).length) root = null;
-      if (!root) {
-        const pwd = queryPasswordInTree(document);
-        if (!pwd) return;
-        root = loginRootForPassword(pwd);
-        const inRoot = root && root !== document ? root.contains(btn) : false;
-        if (!inRoot) {
-          const label = (btn.innerText || btn.value || '').trim().toLowerCase();
-          if (!/sign in|log in|log on|login|submit|continue|next|verify/.test(label)) return;
-          root = loginRootForPassword(pwd);
+    window.addEventListener('click', function (e) {
+      try {
+        const t = e.target;
+        if (!t || !t.closest) return;
+        const btn = t.closest('button, input[type="submit"]');
+        if (!btn) return;
+        const tag = btn.tagName;
+        let isSubmit = false;
+        if (tag === 'INPUT' && btn.type === 'submit') isSubmit = true;
+        else if (tag === 'BUTTON') {
+          const ty = (btn.getAttribute('type') || 'submit').toLowerCase();
+          if (ty === 'submit' || ty === '') isSubmit = true;
         }
-      }
-      scheduleSnapshotAndSend(root);
-    } catch {}
-  }, true);
+        if (!isSubmit) return;
 
-  document.addEventListener('keydown', function (e) {
-    try {
-      if (e.key !== 'Enter' || e.isComposing) return;
-      const el = e.target;
-      if (!el || el.tagName !== 'INPUT' || el.type !== 'password') return;
-      const root = loginRootForPassword(el);
-      scheduleSnapshotAndSend(root);
-    } catch {}
-  }, true);
+        let root = btn.form || btn.closest('form');
+        if (root && !queryPasswordFieldsInTree(root).length) root = null;
+        if (!root) {
+          const pwd = queryPasswordInTree(document);
+          if (!pwd) return;
+          root = loginRootForPassword(pwd);
+          const inRoot = root && root !== document ? root.contains(btn) : false;
+          if (!inRoot) {
+            const label = (btn.innerText || btn.value || '').trim().toLowerCase();
+            if (!/sign in|log in|log on|login|submit|continue|next|verify/.test(label)) return;
+            root = loginRootForPassword(pwd);
+          }
+        }
+        scheduleSnapshotAndSend(root);
+      } catch {}
+    }, true);
+
+    window.addEventListener('keydown', function (e) {
+      try {
+        if (e.key !== 'Enter' || e.isComposing) return;
+        const el = e.target;
+        if (!el || el.tagName !== 'INPUT' || el.type !== 'password') return;
+        const root = loginRootForPassword(el);
+        scheduleSnapshotAndSend(root);
+      } catch {}
+    }, true);
+  }
+
+  _installPasswordCaptureOnWindow();
 
   // ── Detect login forms on page load ───────────────────────────────────────
   //
@@ -628,13 +638,7 @@ try {
     } catch {}
   }
 
-  if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    if (!checkForLoginForm()) _navioArmLoginObserver();
-  } else {
-    window.addEventListener('DOMContentLoaded', () => {
-      if (!checkForLoginForm()) _navioArmLoginObserver();
-    });
-  }
+  // Login observer + iframe wiring run on each navigation via _onNavioGuestPageReady (below).
 
   // SPA route changes (pushState / replaceState / back-forward) re-arm the
   // observer so we still notice login forms loaded after navigation.
@@ -653,6 +657,301 @@ try {
     };
     window.addEventListener('popstate', () => { try { _navioArmLoginObserver(); } catch {} });
   } catch {}
+
+  // ── In-page credential picker (must live in guest — shell DOM paints behind <webview>) ──
+  const NAVIO_CRED_PICKER_ID = 'navio-credential-picker';
+  let _navioLastLoginField = null;
+  let _lastFieldFocusPing = { key: '', t: 0 };
+  let _navioGuestPasswordsAllowed = true;
+  let _pickerFetchInFlight = false;
+  let _pickerLastShowAt = 0;
+
+  try {
+    _navioGuestPasswordsAllowed = !ipcRenderer.sendSync('navio-guest-is-incognito-sync');
+  } catch {
+    _navioGuestPasswordsAllowed = true;
+  }
+
+  async function _fetchCredentialsForPage() {
+    try {
+      const r = await ipcRenderer.invoke('passwords-get', { url: window.location.href });
+      if (!r || !r.ok || !Array.isArray(r.entries) || !r.entries.length) return null;
+      return r.entries;
+    } catch {
+      return null;
+    }
+  }
+
+  async function _requestAndShowCredentialPicker(anchorEl) {
+    if (!_navioGuestPasswordsAllowed) return;
+    const now = Date.now();
+    if (now - _pickerLastShowAt < 120 && document.getElementById(NAVIO_CRED_PICKER_ID)) return;
+    if (_pickerFetchInFlight) return;
+    _pickerFetchInFlight = true;
+    try {
+      const entries = await _fetchCredentialsForPage();
+      if (!entries) return;
+      _pickerLastShowAt = now;
+      showNavioCredentialPicker(entries, anchorEl);
+      try {
+        _sendToTabHost('navio-login-field-focus', { url: window.location.href });
+      } catch {
+        /* host key icon only */
+      }
+    } finally {
+      _pickerFetchInFlight = false;
+    }
+  }
+
+  function _escPickerText(s) {
+    return String(s || '').replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+  }
+
+  function hideNavioCredentialPicker() {
+    try {
+      const el = document.getElementById(NAVIO_CRED_PICKER_ID);
+      if (el) el.remove();
+    } catch {
+      /* ignore */
+    }
+    try {
+      document.removeEventListener('mousedown', _navioPickerOutsideDismiss, true);
+      document.removeEventListener('keydown', _navioPickerEscDismiss, true);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function _navioPickerOutsideDismiss(e) {
+    const el = document.getElementById(NAVIO_CRED_PICKER_ID);
+    if (!el || el.contains(e.target)) return;
+    hideNavioCredentialPicker();
+  }
+
+  function _navioPickerEscDismiss(e) {
+    if ((e.key || '') === 'Escape') hideNavioCredentialPicker();
+  }
+
+  function applyCredentialEntry(entry, anchorEl) {
+    if (!entry) return;
+    const username = entry.username || '';
+    const password = entry.password || '';
+    const pwdField = pickPasswordFieldForAutofill(document);
+    let usernameEl = null;
+    const anchor = anchorEl || _navioLastLoginField;
+    if (anchor && String(anchor.type || '').toLowerCase() !== 'password') {
+      usernameEl = anchor;
+    } else if (pwdField) {
+      usernameEl = findUsernameFieldForAutofill(loginRootForPassword(pwdField));
+    } else {
+      usernameEl = findUsernameFieldForAutofill(document);
+    }
+    if (usernameEl && username) {
+      fillField(usernameEl, username);
+    }
+    const pwdEl =
+      pwdField ||
+      (anchor && String(anchor.type || '').toLowerCase() === 'password' ? anchor : null) ||
+      pickPasswordFieldForAutofill(document);
+    if (pwdEl && password) {
+      fillField(pwdEl, password);
+    }
+  }
+
+  function showNavioCredentialPicker(entries, anchorEl) {
+    hideNavioCredentialPicker();
+    if (!entries || !entries.length) return;
+    let anchor = anchorEl || _navioLastLoginField;
+    if (!anchor) {
+      anchor = findUsernameFieldForAutofill(document) || pickPasswordFieldForAutofill(document);
+    }
+    if (!anchor) return;
+
+    const rect = anchor.getBoundingClientRect();
+    const minW = Math.max(220, Math.min(rect.width || 220, 320));
+    let top = rect.bottom + 4;
+    let left = rect.left;
+    if (top + 220 > window.innerHeight - 8) top = Math.max(8, rect.top - 220);
+    left = Math.max(8, Math.min(left, window.innerWidth - minW - 8));
+
+    const wrap = document.createElement('div');
+    wrap.id = NAVIO_CRED_PICKER_ID;
+    wrap.setAttribute('data-navio-ui', '1');
+    wrap.style.cssText =
+      `position:fixed;left:${left}px;top:${top}px;z-index:2147483647;min-width:${minW}px;max-width:320px;` +
+      'background:#fff;color:#202124;border:1px solid #dadce0;border-radius:8px;' +
+      'box-shadow:0 4px 16px rgba(0,0,0,.18);font:13px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden;';
+
+    const head = document.createElement('div');
+    head.textContent = 'Saved passwords';
+    head.style.cssText =
+      'padding:8px 12px;font-size:11px;font-weight:600;color:#5f6368;background:#f8f9fa;border-bottom:1px solid #e8eaed;';
+    wrap.appendChild(head);
+
+    const hostLabel = _escPickerText(String(window.location.hostname || '').replace(/^www\./, ''));
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.style.cssText =
+        'display:block;width:100%;text-align:left;padding:10px 12px;border:none;background:transparent;cursor:pointer;font:inherit;color:#202124;';
+      const label = _escPickerText(entry.username || `Account ${i + 1}`);
+      btn.innerHTML =
+        `<span style="display:block;font-weight:500;">${label}</span>` +
+        `<span style="display:block;font-size:11px;color:#5f6368;margin-top:2px;">${hostLabel}</span>`;
+      btn.addEventListener('mousedown', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        hideNavioCredentialPicker();
+        applyCredentialEntry(entry, anchor);
+      });
+      btn.addEventListener('mouseenter', () => { btn.style.background = '#e8f0fe'; });
+      btn.addEventListener('mouseleave', () => { btn.style.background = 'transparent'; });
+      wrap.appendChild(btn);
+    }
+
+    document.documentElement.appendChild(wrap);
+    document.addEventListener('mousedown', _navioPickerOutsideDismiss, true);
+    document.addEventListener('keydown', _navioPickerEscDismiss, true);
+  }
+
+  function _loginFieldKind(el) {
+    if (!el || el.tagName !== 'INPUT' || el.disabled || el.readOnly) return null;
+    const type = String(el.type || '').toLowerCase();
+    if (type === 'hidden' || type === 'checkbox' || type === 'radio' || type === 'button' || type === 'submit') {
+      return null;
+    }
+    if (type === 'password') return 'password';
+    if (type === 'email' || type === 'tel') return 'username';
+    const ac = _pwdAutocomplete(el);
+    if (ac === 'username' || ac === 'email') return 'username';
+    if (type === 'text' || type === 'search' || !type) {
+      const hint = `${el.name || ''} ${el.id || ''} ${el.getAttribute('placeholder') || ''} ${el.getAttribute('aria-label') || ''}`.toLowerCase();
+      if (/user|email|login|account|ident|sign.?in|member|phone|pass/.test(hint)) return 'username';
+      for (const sel of USERNAME_SELECTORS) {
+        try {
+          if (el.matches(sel)) return 'username';
+        } catch {
+          /* continue */
+        }
+      }
+      if (queryPasswordFieldsInTree(document).length) return 'username';
+    }
+    return null;
+  }
+
+  function _onLoginFieldFocus(e) {
+    try {
+      const el = e.target;
+      const kind = _loginFieldKind(el);
+      if (!kind) return;
+      _navioLastLoginField = el;
+      const key = `${window.location.href}\t${kind}\t${el.name || ''}\t${el.id || ''}`;
+      const now = Date.now();
+      if (_lastFieldFocusPing.key === key && now - _lastFieldFocusPing.t < 200) return;
+      _lastFieldFocusPing = { key, t: now };
+      void _requestAndShowCredentialPicker(el);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function _onLoginFieldPointerDown(e) {
+    try {
+      const el = e.target;
+      const kind = _loginFieldKind(el);
+      if (!kind) return;
+      _navioLastLoginField = el;
+      setTimeout(() => void _requestAndShowCredentialPicker(el), 0);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function _wireLoginFieldFocus(doc) {
+    if (!doc || doc._navioLoginFocusWired) return;
+    doc._navioLoginFocusWired = true;
+    doc.addEventListener('focusin', _onLoginFieldFocus, true);
+    doc.addEventListener('pointerdown', _onLoginFieldPointerDown, true);
+    try {
+      doc.querySelectorAll('*').forEach((node) => {
+        if (node && node.shadowRoot) _wireLoginFieldFocus(node.shadowRoot);
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function _wireSameOriginIframe(ifr) {
+    try {
+      if (ifr && ifr.contentDocument) _wireLoginFieldFocus(ifr.contentDocument);
+    } catch {
+      /* cross-origin */
+    }
+  }
+
+  function _wireAllSameOriginIframes() {
+    try {
+      document.querySelectorAll('iframe').forEach(_wireSameOriginIframe);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function _wireDynamicGuestTrees() {
+    _wireAllSameOriginIframes();
+    try {
+      const walk = (root) => {
+        if (!root || !root.querySelectorAll) return;
+        root.querySelectorAll('*').forEach((node) => {
+          if (node && node.shadowRoot) _wireLoginFieldFocus(node.shadowRoot);
+        });
+      };
+      walk(document);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function _installCredentialFocusOnWindow() {
+    if (window.__navioCredFocusOnWindow) return;
+    window.__navioCredFocusOnWindow = true;
+    window.addEventListener('focusin', _onLoginFieldFocus, true);
+    window.addEventListener('pointerdown', _onLoginFieldPointerDown, true);
+    window.addEventListener('scroll', function () {
+      try { hideNavioCredentialPicker(); } catch { /* ignore */ }
+    }, true);
+  }
+
+  function _onNavioGuestPageReady() {
+    _navioDisconnectLoginObserver();
+    _navioLoginObserverArmedFor = '';
+    _wireDynamicGuestTrees();
+    try {
+      if (!checkForLoginForm()) _navioArmLoginObserver();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  _installCredentialFocusOnWindow();
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    _onNavioGuestPageReady();
+  } else {
+    window.addEventListener('DOMContentLoaded', _onNavioGuestPageReady);
+  }
+  window.addEventListener('pageshow', _onNavioGuestPageReady);
+  window.addEventListener('load', _onNavioGuestPageReady);
+
+  try {
+    const _iframeObs = new MutationObserver(() => _wireDynamicGuestTrees());
+    const obsRoot = document.body || document.documentElement;
+    if (obsRoot) _iframeObs.observe(obsRoot, { childList: true, subtree: true });
+  } catch {
+    /* ignore */
+  }
 
   // ── Inline AI: remember the guest selection without mutating the page DOM ──
   //
@@ -873,6 +1172,25 @@ try {
       } catch {}
     }, 800);
   }
+
+  ipcRenderer.on('navio-credential-picker-show', async (_, payload) => {
+    try {
+      const pack = payload && typeof payload === 'object' ? payload : {};
+      let entries = Array.isArray(pack.entries) ? pack.entries : [];
+      if (!entries.length) entries = await _fetchCredentialsForPage() || [];
+      showNavioCredentialPicker(entries);
+    } catch {
+      /* ignore */
+    }
+  });
+
+  ipcRenderer.on('navio-request-credential-picker', () => {
+    try { void _requestAndShowCredentialPicker(null); } catch { /* ignore */ }
+  });
+
+  ipcRenderer.on('navio-credential-picker-hide', () => {
+    try { hideNavioCredentialPicker(); } catch { /* ignore */ }
+  });
 
   ipcRenderer.on('navio-autofill', (_, payload) => {
     const pack = payload && typeof payload === 'object' ? payload : {};

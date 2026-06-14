@@ -236,6 +236,22 @@ function registerWebviewActionsIpc(ipcMain, { getMainWindow } = {}) {
       return { ok: false, error: e.message, sources: [] };
     }
   });
+
+  /** Shell → guest preload message (fallback when `<webview>.send` is flaky). */
+  ipcMain.handle('navio-send-to-guest-preload', async (_event, { webContentsId, channel, payload }) => {
+    try {
+      const wc = electronWebContents.fromId(Number(webContentsId));
+      if (!wc || (typeof wc.isDestroyed === 'function' && wc.isDestroyed())) {
+        return { ok: false, error: 'WebContents not found' };
+      }
+      const ch = String(channel || '').trim();
+      if (!ch) return { ok: false, error: 'channel required' };
+      wc.send(ch, payload);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
 }
 
 void nativeImage; // reserved for future inline composition

@@ -91,6 +91,10 @@ class TabManagerClass {
     this._dragState = null;
     this._boundDragPointerMove = this._onDragPointerMove.bind(this);
     this._boundDragPointerUp   = this._onDragPointerUp.bind(this);
+    window.addEventListener('blur', () => this.cancelStaleTabDrag());
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') this.cancelStaleTabDrag();
+    });
 
     this._installNavioChatHostRelayListener();
     this._installNavioTabGuestIpcListener();
@@ -119,6 +123,11 @@ class TabManagerClass {
       }
     } catch {
       this._webviewGuestPreloadHref = '';
+    }
+    if (!this._webviewGuestPreloadHref) {
+      console.error(
+        '[navio] Guest preload URL missing — login capture/autofill may not work. Restart the app.'
+      );
     }
   }
 
@@ -985,6 +994,10 @@ class TabManagerClass {
       } else if (channel === 'navio-login-form' && data) {
         if (!tab.incognito && typeof PasswordManager !== 'undefined') {
           PasswordManager.checkAutofill(data.url, wv);
+        }
+      } else if (channel === 'navio-login-field-focus' && data) {
+        if (!tab.incognito && typeof PasswordManager !== 'undefined') {
+          PasswordManager.showCredentialPicker(data.url, wv);
         }
       } else if (channel === 'navio-text-selected' && data) {
         if (typeof InlineAI !== 'undefined') {
@@ -3740,6 +3753,45 @@ class TabManagerClass {
     }
   }
 
+  /** Remove tab-drag layers; call on pointer-up or when a drag ends without pointerup (alt-tab, crash). */
+  _teardownTabDragArtifacts(ds) {
+    if (ds) {
+      try {
+        ds.el?.removeEventListener('pointermove', this._boundDragPointerMove);
+        ds.el?.removeEventListener('pointerup', this._boundDragPointerUp);
+        ds.el?.removeEventListener('pointercancel', this._boundDragPointerUp);
+        ds.el?.classList?.remove('tab-dragging-source');
+      } catch {
+        /* ignore */
+      }
+      try {
+        ds.ghost?.remove();
+        ds.overlay?.remove();
+      } catch {
+        /* ignore */
+      }
+    }
+    try {
+      document.querySelectorAll('.tab-drag-overlay').forEach((el) => el.remove());
+      document.querySelectorAll('.tab-drag-ghost').forEach((el) => el.remove());
+      document.getElementById('tab-drag-indicator')?.remove();
+      this.tabListEl?.querySelectorAll('.tab-drag-over').forEach((el) => el.classList.remove('tab-drag-over'));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** Escape hatch when pointer capture is lost — full-screen overlay otherwise eats all clicks. */
+  cancelStaleTabDrag() {
+    if (!this._dragState) {
+      this._teardownTabDragArtifacts(null);
+      return;
+    }
+    const ds = this._dragState;
+    this._dragState = null;
+    this._teardownTabDragArtifacts(ds);
+  }
+
   _onDragPointerUp(e) {
     const ds = this._dragState;
     if (!ds) return;
@@ -3749,16 +3801,7 @@ class TabManagerClass {
     const dragId = ds.id;
     const dragEl = ds.el;
 
-    dragEl.removeEventListener('pointermove', this._boundDragPointerMove);
-    dragEl.removeEventListener('pointerup',   this._boundDragPointerUp);
-    dragEl.removeEventListener('pointercancel', this._boundDragPointerUp);
-    dragEl.classList.remove('tab-dragging-source');
-
-    if (ds.ghost) ds.ghost.remove();
-    document.getElementById('tab-drag-indicator')?.remove();
-    ds.overlay?.remove();
-
-    this.tabListEl.querySelectorAll('.tab-drag-over').forEach(el => el.classList.remove('tab-drag-over'));
+    this._teardownTabDragArtifacts(ds);
 
     if (wasDragging && dragType === 'tab' && this._shouldDetachTabToNewWindow(e)) {
       void this._detachTabToNewWindow(dragId, e);
